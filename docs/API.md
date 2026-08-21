@@ -72,10 +72,15 @@
 ### `GET /rows/{identity_hash}/context`
 
 Уже затверджені переклади зі спільним терміном · найсильніший сигнал для моделі.
-Один запит на рядок.
+Один запит на рядок, і `./bdo payload worker` робить це ЗА ЗАМОВЧУВАННЯМ.
+
+Три запобіжники проти марних викликів: проба перших 3 рядків (нічого не знайшли ·
+решту не питаємо), повторне використання `context.json` теки пачки, і мовчазна
+деградація без прикладів, якщо API недоступний.
 
     ./bdo context <identity_hash>
-    ./bdo payload worker rows.json --with-context
+    ./bdo payload worker rows.json               # приклади типово
+    ./bdo payload worker rows.json --no-context  # без прикладів і без запитів
 
 ### `POST /translations/memory`
 

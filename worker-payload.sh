@@ -1,14 +1,30 @@
 #!/usr/bin/env bash
 # Побудувати компактний payload для translation-worker або translation-repair.
 #
-#   ./worker-payload.sh rows.json                 # без прикладів
-#   ./worker-payload.sh rows.json --with-context   # + підтверджені приклади з API
+#   ./worker-payload.sh rows.json                 # з прикладами (за замовчуванням)
+#   ./worker-payload.sh rows.json --no-context     # без прикладів, без звернень до API
 #   ./worker-payload.sh rows.json --with-current   # + поточний machine-переклад (для retranslate)
 #
-# --with-context робить по одному запиту GET /rows/{hash}/context на рядок і додає
-# до 3 вже перекладених прикладів зі спільним терміном. Вмикати варто лише коли в
-# шарі перекладів уже щось є: на свіжому патчі endpoint повертає порожньо, і це
-# буде N марних викликів.
+# ПРИКЛАДИ ВВІМКНЕНІ ЗА ЗАМОВЧУВАННЯМ. Промпт воркера сам називає їх найсильнішим
+# сигналом («тримайся їхнього стилю й термінології, навіть якщо маєш свою думку»),
+# і при цьому вони роками були opt-in, тобто фактично не вживались ніколи.
+# Робить по одному запиту `GET /rows/{hash}/context` на рядок і додає до 3 вже
+# затверджених пар en/ua зі спільним терміном.
+#
+# Причина, через яку вони були opt-in, більше не діє: на свіжому патчі endpoint
+# віддавав порожньо, і це були N марних викликів. Тепер ШІ-шар покриває 941 273
+# записи, тобто корпус є. А проти того самого ризику стоять три запобіжники:
+#
+#   1. Проба. Перші 3 рядки питаються першими; якщо ЖОДЕН не дав прикладів,
+#      решта не питається взагалі. На справді свіжому патчі ціна · 3 виклики, а
+#      не 20.
+#   2. Готовий контекст не перепитується. Якщо `context.json` у теці пачки вже
+#      є (наприклад, повторний виклик після збою воркера), він просто читається.
+#   3. Недоступний API не валить пачку. Немає `.env`, ключ не той, мережа впала ·
+#      попередження в stderr і payload БЕЗ прикладів. Payload без прикладів
+#      робочий; зламана побудова payload зупиняє прогін.
+#
+# `--with-context` лишається прийнятним і нічого не змінює: це тепер дефолт.
 #
 # --with-current додає поточний machine-переклад рядка як поле "current". Для
 # переперекладу: модель бачить наявний текст і може вирішити, чи варто його
@@ -28,55 +44,85 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 ROWS_FILE="${1:?Потрібен rows.json з API}"
-WITH_CONTEXT=""
+WANT_CONTEXT=1
 WITH_CURRENT=""
 shift
 while [ $# -gt 0 ]; do
     case "$1" in
-        --with-context) WITH_CONTEXT="--with-context" ;;
+        --no-context)   WANT_CONTEXT=0 ;;
+        --with-context) WANT_CONTEXT=1 ;;   # дефолт; лишається для сумісності
         --with-current) WITH_CURRENT="--with-current" ;;
         *) echo "Невідомий прапорець: $1" >&2; exit 1 ;;
     esac
     shift
 done
+
 CONTEXT_FILE=""
-if [ "$WITH_CONTEXT" = "--with-context" ]; then
-    # shellcheck source=/dev/null
-    source "$SCRIPT_DIR/select-env.sh"
+if [ "$WANT_CONTEXT" = 1 ]; then
     # Тека пачки, якщо вона є: тоді контекст переживе цей запуск і дістанеться QA.
-    # Без розпочатої пачки лишається тимчасовий файл · стара поведінка.
+    # Без розпочатої пачки лишається тимчасовий файл · QA його не побачить.
     BATCH_DIR="$("$SCRIPT_DIR/batch-dir.sh" 2>/dev/null || true)"
     if [ -n "$BATCH_DIR" ]; then
         CONTEXT_FILE="$BATCH_DIR/context.json"
     else
         CONTEXT_FILE="$(mktemp)"
         trap 'rm -f "$CONTEXT_FILE"' EXIT
-        echo "Пачку не розпочато: контекст у тимчасовий файл, QA його не побачить." >&2
     fi
-    php -r '
-    $rows = json_decode(file_get_contents($argv[1]), true, 512, JSON_THROW_ON_ERROR)["data"]["rows"] ?? [];
-    $out = [];
-    foreach ($rows as $row) {
-        $hash = $row["identity_hash"] ?? "";
-        $url = $argv[2] . "/rows/" . $hash . "/context";
-        $ctx = @file_get_contents($url, false, stream_context_create([
-            "http" => ["header" => "X-API-Key: " . $argv[3], "timeout" => 30, "ignore_errors" => true],
-        ]));
-        if ($ctx === false) continue;
-        $data = json_decode($ctx, true)["data"]["context"] ?? [];
-        $examples = [];
-        foreach (array_slice($data["related_rows"] ?? [], 0, 3) as $related) {
-            $text = $related["translation"]["text"] ?? null;
-            $src = $related["source_text"] ?? null;
-            if (is_string($text) && is_string($src) && $text !== "" && $src !== "") {
-                $examples[] = ["en" => $src, "ua" => $text];
+
+    if [ -s "$CONTEXT_FILE" ]; then
+        # Запобіжник 2: готовий контекст не перепитується.
+        echo "Контекст уже зібраний: $CONTEXT_FILE (API не питаю)" >&2
+    # Запобіжник 3: `select-env.sh` при відсутньому `.env` або невідомому BDO_ENV
+    # робить `exit 1`. Пряме `source` вбило б і цей скрипт, тому спершу проба в
+    # підоболонці · вона впасти не може нікого, крім себе.
+    elif ! bash "$SCRIPT_DIR/select-env.sh" >/dev/null 2>&1; then
+        echo "Приклади пропущено: середовище недоступне (немає .env або ключа)." >&2
+        echo "Payload будується без них · це робочий payload, лише слабший сигнал." >&2
+        CONTEXT_FILE=""
+    else
+        # shellcheck source=/dev/null
+        source "$SCRIPT_DIR/select-env.sh"
+        php -r '
+        $rows = json_decode(file_get_contents($argv[1]), true, 512, JSON_THROW_ON_ERROR)["data"]["rows"] ?? [];
+        // Запобіжник 1: проба. Якщо перші PROBE рядків не дали жодного приклада,
+        // корпус для цієї пачки порожній · решту не питаємо.
+        $probe = 3;
+        $out = [];
+        $asked = 0;
+        $failed = 0;
+        foreach ($rows as $i => $row) {
+            if ($i === $probe && $out === []) break;
+            $hash = $row["identity_hash"] ?? "";
+            if ($hash === "") continue;
+            $url = $argv[2] . "/rows/" . $hash . "/context";
+            $ctx = @file_get_contents($url, false, stream_context_create([
+                "http" => ["header" => "X-API-Key: " . $argv[3], "timeout" => 30, "ignore_errors" => true],
+            ]));
+            $asked++;
+            if ($ctx === false) { $failed++; continue; }
+            $data = json_decode($ctx, true)["data"]["context"] ?? [];
+            $examples = [];
+            foreach (array_slice($data["related_rows"] ?? [], 0, 3) as $related) {
+                $text = $related["translation"]["text"] ?? null;
+                $src = $related["source_text"] ?? null;
+                if (is_string($text) && is_string($src) && $text !== "" && $src !== "") {
+                    $examples[] = ["en" => $src, "ua" => $text];
+                }
             }
+            if ($examples !== []) $out[$hash] = $examples;
         }
-        if ($examples !== []) $out[$hash] = $examples;
-    }
-    file_put_contents($argv[4], json_encode($out, JSON_UNESCAPED_UNICODE));
-    fwrite(STDERR, "Прикладів із контексту: " . count($out) . " рядків із " . count($rows) . "\n");
-    ' "$ROWS_FILE" "$BDO_API_BASE" "$BDO_API_KEY" "$CONTEXT_FILE"
+        file_put_contents($argv[4], json_encode($out, JSON_UNESCAPED_UNICODE));
+        $total = count($rows);
+        if ($out === [] && $asked < $total) {
+            fwrite(STDERR, sprintf(
+                "Приклади: перші %d рядків не дали жодного · решту %d не питав (порожній корпус для цієї пачки).\n",
+                $asked, $total - $asked));
+        } else {
+            fwrite(STDERR, sprintf("Приклади: %d рядків із %d (запитів %d%s)\n",
+                count($out), $total, $asked, $failed > 0 ? ", невдалих $failed" : ""));
+        }
+        ' "$ROWS_FILE" "$BDO_API_BASE" "$BDO_API_KEY" "$CONTEXT_FILE"
+    fi
 fi
 
 php -r '

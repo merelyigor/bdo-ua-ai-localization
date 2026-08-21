@@ -67,9 +67,16 @@ reads and writes alike, and `./bdo env` prints what is currently set.
 4. `./bdo schema build to-translate.json` - stage the constrained-decoding schema.
 5. `./bdo payload worker to-translate.json` - print the compact payload; start
    `translation-worker` with that payload only. Save its response verbatim as
-   the candidate file. Add `--with-context` only once the Ukrainian layer holds
-   translations for this patch: on a fresh patch `/rows/{hash}/context` returns
-   nothing and the flag only costs one API call per row.
+   the candidate file.
+
+   Approved `examples` are included BY DEFAULT: the worker prompt calls them the
+   strongest signal it gets, and they were opt-in for so long that they were
+   effectively never used. Three guards keep the old objection (wasted calls on a
+   fresh patch) from returning: the first 3 rows are probed and the rest are
+   skipped when none yields an example, an existing `context.json` in the batch
+   directory is reused instead of re-queried, and an unreachable API degrades to a
+   payload without examples instead of failing the batch. Use `--no-context` to
+   skip them outright.
 6. `./bdo memory expand candidate.json twins.json memory-candidate.json > full.json`
    - assemble the whole batch back: model output, in-batch twins and memory.
 7. `./bdo normalize full.json > clean.json` - deterministic repairs
