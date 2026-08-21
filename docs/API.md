@@ -9,7 +9,7 @@
 
 | Що | Значення |
 |---|---|
-| База | `BDO_API_BASE` з `.env` (наприклад `https://bdo-ua.com.ua/api/agent/v1`) |
+| База | обирається за `BDO_ENV`; production · `https://bdo-ua.com.ua/api/agent/v1`, зашита в `select-env.sh` |
 | Автентифікація | заголовок `X-API-Key: <ключ>` |
 | Формат | JSON; відповідь у конверті `data` / `meta` / `error` |
 | Ліміти | 120 запитів/хв; денна квота ЗАПИСАНИХ рядків · з `GET /me` |

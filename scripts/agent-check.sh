@@ -151,16 +151,42 @@ check_env_contract() {
     git check-ignore -q .env.example && fail '.env.example помилково ігнорується'
     git ls-files --error-unmatch .env >/dev/null 2>&1 && fail '.env відслідковується Git'
     test -f .env.example || fail 'немає .env.example'
-    # Порожнім мусить бути будь-який ключ · і в новій формі, і в старій парі.
-    if grep -E '^(BDO_API_KEY|BDO_API_KEY_LOCALHOST|BDO_API_KEY_PROD)=.+' .env.example >/dev/null; then
+    # Порожнім мусить бути будь-який ключ, під будь-яким із прийнятих імен.
+    if grep -E '^[[:space:]]*BDO_API_KEY(_PROD|_DEV|_LOCALHOST)?=.+' .env.example >/dev/null; then
         fail '.env.example містить непорожній API key'
     fi
-    # Ціль прогону · одна константа. Шаблон без неї означає, що агент знову
-    # мусив би виводити середовище з формулювання запиту.
-    grep -Eq '^BDO_ENV=(PROD|DEV)$' .env.example || fail '.env.example не задає BDO_ENV=PROD або BDO_ENV=DEV'
-    grep -Eq '^BDO_API_BASE=' .env.example || fail '.env.example не задає BDO_API_BASE'
-    grep -Eq '^BDO_API_KEY=$' .env.example || fail '.env.example не має порожнього BDO_API_KEY'
-    note '.env* приватні; .env.example задає одну ціль і порожній ключ'
+    # Ціль прогону · одна константа, і в публічному шаблоні вона PROD: dev-стенд
+    # є лише в того, хто розробляє сам проєкт.
+    grep -Eq '^BDO_ENV=PROD$' .env.example || fail '.env.example не задає BDO_ENV=PROD'
+    grep -Eq '^BDO_API_KEY_PROD=$' .env.example || fail '.env.example не має порожнього BDO_API_KEY_PROD'
+    # Адреса production живе в коді, а не в шаблоні: константа, розмножена по
+    # копіях `.env`, розходиться від описки, і жодна перевірка цього не бачить.
+    grep -Eq "^readonly BDO_API_BASE_PROD_DEFAULT=" select-env.sh \
+        || fail 'select-env.sh не має дефолта BDO_API_BASE_PROD_DEFAULT'
+    if grep -Eq '^[[:space:]]*BDO_API_BASE(_PROD|_DEV)?=' .env.example; then
+        fail '.env.example задає адресу API активним рядком · вона мусить бути прикладом у комментарі'
+    fi
+    note '.env* приватні; .env.example · PROD, порожній ключ, адреси в коді'
+}
+
+# Приватна інфраструктура власника не потрапляє в публічні файли (§2). Перевірка
+# НАВМИСНО загальна · будь-який `.dev`-хост, · щоб не вписати сам приватний хост
+# у tracked файл і не звести запобіжник на нуль.
+check_private_hosts() {
+    step 'Приватні хости в публічних файлах'
+    local file hit
+    while IFS= read -r file; do
+        test -f "$file" || continue
+        hit="$(grep -HnoE 'https?://[A-Za-z0-9.-]+\.dev(/|$)' "$file" 2>/dev/null | sed -n '1p' || true)"
+        test -z "$hit" || fail "приватний dev-хост у публічному файлі: $hit"
+    done < <(public_files)
+    # Літерал розірваний конкатенацією: інакше сама фікстура є dev-хостом у
+    # публічному файлі, і перевірка ловить власний вихідний код. Той самий
+    # прийом уже вживається для фікстур детектора секретів нижче.
+    local fixture='https://example''.dev/api'
+    printf '%s\n' "$fixture" | grep -qE 'https?://[A-Za-z0-9.-]+\.dev(/|$)' \
+        || fail 'negative test: детектор dev-хоста не спрацював'
+    note 'dev-хостів немає; детектор перевірений фікстурою'
 }
 
 check_public_safety() {
@@ -195,6 +221,7 @@ check_docs() {
     check_rules
     check_references
     check_env_contract
+    check_private_hosts
     check_public_safety
     check_whitespace
 }
