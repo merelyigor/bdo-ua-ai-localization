@@ -56,7 +56,16 @@ check_rules() {
     test -z "$duplicate" || fail "дублікат номера §$duplicate"
     bad_number="$(perl -ne '$s=$1 if /^## §(\d+)\b/; print "$.:$_" if /^- §(\d+)\.\d+/ && $1 != $s' "$RULE_REFERENCE" | sed -n '1p')"
     test -z "$bad_number" || fail "номер правила не відповідає секції: $bad_number"
+    # Розподіл прав на Git · рішення власника, а не стильова деталь, тому воно не
+    # має права тихо зникнути при наступному переписуванні карти правил.
+    grep -Fq 'git push` робить ВИКЛЮЧНО власник' AGENTS.md \
+        || fail 'у AGENTS.md немає правила «git push робить виключно власник»'
+    grep -Fq 'git push` робить ТІЛЬКИ власник' .opencode/critical-rules.md \
+        || fail 'у .opencode/critical-rules.md немає правила про push'
+    grep -Fq '§4.2 `git push` виконує ВИКЛЮЧНО власник' "$RULE_REFERENCE" \
+        || fail "у $RULE_REFERENCE немає §4.2 про push"
     note "4 дзеркала ідентичні; AGENTS.md: $lines/$RULE_MAP_MAX_LINES рядків"
+    note 'правило про push присутнє в карті, критичних правилах і нормативі'
 }
 
 # Документи й промпти, посилання в яких мусять вести на наявний файл.
