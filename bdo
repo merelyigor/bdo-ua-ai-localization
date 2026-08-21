@@ -105,7 +105,7 @@ bdo · переклад рядків BDO через Agent API і локальн�
   api                  read-only smoke Agent API
   docker               запуск команди в контейнері проєкту
 
-Заморожений повністю скриптовий флоу · archive/legacy-script-flow/README.md
+Скриптовий флоу без чату видалено 2026-08-22 · історія в коміті dac631e
 TXT
 }
 

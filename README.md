@@ -30,8 +30,8 @@
 адмінки, ні самого API. Уся серверна логіка живе в окремому проєкті, а цей набір
 лише читає й пише через Agent API.
 
-Повністю скриптовий флоу без чату існував, але **заморожений** і не
-використовується · [archive/legacy-script-flow/](archive/legacy-script-flow/README.md).
+Повністю скриптовий флоу без чату колись існував, але **видалений** 2026-08-22:
+робочий флоу один. Код лишився в історії Git · коміт `dac631e`.
 
 ## Пов'язані проєкти
 
@@ -366,7 +366,7 @@ commit`. Що лишилось дефектним, іде в модерацію,
 - `.githooks/pre-commit` перевіряє застейджений вміст на значення з вашого `.env`
   і на типові патерни секретів. Він ловить не сам файл, а вставлений у README
   приклад із справжнім ключем · саме так ключі й витікають.
-- `output/`, `state/`, `state-auto/` і сесії OpenCode локальні й не комітяться.
+- `output/`, `state/` і сесії OpenCode локальні й не комітяться.
 - `identity_hash` і `source_hash` не є секретами: це технічні ідентифікатори
   контракту.
 
@@ -429,7 +429,6 @@ bdo                         єдиний вхід: ./bdo · дерево, ./bdo 
 lib/                        PHP: identity, пачки, якість, payload для API
 scripts/agent-check.sh      єдиний quality gate
 docs/                       довідники, API, виміри, плани
-archive/legacy-script-flow/ заморожений скриптовий флоу · не використовується
 state/                      робочий стан прогонів і пачок
 output/                     відповіді API, бенчмарки, квитанції запису
 ```
@@ -449,7 +448,7 @@ OpenCode · це вимога OpenCode, а не вибір набору.
 | Публічна безпека | [docs/SECURITY.md](docs/SECURITY.md) |
 | Правила для AI-агентів | [AGENTS.md](AGENTS.md), [docs/AI_AGENT_RULES_REFERENCE.md](docs/AI_AGENT_RULES_REFERENCE.md) |
 | Плани й черга робіт | [docs/plans/README.md](docs/plans/README.md), [docs/plans/BACKLOG.md](docs/plans/BACKLOG.md) |
-| Заморожений скриптовий флоу | [archive/legacy-script-flow/README.md](archive/legacy-script-flow/README.md) |
+| Виміри, інциденти, рішення | [docs/FLOW_STATE.md](docs/FLOW_STATE.md) |
 
 Уся навігація по документації · [docs/README.md](docs/README.md).
 

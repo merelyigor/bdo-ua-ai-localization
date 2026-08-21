@@ -77,7 +77,7 @@ linked_docs() {
     {
         git ls-files '*.md'
         git ls-files --others --exclude-standard '*.md'
-    } | awk '!/^(archive|docs\/plans)\//' | sort -u
+    } | awk '!/^docs\/plans\//' | sort -u
 }
 
 # Шлях може бути записаний відносно свого документа, кореня repo або жити в
@@ -88,8 +88,7 @@ resolve_reference() {
     for candidate in \
         "$ref" "$dir/$ref" "$dir/plans/$ref" \
         ".opencode/$ref" ".opencode/agents/$ref" \
-        "docs/$ref" "docs/plans/$ref" "scripts/$ref" \
-        "archive/legacy-script-flow/$ref"
+        "docs/$ref" "docs/plans/$ref" "scripts/$ref"
     do
         test -e "$candidate" && return 0
     done
@@ -98,8 +97,18 @@ resolve_reference() {
 
 check_references() {
     step 'Посилання в документах і промптах'
-    # Довідники СЕРВЕРНОГО проєкту: доступні через TRANSLATE_PROJECT_ROOT, а не тут.
-    local -r external='docs/AGENT_TRANSLATION_API.md YYYY-MM-DD_SLUG.md'
+    # Імена, які НЕ мусять існувати в дереві:
+    #   - довідники СЕРВЕРНОГО проєкту (доступні через TRANSLATE_PROJECT_ROOT);
+    #   - шаблон імені файла плану;
+    #   - чотири скрипти видаленого 2026-08-22 скриптового флоу. Журнал і плани
+    #     називають їх як ІСТОРІЮ, і це правильно: рішення видалити зафіксоване
+    #     разом із хешем, з якого їх можна відновити. Забороняє подавати їх як
+    #     команду окрема перевірка нижче.
+    #
+    # Один рядок навмисно: перевірка нижче робить `case " $external " in *" $ref "*`,
+    # тобто шукає імʼя, оточене ПРОБІЛАМИ. Перенос рядка всередині списку робить
+    # перше імʼя наступного рядка невидимим для match.
+    local -r external='docs/AGENT_TRANSLATION_API.md YYYY-MM-DD_SLUG.md translate-patch.sh translate-menu.sh agent-call.sh merge-verdicts.sh'
     local doc ref plan base checked=0
     while IFS= read -r doc; do
         test -f "$doc" || continue
@@ -112,10 +121,11 @@ check_references() {
     done < <(linked_docs)
     note "перевірено $checked посилань у документах і промптах"
 
-    step 'Заморожений код не подається як робочий шлях'
+    step 'Видалений скриптовий флоу не подається як робочий шлях'
     local instruction frozen hit
-    # Ці файли КАЖУТЬ агентові, що робити. Виклик замороженого скрипта звідси ·
-    # саме той випадок, коли документація тихо розходиться з рішенням власника.
+    # Ці файли КАЖУТЬ агентові, що робити. Після видалення скриптового флоу
+    # (2026-08-22) виклик його скрипта звідси означав би команду до файла, якого
+    # в репозиторії немає · тобто інструкцію, що гарантовано впаде.
     for instruction in README.md AGENTS.md .cursorrules CLAUDE.md QWEN.md \
         UI_SUBAGENT_WORKFLOW.md docs/PROJECT_OVERVIEW.md docs/README.md \
         .opencode/critical-rules.md .opencode/agents/*.md
@@ -125,10 +135,10 @@ check_references() {
             # `|| true`: під `pipefail` порожній grep дав би ненульовий статус
             # пайпа, і `set -e` вбив би gate замість того, щоб визнати «чисто».
             hit="$(grep -n -- "\./$frozen" "$instruction" | sed -n '1p' || true)"
-            test -z "$hit" || fail "$instruction подає заморожений $frozen як команду: $hit"
+            test -z "$hit" || fail "$instruction подає видалений $frozen як команду: $hit"
         done
     done
-    note 'жоден інструктивний файл не кличе archive/legacy-script-flow'
+    note 'жоден інструктивний файл не кличе видалені скрипти'
 
     step 'Структура планів'
     test -f docs/plans/README.md || fail 'немає реєстру docs/plans/README.md'

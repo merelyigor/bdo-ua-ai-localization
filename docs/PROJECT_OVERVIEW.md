@@ -25,10 +25,19 @@ Toolkit не містить серверної БД, Laravel application, modera
 |---|---|---|---|
 | Супервізований | primary agent в OpenCode | named `translation-*` child agents | `state/` |
 
-Автономний flow (`translate-patch.sh` і його пульт) заморожений 2026-08-22 у
-[`../archive/legacy-script-flow/`](../archive/legacy-script-flow/README.md): він
-не є альтернативним entrypoint. `state-auto/` лишається на місці, бо там
-збережені позиції вибірок, потрібні при розморожуванні.
+Автономний flow (`translate-patch.sh` і його пульт) **видалено з репозиторію**
+2026-08-22: робочий flow один, і другого entrypoint не існує.
+
+Код лишився в історії Git. Останній коміт, у якому файли присутні · `dac631e`.
+Відновлення:
+
+```bash
+git show dac631e:archive/legacy-script-flow/translate-patch.sh   # один файл
+git checkout dac631e -- archive/legacy-script-flow/              # усю теку
+```
+
+Разом із ним прибрано `state-auto/` · це був стан саме того flow; тека тепер
+ігнорується цілком, локальні файли лишаються на диску.
 
 Детальна послідовність · [UI_SUBAGENT_WORKFLOW.md](../UI_SUBAGENT_WORKFLOW.md),
 фактичні виміри й incidents · [FLOW_STATE.md](FLOW_STATE.md).
@@ -77,7 +86,7 @@ HTTP write, model invocation та state lifecycle мають штатні entryp
 
 ## Локальні дані
 
-`.env`, `output/`, `state/`, `state-auto/`, model/runtime logs і OpenCode session
+`.env`, `output/`, `state/`, model/runtime logs і OpenCode session
 database не є публічними артефактами. Вони не комітяться, не публікуються й не
 передаються зовнішнім моделям. Деталі · [SECURITY.md](SECURITY.md).
 

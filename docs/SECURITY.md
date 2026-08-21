@@ -32,7 +32,7 @@ payload, API response, state directory або session dump.
 
 - `.env` · credentials і environment-specific values.
 - `output/` · API responses, benchmarks та діагностичні результати.
-- `state/`, `state-auto/` · batches, cursors, receipts, quarantine й audit trail.
+- `state/` · batches, cursors, receipts, quarantine й audit trail.
 - OpenCode database/session dumps і model/runtime logs.
 
 Ці дані не комітити, не додавати до issue/PR, не передавати remote/free моделям і

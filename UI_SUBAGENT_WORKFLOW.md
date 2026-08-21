@@ -343,9 +343,9 @@ block a full-batch call by length mismatch.
 
 - Start one translation child session at a time. Wait for its final response
   before creating the next one.
-- This is the ONLY flow. The autonomous script orchestrator was frozen on
-  2026-08-22 under `archive/legacy-script-flow/`: it is not an alternative
-  entrypoint any more, and no shell runner in this flow may invoke a language
+- This is the ONLY flow. The autonomous script orchestrator was DELETED from the
+  repository on 2026-08-22 (still in history, commit `dac631e`): it is not an
+  alternative entrypoint, and no shell runner in this flow may invoke a language
   model. One narrow exception exists: `bdo bench` benchmarks a
   local model on a real batch. It produces a measurement, not a translation, and
   that is enforced rather than trusted - its output goes to `output/benchmark/`

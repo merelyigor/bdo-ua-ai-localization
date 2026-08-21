@@ -16,7 +16,6 @@
 | Ендпоінти й параметри Agent API | [API.md](API.md) |
 | Контракт запису через Agent API | [API_WRITE_CONTRACT.md](../API_WRITE_CONTRACT.md) |
 | Плани, реєстр і черга | [plans/README.md](plans/README.md), [plans/BACKLOG.md](plans/BACKLOG.md) |
-| Заморожений скриптовий flow | [../archive/legacy-script-flow/README.md](../archive/legacy-script-flow/README.md) |
 
 ## Політика документації
 

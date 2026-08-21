@@ -50,8 +50,8 @@ Black Desert Online через BDO UA Translate Agent API. Тут немає с�
   окремого підтвердження власника на конкретний прогін.
 - Не стирати й не перезаписувати manual revisions, moderation decisions,
   glossary або audit trail. Не підміняти `manual`, `machine` і `proposal`.
-- Не видаляти `output/`, `state/`, `state-auto/`: там курсори, квитанції й
-  карантин. `./bdo clean` без `--apply` лише показує.
+- Не видаляти `output/` і `state/`: там курсори, квитанції й карантин.
+  `./bdo clean` без `--apply` лише показує.
 - Не чіпати чужі незакомічені зміни. Ніколи `git add -A`, `git add .` або
   `git commit -a`; перед стартом і фіналом звіряти status та власний diff.
 - Не змінювати identity (`source_language + key0 + record_id + key1`), PA markup,
@@ -61,8 +61,9 @@ Black Desert Online через BDO UA Translate Agent API. Тут немає с�
   `[Title]`). Підстановка згадок · лише для предметів.
 - Субагентам під constrained schema заборонені всі tools; payload передається
   текстом. Лише GGUF-моделі з allowlist; MLX заборонений.
-- Робочий flow один · субагенти OpenCode. Повністю скриптовий flow заморожений у
-  `archive/legacy-script-flow/` і не запускається; його файли не рефакторити.
+- Робочий flow один · субагенти OpenCode з платною моделлю-диригентом. Повністю
+  скриптовий flow ВИДАЛЕНО 2026-08-22; відновлення · з коміта `dac631e`. Не
+  відтворювати його й не пропонувати як альтернативу.
 
 ## 3. Обов'язковий цикл
 
@@ -124,7 +125,7 @@ Black Desert Online через BDO UA Translate Agent API. Тут немає с�
 | Ціль прогону та layout | `.env.example`, `select-env.sh`, `paths.sh` |
 | Планування | `docs/plans/README.md`, `docs/plans/BACKLOG.md` |
 | Єдиний gate | `scripts/agent-check.sh` |
-| Заморожений скриптовий flow | `archive/legacy-script-flow/README.md` |
+| Видалений скриптовий flow | коміт `dac631e`, історія · `docs/FLOW_STATE.md` |
 
 - Стек: Bash, PHP CLI 8.3+, jq, curl, Ollama GGUF, опційно OpenCode.
 - Shell є transport/orchestration; PHP у `lib/` тримає identity і quality logic.
