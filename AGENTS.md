@@ -103,7 +103,8 @@ HTTP до API, виклики Ollama і файли робочого стану.
 | Журнал рішень, виміри, знахідки | `docs/FLOW_STATE.md` |
 | PHP-логіка (identity, якість, пачки) | `lib/`, простір імен `Bdo\Translate\` |
 | Запобіжник проти витоку ключа | `.githooks/pre-commit` |
-| Формат повідомлення коміта | `.githooks/commit-msg` |
+| Шаблон повідомлення коміта | `.codex/prompts/commit-message-ua.txt` |
+| Механічна перевірка цього формату | `.githooks/commit-msg` |
 | Перевірка самих правил | `check-rules.sh` |
 
 Серверна частина (Agent API, схема БД, модерація в UI) живе в іншому
@@ -140,7 +141,8 @@ bash .opencode/validate-translation-agents.sh  # конфіг і frontmatter а�
 
 ## 7. Git і фінал
 
-- Commit message · українською, у форматі:
+- Commit message генерується строго за `.codex/prompts/commit-message-ua.txt` ·
+  українською, у форматі:
 
   ```
   Версія: X.Y.Z

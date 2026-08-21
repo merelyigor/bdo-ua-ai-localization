@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Механічна перевірка commit message проти AGENTS.md §7.
+# Механічна перевірка commit message проти .codex/prompts/commit-message-ua.txt.
 #
 # Вмикається один раз на клон:
 #   git config core.hooksPath .githooks
@@ -103,7 +103,7 @@ if [ "$fail" -eq 0 ]; then
 fi
 
 if [ "$fail" -ne 0 ]; then
-    say "коміт скасовано. Формат: AGENTS.md §7"
+    say "коміт скасовано. Шаблон: .codex/prompts/commit-message-ua.txt"
     say "обійти свідомо: git commit --no-verify"
     exit 1
 fi
