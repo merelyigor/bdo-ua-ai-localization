@@ -1,0 +1,74 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "permission": {
+    "bash": {
+      "*migrate:fresh*": "deny",
+      "*migrate:refresh*": "deny",
+      "*migrate:reset*": "deny",
+      "*db:wipe*": "deny",
+      "*migrate:rollback*": "deny"
+    },
+    "edit": {
+      "*/.env": "deny"
+    }
+  },
+  "agent": {
+    "build": {
+      "permission": {
+        "task": {
+          "*": "deny",
+          "translation-terminology": "allow",
+          "translation-worker": "allow",
+          "translation-qa": "allow",
+          "translation-repair": "allow",
+          "translation-smoke": "allow"
+        }
+      }
+    },
+    "plan": {
+      "permission": {
+        "task": {
+          "*": "deny",
+          "translation-terminology": "allow",
+          "translation-worker": "allow",
+          "translation-qa": "allow",
+          "translation-repair": "allow",
+          "translation-smoke": "allow"
+        }
+      }
+    },
+    "general": {
+      "disable": true
+    },
+    "explore": {
+      "disable": true
+    },
+    "translation-terminology": {
+      "mode": "subagent",
+      "model": "ollama-local/qwen3.6:35b-a3b-mtp-q4_K_M"
+    },
+    "translation-worker": {
+      "mode": "subagent",
+      "model": "ollama-local/qwen3.6:35b-a3b-mtp-q4_K_M"
+    },
+    "translation-qa": {
+      "mode": "subagent",
+      "model": "ollama-local/qwen3.6:35b-a3b-mtp-q4_K_M"
+    },
+    "translation-repair": {
+      "mode": "subagent",
+      "model": "ollama-local/qwen3.6:35b-a3b-mtp-q4_K_M"
+    },
+    "translation-smoke": {
+      "mode": "subagent",
+      "model": "ollama-local/qwen3.6:35b-a3b-mtp-q4_K_M"
+    },
+    "translation": {
+      "mode": "primary"
+    }
+  },
+  "subagent_depth": 1,
+  "instructions": [
+    ".opencode/critical-rules.md"
+  ]
+}
