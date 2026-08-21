@@ -67,7 +67,7 @@
 навмисно не рухає лічильник «опрацьовано»), а без `exclude_proposed=1` у вибірку
 вічно повертаються рядки, які вже чекають на людину.
 
-    ./bdo fetch 20 "patch=active&missing=machine&exclude_proposed=1"
+    ./bdo fetch 15 "patch=active&missing=machine&exclude_proposed=1"
 
 ### `GET /rows/{identity_hash}/context`
 

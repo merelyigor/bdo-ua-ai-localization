@@ -116,7 +116,7 @@ flow() {
   ./bdo runtime                                     перед ПЕРШОЮ пачкою прогону
   ./bdo run start                                   зафіксувати ціль прогону
 
-  ./bdo fetch 20 "patch=active&missing=machine&exclude_proposed=1"
+  ./bdo fetch 15 "patch=active&missing=machine&exclude_proposed=1"
   ./bdo batch new rows.json                         тека пачки; далі файли лише туди
   ./bdo memory find rows.json                       чи вже перекладено цей оригінал
   ./bdo memory apply rows.json memory.json          закрити такі рядки без моделі
