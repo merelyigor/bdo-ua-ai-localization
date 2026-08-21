@@ -17,7 +17,10 @@
 #   - відповідь, що не парситься як JSON, повторюється до BDO_AGENT_RETRIES разів.
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+# Набір заморожений і лежить у archive/legacy-script-flow/, але спільні скрипти
+# й lib/ лишились у корені набору · тому SCRIPT_DIR указує туди.
+# Розморожування · див. README.md поруч.
+SCRIPT_DIR="$(cd "$(dirname "$0")/../.." && pwd)"
 # shellcheck source=paths.sh
 source "$SCRIPT_DIR/paths.sh"
 ROLE="${1:?Потрібна роль: worker|repair|qa}"

@@ -1,138 +1,308 @@
 # bdo-ua-ai-localization
 
-Публічний toolkit агентного й субагентного перекладу Black Desert Online
-українською для [BDO UA Translate](https://bdo-ua.com.ua). Локальні GGUF-моделі
-виконують мовну роботу, а shell/PHP gates перевіряють identity, markup і якість
-перед записом через Agent API.
+Набір інструментів для перекладу рядків **Black Desert Online** українською для
+проєкту [BDO UA Translate](https://bdo-ua.com.ua).
 
-Це не універсальний перекладач і не серверний застосунок. Тут немає БД,
-moderation UI або deploy: серверний проєкт надає authoritative Agent API, а цей
-репозиторій є окремим клієнтом із prompts, orchestration, state та quality gates.
+Мовну роботу виконують безкоштовні локальні моделі в Ollama. Платна модель у чаті
+лише диригує процесом і сама не перекладає. Перед записом кожен рядок проходить
+детерміновані перевірки: незмінність identity, розмітка, placeholders, межі
+довжини, словник русизмів, латинські гомогліфи в кирилиці.
 
-## Вимоги
+## Про проєкт
+
+- Переклад пачками по 10-25 рядків, з памʼяттю перекладів і глосарієм.
+- Мовна робота · локальні GGUF-моделі; жодного платного токена на сам переклад.
+- Формат відповіді моделі прибитий JSON-схемою, тому вона не може загубити,
+  здублювати чи вигадати ідентифікатор рядка.
+- Проблемні рядки їдуть у чергу модерації на сайті, а не в тихий файл.
+- Один прогін · одне середовище, зафіксоване до першої пачки.
+- Кожен крок має штатну команду; свій `curl` до API заборонений.
+
+**Чого тут немає.** Це клієнт, а не сервер: ні бази даних, ні вебзастосунку, ні
+адмінки, ні самого API. Уся серверна логіка живе в окремому проєкті, а цей набір
+лише читає й пише через Agent API.
+
+## Пов'язані проєкти
+
+| Проєкт | Що це |
+|---|---|
+| [bdo-ua.com.ua](https://bdo-ua.com.ua) | сайт, адмінка, глосарій, черга модерації, Agent API |
+| [bdo-ua-client](https://github.com/merelyigor/bdo-ua-client) | програма встановлення українізатора в гру |
+| цей репозиторій | переклад рядків через Agent API локальними моделями |
+
+Повний шлях до серверного проєкту задається в `.env` змінною
+`TRANSLATE_PROJECT_ROOT` · щоб і людина, і AI-агент бачили, де читати серверний
+контракт. Звідси той проєкт лише читається.
+
+## Що потрібно
 
 | Компонент | Вимога |
 |---|---|
-| API | Agent key у локальному `.env`; local і production мають окремі keys |
-| Моделі | Ollama з allowlisted GGUF; MLX заборонений |
+| Ключ | Agent API key; окремий для DEV і для PROD |
+| Моделі | [Ollama](https://ollama.com) з GGUF-моделлю зі списку; MLX не підходить |
 | Runtime | Bash, PHP CLI 8.3+, jq, curl, ShellCheck |
-| Опційно | OpenCode для супервізованого flow з видимими child sessions |
+| Диригент | [OpenCode](https://opencode.ai) · чат, у якому працює модель-диригент |
+| Залізо | для моделі 35B-A3B потрібно ~22 ГБ вільної памʼяті |
 
-## Швидкий старт
+MLX-моделі заборонені не з упередження: їхній runner мовчки ігнорує обмеження
+формату, і схема пачки перестає діяти.
+
+## Встановлення
+
+1. Клонувати репозиторій і увімкнути запобіжники:
+
+```bash
+git clone https://github.com/merelyigor/bdo-ua-ai-localization.git
+cd bdo-ua-ai-localization
+git config core.hooksPath .githooks
+```
+
+2. Створити `.env` із шаблону й вписати ключ:
 
 ```bash
 cp .env.example .env
-git config core.hooksPath .githooks
-bash scripts/agent-check.sh preflight
-bash scripts/agent-check.sh full
-bash scripts/agent-check.sh runtime
-bash scripts/agent-check.sh api
-./translate-menu.sh
 ```
 
-Заповнюйте ключі лише в `.env`. Не вставляйте їх у команди, документацію, issue,
-prompts або логи. `runtime` викликає локальну модель; `api` виконує read-only smoke
-проти local target за замовчуванням.
+3. Завантажити модель:
 
-## Публічна безпека
+```bash
+ollama pull qwen3.6:35b-a3b-mtp-q4_K_M
+```
 
-- `.env` і `.env.*` ніколи не комітяться; у Git є лише безпечний `.env.example`.
-- API keys, tokens, passwords, credential/session hashes, private URLs, dumps,
-  домашні шляхи та персональні дані заборонені у tracked files і повідомленнях.
-- `identity_hash`, `source_hash` та checksum є технічними contract IDs, а не
-  credentials; повні payload/state dumps однаково лишаються приватними.
-- `output/`, `state/`, `state-auto/`, OpenCode sessions і runtime logs локальні.
-- Production write потребує дозволу власника на конкретний прогін; default · local.
+4. Перевірити, що все на місці:
 
-Повний contract і порядок дій при витоку · [docs/SECURITY.md](docs/SECURITY.md).
+```bash
+./bdo gate preflight
+./bdo gate runtime
+./bdo api
+```
 
-## Два translation flows
+`preflight` покаже ціль прогону й розкладку, `runtime` перевірить локальну модель
+за пʼятьма пунктами, `./bdo api` зробить read-only запит до API.
 
-### OpenCode flow
+## Ціль прогону: одна константа
 
-Primary agent оркеструє видимі named child sessions. Worker, repair і QA працюють
-під constrained schema без tools; provider/model pin-яться frontmatter, plugin
-guard та allowlist. Фактичний provider/model/tool usage після run перевіряє
-`verify-run.sh`, а не self-report моделі.
+`.env` містить одну константу середовища й один ключ саме до нього:
 
-Canonical sequence · [UI_SUBAGENT_WORKFLOW.md](UI_SUBAGENT_WORKFLOW.md).
+```text
+BDO_ENV=DEV                              DEV або PROD
+BDO_API_BASE=https://bdo-ua.dev/api/agent/v1
+BDO_API_KEY=                             ключ цього середовища
+```
 
-### Автономний flow
+`BDO_ENV` керує і читанням, і записом. Перемикання середовища · правка цих трьох
+рядків, а не прапорець у команді: якщо префікс `BDO_API_ENV=` суперечить файлу,
+скрипт падає з обома значеннями в помилці замість того, щоб тихо піти не туди.
 
-`translate-patch.sh` і `translate-menu.sh` ведуть довгі прогони через ті самі
-prompts і gates. State живе в `state-auto/`, cursor окремий для кожної selection і
-рухається лише після завершення batch. Dry run cursor не змінює.
+Що стоїть зараз:
 
-OpenCode та autonomous flow не запускаються одночасно: state ізольований, але
-Ollama спільна, і конкурентні запити пошкоджують відповіді.
+```bash
+./bdo env
+```
 
-## Безпечна послідовність batch
+`BDO_ENV=PROD` **не** є дозволом на запис у бойову базу. Читання з PROD вільне,
+запис туди потребує окремого підтвердження на конкретний прогін.
 
-1. Отримати rows через штатний fetch helper.
-2. Перевірити glossary gaps і translation memory.
-3. Побудувати constrained schema для rows, які лишилися.
-4. Передати worker лише компактний текстовий payload.
-5. Розгорнути memory/twins, нормалізувати homoglyphs.
-6. Пройти deterministic identity/quality gates та API validation.
-7. Запустити незалежний QA й одне bounded healing коло.
-8. PASS записати у вибраний layer; defects · у moderation; transport failures ·
-   у quarantine.
-9. Перемістити cursor лише після повного завершення batch.
+## Як перекладати
 
-Ad-hoc API write, alternate model runner або власний payload builder заборонені:
-вони обходять guards, через які цей toolkit існує.
+Робочий флоу один: диригент у чаті OpenCode запускає локальних субагентів.
+Порядок однієї пачки, готовий до копіювання:
+
+```bash
+./bdo help flow
+```
+
+Коротко, від початку прогону до записаної пачки:
+
+```bash
+./bdo runtime                                   # перед першою пачкою
+./bdo run start                                 # зафіксувати ціль прогону
+
+./bdo fetch 20 "patch=active&missing=machine&exclude_proposed=1"
+./bdo batch new rows.json                       # тека пачки; далі файли лише туди
+./bdo memory find rows.json                     # чи вже перекладено цей оригінал
+./bdo memory apply rows.json memory.json        # закрити такі рядки без моделі
+./bdo glossary gaps rows.json                   # ЗАВЖДИ; читати останній рядок ВИРОК
+
+./bdo schema build to-translate.json            # прибити формат відповіді
+./bdo payload worker to-translate.json          # -> субагент translation-worker
+./bdo normalize full.json > clean.json          # гомогліфи, безкоштовно
+./bdo items rows.json clean.json items.json "" --require-all
+./bdo russianisms clean.json rows.json
+./bdo validate items.json
+
+./bdo schema qa rows.json
+./bdo payload qa rows.json clean.json           # -> субагент translation-qa
+./bdo heal rows.json candidate.json verdicts.json validate.json
+
+./bdo commit rows.json heal-merged.json verdicts.json --write
+./bdo schema clear && ./bdo batch end
+./bdo audit                                     # правда про сесії, не самозвіт
+```
+
+Диригенту цей список не треба переказувати: його промпт лежить у
+`.opencode/agents/translation.md`, а повний процес із причинами кожного кроку ·
+у [UI_SUBAGENT_WORKFLOW.md](UI_SUBAGENT_WORKFLOW.md).
+
+## Команди
+
+Єдиний вхід · `./bdo`. Без аргументів друкує все дерево з призначенням кожної
+команди:
+
+```bash
+./bdo                 # дерево команд
+./bdo help flow       # порядок однієї пачки
+./bdo help fetch      # довідка самої команди
+```
+
+| Група | Команди |
+|---|---|
+| Прогін | `env`, `runtime`, `run start|show|end`, `gate` |
+| Вибірка | `patch`, `fetch`, `show`, `context`, `subset` |
+| Пачка | `batch new|dir|check|end` |
+| Підготовка | `memory find|apply|expand`, `glossary gaps|resolve`, `schema`, `payload` |
+| Перевірка | `normalize`, `items`, `russianisms`, `validate` |
+| Лікування | `heal`, `qa-fixes`, `merge` |
+| Завершення | `commit`, `write`, `moderation` |
+| Обслуговування | `audit`, `profile`, `models`, `bench`, `clean`, `paths` |
+
+Скрипти в корені лишаються реалізацією підкоманд і працюють при прямому виклику,
+але штатний шлях · через `bdo`.
+
+## Як це працює
+
+П'ять субагентів, кожен із вузькою роллю: `translation-worker` (переклад),
+`translation-qa` (вердикт на кожен рядок), `translation-repair` (виправлення
+названих дефектів), `translation-terminology` (нові терміни), `translation-smoke`
+(перевірка живої маршрутизації).
+
+Гарантії тримаються механізмами, а не інструкціями в промпті:
+
+1. `opencode.json` забороняє делегування будь-кому, крім цих пʼятьох.
+2. Frontmatter кожного субагента прибиває конкретну локальну модель.
+3. Плагін `.opencode/plugin/` відхиляє запит до LLM, якщо маршрут не той або
+   якщо схема пачки не поставлена · тобто до витрати токенів, не після.
+4. У worker, repair і QA вимкнені ВСІ інструменти. Це не економія: виклик
+   інструмента знімає обмеження формату, і схема перестає діяти.
+5. Схема прибиває перелік ідентифікаторів і довжину масиву, тому відповідь не
+   може стосуватися іншої пачки.
+6. Пачка живе у власній теці з манифестом; належність файлів перевіряється.
+
+Лікування · рівно одне коло: `worker → QA → heal → repair → контрольний QA →
+commit`. Що лишилось дефектним, іде в модерацію, а не на друге коло: гонитва за
+100% PASS одного разу зʼїла 11 сесій на 20 рядків.
+
+Фактичні виміри, дорогі знахідки й рішення власника · у
+[FLOW_STATE.md](docs/FLOW_STATE.md).
+
+## Agent API
+
+Набір спілкується з сайтом рівно через ці ендпоінти:
+
+| Ендпоінт | Навіщо |
+|---|---|
+| `GET /me` | роль, здатності, залишок денної квоти |
+| `GET /rows` | вибірка рядків на переклад |
+| `GET /rows/{hash}/context` | затверджені приклади зі спільним терміном |
+| `GET /patch/summary` | скільки в патчі лишилось |
+| `GET /taxonomy`, `GET /guide` | категорії рядків і машинна інструкція |
+| `POST /translations/memory` | чи вже перекладено цей оригінал |
+| `POST /glossary/terms/resolve` | канонічний відповідник терміна |
+| `POST /translations/validate` | серверна перевірка до запису |
+| `POST /translations` | запис перекладу |
+| `GET /translations/proposals` | черга модерації |
+
+Параметри, тіла запитів і коди помилок · [docs/API.md](docs/API.md). Контракт
+запису й вимоги до ролі · [API_WRITE_CONTRACT.md](API_WRITE_CONTRACT.md).
 
 ## Канали запису
 
-| Channel | API semantics | Призначення |
+| Канал | Куди | Коли |
 |---|---|---|
-| `machine` | `layer=machine`, `mode=direct` | Машинний шар після validation |
-| `manual` | `layer=manual`, `mode=proposal`, auto-approve за правом | Контрольований ручний flow |
-| `proposal` | `layer=manual`, `mode=proposal`, без auto-approve | Moderation queue |
+| `machine` | ШІ-шар напряму | звичайна пачка, за замовчуванням |
+| `manual` | ручний шар, схвалення за роллю | «як людина» |
+| `proposal` | черга модерації | рядок не пройшов QA після лікування |
 
-Роль і capability завжди перевіряються через `/me`. Деталі ·
-[API_WRITE_CONTRACT.md](API_WRITE_CONTRACT.md).
+Три правила діють незалежно від каналу: проблемний рядок завжди йде в модерацію;
+чистий пише за правилами сайту; нова назва предмета не є дефектом і в ШІ-шарі в
+модерацію не йде.
 
-## Структура
-
-```text
-.opencode/agents/   prompts і frontmatter named translation agents
-.opencode/plugin/   routing/model/schema guard
-lib/                PHP identity, batch, quality та API payload logic
-scripts/            єдиний quality gate
-docs/               фактичні довідники
-docs/plans/         backlog/active/done lifecycle
-state/              локальний state OpenCode flow
-state-auto/         локальний state autonomous flow
-output/             локальні responses, diagnostics, benchmarks
-```
-
-Навігація по документації · [docs/README.md](docs/README.md). Архітектурні межі ·
-[docs/PROJECT_OVERVIEW.md](docs/PROJECT_OVERVIEW.md). Фактичні виміри та incidents ·
-[docs/FLOW_STATE.md](docs/FLOW_STATE.md).
-
-## Quality gate
+## Перевірки
 
 ```bash
-bash scripts/agent-check.sh preflight  # до роботи
-bash scripts/agent-check.sh docs       # rules, plans, env, public safety
-bash scripts/agent-check.sh shell      # bash, ShellCheck, PHP syntax
-bash scripts/agent-check.sh agents     # OpenCode config, prompts, allowlist
-bash scripts/agent-check.sh runtime    # локальна модель
-bash scripts/agent-check.sh api        # read-only local API smoke
-bash scripts/agent-check.sh full       # deterministic local gates
+./bdo gate preflight  # середовище, ціль прогону, розкладка, правила
+./bdo gate docs       # правила, плани, посилання, публічна безпека
+./bdo gate shell      # bash, ShellCheck, PHP syntax
+./bdo gate agents     # конфіг OpenCode, промпти, allowlist, guard
+./bdo gate runtime    # локальна модель, 5 пунктів
+./bdo gate api        # read-only запит до API
+./bdo gate full       # усі локальні детерміновані перевірки
 ```
 
-`full` навмисно не викликає модель або API. Gate не пише в API, не деплоїть, не
-видаляє state і не змінює Git.
+Гейт нічого не пише в API, не деплоїть, не видаляє стан і не змінює Git.
 
-## Планування
+## Безпека
 
-Уся робота має єдиний lifecycle:
+Репозиторій публічний, і видалення значення новим комітом не прибирає його з
+історії.
 
-- реєстр планів · [docs/plans/README.md](docs/plans/README.md);
-- загальна черга · [docs/plans/BACKLOG.md](docs/plans/BACKLOG.md);
-- незавершені плани · `docs/plans/backlog/` і `docs/plans/active/`;
-- доказово закриті плани · `docs/plans/done/`.
+- Ключі живуть лише в локальному `.env`, який Git ігнорує. У репозиторії є тільки
+  `.env.example` з порожніми ключами.
+- `.githooks/pre-commit` перевіряє застейджений вміст на значення з вашого `.env`
+  і на типові патерни секретів. Він ловить не сам файл, а вставлений у README
+  приклад із справжнім ключем · саме так ключі й витікають.
+- `output/`, `state/`, `state-auto/` і сесії OpenCode локальні й не комітяться.
+- `identity_hash` і `source_hash` не є секретами: це технічні ідентифікатори
+  контракту.
 
-`docs/*.md` описують поточний стан; план не видається за реалізовану поведінку.
+Повний контракт і порядок дій при витоку · [docs/SECURITY.md](docs/SECURITY.md).
+
+## Питання та проблеми
+
+**Субагент створюється порожнім: нуль токенів, жодної відповіді.** Модель не
+оголошена провайдеру в користувацькому конфізі OpenCode. Помилки в UI при цьому
+немає. Лікується `./bdo models --apply` і перезапуском OpenCode; перевіряє
+`./bdo runtime` пʼятим пунктом.
+
+**Наступна пачка дає ті самі рядки, що попередня.** У вибірці немає
+`missing=machine`. Заливка ШІ навмисно не рухає лічильник «опрацьовано», тому
+вже перекладені рядки лишаються у вибірці. `./bdo fetch` додає фільтр сам, якщо
+його не задано явно.
+
+**API відповідає `active_proposal_exists` на всю пачку.** Ці рядки вже чекають на
+людину в черзі модерації. Потрібен `exclude_proposed=1` у вибірці.
+
+**Диригент пішов старими кроками після зміни промпта.** Системний промпт
+прибитий до сесії на момент її створення. Перезапуску застосунку не досить ·
+потрібен новий чат.
+
+**Модель написала латинську `E` всередині українського слова.** Це зламаний
+символ, не стиль: `./bdo normalize` виправляє його детерміновано й безкоштовно,
+до всіх перевірок.
+
+**Не знаю, що насправді робили субагенти.** `./bdo audit` читає базу OpenCode й
+показує реальні провайдер, модель, токени та виклики інструментів кожної сесії.
+Самозвіт моделі цим не замінюється: одна вже помилялась щодо провайдера.
+
+**Гейт `api` дає 401.** Ключ у `.env` недійсний для середовища, яке задане в
+`BDO_ENV`.
+
+## Документація
+
+| Потреба | Документ |
+|---|---|
+| Призначення, межі, структура | [docs/PROJECT_OVERVIEW.md](docs/PROJECT_OVERVIEW.md) |
+| Ендпоінти й параметри API | [docs/API.md](docs/API.md) |
+| Контракт запису | [API_WRITE_CONTRACT.md](API_WRITE_CONTRACT.md) |
+| Повний процес перекладу | [UI_SUBAGENT_WORKFLOW.md](UI_SUBAGENT_WORKFLOW.md) |
+| Виміри, інциденти, рішення | [docs/FLOW_STATE.md](docs/FLOW_STATE.md) |
+| Публічна безпека | [docs/SECURITY.md](docs/SECURITY.md) |
+| Правила для AI-агентів | [AGENTS.md](AGENTS.md), [docs/AI_AGENT_RULES_REFERENCE.md](docs/AI_AGENT_RULES_REFERENCE.md) |
+| Плани й черга робіт | [docs/plans/README.md](docs/plans/README.md), [docs/plans/BACKLOG.md](docs/plans/BACKLOG.md) |
+| Заморожений скриптовий флоу | [archive/legacy-script-flow/README.md](archive/legacy-script-flow/README.md) |
+
+Уся навігація по документації · [docs/README.md](docs/README.md).
+
+## Ліцензія
+
+MIT · [LICENSE](LICENSE).

@@ -7,13 +7,16 @@
 
 | Потреба | Документ |
 |---|---|
+| Які взагалі є команди | `./bdo` · дерево, `./bdo help flow` · порядок пачки |
 | Призначення, межі й структура | [PROJECT_OVERVIEW.md](PROJECT_OVERVIEW.md) |
 | Публічна безпека, `.env`, класи даних | [SECURITY.md](SECURITY.md) |
 | Повний норматив для агентів | [AI_AGENT_RULES_REFERENCE.md](AI_AGENT_RULES_REFERENCE.md) |
 | Стан, виміри та дорогі знахідки flow | [FLOW_STATE.md](FLOW_STATE.md) |
 | Супервізований OpenCode flow | [UI_SUBAGENT_WORKFLOW.md](../UI_SUBAGENT_WORKFLOW.md) |
+| Ендпоінти й параметри Agent API | [API.md](API.md) |
 | Контракт запису через Agent API | [API_WRITE_CONTRACT.md](../API_WRITE_CONTRACT.md) |
 | Плани, реєстр і черга | [plans/README.md](plans/README.md), [plans/BACKLOG.md](plans/BACKLOG.md) |
+| Заморожений скриптовий flow | [../archive/legacy-script-flow/README.md](../archive/legacy-script-flow/README.md) |
 
 ## Політика документації
 

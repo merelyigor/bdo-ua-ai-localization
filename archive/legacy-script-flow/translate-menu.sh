@@ -12,7 +12,11 @@
 # тижневу роботу.
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+# Набір заморожений і лежить у archive/legacy-script-flow/, але спільні скрипти
+# й lib/ лишились у корені набору · тому SCRIPT_DIR указує туди, а ARCHIVE_DIR
+# на сусідів по архіву. Розморожування · див. README.md поруч.
+ARCHIVE_DIR="$(cd "$(dirname "$0")" && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "$0")/../.." && pwd)"
 STATE_DIR="$SCRIPT_DIR/state-auto"
 LOG_DIR="$STATE_DIR/logs"
 LOCK_DIR="$STATE_DIR/run.lock"
@@ -389,7 +393,7 @@ start_wizard() {
     rm -f "$STOP_FILE"
 
     # shellcheck disable=SC2086
-    nohup "$SCRIPT_DIR/translate-patch.sh" \
+    nohup "$ARCHIVE_DIR/translate-patch.sh" \
         --query "$query" --channel "$channel" --env "$env" --size "$size" --yes \
         $memory_flag $batches_flag $dry_flag \
         > "$log" 2>&1 &

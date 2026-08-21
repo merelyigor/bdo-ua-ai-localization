@@ -82,5 +82,5 @@ if [ "$APPLY" = 1 ]; then
 elif [ $((removed + files)) -eq 0 ]; then
     echo "ВИРОК: прибирати нічого."
 else
-    echo "ВИРОК: це лише показ. Прибрати: ./batch-clean.sh --days $DAYS --apply"
+    echo "ВИРОК: це лише показ. Прибрати: ./bdo clean --days $DAYS --apply"
 fi

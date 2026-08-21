@@ -48,7 +48,11 @@
 # нерозпізнані назви batch-commit сам відправляє в модерацію.
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+# Набір заморожений і лежить у archive/legacy-script-flow/, але спільні скрипти
+# й lib/ лишились у корені набору · тому SCRIPT_DIR указує туди, а ARCHIVE_DIR
+# на сусідів по архіву. Розморожування · див. README.md поруч.
+ARCHIVE_DIR="$(cd "$(dirname "$0")" && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "$0")/../.." && pwd)"
 # Тека стану автономного флоу. Значення ззовні поважається: інакше неможливо
 # ні перевірити скрипт, не чіпаючи бойовий стан, ні вести два незалежні прогони
 # (наприклад патч і перепереклад) у різних теках.
@@ -288,7 +292,7 @@ while :; do
         [[ "$QUERY" == *exclude_proposed* ]] && [ "$SCOPE" != "retranslate" ] && WORKER_EXTRA="--with-current"
         # shellcheck disable=SC2086
         "$SCRIPT_DIR/worker-payload.sh" "$B/to-translate.json" $WORKER_EXTRA > "$B/worker-payload.json"
-        "$SCRIPT_DIR/agent-call.sh" worker "$B/worker-payload.json" "$B/schema.json" \
+        "$ARCHIVE_DIR/agent-call.sh" worker "$B/worker-payload.json" "$B/schema.json" \
             > "$B/candidate.json" 2>> "$B/agent-log.txt" || {
             echo "Пачка $BATCH_NO: воркер не відповів, пачку пропущено."; TOTAL_FAILED=$((TOTAL_FAILED+1))
             "$SCRIPT_DIR/batch-new.sh" --end >/dev/null; advance_cursor; continue; }
@@ -309,7 +313,7 @@ while :; do
     # QA всієї пачки.
     "$SCRIPT_DIR/build-schema.sh" --qa --out "$B/qa-schema.json" "$B/rows.json" >/dev/null
     "$SCRIPT_DIR/qa-payload.sh" "$B/rows.json" "$B/clean.json" > "$B/qa-payload.json"
-    "$SCRIPT_DIR/agent-call.sh" qa "$B/qa-payload.json" "$B/qa-schema.json" \
+    "$ARCHIVE_DIR/agent-call.sh" qa "$B/qa-payload.json" "$B/qa-schema.json" \
         > "$B/verdicts.json" 2>> "$B/agent-log.txt" || {
         echo "Пачка $BATCH_NO: QA не відповів, пачку пропущено."; TOTAL_FAILED=$((TOTAL_FAILED+1))
         "$SCRIPT_DIR/batch-new.sh" --end >/dev/null; advance_cursor; continue; }
@@ -323,14 +327,14 @@ while :; do
         HASHES="$(php -r 'echo implode(",", array_column(json_decode(file_get_contents($argv[1]), true), "identity_hash"));' "$B/heal-repair-payload.json")"
         "$SCRIPT_DIR/subset-rows.sh" "$B/rows.json" "$HASHES" "$B/subset.json" >/dev/null
         "$SCRIPT_DIR/build-schema.sh" --out "$B/repair-schema.json" "$B/subset.json" >/dev/null
-        if "$SCRIPT_DIR/agent-call.sh" repair "$B/heal-repair-payload.json" "$B/repair-schema.json" \
+        if "$ARCHIVE_DIR/agent-call.sh" repair "$B/heal-repair-payload.json" "$B/repair-schema.json" \
                 > "$B/fixes.json" 2>> "$B/agent-log.txt"; then
             "$SCRIPT_DIR/merge-items.sh" "$B/heal-merged.json" "$B/fixes.json" "$B/merged2.json" >/dev/null
             "$SCRIPT_DIR/build-schema.sh" --qa --out "$B/qa2-schema.json" "$B/subset.json" >/dev/null
             "$SCRIPT_DIR/qa-payload.sh" "$B/subset.json" "$B/merged2.json" > "$B/qa2-payload.json"
-            if "$SCRIPT_DIR/agent-call.sh" qa "$B/qa2-payload.json" "$B/qa2-schema.json" \
+            if "$ARCHIVE_DIR/agent-call.sh" qa "$B/qa2-payload.json" "$B/qa2-schema.json" \
                     > "$B/verdicts2.json" 2>> "$B/agent-log.txt"; then
-                "$SCRIPT_DIR/merge-verdicts.sh" "$B/verdicts.json" "$B/verdicts2.json" \
+                "$ARCHIVE_DIR/merge-verdicts.sh" "$B/verdicts.json" "$B/verdicts2.json" \
                     > "$B/final-verdicts.json" 2>/dev/null
                 FINAL_CAND="$B/merged2.json"; FINAL_VERD="$B/final-verdicts.json"
             fi

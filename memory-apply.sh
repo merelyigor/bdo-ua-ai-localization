@@ -3,7 +3,7 @@
 #
 #   ./memory-apply.sh rows.json memory.json
 #
-# Робить три речі, кожна з яких economить виклик моделі й тримає корпус
+# Робить три речі, кожна з яких економить виклик моделі й тримає корпус
 # узгодженим:
 #   1. точний збіг оригіналу з памʼяті підставляється як готовий переклад;
 #   2. однакові оригінали ВСЕРЕДИНІ пачки перекладаються один раз, решті
@@ -21,7 +21,7 @@ ROWS_FILE="${1:?Потрібен rows.json}"
 MEMORY_FILE="${2:?Потрібен memory.json від memory-lookup.sh}"
 BATCH_DIR="$("$SCRIPT_DIR/batch-dir.sh" 2>/dev/null || true)"
 if [ -z "$BATCH_DIR" ]; then
-    echo "Пачку не розпочато: ./batch-new.sh rows.json" >&2
+    echo "Пачку не розпочато: ./bdo batch new rows.json" >&2
     exit 1
 fi
 "$SCRIPT_DIR/batch-assert.sh" "$ROWS_FILE" >/dev/null
@@ -82,7 +82,7 @@ if ($forModel === []) {
     echo "\nВИРОК: модель не потрібна - пачка закрита памʼяттю. Далі build-items і запис.\n";
 } else {
     printf("\nВИРОК: схему й payload будуй на to-translate.json (%d рядків), не на всій пачці.\n", count($forModel));
-    echo "Після воркера: ./memory-expand.sh <candidate> twins.json memory-candidate.json > full.json\n";
+    echo "Після воркера: ./bdo memory expand <candidate> twins.json memory-candidate.json > full.json\n";
 }
 ' "$SCRIPT_DIR/lib/autoload.php" "$ROWS_FILE" "$MEMORY_FILE" \
   "$BATCH_DIR/memory-candidate.json" "$BATCH_DIR/to-translate.json" "$BATCH_DIR/twins.json"

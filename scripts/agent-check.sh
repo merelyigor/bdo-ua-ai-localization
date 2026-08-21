@@ -59,12 +59,69 @@ check_rules() {
     note "4 дзеркала ідентичні; AGENTS.md: $lines/$RULE_MAP_MAX_LINES рядків"
 }
 
+# Документи й промпти, посилання в яких мусять вести на наявний файл.
+#
+# `docs/plans/**` навмисно поза перевіркою: план законно називає файли, яких ще
+# немає · це і є план. `docs/FLOW_STATE.md` перевіряється, бо його «Команди» й
+# «Механічні гарантії» описують чинний стан, а не історію.
+linked_docs() {
+    {
+        git ls-files '*.md'
+        git ls-files --others --exclude-standard '*.md'
+    } | awk '!/^(archive|docs\/plans)\//' | sort -u
+}
+
+# Шлях може бути записаний відносно свого документа, кореня repo або жити в
+# одному з відомих каталогів. Без цього `critical-rules.md` із `docs/README.md`
+# читалось би як неіснуючий файл, хоча він лежить у `.opencode/`.
+resolve_reference() {
+    local ref="$1" dir="$2" candidate
+    for candidate in \
+        "$ref" "$dir/$ref" "$dir/plans/$ref" \
+        ".opencode/$ref" ".opencode/agents/$ref" \
+        "docs/$ref" "docs/plans/$ref" "scripts/$ref" \
+        "archive/legacy-script-flow/$ref"
+    do
+        test -e "$candidate" && return 0
+    done
+    return 1
+}
+
 check_references() {
-    step 'Посилання карти та структура планів'
-    local ref plan base
-    while IFS= read -r ref; do
-        test -e "$ref" || fail "AGENTS.md посилається на відсутній $ref"
-    done < <(perl -ne 'while (/`([A-Za-z0-9_.\/-]+\.(?:md|txt|sh|ts|json|php))`/g) { print "$1\n" }' AGENTS.md | sort -u)
+    step 'Посилання в документах і промптах'
+    # Довідники СЕРВЕРНОГО проєкту: доступні через TRANSLATE_PROJECT_ROOT, а не тут.
+    local -r external='docs/AGENT_TRANSLATION_API.md YYYY-MM-DD_SLUG.md'
+    local doc ref plan base checked=0
+    while IFS= read -r doc; do
+        test -f "$doc" || continue
+        while IFS= read -r ref; do
+            case " $external " in *" $ref "*) continue ;; esac
+            resolve_reference "$ref" "$(dirname "$doc")" \
+                || fail "$doc посилається на відсутній $ref"
+            checked=$((checked + 1))
+        done < <(perl -ne 'while (/`([A-Za-z0-9_.\/-]+\.(?:md|sh|ts|php))`/g) { print "$1\n" }' "$doc" | sort -u)
+    done < <(linked_docs)
+    note "перевірено $checked посилань у документах і промптах"
+
+    step 'Заморожений код не подається як робочий шлях'
+    local instruction frozen hit
+    # Ці файли КАЖУТЬ агентові, що робити. Виклик замороженого скрипта звідси ·
+    # саме той випадок, коли документація тихо розходиться з рішенням власника.
+    for instruction in README.md AGENTS.md .cursorrules CLAUDE.md QWEN.md \
+        UI_SUBAGENT_WORKFLOW.md docs/PROJECT_OVERVIEW.md docs/README.md \
+        .opencode/critical-rules.md .opencode/agents/*.md
+    do
+        test -f "$instruction" || continue
+        for frozen in translate-patch.sh translate-menu.sh agent-call.sh merge-verdicts.sh; do
+            # `|| true`: під `pipefail` порожній grep дав би ненульовий статус
+            # пайпа, і `set -e` вбив би gate замість того, щоб визнати «чисто».
+            hit="$(grep -n -- "\./$frozen" "$instruction" | sed -n '1p' || true)"
+            test -z "$hit" || fail "$instruction подає заморожений $frozen як команду: $hit"
+        done
+    done
+    note 'жоден інструктивний файл не кличе archive/legacy-script-flow'
+
+    step 'Структура планів'
     test -f docs/plans/README.md || fail 'немає реєстру docs/plans/README.md'
     test -f docs/plans/BACKLOG.md || fail 'немає docs/plans/BACKLOG.md'
     for plan in docs/plans/active/*.md docs/plans/backlog/*.md; do
@@ -75,7 +132,7 @@ check_references() {
         grep -q '^\- \*\*Створено:\*\* [0-9]\{4\}-[0-9]\{2\}-[0-9]\{2\}$' "$plan" || fail "$plan не має дати створення"
         grep -Fq '**Реєстр:** [docs/plans/README.md](../README.md)' "$plan" || fail "$plan не посилається на реєстр"
     done
-    note 'посилання карти й активні/backlog плани узгоджені'
+    note 'активні/backlog плани узгоджені з реєстром'
 }
 
 check_env_contract() {
@@ -85,10 +142,16 @@ check_env_contract() {
     git check-ignore -q .env.example && fail '.env.example помилково ігнорується'
     git ls-files --error-unmatch .env >/dev/null 2>&1 && fail '.env відслідковується Git'
     test -f .env.example || fail 'немає .env.example'
-    if grep -E '^(BDO_API_KEY_LOCALHOST|BDO_API_KEY_PROD)=.+' .env.example >/dev/null; then
+    # Порожнім мусить бути будь-який ключ · і в новій формі, і в старій парі.
+    if grep -E '^(BDO_API_KEY|BDO_API_KEY_LOCALHOST|BDO_API_KEY_PROD)=.+' .env.example >/dev/null; then
         fail '.env.example містить непорожній API key'
     fi
-    note '.env* приватні; .env.example публічний і без ключів'
+    # Ціль прогону · одна константа. Шаблон без неї означає, що агент знову
+    # мусив би виводити середовище з формулювання запиту.
+    grep -Eq '^BDO_ENV=(PROD|DEV)$' .env.example || fail '.env.example не задає BDO_ENV=PROD або BDO_ENV=DEV'
+    grep -Eq '^BDO_API_BASE=' .env.example || fail '.env.example не задає BDO_API_BASE'
+    grep -Eq '^BDO_API_KEY=$' .env.example || fail '.env.example не має порожнього BDO_API_KEY'
+    note '.env* приватні; .env.example задає одну ціль і порожній ключ'
 }
 
 check_public_safety() {
@@ -165,7 +228,9 @@ check_agents() {
 }
 
 check_runtime() { run ./check-runtime.sh; }
-check_api() { BDO_API_ENV="${BDO_API_ENV:-local}" run ./test-api.sh; }
+# Ціль НЕ підставляється: її задає BDO_ENV у `.env`, і нав'язати тут `local`
+# означало б показати результат не того середовища, у якому працює прогін.
+check_api() { run ./test-api.sh; }
 
 report_preflight() {
     step 'Стан робочого дерева'
@@ -178,6 +243,14 @@ report_preflight() {
         if have "$tool"; then note "OK $tool"; else note "ВІДСУТНІЙ $tool"; fi
     done
     run ./paths.sh
+    # Ціль прогону першою: агент, який не знає середовища, або питає власника
+    # про те, що написано у файлі, або йде в чуже. Ключ тут не друкується.
+    step 'Ціль прогону'
+    if [ -f .env ] || [ -n "${TRANSLATE_ENV_FILE:-}" ]; then
+        bash ./select-env.sh 2>&1 >/dev/null | sed 's/^/   /'
+    else
+        note 'немає .env · скопіюй .env.example і задай BDO_ENV, BDO_API_BASE, BDO_API_KEY'
+    fi
     check_rules
     check_env_contract
 }

@@ -2,7 +2,7 @@
 # Звірити моделі, потрібні агентам проєкту, з провайдером у конфізі OpenCode.
 #
 #   ./sync-opencode-models.sh                              # лише звіт
-#   ./sync-opencode-models.sh --apply                      # дописати відсутні
+#   ./bdo models --apply                      # дописати відсутні
 #   ./sync-opencode-models.sh --prune provider/model       # прибрати один запис
 #
 # Навіщо. Провайдер `ollama-local` оголошується в КОРИСТУВАЦЬКОМУ конфізі
@@ -131,7 +131,7 @@ if ($missing === []) {
 }
 
 if (!$apply) {
-    echo "\nВИРОК: конфіг не знає моделі агентів. Полагодити: ./sync-opencode-models.sh --apply\n";
+    echo "\nВИРОК: конфіг не знає моделі агентів. Полагодити: ./bdo models --apply\n";
     echo "Без цього дочірні сесії створяться порожніми - нуль токенів і жодної відповіді.\n";
     exit(1);
 }

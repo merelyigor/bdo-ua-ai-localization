@@ -43,7 +43,7 @@ mkdir -p "$SCRIPT_DIR/state"
 # Крок 2 виконує наявний фільтр: він уже вміє відсіювати зіпсовані fix.
 BATCH_DIR="$("$SCRIPT_DIR/batch-dir.sh" 2>/dev/null || true)"
 if [ -z "$BATCH_DIR" ]; then
-    echo "Пачку не розпочато: ./batch-new.sh rows.json" >&2
+    echo "Пачку не розпочато: ./bdo batch new rows.json" >&2
     echo "Без теки пачки файли лікування змішалися б із чужими." >&2
     exit 1
 fi
@@ -207,9 +207,9 @@ if [ -s "$REPAIR_PAYLOAD" ]; then
             echo "Наступна пачка перезапише їх сама (кроки build-schema на її rows)."
         else
             echo "УВАГА: не вдалося поставити схему підмножини · зроби вручну:" >&2
-            echo "  ./subset-rows.sh $ROWS_FILE $HASHES $BATCH_DIR/heal-repair-subset.json" >&2
-            echo "  ./build-schema.sh $BATCH_DIR/heal-repair-subset.json" >&2
-            echo "  ./build-schema.sh --qa $BATCH_DIR/heal-repair-subset.json" >&2
+            echo "  ./bdo subset $ROWS_FILE $HASHES $BATCH_DIR/heal-repair-subset.json" >&2
+            echo "  ./bdo schema build $BATCH_DIR/heal-repair-subset.json" >&2
+            echo "  ./bdo schema qa $BATCH_DIR/heal-repair-subset.json" >&2
             exit 1
         fi
     fi

@@ -35,7 +35,7 @@ case "${1:-}" in
         php -r '
         require $argv[1];
         Bdo\Translate\Batch\Workspace::closeCurrent($argv[2]);
-        echo "Пачку закрито. Тека лишилась - прибирає ./batch-clean.sh\n";
+        echo "Пачку закрито. Тека лишилась - прибирає ./bdo clean\n";
         ' "$SCRIPT_DIR/lib/autoload.php" "$STATE_DIR"
         exit 0
         ;;

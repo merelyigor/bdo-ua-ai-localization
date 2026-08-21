@@ -4,8 +4,8 @@ Translation language work runs only in visible OpenCode child sessions. A
 primary agent may use any configured remote model. The named translation child
 agents always use an explicit local `ollama-local` model in their frontmatter:
 `qwen3.6:35b-a3b-mtp-q4_K_M` (quality profile) or `qwen3.5:9b` (fast profile). Switch profiles
-with `./set-translation-profile.sh quality|fast|status`; verify the runtime
-with `./check-runtime.sh`.
+with `./bdo profile quality|fast|status`; verify the runtime
+with `./bdo runtime`.
 
 ## Routing guarantees (mechanical, not instructional)
 
@@ -32,20 +32,26 @@ The same plugin sends `reasoning_effort = "none"` for the five agents (Qwen
 thinking on the Ollama `/v1` endpoint returns the whole budget as `reasoning`
 and leaves `content` empty) and refuses to run `translation-worker` or
 `translation-repair` when no batch schema is staged, so a forgotten
-`build-schema.sh` fails before any tokens are spent, not after a full batch.
+`bdo schema build` fails before any tokens are spent, not after a full batch.
 
 ## Sequence
 
-Batch files live under `` paths passed explicitly.
+Every command below is a `./bdo` subcommand; `./bdo` alone prints the whole tree
+and `./bdo help flow` prints this sequence without the reasoning. Batch files
+live in the batch directory created by `./bdo batch new` and are always passed
+by explicit path.
 
-1. `./fetch-rows.sh` - primary fetches one fixed snapshot batch (summary only
+The run target is not chosen here: `BDO_ENV=PROD|DEV` in `.env` decides it for
+reads and writes alike, and `./bdo env` prints what is currently set.
+
+1. `./bdo fetch` - primary fetches one fixed snapshot batch (summary only
    goes into primary context).
-2. `./glossary-gaps.sh rows.json` - always. Deterministic, instant, free; its
+2. `./bdo glossary gaps rows.json` - always. Deterministic, instant, free; its
    last line is the verdict. Only when it reports gaps start
    `translation-terminology` with the rows FILE PATH and that term list. It
-   reads files itself and reaches the API only through `glossary-resolve.sh`:
+   reads files itself and reaches the API only through `bdo glossary resolve`:
    left to build a curl by hand it invented `http://localhost/...` and failed.
-3. `./memory-lookup.sh rows.json` then `./memory-apply.sh rows.json memory.json`
+3. `./bdo memory find rows.json` then `./bdo memory apply rows.json memory.json`
    - ask the project whether this exact English source is already translated
    somewhere, and close those rows without a model call. Measured: 58% of rows
    on a `missing=manual` fetch, 0% on a fresh patch where nothing is translated
@@ -58,28 +64,28 @@ Batch files live under `` paths passed explicitly.
    the model if it fails them.
 
    Everything after this step runs on `to-translate.json`, not on the full batch.
-4. `./build-schema.sh to-translate.json` - stage the constrained-decoding schema.
-5. `./worker-payload.sh to-translate.json` - print the compact payload; start
+4. `./bdo schema build to-translate.json` - stage the constrained-decoding schema.
+5. `./bdo payload worker to-translate.json` - print the compact payload; start
    `translation-worker` with that payload only. Save its response verbatim as
    the candidate file. Add `--with-context` only once the Ukrainian layer holds
    translations for this patch: on a fresh patch `/rows/{hash}/context` returns
    nothing and the flag only costs one API call per row.
-6. `./memory-expand.sh candidate.json twins.json memory-candidate.json > full.json`
+6. `./bdo memory expand candidate.json twins.json memory-candidate.json > full.json`
    - assemble the whole batch back: model output, in-batch twins and memory.
-7. `./normalize-candidate.sh full.json > clean.json` - deterministic repairs
+7. `./bdo normalize full.json > clean.json` - deterministic repairs
    before any gate: Latin homoglyphs inside Cyrillic words. Free and unambiguous.
-8. `./build-items.sh rows.json clean.json items.json "" --require-all` -
-   deterministic gate; `./check-russianisms.sh clean.json rows.json` -
-   dictionary scan; then `./validate.sh items.json` - API validation.
-9. `./build-schema.sh --qa rows.json` then `./qa-payload.sh rows.json clean.json`;
+8. `./bdo items rows.json clean.json items.json "" --require-all` -
+   deterministic gate; `./bdo russianisms clean.json rows.json` -
+   dictionary scan; then `./bdo validate items.json` - API validation.
+9. `./bdo schema qa rows.json` then `./bdo payload qa rows.json clean.json`;
    start `translation-qa` with that payload. It returns one verdict object per
    row: `identity_hash`, `status`, `severity`, `issue`, `fix`.
 10. If QA found defects - exactly one healing round, then commit. See below.
 11. Writing to local is the normal end of a batch, not a separate permission:
     PASS rows go to the AI layer, everything else goes to moderation, and
-    `batch-commit.sh --write` does both. Production is the exception and still
+    `bdo commit --write` does both. Production is the exception and still
     requires explicit owner approval for that action.
-12. `./build-schema.sh --clear` and `./batch-new.sh --end` once the batch is done.
+12. `./bdo schema clear` and `./bdo batch end` once the batch is done.
 
 ## Glossary gaps come first
 
@@ -100,9 +106,9 @@ to replace it with translations from English source. Key differences from normal
 patch translation:
 
 1. **Fetch with `layers`:** add `layers` to the `fields=` parameter so rows.json
-   contains the current machine translation text. `fetch-rows.sh` does this
+   contains the current machine translation text. `bdo fetch` does this
    automatically when `exclude_proposed` is in the query.
-2. **`--with-current` flag on worker-payload.sh:** passes the current machine
+2. **`--with-current` flag on bdo payload worker:** passes the current machine
    translation as a `current` field in the payload. The worker model sees the
    existing text and decides whether to improve or keep it.
 3. **`--memory manual`:** old machine translations are from RU and should NOT be
@@ -117,7 +123,7 @@ when the EN-based version is genuinely better.
 
 ## Three write channels, and why quarantine is gone
 
-`write-translations.sh --channel machine|manual|proposal`:
+`bdo write --channel machine|manual|proposal`:
 
 | Channel | API | What it is for |
 |---|---|---|
@@ -144,7 +150,7 @@ Three rules hold regardless of channel and role:
 The third channel replaces the file quarantine. A row that fails QA is not a
 row to be hidden in `state/quarantine.jsonl`, where nobody sees it and the debt
 piles up outside the site - it is a row to be shown in the admin moderation
-queue, where it can be accepted or corrected in place. `batch-commit.sh` sends
+queue, where it can be accepted or corrected in place. `bdo commit` sends
 every non-PASS row with text through `--channel proposal`.
 
 Quarantine still exists, but only for what is not a text-quality problem at all:
@@ -157,18 +163,18 @@ reached from the agent flow.
 
 ## Continuous mode and quarantine
 
-`batch-commit.sh rows candidate verdicts [--write]` closes a batch without
+`bdo commit rows candidate verdicts [--write]` closes a batch without
 stopping the run: PASS rows go to the API, everything else is appended to
 `state/quarantine.jsonl` with a reason. A run over a whole patch is capped by
 the API quota of 5000 written rows per day.
 
 A run is pinned to one environment. The primary derives it from the owner's
 wording (`на прод` -> prod, otherwise local), states it back in one line, and
-calls `./run-start.sh local|prod` before the first batch; `./run-start.sh --end`
+calls `./bdo run start local|prod` before the first batch; `./bdo run end`
 closes the run. Switching target mid-run is refused by the script, because half
 a patch landing in the wrong environment is far more expensive than a restart.
 
-`batch-commit.sh --write` checks every batch against the pinned target. A run
+`bdo commit --write` checks every batch against the pinned target. A run
 that was never started, a mismatch with the current `BDO_API_ENV`, an exhausted
 quota, or a QA verdict array shorter than the batch all quarantine the batch
 instead of failing the run.
@@ -194,7 +200,7 @@ search, sorting, glossary matching. On a live 20-row batch this hit 14 rows and
 QA correctly marked every one of them REVIEW, which would have sent 70% of the
 batch to moderation for a defect a script fixes for free.
 
-`./normalize-candidate.sh candidate.json > clean.json` runs before the gates and
+`./bdo normalize candidate.json > clean.json` runs before the gates and
 repairs it deterministically. The rule is mixed script, not Latin presence: a
 word containing BOTH Cyrillic and Latin is contaminated and gets its Latin
 letters mapped to Cyrillic twins; a purely Latin word (`HAN`, `Everlight`, `AP`)
@@ -211,7 +217,7 @@ live 40-row batch the pre-MTP model wrote `Камень пересікуванн
 the letter check reported zero defects. Only the dictionary in
 `Quality\Russianisms` found them.
 
-`check-russianisms.sh candidate.json rows.json` exits 1 when it finds any;
+`bdo russianisms candidate.json rows.json` exits 1 when it finds any;
 `Quality\FixPolicy` uses the same dictionary to refuse a fix that introduces one.
 
 **The glossary always wins.** An approved canonical rendering may itself contain
@@ -232,7 +238,7 @@ missed case.
 
 ## A QA fix is a proposal, not a verdict
 
-`qa-fixes.sh` never passes a fix through untouched. Measured on a live 40-row
+`bdo qa-fixes` never passes a fix through untouched. Measured on a live 40-row
 batch: QA returned 6 fixes and 4 were corrupted text - `Сутінки Кінця - Сережки`
 came back as `Суттинки Слитинця - Серінка`, and one identical fix was emitted for
 two different rows. Applying them blindly would have replaced good translations
@@ -254,24 +260,24 @@ tried only because the cheaper one below it failed:
 | Rung | Who fixes | Model calls |
 |---|---|---|
 | 1 | the API itself - `validate` returns `status: repaired` with `repaired_text` | none |
-| 2 | QA's own `fix`, if it survives the `qa-fixes.sh` filter | none |
+| 2 | QA's own `fix`, if it survives the `bdo qa-fixes` filter | none |
 | 3 | `translation-repair`, on the failing rows only | one per round |
 | 4 | quarantine - only what rung 3 could not fix in N attempts | - |
 
-`./heal-plan.sh rows.json candidate.json verdicts.json [validate.json]` runs the
+`./bdo heal rows.json candidate.json verdicts.json [validate.json]` runs the
 whole ladder in one command. It writes `state/heal-merged.json` (the candidate
 with rungs 1-2 already applied) and `state/heal-repair-payload.json` (only the
 rows that still need a model, each with its source, current text, concrete
 defects, keep-tokens, glossary and limits). It never calls a model itself.
 
 Rung 1 is free and was being thrown away: the server repairs some rows on its
-own and returns the text, and until now `validate.sh` only printed it.
+own and returns the text, and until now `bdo validate` only printed it.
 
 **Exactly one healing round, and it is enforced by the script.** The sequence is
 fixed: `worker -> QA -> heal-plan -> repair -> control QA -> batch-commit`. That
 is at most five child sessions per batch, terminology aside.
 
-`heal-plan.sh` counts attempts per row in `state/heal-attempts.json`, keyed by a
+`bdo heal` counts attempts per row in `state/heal-attempts.json`, keyed by a
 hash of the batch's identity set, so a new batch starts from zero without anyone
 remembering to reset. After `BDO_HEAL_MAX_ATTEMPTS` (1 by default) a row is no
 longer sent to repair: whatever is still not PASS goes to moderation, where a
@@ -294,14 +300,14 @@ designated recovery step:
 | Failure | Recovery (only the affected rows) |
 |---|---|
 | worker died mid-run / timeout | re-run `translation-worker` with the same staged schema and payload; nothing else changes |
-| validation rejected K rows | `./subset-rows.sh rows.json h1,h2 subset.json` -> `./build-schema.sh subset.json` -> `./worker-payload.sh subset.json` -> `translation-repair` with defects + payload -> `./merge-items.sh candidate.json fixes.json merged.json` -> re-validate merged |
-| QA reported REVIEW/REJECT rows | `./heal-plan.sh rows candidate verdicts [validate]` - it applies the free rungs and hands you the repair payload; see the healing rotation above |
-| `qa-fixes.sh` rejected a fix | that row goes to `translation-repair`, never to merge. Do not override the filter |
+| validation rejected K rows | `./bdo subset rows.json h1,h2 subset.json` -> `./bdo schema build subset.json` -> `./bdo payload worker subset.json` -> `translation-repair` with defects + payload -> `./bdo merge candidate.json fixes.json merged.json` -> re-validate merged |
+| QA reported REVIEW/REJECT rows | `./bdo heal rows candidate verdicts [validate]` - it applies the free rungs and hands you the repair payload; see the healing rotation above |
+| `bdo qa-fixes` rejected a fix | that row goes to `translation-repair`, never to merge. Do not override the filter |
 | QA answer rejected by its schema | re-run `translation-qa` only, same payload, no re-translation |
 | glossary term blocked | `translation-terminology` for that term only; rows wait, nothing is discarded |
-| runtime doubt (wrong model, schema not applied) | `@translation-smoke`, then `./check-runtime.sh`; zero batch cost |
+| runtime doubt (wrong model, schema not applied) | `@translation-smoke`, then `./bdo runtime`; zero batch cost |
 
-After any repair: re-stage the FULL batch schema (`./build-schema.sh rows.json`)
+After any repair: re-stage the FULL batch schema (`./bdo schema build rows.json`)
 before the next full-batch worker run, or clear it; a stale subset schema would
 block a full-batch call by length mismatch.
 
@@ -310,8 +316,8 @@ block a full-batch call by length mismatch.
 - Child sessions run on the free local model; their tokens cost nothing. The
   primary pays for what it writes into a child prompt and reads back.
 - Pass a FILE PATH to `translation-terminology` - it reads the rows itself.
-- Pass only `worker-payload.sh` output to worker/repair and only
-  `qa-payload.sh` output to qa - never the raw rows.json with classification
+- Pass only `bdo payload worker` output to worker/repair and only
+  `bdo payload qa` output to qa - never the raw rows.json with classification
   and service fields. QA cannot read files: a schema-constrained answer cannot
   carry a tool call, so its whole input arrives in the prompt. That costs the
   primary a bounded ~1-2k tokens per batch and buys a guaranteed per-row
@@ -324,14 +330,13 @@ block a full-batch call by length mismatch.
 
 - Start one translation child session at a time. Wait for its final response
   before creating the next one.
-- This document describes the OpenCode flow. The autonomous flow
-  (`translate-patch.sh` + `agent-call.sh`, state in `state-auto/`) is a separate
-  owner-sanctioned entrypoint with the same prompts and gates - see README.
-  Within THIS flow no ad-hoc runner may invoke a language model.
-  One narrow exception exists: `model-ab.sh` benchmarks a
+- This is the ONLY flow. The autonomous script orchestrator was frozen on
+  2026-08-22 under `archive/legacy-script-flow/`: it is not an alternative
+  entrypoint any more, and no shell runner in this flow may invoke a language
+  model. One narrow exception exists: `bdo bench` benchmarks a
   local model on a real batch. It produces a measurement, not a translation, and
   that is enforced rather than trusted - its output goes to `output/benchmark/`
-  and both write paths (`build-items.sh`, `batch-commit.sh`) refuse a candidate
+  and both write paths (`bdo items`, `bdo commit`) refuse a candidate
   from that directory. It also builds its schema with `--out` into a temp file,
   so a benchmark can never overwrite the staged schema of a live batch.
 - Model choice is decided by speed and format compliance, not by the quality of
@@ -352,16 +357,16 @@ block a full-batch call by length mismatch.
 - `translation-smoke` calls no tool at all. Its one-line answer is itself the
   proof: the plugin let the route through, thinking is off, the local model
   replied. Provider and model are shown by the UI Context panel.
-- The staged schema never replaces the deterministic gate: `build-items.sh`
+- The staged schema never replaces the deterministic gate: `bdo items`
   rejects a hash outside `rows.json`, a duplicate hash, an empty text and,
   with `--require-all`, an incomplete batch.
 - Primary agents may delegate only to the five named `translation-*` agents.
 - `translation-smoke` is the fast no-side-effect runtime check. Invoke it with
-  `@translation-smoke` in the OpenCode UI. `./check-runtime.sh` covers the same
+  `@translation-smoke` in the OpenCode UI. `./bdo runtime` covers the same
   ground deterministically and without an LLM.
 - Before restarting OpenCode, run `bash .opencode/validate-translation-agents.sh`.
   It checks config, frontmatter models and child permissions, not a live session.
-- After a live run, `./verify-run.sh` reads the OpenCode database and reports the
+- After a live run, `./bdo audit` reads the OpenCode database and reports the
   real provider, model, tokens and tool calls of every child session, flagging
   ROUTE, THINK, TOOLS and EMPTY violations. Trust it over any agent's self-report:
   a primary model already claimed a wrong provider and missed a plugin error.

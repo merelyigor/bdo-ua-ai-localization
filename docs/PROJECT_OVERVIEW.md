@@ -11,16 +11,38 @@ Toolkit не містить серверної БД, Laravel application, modera
 Серверна реалізація живе в іншому проєкті й доступна звідси лише read-only через
 шлях `TRANSLATE_PROJECT_ROOT`.
 
-## Два flows
+## Єдиний вхід
+
+`./bdo` · дерево команд усього набору; `./bdo help flow` · порядок однієї пачки.
+Скрипти в корені лишаються реалізацією підкоманд і викликаються напряму без
+різниці в поведінці, але штатний шлях в документації й промптах · через `bdo`.
+Причина не косметична: агент, який не знайшов штатну команду, писав власну й
+обходив гейт identity.
+
+## Один flow
 
 | Flow | Оркестратор | Мовна робота | State |
 |---|---|---|---|
 | Супервізований | primary agent в OpenCode | named `translation-*` child agents | `state/` |
-| Автономний | `translate-patch.sh` | ті самі prompts через `agent-call.sh` | `state-auto/` |
 
-Flows не запускаються паралельно: state ізольований, але Ollama спільна. Детальна
-послідовність · [UI_SUBAGENT_WORKFLOW.md](../UI_SUBAGENT_WORKFLOW.md), фактичні
-виміри й incidents · [FLOW_STATE.md](FLOW_STATE.md).
+Автономний flow (`translate-patch.sh` і його пульт) заморожений 2026-08-22 у
+[`../archive/legacy-script-flow/`](../archive/legacy-script-flow/README.md): він
+не є альтернативним entrypoint. `state-auto/` лишається на місці, бо там
+збережені позиції вибірок, потрібні при розморожуванні.
+
+Детальна послідовність · [UI_SUBAGENT_WORKFLOW.md](../UI_SUBAGENT_WORKFLOW.md),
+фактичні виміри й incidents · [FLOW_STATE.md](FLOW_STATE.md).
+
+## Ціль прогону
+
+`BDO_ENV=PROD|DEV` у локальному `.env` задає середовище для читання й запису
+разом; поруч лежить один `BDO_API_BASE` і один `BDO_API_KEY` саме до цієї цілі.
+Розвʼязує це `select-env.sh`, і воно ж відмовляє, коли префікс `BDO_API_ENV=`
+суперечить файлу · щоб частина прогону не поїхала в інше середовище. Показує
+поточну ціль `./bdo env`.
+
+`BDO_ENV=PROD` дозволом на запис у бойову базу НЕ є: запис туди потребує
+окремого підтвердження власника на конкретний прогін.
 
 ## Шари
 
@@ -46,7 +68,7 @@ HTTP write, model invocation та state lifecycle мають штатні entryp
 - Batch належність перевіряє manifest; cursor рухається після завершення batch.
 - Worker/repair/QA під schema не мають tools; payload передається текстом.
 - Лише allowlisted GGUF; MLX не забезпечує constrained decoding.
-- Production write потребує дозволу на конкретний прогін; default target · local.
+- Production write потребує дозволу на конкретний прогін навіть при `BDO_ENV=PROD`.
 
 ## Локальні дані
 
@@ -56,12 +78,12 @@ database не є публічними артефактами. Вони не ко
 
 ## Перевірки
 
-Єдиний entrypoint · `scripts/agent-check.sh`:
+Єдиний entrypoint · `./bdo gate <профіль>` (реалізація · `scripts/agent-check.sh`):
 
 - `preflight` · layout, environment, rules, env contract;
-- `docs` · mirrors, норматив, plans, references, public secret scan;
+- `docs` · mirrors, норматив, plans, посилання в усіх документах і промптах, public secret scan;
 - `shell` · Bash/ShellCheck/PHP syntax;
 - `agents` · OpenCode JSON, frontmatter, allowlist, guard;
 - `runtime` · локальна Ollama-модель;
-- `api` · read-only local API smoke;
+- `api` · read-only API smoke проти цілі з `.env`;
 - `full` · усі deterministic local gates без model/API calls.

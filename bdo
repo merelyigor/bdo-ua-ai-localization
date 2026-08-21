@@ -1,0 +1,223 @@
+#!/usr/bin/env bash
+# Єдиний вхід у набір. Кожна підкоманда · один наявний скрипт; жодної логіки
+# перекладу тут немає й бути не має.
+#
+#   ./bdo                 згруповане дерево команд
+#   ./bdo help flow       порядок команд однієї пачки, рядок за рядком
+#   ./bdo <команда> ...    аргументи передаються скрипту без змін
+#
+# Навіщо. Набір · це 40 файлів `*.sh` в одній теці, і агент, який не знайшов
+# штатну команду, писав власну (задокументовано: диригент зібрав items у `php -r`
+# і обійшов гейт identity). Одне дерево команд робить штатний шлях коротшим за
+# саморобний. Файли навмисно НЕ переміщені: на них посилаються промпти й
+# документація, і переміщення · окремий крок із картою перейменувань.
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "$0")" && pwd)"
+readonly ROOT
+
+die() { printf 'bdo: %s\n' "$1" >&2; exit 2; }
+
+# Запустити скрипт набору, передавши аргументи без змін.
+#
+# Через `bash`, а не напряму: `select-env.sh` навмисно не має біта виконання (він
+# призначений для `source`), і вимагати його тут означало б або зробити файл
+# виконуваним без потреби, або втратити команду `bdo env`.
+sh_run() {
+    local name="$1" script="$ROOT/$1"; shift
+    test -f "$script" || die "немає файлу $name"
+    exec bash "$script" "$@"
+}
+
+usage() {
+    cat <<'TXT'
+bdo · переклад рядків BDO через Agent API і локальні субагенти
+
+  ./bdo help flow      порядок команд однієї пачки
+  ./bdo help <команда> довідка самого скрипта
+
+ПРОГІН І СЕРЕДОВИЩЕ
+  env                  яка ціль стоїть у .env (PROD або DEV)
+  runtime              контракт локального рантайму перед першою пачкою
+  run start|show|end   зафіксувати / показати / зняти ціль прогону
+  gate [профіль]       quality gate: preflight docs shell agents runtime api full
+
+ВИБІРКА Й ПАЧКА
+  patch                стан патча: скільки лишилось
+  fetch                взяти одну пачку рядків з API
+  batch new|dir|check|end   тека пачки, її шлях, належність файлів, закриття
+  subset               підмножина рядків за identity (для repair)
+  show                 показати рядки людині
+  context              підтверджені приклади для одного рядка
+
+ПІДГОТОВКА ПАЧКИ
+  memory find|apply|expand  памʼять перекладів: пошук, застосування, збірка
+  glossary gaps|resolve     прогалини глосарію (ВИРОК) і запит терміна
+  schema build|qa|clear|show  staged-схема constrained decoding
+  payload worker|qa         компактний payload для субагента
+
+ПЕРЕВІРКА Й ЛІКУВАННЯ
+  normalize            детерміновані виправлення (латинські гомогліфи)
+  items                гейт identity: збірка items із перевіркою source_hash
+  russianisms          словниковий детектор русизмів
+  validate             валідація на боці API
+  heal                 сходинки лікування й payload для repair
+  qa-fixes             фільтр виправлень від QA
+  merge                накласти виправлення на кандидата
+
+ЗАВЕРШЕННЯ
+  commit               PASS у шар, решта в модерацію, збої в карантин
+  write                прямий запис у вибраний канал
+  moderation           черга модерації: список, approve, reject
+
+ОБСЛУГОВУВАННЯ
+  audit                аудит сесій субагентів за базою OpenCode
+  audit-dump           повний зріз сесій OpenCode
+  profile              профіль моделі: quality | fast | status
+  models               звірка моделей із провайдером OpenCode
+  bench                вимір локальної моделі на реальній пачці
+  clean                ротація тек пачок і output/
+  paths                що куди вирішилось із розкладкою
+  api                  read-only smoke Agent API
+  docker               запуск команди в контейнері проєкту
+
+Заморожений повністю скриптовий флоу · archive/legacy-script-flow/README.md
+TXT
+}
+
+flow() {
+    cat <<'TXT'
+Одна пачка, у порядку виконання. Ціль прогону вже задана BDO_ENV у .env.
+
+  ./bdo runtime                                     перед ПЕРШОЮ пачкою прогону
+  ./bdo run start                                   зафіксувати ціль прогону
+
+  ./bdo fetch 20 "patch=active&missing=machine&exclude_proposed=1"
+  ./bdo batch new rows.json                         тека пачки; далі файли лише туди
+  ./bdo memory find rows.json                       чи вже перекладено цей оригінал
+  ./bdo memory apply rows.json memory.json          закрити такі рядки без моделі
+  ./bdo glossary gaps rows.json                     ЗАВЖДИ; читай останній рядок ВИРОК
+      прогалини є -> @translation-terminology саме для цих термінів
+
+  ./bdo schema build to-translate.json              staged-схема пачки
+  ./bdo payload worker to-translate.json            -> @translation-worker (вміст, не шлях)
+  ./bdo memory expand candidate.json twins.json memory-candidate.json > full.json
+  ./bdo normalize full.json > clean.json            гомогліфи, безкоштовно
+  ./bdo items rows.json clean.json items.json "" --require-all
+  ./bdo russianisms clean.json rows.json            код 1 = є русизми
+  ./bdo validate items.json                         валідація на боці API
+
+  ./bdo schema qa rows.json                         схема вердиктів
+  ./bdo payload qa rows.json clean.json             -> @translation-qa
+  ./bdo heal rows.json candidate.json verdicts.json validate.json
+      є проблемні -> @translation-repair -> ./bdo merge -> контрольний QA по підмножині
+      РІВНО ОДНЕ коло лікування; далі рядок іде в модерацію
+
+  ./bdo commit rows.json heal-merged.json verdicts.json --write
+  ./bdo schema clear && ./bdo batch end
+  ./bdo audit                                       правда про сесії, не самозвіт
+
+Повна послідовність із причинами · UI_SUBAGENT_WORKFLOW.md
+TXT
+}
+
+group="${1:-}"
+case "$group" in
+    ''|help|-h|--help)
+        case "${2:-}" in
+            '')      usage ;;
+            flow)    flow ;;
+            *)       exec "$0" "${@:2}" --help ;;
+        esac
+        exit 0
+        ;;
+
+    # --- прогін і середовище -------------------------------------------------
+    env)      sh_run select-env.sh ;;
+    runtime)  sh_run check-runtime.sh "${@:2}" ;;
+    gate)     exec bash "$ROOT/scripts/agent-check.sh" "${@:2}" ;;
+    run)
+        case "${2:-}" in
+            start) sh_run run-start.sh "${@:3}" ;;
+            show)  sh_run run-start.sh --show ;;
+            end)   sh_run run-start.sh --end ;;
+            *)     die 'run: потрібно start, show або end' ;;
+        esac
+        ;;
+
+    # --- вибірка й пачка -----------------------------------------------------
+    patch)    sh_run patch-info.sh "${@:2}" ;;
+    fetch)    sh_run fetch-rows.sh "${@:2}" ;;
+    subset)   sh_run subset-rows.sh "${@:2}" ;;
+    show)     sh_run show-rows.sh "${@:2}" ;;
+    context)  sh_run row-context.sh "${@:2}" ;;
+    batch)
+        case "${2:-}" in
+            new)   sh_run batch-new.sh "${@:3}" ;;
+            dir)   sh_run batch-dir.sh "${@:3}" ;;
+            check) sh_run batch-assert.sh "${@:3}" ;;
+            end)   sh_run batch-new.sh --end ;;
+            *)     die 'batch: потрібно new, dir, check або end' ;;
+        esac
+        ;;
+
+    # --- підготовка пачки ----------------------------------------------------
+    memory)
+        case "${2:-}" in
+            find)   sh_run memory-lookup.sh "${@:3}" ;;
+            apply)  sh_run memory-apply.sh "${@:3}" ;;
+            expand) sh_run memory-expand.sh "${@:3}" ;;
+            *)      die 'memory: потрібно find, apply або expand' ;;
+        esac
+        ;;
+    glossary)
+        case "${2:-}" in
+            gaps)    sh_run glossary-gaps.sh "${@:3}" ;;
+            resolve) sh_run glossary-resolve.sh "${@:3}" ;;
+            *)       die 'glossary: потрібно gaps або resolve' ;;
+        esac
+        ;;
+    schema)
+        case "${2:-}" in
+            build) sh_run build-schema.sh "${@:3}" ;;
+            qa)    sh_run build-schema.sh --qa "${@:3}" ;;
+            clear) sh_run build-schema.sh --clear ;;
+            show)  sh_run build-schema.sh --show ;;
+            *)     die 'schema: потрібно build, qa, clear або show' ;;
+        esac
+        ;;
+    payload)
+        case "${2:-}" in
+            worker) sh_run worker-payload.sh "${@:3}" ;;
+            qa)     sh_run qa-payload.sh "${@:3}" ;;
+            *)      die 'payload: потрібно worker або qa' ;;
+        esac
+        ;;
+
+    # --- перевірка й лікування ----------------------------------------------
+    normalize)   sh_run normalize-candidate.sh "${@:2}" ;;
+    items)       sh_run build-items.sh "${@:2}" ;;
+    russianisms) sh_run check-russianisms.sh "${@:2}" ;;
+    validate)    sh_run validate.sh "${@:2}" ;;
+    heal)        sh_run heal-plan.sh "${@:2}" ;;
+    qa-fixes)    sh_run qa-fixes.sh "${@:2}" ;;
+    merge)       sh_run merge-items.sh "${@:2}" ;;
+
+    # --- завершення ----------------------------------------------------------
+    commit)     sh_run batch-commit.sh "${@:2}" ;;
+    write)      sh_run write-translations.sh "${@:2}" ;;
+    moderation) sh_run moderation-queue.sh "${@:2}" ;;
+
+    # --- обслуговування ------------------------------------------------------
+    audit)      sh_run verify-run.sh "${@:2}" ;;
+    audit-dump) sh_run audit-dump.sh "${@:2}" ;;
+    profile)    sh_run set-translation-profile.sh "${@:2}" ;;
+    models)     sh_run sync-opencode-models.sh "${@:2}" ;;
+    bench)      sh_run model-ab.sh "${@:2}" ;;
+    clean)      sh_run batch-clean.sh "${@:2}" ;;
+    paths)      sh_run paths.sh "${@:2}" ;;
+    api)        sh_run test-api.sh "${@:2}" ;;
+    docker)     sh_run run-in-docker.sh "${@:2}" ;;
+
+    *) die "невідома команда '$group'. Дерево команд · ./bdo" ;;
+esac

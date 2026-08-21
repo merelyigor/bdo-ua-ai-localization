@@ -111,5 +111,5 @@ if [ -n "$OUT_FILE" ]; then
     echo "Схема у файлі: $TARGET (активну схему не змінено)"
 else
     echo "Активна схема: $TARGET"
-    echo "Зняти після пачки: ./build-schema.sh --clear"
+    echo "Зняти після пачки: ./bdo schema clear"
 fi

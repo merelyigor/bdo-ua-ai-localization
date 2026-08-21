@@ -4,10 +4,10 @@
 #   ./moderation-queue.sh                          # показати чергу (20 перших)
 #   ./moderation-queue.sh --limit 100              # більше за раз (стеля 100)
 #   ./moderation-queue.sh --row <identity_hash>    # лише пропозиції цього рядка
-#   ./moderation-queue.sh --approve 12,15,18       # схвалити перелічені
+#   ./bdo moderation --approve 12,15,18       # схвалити перелічені
 #   ./moderation-queue.sh --reject 12,15 --reason "калька"
-#   ./moderation-queue.sh --approve-batch 20       # схвалити перші N з черги
-#   ./moderation-queue.sh --approve-batch 20 --dry # показати, кого б схвалив
+#   ./bdo moderation --approve-batch 20       # схвалити перші N з черги
+#   ./bdo moderation --approve-batch 20 --dry # показати, кого б схвалив
 #
 # Навіщо: прогін пачками відправляє в чергу десятки рядків, і розбирати їх у
 # адмінці кліками неможливо. Скрипт ходить у ті самі маршрути, що й UI-модератор
@@ -135,7 +135,7 @@ foreach ($rows as $r) {
 }
 if ($rows !== []) {
     echo str_repeat("=", 78), PHP_EOL;
-    echo "Схвалити всі показані: ./moderation-queue.sh --approve ",
+    echo "Схвалити всі показані: ./bdo moderation --approve ",
          implode(",", array_column($rows, "id")), PHP_EOL;
 }
 '

@@ -19,6 +19,11 @@
 # semantic_type, mandatory glossary і must_preserve токени. Це єдине, що
 # треба вставляти в промпт субагента; повний rows.json з classification та
 # службовими полями в промпт не потрапляє, що економить токени primary-моделі.
+#
+# Контекст зберігається у теку пачки (`context.json`), а не в тимчасовий файл:
+# ті самі приклади потрібні `qa-payload.sh`, інакше QA судить рядок, не бачачи
+# підстави, за якою воркер обрав відповідник. Повторно питати API за ними
+# означало б заплатити N викликів удруге за те саме.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -38,8 +43,16 @@ CONTEXT_FILE=""
 if [ "$WITH_CONTEXT" = "--with-context" ]; then
     # shellcheck source=/dev/null
     source "$SCRIPT_DIR/select-env.sh"
-    CONTEXT_FILE="$(mktemp)"
-    trap 'rm -f "$CONTEXT_FILE"' EXIT
+    # Тека пачки, якщо вона є: тоді контекст переживе цей запуск і дістанеться QA.
+    # Без розпочатої пачки лишається тимчасовий файл · стара поведінка.
+    BATCH_DIR="$("$SCRIPT_DIR/batch-dir.sh" 2>/dev/null || true)"
+    if [ -n "$BATCH_DIR" ]; then
+        CONTEXT_FILE="$BATCH_DIR/context.json"
+    else
+        CONTEXT_FILE="$(mktemp)"
+        trap 'rm -f "$CONTEXT_FILE"' EXIT
+        echo "Пачку не розпочато: контекст у тимчасовий файл, QA його не побачить." >&2
+    fi
     php -r '
     $rows = json_decode(file_get_contents($argv[1]), true, 512, JSON_THROW_ON_ERROR)["data"]["rows"] ?? [];
     $out = [];
@@ -72,7 +85,15 @@ use Bdo\Translate\Batch\RowSet;
 
 $rows = RowSet::fromFile($argv[1]);
 $rows->identityHashes();
+
+// Контекст читається ОДИН раз, а не в кожній ітерації.
+$examplesByHash = [];
+if ($argv[2] !== "" && file_exists($argv[2])) {
+    $examplesByHash = json_decode(file_get_contents($argv[2]), true) ?: [];
+}
+
 $payload = [];
+$stats = ["glossary" => 0, "pending" => 0, "unresolved" => 0, "examples" => 0, "limits" => 0];
 foreach ($rows as $row) {
     $hash = $row->identityHash();
     if ($row->sourceText() === "") {
@@ -81,28 +102,38 @@ foreach ($rows as $row) {
     $item = ["identity_hash" => $hash, "source_text" => $row->sourceText()];
     if ($row->semanticType() !== null) $item["semantic_type"] = $row->semanticType();
     $glossary = $row->glossary();
-    if ($glossary !== []) $item["glossary"] = $glossary;
+    if ($glossary !== []) { $item["glossary"] = $glossary; $stats["glossary"]++; }
     $keep = $row->keepTokens();
     if ($keep !== []) $item["keep"] = $keep;
     // Термін позначений mandatory, але канонічного відповідника ще немає.
     // Моделі це сигнал перекладати консервативно, а QA - що звірити нема з чим.
-    $unresolved = $row->pendingTerms();
-    if ($unresolved !== []) $item["canonical_pending"] = $unresolved;
+    $pending = $row->pendingTerms();
+    if ($pending !== []) { $item["canonical_pending"] = $pending; $stats["pending"]++; }
+    // Назва, яку API впізнав як сутність, але каталог глосарію її не знає
+    // (`evidence_kind: probable_unresolved`). Найнебезпечніший клас рядків: у
+    // ШІ-шар за замовчуванням він ЗАПИСУЄТЬСЯ, тобто вигаданий тут варіант стає
+    // фактичним стандартом патча. Виміряно на живій пачці · 7 рядків із 20, усі
+    // з вердиктом PASS, бо звіряти було ні з чим. Досі модель про це не чула:
+    // позначка існувала лише для вироку glossary-gaps і маршруту в модерацію.
+    $unresolved = $row->unresolvedEntities();
+    if ($unresolved !== []) { $item["unresolved"] = $unresolved; $stats["unresolved"]++; }
     // API перевіряє довжину сам. Якщо не показати ліміт моделі, вона дізнається
     // про нього тільки з rejected на validate.
     $limits = $row->limits();
-    if ($limits !== null) $item["limits"] = $limits;
+    if ($limits !== null) { $item["limits"] = $limits; $stats["limits"]++; }
     if ($row->isNonTranslatable()) $item["non_translatable"] = true;
     // Поточний machine-переклад для переперекладу.
     if ($argv[3] === "--with-current") {
         $current = $row->raw()["layers"]["machine"]["text"] ?? "";
         if ($current !== "") $item["current"] = $current;
     }
-    if ($argv[2] !== "" && file_exists($argv[2])) {
-        $ctxAll = json_decode(file_get_contents($argv[2]), true) ?: [];
-        if (!empty($ctxAll[$hash])) $item["examples"] = $ctxAll[$hash];
-    }
+    if (!empty($examplesByHash[$hash])) { $item["examples"] = $examplesByHash[$hash]; $stats["examples"]++; }
     $payload[] = $item;
 }
 echo json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR), "\n";
+// Підсумок у stderr: диригент звітує з нього, замість перечитувати payload.
+// stdout лишається чистим JSON, тому підстановку в промпт це не ламає.
+fwrite(STDERR, sprintf(
+    "payload воркера: %d рядків | глосарій %d | без відповідника %d | нерозпізнані назви %d | приклади %d | межі довжини %d\n",
+    count($payload), $stats["glossary"], $stats["pending"], $stats["unresolved"], $stats["examples"], $stats["limits"]));
 ' "$ROWS_FILE" "$CONTEXT_FILE" "$WITH_CURRENT" "$SCRIPT_DIR/lib/autoload.php"

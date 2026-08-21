@@ -8,7 +8,10 @@
 # набір - первинні вердикти, у яких перевірені повторно рядки замінені новими.
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+# Набір заморожений і лежить у archive/legacy-script-flow/, але спільні скрипти
+# й lib/ лишились у корені набору · тому SCRIPT_DIR указує туди.
+# Розморожування · див. README.md поруч.
+SCRIPT_DIR="$(cd "$(dirname "$0")/../.." && pwd)"
 BASE_FILE="${1:?Потрібен verdicts.json (повна пачка)}"
 OVERLAY_FILE="${2:?Потрібен verdicts контрольного QA}"
 

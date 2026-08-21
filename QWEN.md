@@ -1,6 +1,6 @@
 # bdo-ua-ai-localization: коротка карта для AI-агента
 
-Це публічний toolkit скриптів і промптів для агентного та субагентного перекладу
+Це публічний toolkit скриптів і промптів для субагентного перекладу
 Black Desert Online через BDO UA Translate Agent API. Тут немає серверної БД або
 вебзастосунку. Повний норматив ·
 [`docs/AI_AGENT_RULES_REFERENCE.md`](docs/AI_AGENT_RULES_REFERENCE.md).
@@ -8,6 +8,10 @@ Black Desert Online через BDO UA Translate Agent API. Тут немає с�
 `AGENTS.md`, `.cursorrules`, `CLAUDE.md` і `QWEN.md` мають бути byte-identical.
 `§N.M` нижче завжди означає правило нормативного довідника. Відповідь власнику ·
 українською; код, ідентифікатори, команди та логи не перекладати.
+
+Єдиний вхід у набір · `./bdo`. Дерево команд друкує `./bdo`, порядок однієї
+пачки · `./bdo help flow`. Скрипти в корені лишаються робочими, але штатний
+шлях · через `bdo`.
 
 ## 1. Пріоритет і стоп-умови
 
@@ -32,23 +36,28 @@ Black Desert Online через BDO UA Translate Agent API. Тут немає с�
   дозволені там, де потрібні контрактом, але дампи payload/state публікувати не можна.
 - `git commit`, `push`, force/rebase/tag та зміна історії · лише за одноразовим
   явним дозволом. AI-атрибуція у файлах і commit messages заборонена.
-- Production write (`--env prod`) · лише з дозволом на конкретний прогін. За
-  замовчуванням `local`; production read-only діагностика дозволена.
+- Ціль прогону задає ОДНА константа `BDO_ENV=PROD|DEV` у локальному `.env`, і
+  вона керує читанням і записом разом. Агент її не обирає й не перемикає ·
+  читає через `./bdo env`. Префікс `BDO_API_ENV=`, що суперечить файлу, валить
+  скрипт замість тихого перемикання.
+- `BDO_ENV=PROD` не є дозволом на запис у прод: запис у бойову базу потребує
+  окремого підтвердження власника на конкретний прогін.
 - Не стирати й не перезаписувати manual revisions, moderation decisions,
   glossary або audit trail. Не підміняти `manual`, `machine` і `proposal`.
 - Не видаляти `output/`, `state/`, `state-auto/`: там курсори, квитанції й
-  карантин. `batch-clean.sh` без `--apply` лише показує.
+  карантин. `./bdo clean` без `--apply` лише показує.
 - Не чіпати чужі незакомічені зміни. Ніколи `git add -A`, `git add .` або
   `git commit -a`; перед стартом і фіналом звіряти status та власний diff.
 - Не змінювати identity (`source_language + key0 + record_id + key1`), PA markup,
   placeholders і квадратні теги. Підстановка згадок · лише для предметів.
 - Субагентам під constrained schema заборонені всі tools; payload передається
   текстом. Лише GGUF-моделі з allowlist; MLX заборонений.
-- OpenCode flow і `translate-patch.sh` не запускати одночасно: вони ділять Ollama.
+- Робочий flow один · субагенти OpenCode. Повністю скриптовий flow заморожений у
+  `archive/legacy-script-flow/` і не запускається; його файли не рефакторити.
 
 ## 3. Обов'язковий цикл
 
-1. `bash scripts/agent-check.sh preflight`.
+1. `./bdo gate preflight`.
 2. Сформулюй одну ціль і Definition of Done; велику задачу розбий на кроки.
 3. Знайди реалізацію, конфіг, тести й усі call sites. Читай лише документи своєї
    категорії з таблиці нижче.
@@ -64,13 +73,14 @@ Black Desert Online через BDO UA Translate Agent API. Тут немає с�
 
 | Зміна | Прочитати до редагування | Gate |
 |---|---|---|
-| Shell/PHP helper, batch або state | `docs/PROJECT_OVERVIEW.md`, релевантні call sites, §4-§6 | `agent-check.sh shell` |
-| Agent API read/write contract | `API_WRITE_CONTRACT.md`, серверні API docs через `TRANSLATE_PROJECT_ROOT`, §7 | `agent-check.sh shell` + `api` |
-| OpenCode agent/plugin/model | `UI_SUBAGENT_WORKFLOW.md`, `docs/FLOW_STATE.md`, §8 | `agent-check.sh agents` + `runtime` |
-| Translation quality/identity/glossary | `UI_SUBAGENT_WORKFLOW.md`, `docs/FLOW_STATE.md`, §6-§8 | `agent-check.sh full` |
-| Secrets, env, public safety | `docs/SECURITY.md`, §2-§3 | `agent-check.sh docs` |
-| Правила або документація | `docs/AI_AGENT_RULES_REFERENCE.md`, `docs/README.md`, §9-§10 | `agent-check.sh docs` |
-| План або статус роботи | `docs/plans/README.md`, `docs/plans/BACKLOG.md`, §9 | `agent-check.sh docs` |
+| Shell/PHP helper, batch або state | `docs/PROJECT_OVERVIEW.md`, релевантні call sites, §4-§6 | `./bdo gate shell` |
+| Підкоманда або дерево команд | `bdo`, `docs/PROJECT_OVERVIEW.md`, §4 | `./bdo gate shell` |
+| Agent API read/write contract | `API_WRITE_CONTRACT.md`, серверні API docs через `TRANSLATE_PROJECT_ROOT`, §7 | `./bdo gate shell` + `api` |
+| OpenCode agent/plugin/model | `UI_SUBAGENT_WORKFLOW.md`, `docs/FLOW_STATE.md`, §8 | `./bdo gate agents` + `runtime` |
+| Translation quality/identity/glossary | `UI_SUBAGENT_WORKFLOW.md`, `docs/FLOW_STATE.md`, §6-§8 | `./bdo gate full` |
+| Secrets, env, public safety | `docs/SECURITY.md`, §2-§3 | `./bdo gate docs` |
+| Правила або документація | `docs/AI_AGENT_RULES_REFERENCE.md`, `docs/README.md`, §9-§10 | `./bdo gate docs` |
+| План або статус роботи | `docs/plans/README.md`, `docs/plans/BACKLOG.md`, §9 | `./bdo gate docs` |
 
 Серверна реалізація живе в `bdo_ua_translate` і звідси лише читається через
 `TRANSLATE_PROJECT_ROOT`. Не дублювати й не редагувати її в межах цього repo.
@@ -78,13 +88,13 @@ Black Desert Online через BDO UA Translate Agent API. Тут немає с�
 ## 5. Єдиний quality gate
 
 ```bash
-bash scripts/agent-check.sh preflight
-bash scripts/agent-check.sh docs
-bash scripts/agent-check.sh shell
-bash scripts/agent-check.sh agents
-bash scripts/agent-check.sh runtime
-bash scripts/agent-check.sh api
-bash scripts/agent-check.sh full
+./bdo gate preflight
+./bdo gate docs
+./bdo gate shell
+./bdo gate agents
+./bdo gate runtime
+./bdo gate api
+./bdo gate full
 ```
 
 `runtime` викликає локальну модель, `api` робить read-only API smoke. `full` не
@@ -96,14 +106,16 @@ bash scripts/agent-check.sh full
 
 | Що | Де |
 |---|---|
+| Єдиний вхід і дерево команд | `bdo` (`./bdo`, `./bdo help flow`) |
 | Публічна навігація | `README.md`, `docs/README.md` |
 | Повний норматив і security | `docs/AI_AGENT_RULES_REFERENCE.md`, `docs/SECURITY.md` |
-| Два translation flows | `UI_SUBAGENT_WORKFLOW.md`, `docs/FLOW_STATE.md` |
-| Контракт запису | `API_WRITE_CONTRACT.md` |
+| Робочий translation flow | `UI_SUBAGENT_WORKFLOW.md`, `docs/FLOW_STATE.md` |
+| Ендпоінти API і контракт запису | `docs/API.md`, `API_WRITE_CONTRACT.md` |
 | Промпти/guard/allowlist | `.opencode/agents/`, `.opencode/plugin/`, `.opencode/validate-translation-agents.sh` |
-| Layout/env | `paths.sh`, `.env.example` |
+| Ціль прогону та layout | `.env.example`, `select-env.sh`, `paths.sh` |
 | Планування | `docs/plans/README.md`, `docs/plans/BACKLOG.md` |
 | Єдиний gate | `scripts/agent-check.sh` |
+| Заморожений скриптовий flow | `archive/legacy-script-flow/README.md` |
 
 - Стек: Bash, PHP CLI 8.3+, jq, curl, Ollama GGUF, опційно OpenCode.
 - Shell є transport/orchestration; PHP у `lib/` тримає identity і quality logic.

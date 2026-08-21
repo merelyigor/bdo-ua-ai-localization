@@ -18,7 +18,7 @@ REQUIRE_ALL="${5:-}"
 case "$OUTPUT_FILE" in
     --*)
         echo "Третім аргументом має бути шлях до items.json, а не прапорець '$OUTPUT_FILE'." >&2
-        echo "Правильно: ./build-items.sh rows.json clean.json items.json \"\" --require-all" >&2
+        echo "Правильно: ./bdo items rows.json clean.json items.json \"\" --require-all" >&2
         exit 1
         ;;
 esac

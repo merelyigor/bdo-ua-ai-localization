@@ -98,13 +98,17 @@
   кириличних словах або `—`; використовувати `·` чи дефіс.
 - §6.6 Batch state ізольований manifest-ом. Cursor рухається лише після завершення
   batch; dry run його не рухає. Audit receipts і quarantine append-only.
-- §6.7 OpenCode і autonomous flow мають окремі state dirs, але спільну Ollama.
-  Паралельний запуск заборонений.
+- §6.7 Робочий flow один · OpenCode children. Повністю скриптовий orchestrator
+  заморожений в `archive/legacy-script-flow/`: не запускається й не рефакториться.
+  `state-auto/` зберігається, бо містить позиції вибірок того flow.
 
 ## §7 Agent API і production
 
-- §7.1 За замовчуванням ціль `local`. Production read-only діагностика дозволена;
-  production write вимагає дозволу на конкретний прогін і не переноситься далі.
+- §7.1 Ціль прогону задає одна константа `BDO_ENV=PROD|DEV` у локальному `.env` і
+  керує читанням та записом разом. Агент її читає (`./bdo env`), не обирає й не
+  перемикає прапорцем. Production read-only діагностика дозволена; production
+  write вимагає дозволу на конкретний прогін і не переноситься далі. `BDO_ENV=PROD`
+  дозволом на запис не є.
 - §7.2 Перед write виконується `/me`; capability/role не обходяться зміною layer.
   `machine+direct`, `manual+proposal` та `auto_approve` використовуються лише за
   чинним `API_WRITE_CONTRACT.md` і серверним контрактом.
@@ -114,22 +118,24 @@
   credentials або повні sensitive payloads. Error schema/status трактуються за
   серверною документацією, не вгадуються.
 - §7.5 Прогін pin-иться до одного environment. Зміна target посеред run
-  відхиляється; production key не використовувати для local і навпаки.
+  відхиляється; префікс `BDO_API_ENV=`, що суперечить `.env`, валить скрипт замість
+  тихого перемикання. Один `.env` містить ключ рівно одного середовища.
 
 ## §8 OpenCode, субагенти й моделі
 
 - §8.1 Лише named `translation-*` agents. Provider/model pin-яться в frontmatter,
-  guard і allowlist; джерело правди після run · `verify-run.sh`, не self-report.
+  guard і allowlist; джерело правди після run · `./bdo audit`, не self-report.
 - §8.2 Worker, repair і QA під constrained schema не мають жодних tools. Payload
   передається текстом. Tool call вимикає constrained decoding.
 - §8.3 Дозволені лише GGUF Ollama models із validator allowlist. MLX заборонений,
   бо runner ігнорує constrained decoding.
 - §8.4 Staged schema не замінює deterministic gates. Вона фіксує length та enum
-  identity; `build-items.sh`, quality checks і API validation лишаються обов'язкові.
+  identity; `./bdo items`, quality checks і API validation лишаються обов'язкові.
 - §8.5 Нову модель кваліфікувати кількома прогрітими runs, format compliance,
   runtime gate і реальним audit. Один sample не є доказом якості.
 - §8.6 Не створювати alternate model invocation. Санкціоновані entrypoints:
-  OpenCode children, `agent-call.sh`, і ізольований benchmark `model-ab.sh`.
+  OpenCode children і ізольований benchmark `./bdo bench`, вихід якого механічно
+  не приймається до запису.
 
 ## §9 Документація і плани
 
@@ -147,7 +153,7 @@
 
 ## §10 Перевірки, завершення і формат звіту
 
-- §10.1 Перед роботою `scripts/agent-check.sh preflight`. Після зміни · профіль
+- §10.1 Перед роботою `./bdo gate preflight`. Після зміни · профіль
   категорії. `full` охоплює локальні deterministic gates, але не викликає модель
   або API; `runtime` і `api` запускаються явно.
 - §10.2 Gate недеструктивний: не пише в API/production, не деплоїть, не видаляє
@@ -169,6 +175,6 @@
   Зміна одного без трьох інших є gate failure.
 - §11.2 Коротка карта не перевищує механічний line limit і не дублює цей довідник.
 - §11.3 Нова норма не дублює чинну, має чітку область і, де можливо, механічний
-  check у `scripts/agent-check.sh` або hook.
+  check у `scripts/agent-check.sh` (`./bdo gate`) або hook.
 - §11.4 Номер правила сталий. Дублікат, номер чужої секції або посилання на
   неіснуюче `§N.M` є помилкою.
