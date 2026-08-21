@@ -78,7 +78,7 @@ bdo · переклад рядків BDO через Agent API і локальн�
   memory find|apply|expand  памʼять перекладів: пошук, застосування, збірка
   glossary gaps|resolve     прогалини глосарію (ВИРОК) і запит терміна
   schema build|qa|clear|show  staged-схема constrained decoding
-  payload worker|qa         компактний payload для субагента
+  payload worker|qa|terminology  компактний payload для субагента
 
 ПЕРЕВІРКА Й ЛІКУВАННЯ
   normalize            детерміновані виправлення (латинські гомогліфи)
@@ -121,7 +121,8 @@ flow() {
   ./bdo memory find rows.json                       чи вже перекладено цей оригінал
   ./bdo memory apply rows.json memory.json          закрити такі рядки без моделі
   ./bdo glossary gaps rows.json                     ЗАВЖДИ; читай останній рядок ВИРОК
-      прогалини є -> @translation-terminology саме для цих термінів
+      прогалини є -> ./bdo payload terminology rows.json -> @translation-terminology
+      (resolve уже зроблений скриптом; субагент лише пропонує відповідник)
 
   ./bdo schema build to-translate.json              staged-схема пачки
   ./bdo payload worker to-translate.json            -> @translation-worker (вміст, не шлях)
@@ -212,9 +213,10 @@ case "$group" in
         ;;
     payload)
         case "${2:-}" in
-            worker) sh_run worker-payload.sh "${@:3}" ;;
-            qa)     sh_run qa-payload.sh "${@:3}" ;;
-            *)      die 'payload: потрібно worker або qa' ;;
+            worker)      sh_run worker-payload.sh "${@:3}" ;;
+            qa)          sh_run qa-payload.sh "${@:3}" ;;
+            terminology) sh_run terminology-payload.sh "${@:3}" ;;
+            *)           die 'payload: потрібно worker, qa або terminology' ;;
         esac
         ;;
 

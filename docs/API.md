@@ -101,7 +101,12 @@
 Створювати нові терміни агентське API навмисно не вміє: це `POST /glossary` в
 адмінці під правом `manage_glossary`.
 
-    ./bdo glossary resolve "Reforge"
+Вручну цей ендпоінт кликати майже не потрібно: `./bdo payload terminology` робить
+resolve по кожному терміну пачки сам, включно з повтором по `identity_hash` при
+`blocked_identity`, і кладе результат у payload субагента.
+
+    ./bdo payload terminology rows.json
+    ./bdo glossary resolve "Reforge"                    # окремий термін вручну
 
 ## Запис
 

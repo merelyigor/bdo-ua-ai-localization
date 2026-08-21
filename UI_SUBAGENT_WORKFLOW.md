@@ -26,7 +26,8 @@ Four independent layers make a paid-model or wrong-model child impossible:
    85901 input tokens instead of 19838, and searched the web for BDO naming
    conventions instead of translating. Constrained decoding does NOT stop tool
    calls - only an empty tool list does. `translation-terminology` keeps `bash`
-   for the glossary API but blocks every MCP server.
+   alone as a narrow fallback for the glossary API and blocks every MCP server;
+   its `read` was removed on 2026-08-22 once its input became a payload.
 
 The same plugin sends `reasoning_effort = "none"` for the five agents (Qwen
 thinking on the Ollama `/v1` endpoint returns the whole budget as `reasoning`
@@ -48,9 +49,11 @@ reads and writes alike, and `./bdo env` prints what is currently set.
    goes into primary context).
 2. `./bdo glossary gaps rows.json` - always. Deterministic, instant, free; its
    last line is the verdict. Only when it reports gaps start
-   `translation-terminology` with the rows FILE PATH and that term list. It
-   reads files itself and reaches the API only through `bdo glossary resolve`:
-   left to build a curl by hand it invented `http://localhost/...` and failed.
+   `./bdo payload terminology rows.json` and pass ITS OUTPUT to
+   `translation-terminology`. The script resolves every term against the catalog
+   first, retrying with the row's `identity_hash` on `blocked_identity`, so the
+   child only proposes a rendering. It used to read the batch file itself, which
+   made it the most expensive step of the whole flow.
 3. `./bdo memory find rows.json` then `./bdo memory apply rows.json memory.json`
    - ask the project whether this exact English source is already translated
    somewhere, and close those rows without a model call. Measured: 58% of rows
@@ -197,7 +200,8 @@ the schema's `enum` plus fixed array length makes impossible when it is in force
 An earlier revision passed file paths here to keep batches out of the paid
 context (~6x in paid tokens on the live patch). Keep that saving through smaller
 batches and `to-translate.json` instead. `translation-terminology` is the one
-child that still takes a FILE PATH: it runs without a schema, so reading is safe.
+child without a schema, but it no longer reads files either: its input is a
+compact payload too.
 
 ## Latin homoglyphs are a broken character, not a style issue
 
@@ -322,7 +326,9 @@ block a full-batch call by length mismatch.
 
 - Child sessions run on the free local model; their tokens cost nothing. The
   primary pays for what it writes into a child prompt and reads back.
-- Pass a FILE PATH to `translation-terminology` - it reads the rows itself.
+- Pass `bdo payload terminology` output to `translation-terminology`; it reads
+  nothing. Measured before this change: 420 244 and 124 920 input tokens on two
+  sessions, more than the rest of the flow combined.
 - Pass only `bdo payload worker` output to worker/repair and only
   `bdo payload qa` output to qa - never the raw rows.json with classification
   and service fields. QA cannot read files: a schema-constrained answer cannot
