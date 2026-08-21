@@ -3,23 +3,31 @@
 #
 # Ціль задає ОДНА константа в `.env`:
 #
-#   BDO_ENV=DEV     локальний API, читання і запис
-#   BDO_ENV=PROD    production API, читання і запис
+#   BDO_ENV=PROD    production API
+#   BDO_ENV=DEV     середовище розробки самого проєкту
 #
-# Поруч із нею · один ключ і один URL, які до цієї цілі й належать:
+# Далі `.env` тримає ЛИШЕ КЛЮЧІ · те, що є секретом і в кожного своє:
 #
-#   BDO_API_BASE=https://.../api/agent/v1
-#   BDO_API_KEY=...
+#   BDO_API_KEY_PROD=...
+#   BDO_API_KEY_DEV=...      (потрібен лише тим, хто розробляє сам проєкт)
 #
-# Навіщо саме так. Раніше в `.env` лежали дві пари (`_LOCALHOST` і `_PROD`), а
-# ціль обиралась префіксом `BDO_API_ENV=` перед кожною командою. Це означало, що
-# кожен промпт мусив ПОЯСНЮВАТИ агентові, куди він зараз пише, і будь-яка
-# забута команда їхала в інше середовище, ніж решта прогону. Тепер ціль
-# оголошена один раз у файлі, і агент її не обирає · він її читає.
+# Чому база НЕ в `.env`. Адреса production API · публічна константа, яка не
+# змінюється: тримати її в конфізі кожного користувача означає розмножити
+# незмінне значення по копіях, де воно тихо розійдеться від описки або старого
+# `.env`, і жодна перевірка цього не побачить. Тому вона тут, у коді, в одному
+# місці. У `.env` лишається тільки те, що справді різне: ключі.
 #
-# Тому розбіжність між `.env` і змінною оточення тут не «перемога сильнішого», а
-# помилка: якщо `BDO_ENV=DEV`, а хтось поставив префікс `BDO_API_ENV=prod`, ми
-# падаємо з обома значеннями у тексті. Свідоме перемикання · це правка `.env`.
+# Ціль перемикається ОДНИМ рядком (`BDO_ENV`), а не правкою URL · саме через це
+# попередня форма з єдиним `BDO_API_BASE` була незручною: щоб піти в прод, треба
+# було редагувати адресу, хоча адреси незмінні.
+#
+# DEV-база свідомо НЕ має дефолта в коді: це приватна інфраструктура власника, а
+# репозиторій публічний (§2 · приватні URL не потрапляють у tracked files). Тому
+# `BDO_ENV=DEV` вимагає `BDO_API_BASE_DEV` у приватному `.env`.
+#
+# Перебивання, коли потрібно (self-hosting, дзеркало, локальний стенд):
+#   BDO_API_BASE_PROD=...    замінити адресу production
+#   BDO_API_BASE=...         задати адресу напряму, незалежно від BDO_ENV
 #
 # Експортує: BDO_ENV (PROD|DEV), BDO_API_ENV (prod|local · внутрішня назва для
 # скриптів стану), BDO_API_BASE, BDO_API_KEY.
@@ -27,13 +35,16 @@ set -euo pipefail
 
 SCRIPT_DIR="${SCRIPT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)}"
 
+# Публічна адреса Agent API. Єдине місце, де вона записана.
+readonly BDO_API_BASE_PROD_DEFAULT='https://bdo-ua.com.ua/api/agent/v1'
+
 # Файл із ключами лежить поруч із набором скриптів; TRANSLATE_ENV_FILE дозволяє
 # тримати його поза репозиторієм. Без цієї перевірки відсутній .env давав голе
 # «No such file or directory» без підказки, що робити.
 ENV_FILE="${TRANSLATE_ENV_FILE:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/.env}"
 if [ ! -f "$ENV_FILE" ]; then
     echo "Немає файлу з ключами: $ENV_FILE" >&2
-    echo "Скопіюй .env.example у .env і впиши BDO_ENV, BDO_API_BASE, BDO_API_KEY." >&2
+    echo "Скопіюй .env.example у .env і впиши BDO_ENV та ключ." >&2
     exit 1
 fi
 # Префікс із оточення має бути видимий ДО читання файла: інакше не відрізнити
@@ -42,7 +53,7 @@ _env_from_shell="${BDO_API_ENV:-}"
 # shellcheck disable=SC1090
 source "$ENV_FILE"
 
-# Нормалізація людського написання в два внутрішні значення. `local` і
+# Нормалізація людського написання у два внутрішні значення. `local` і
 # `localhost` приймаються, бо так називалась ціль до цієї зміни, і стара звичка
 # не має ламати запуск.
 _normalize_env() {
@@ -53,37 +64,52 @@ _normalize_env() {
     esac
 }
 
-if [ -n "${BDO_ENV:-}" ]; then
-    # --- Штатна форма: одна ціль, один ключ ---------------------------------
-    if ! _resolved="$(_normalize_env "$BDO_ENV")"; then
-        echo "BDO_ENV має бути PROD або DEV, а в $ENV_FILE стоїть '$BDO_ENV'." >&2
-        exit 1
-    fi
-    BDO_ENV="$_resolved"
-    BDO_API_BASE="${BDO_API_BASE:?BDO_API_BASE не заданий у $ENV_FILE}"
-    BDO_API_KEY="${BDO_API_KEY:?BDO_API_KEY не заданий у $ENV_FILE}"
-else
-    # --- Сумісність зі старою формою: дві пари + префікс --------------------
-    # Лишається робочою, щоб наявний `.env` не зламався в день переходу, але
-    # кажемо про це один раз і прямо: одна ціль у файлі надійніша за префікс.
-    _legacy_target="${_env_from_shell:-${BDO_API_ENV:-local}}"
-    if ! _resolved="$(_normalize_env "$_legacy_target")"; then
-        echo "Невідоме BDO_API_ENV='$_legacy_target'. Дозволено: prod або dev." >&2
-        exit 1
-    fi
-    BDO_ENV="$_resolved"
-    if [ "$BDO_ENV" = PROD ]; then
-        BDO_API_BASE="${BDO_API_BASE_PROD:?BDO_API_BASE_PROD не заданий}"
-        BDO_API_KEY="${BDO_API_KEY_PROD:?BDO_API_KEY_PROD не заданий}"
-    else
-        BDO_API_BASE="${BDO_API_BASE_LOCALHOST:?BDO_API_BASE_LOCALHOST не заданий}"
-        BDO_API_KEY="${BDO_API_KEY_LOCALHOST:?BDO_API_KEY_LOCALHOST не заданий}"
-    fi
-    echo "Стара форма .env (дві пари ключів). Перейди на BDO_ENV + BDO_API_BASE + BDO_API_KEY · зразок у .env.example." >&2
-    _env_from_shell=""
-    unset _legacy_target
+if [ -z "${BDO_ENV:-}" ]; then
+    echo "У $ENV_FILE не задано BDO_ENV. Дозволено PROD або DEV." >&2
+    echo "Зразок · .env.example" >&2
+    exit 1
 fi
+if ! _resolved="$(_normalize_env "$BDO_ENV")"; then
+    echo "BDO_ENV має бути PROD або DEV, а в $ENV_FILE стоїть '$BDO_ENV'." >&2
+    exit 1
+fi
+BDO_ENV="$_resolved"
 unset _resolved
+
+# Успадковані імена з першої версії набору. Приймаються як DEV-аліаси, щоб
+# старий `.env` не зламався; нові імена мають пріоритет.
+: "${BDO_API_BASE_DEV:=${BDO_API_BASE_LOCALHOST:-}}"
+: "${BDO_API_KEY_DEV:=${BDO_API_KEY_LOCALHOST:-}}"
+
+# База: явне перебивання -> перебивання для цього середовища -> дефолт у коді.
+if [ -n "${BDO_API_BASE:-}" ]; then
+    :
+elif [ "$BDO_ENV" = PROD ]; then
+    BDO_API_BASE="${BDO_API_BASE_PROD:-$BDO_API_BASE_PROD_DEFAULT}"
+else
+    BDO_API_BASE="${BDO_API_BASE_DEV:-}"
+    if [ -z "$BDO_API_BASE" ]; then
+        echo "BDO_ENV=DEV, але BDO_API_BASE_DEV не заданий у $ENV_FILE." >&2
+        echo "DEV · приватне середовище розробки проєкту, тому його адреса живе лише" >&2
+        echo "у вашому .env і не входить у публічний репозиторій. Задайте її або" >&2
+        echo "поставте BDO_ENV=PROD." >&2
+        exit 1
+    fi
+fi
+
+# Ключ: свій для середовища -> спільний скорочений запис.
+if [ "$BDO_ENV" = PROD ]; then
+    BDO_API_KEY="${BDO_API_KEY_PROD:-${BDO_API_KEY:-}}"
+    _key_name='BDO_API_KEY_PROD'
+else
+    BDO_API_KEY="${BDO_API_KEY_DEV:-${BDO_API_KEY:-}}"
+    _key_name='BDO_API_KEY_DEV'
+fi
+if [ -z "$BDO_API_KEY" ]; then
+    echo "Немає ключа для BDO_ENV=$BDO_ENV: задайте $_key_name у $ENV_FILE." >&2
+    exit 1
+fi
+unset _key_name
 
 # Розбіжність файла й префікса · помилка, а не тихе перемикання. Саме цей клас
 # помилок робив прогін половинчастим: частина пачок в одному середовищі,
