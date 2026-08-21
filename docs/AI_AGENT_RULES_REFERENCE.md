@@ -98,8 +98,9 @@
 - §6.1 Stable identity = `source_language + key0 + record_id + key1`.
   `identity_hash` повертається API без вигадування або зміни; candidate не може
   містити foreign, duplicate чи missing identity.
-- §6.2 PA markup, placeholders, newlines і квадратні теги копіюються відповідно
-  до constraints. API validation не замінюється локальним припущенням.
+- §6.2 PA markup, placeholders і newlines копіюються байт у байт. Так само все,
+  що API віддав у `tokens.must_preserve` (`keep`): це єдиний авторитетний перелік
+  недоторканого, і рівно його перевіряє `Row::tokenViolations()`.
 - §6.3 Manual, machine і proposal є різними шарами. Manual revisions, glossary,
   moderation decisions і audit history не стирати й не перезаписувати.
 - §6.4 Підстановка згадок дозволена лише для предметів. NPC, location, lore та
@@ -111,6 +112,11 @@
 - §6.7 Робочий flow один · OpenCode children. Повністю скриптовий orchestrator
   заморожений в `archive/legacy-script-flow/`: не запускається й не рефакториться.
   `state-auto/` зберігається, бо містить позиції вибірок того flow.
+- §6.8 Квадратні дужки зберігаються за структурою (кількість, позиція), а вміст
+  усередині перекладається, якщо теґа немає в `keep`: у корпусі усталене
+  `[Титул]`, не `[Title]`. Вимога «квадратні теґи байт у байт» механічної
+  перевірки не мала й дала на прод-прогоні 2026-08-17 три розбіжності, усі гірші
+  за наявний текст.
 
 ## §7 Agent API і production
 

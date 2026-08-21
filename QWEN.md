@@ -55,7 +55,10 @@ Black Desert Online через BDO UA Translate Agent API. Тут немає с�
 - Не чіпати чужі незакомічені зміни. Ніколи `git add -A`, `git add .` або
   `git commit -a`; перед стартом і фіналом звіряти status та власний diff.
 - Не змінювати identity (`source_language + key0 + record_id + key1`), PA markup,
-  placeholders і квадратні теги. Підстановка згадок · лише для предметів.
+  placeholders і все, що прийшло в `tokens.must_preserve` (`keep`) · це єдиний
+  перелік недоторканого, і саме його перевіряє гейт. Квадратні дужки зберігаються,
+  а вміст усередині перекладається, коли теґа немає в `keep` (`[Титул]`, не
+  `[Title]`). Підстановка згадок · лише для предметів.
 - Субагентам під constrained schema заборонені всі tools; payload передається
   текстом. Лише GGUF-моделі з allowlist; MLX заборонений.
 - Робочий flow один · субагенти OpenCode. Повністю скриптовий flow заморожений у

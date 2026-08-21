@@ -65,8 +65,9 @@ HTTP write, model invocation та state lifecycle мають штатні entryp
 
 - Identity: `source_language + key0 + record_id + key1`; API `identity_hash` не
   змінюється й не вигадується.
-- PA markup, placeholders, newlines і квадратні теги проходять deterministic та
-  server validation.
+- PA markup, placeholders, newlines і `tokens.must_preserve` проходять
+  deterministic та server validation. Квадратні дужки зберігаються, а вміст
+  усередині перекладається, коли теґа немає в `keep`.
 - Manual, machine і proposal не взаємозамінні; human revisions та moderation
   history не перезаписуються.
 - Batch належність перевіряє manifest; cursor рухається після завершення batch.
