@@ -1,5 +1,7 @@
 # bdo-ua-ai-localization
 
+![BDO UA AI Localization · чат у OpenCode, пʼять локальних субагентів, механічні перевірки, запис через Agent API](docs/assets/banner.png)
+
 Набір інструментів для перекладу рядків **Black Desert Online** українською для
 проєкту [BDO UA Translate](https://bdo-ua.com.ua).
 
