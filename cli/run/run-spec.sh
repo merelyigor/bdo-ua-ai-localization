@@ -5,7 +5,7 @@
 #   ./run-spec.sh plan patch <parent-session-id> [batch-size]
 #
 # Цей скрипт не викликає API та не створює мовних сесій. Він лише формує
-# машинний контракт, який session driver і run engine можуть прийняти без
+# машинний контракт, який native Task flow і run engine можуть прийняти без
 # парсингу тексту primary-агента.
 set -euo pipefail
 

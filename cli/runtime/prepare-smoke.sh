@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Підготувати найдешевший OpenCode child smoke без PHP, API або BDO run.
-# Вивід · готовий envelope для інструмента translation_child.
+# Вивід · готовий envelope для видимого штатного OpenCode Task.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"

@@ -62,16 +62,14 @@ Black Desert Online через BDO UA Translate Agent API. Тут немає с�
   перелік недоторканого, і саме його перевіряє гейт. Квадратні дужки зберігаються,
   а вміст усередині перекладається, коли теґа немає в `keep` (`[Титул]`, не
   `[Title]`). Підстановка згадок · лише для предметів.
-- Субагентам під constrained schema заборонені всі tools; payload передається
-  текстом. Маршрути бере `.opencode/translation-models.json`; Ollama MLX
+- Субагенти отримують staged payload у Task prompt; усі tools заборонені. Маршрути
+  бере `.opencode/translation-models.json`; Ollama MLX
   заборонений, платні маршрути · лише з явним `allow_paid` у профілі.
 - **Переклад робиться В OPENCODE** в одному з primary-режимів `патч`,
   `ручний`, `пропозиції`, `покращення`. Іншого входу немає.
-- Диригент повторює машинний цикл `./bdo mode start` -> `./bdo run drive` ->
-  `translation_child`. Payload читає плагін зі `state/` і передає справжній
-  дочірній сесії напряму; primary payload не бачить і текст не виправляє.
-- Child session запускається тільки через `session.promptAsync` із polling
-  messages; блокуючий `session.prompt` заборонений через headers timeout.
+- Диригент запускає кожну роль штатним OpenCode `Task`; child session має бути
+  видимою та відкриватися з батьківської. Plugin `client.session.create`
+  заборонений. JSON дитини зберігається лише через `translation_result`.
 - Прямий мовний runner і production fallback в Ollama заборонені.
 - Повністю скриптовий flow без чату ВИДАЛЕНО 2026-08-22; відновлення · з коміта
   `dac631e`. Не відтворювати його й не пропонувати як альтернативу.

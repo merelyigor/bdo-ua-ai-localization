@@ -45,21 +45,18 @@
 - Маршрут субагента · тільки з активного профілю
   `.opencode/translation-models.json`. Ollama MLX заборонений: його runner
   ігнорує constrained decoding. Платний маршрут вимагає явного `allow_paid`.
-- Субагенти під схемою не мають інструментів ЖОДНИХ, включно з `read`: виклик
-  інструмента знімає constrained decoding. Payload передається текстом у промпті.
+- Субагент отримує staged payload прямо у штатному видимому Task prompt;
+  усі tools, API та вкладені task заборонені.
 - Результат прогону субагентів перевіряти в базі OpenCode через `./bdo audit`,
   а не зі скріншотів чи самозвіту агента: модель уже помилялась щодо провайдера й
   не помічала помилку плагіна.
 - **Переклад робиться В OPENCODE** в одному з primary-режимів `translate-patch`,
   `translate-manual`, `translate-proposal`, `translate-improve`. Іншого входу немає.
-- Primary виконує лише цикл `./bdo mode start` -> `./bdo run drive` ->
-  `translation_child`. Плагін читає payload зі `state/` і передає дочірній сесії
-  напряму. Ручне перенесення payload і прямий мовний fallback в Ollama заборонені.
-- Retry child виконує сам driver, максимум 3 спроби на artifact. Після open
-  circuit не повторювати envelope й не міняти модель: `./bdo retry status`, а
-  `reset` робить власник після діагностики. `fetch failed` не доводить model mismatch.
-- Child prompt · тільки неблокуючий `session.promptAsync` із polling messages.
-  Блокуючий `session.prompt` заборонений через upstream HeadersTimeoutError.
+- Primary виконує цикл `./bdo mode start` -> `./bdo run drive` -> штатний
+  OpenCode `task(subagent_type=next.role)` -> `translation_result`. Кожна child
+  session мусить бути видимою та відкриватися з батьківської.
+- Plugin `client.session.create`, `session.prompt*`, shell/model runner і прямий
+  fallback в Ollama заборонені.
 - Повністю скриптовий флоу без чату ВИДАЛЕНО 2026-08-22 (коміт `dac631e`): не
   відтворювати й не пропонувати як альтернативу.
 - `output/` і `state/` · робочий стан, не артефакти для коміту. Курсори пачок і

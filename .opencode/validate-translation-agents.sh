@@ -10,14 +10,14 @@ readonly POLICY="$ROOT/.opencode/translation-models.json"
 
 jq -e . "$CONFIG" >/dev/null
 php -r 'require $argv[1]; Bdo\Translate\Runtime\ModelPolicy::load($argv[2]);' "$ROOT/lib/autoload.php" "$POLICY"
-grep -Fq 'client.session.promptAsync({' "$ROOT/.opencode/plugin/translation-session-driver.ts" || {
-    echo 'ERROR: child driver must use non-blocking session.promptAsync' >&2
-    exit 1
-}
-if grep -Fq 'client.session.prompt({' "$ROOT/.opencode/plugin/translation-session-driver.ts"; then
-    echo 'ERROR: blocking session.prompt reintroduces the OpenCode headers timeout' >&2
+if rg -n 'client\.session\.(create|prompt|promptAsync)' "$ROOT/.opencode/plugin" >/dev/null; then
+    echo 'ERROR: plugins must not create hidden child sessions; use native visible Task' >&2
     exit 1
 fi
+test -f "$ROOT/.opencode/plugin/translation-result-writer.ts" || {
+    echo 'ERROR: native Task results need the atomic result writer' >&2
+    exit 1
+}
 active_profile="$(jq -r '.active_profile' "$POLICY")"
 
 for agent in "${AGENTS[@]}"; do
@@ -33,9 +33,7 @@ for agent in "${AGENTS[@]}"; do
     }
 done
 
-# Constrained агенти не можуть викликати інструменти (грамматика забороняє tool
-# calls), тому bash має бути явно заборонений - інакше агент зависне на спробі.
-# QA працює read-only. task: deny в усіх пʼяти тримає subagent_depth фактично.
+# Видимі native Task діти отримують payload у prompt. Усі tools заборонені.
 for agent in translation-worker translation-repair translation-qa translation-smoke; do
     grep -Eq '^  bash: deny$' "$ROOT/.opencode/agents/$agent.md" || {
         printf 'ERROR: %s frontmatter must deny bash\n' "$agent" >&2
@@ -82,7 +80,7 @@ for agent in "${AGENTS[@]}"; do
     }
 done
 
-for primary in build plan; do
+for primary in патч ручний пропозиції покращення; do
     for agent in "${AGENTS[@]}"; do
         permission="$(jq -r --arg primary "$primary" --arg agent "$agent" '.agent[$primary].permission.task[$agent] // empty' "$CONFIG")"
         test "$permission" = 'allow' || {
@@ -93,6 +91,13 @@ for primary in build plan; do
     denied="$(jq -r --arg primary "$primary" '.agent[$primary].permission.task["*"] // empty' "$CONFIG")"
     test "$denied" = 'deny' || {
         printf 'ERROR: %s must deny all unnamed subagents\n' "$primary" >&2
+        exit 1
+    }
+done
+
+for primary in патч ручний пропозиції покращення; do
+    grep -Fq 'subagent_type=next.role' "$ROOT/.opencode/agents/$primary.md" || {
+        printf 'ERROR: %s must invoke a native visible Task\n' "$primary" >&2
         exit 1
     }
 done
@@ -116,8 +121,8 @@ for primary in патч ручний пропозиції покращення; 
         printf 'ERROR: %s primary does not route smoke separately\n' "$primary" >&2
         exit 1
     }
-    grep -Fq 'circuit_open:true' "$ROOT/.opencode/agents/$primary.md" || {
-        printf 'ERROR: %s primary does not respect persistent child circuit\n' "$primary" >&2
+    grep -Fq 'translation_result' "$ROOT/.opencode/agents/$primary.md" || {
+        printf 'ERROR: %s primary does not save native Task output\n' "$primary" >&2
         exit 1
     }
 done

@@ -25,8 +25,8 @@ tools:
   bash: true
 ---
 
-Ти `translation-terminology`, child session OpenCode. Маршрутизація на модель
-активного профілю гарантована плагіном проєкту.
+Ти `translation-terminology`, видима child session OpenCode. Payload JSON
+передано прямо в Task prompt; файлів не читай.
 
 Вхід - компактний JSON просто в промпті, який надрукував
 `./bdo payload terminology`. Файлів не читай і не проси вставляти пачку: усе

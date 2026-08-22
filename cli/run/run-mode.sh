@@ -8,7 +8,10 @@ source "$SCRIPT_DIR/cli/system/select-env.sh"
 preset="$($SCRIPT_DIR/cli/run/run-spec.sh status "$MODE")"
 query="$(php -r '$x=json_decode($argv[1],true);echo $x["preset"]["filter"]??"";' "$preset")"
 channel="$(php -r '$x=json_decode($argv[1],true);echo $x["preset"]["channel"]??"";' "$preset")"
-if ! "$SCRIPT_DIR/cli/run/run-start.sh" --show 2>/dev/null | grep -Eq '^(prod|local)$'; then "$SCRIPT_DIR/cli/run/run-start.sh" >/dev/null; fi
+# Завжди звіряємо наявний run-target із поточним BDO_ENV. Просте `--show`
+# приймало старий `prod` lock після перемикання `.env` на DEV, і DEV-пачка
+# доходила до commit із несумісною ціллю.
+"$SCRIPT_DIR/cli/run/run-start.sh" >/dev/null
 fetch="$($SCRIPT_DIR/cli/api/fetch-rows.sh "$SIZE" "$query" 2>&1)"
 rows="$(printf '%s\n' "$fetch" | grep -oE '/[^ ]*/output/rows_[0-9_]+\.json' | tail -1 || true)"
 test -f "$rows" || rows="$(ls -t "$SCRIPT_DIR"/output/rows_*.json 2>/dev/null | head -1 || true)"

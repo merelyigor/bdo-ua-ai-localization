@@ -42,9 +42,10 @@
   `HeadersTimeoutError`. Production boundary переведено на `promptAsync` із
   polling `session.messages`, тому генерація більше не залежить від lifetime
   одного довгого HTTP response.
-- Open circuit повертається як нормальний JSON result з `action:"stop"`, а не
-  exception. Primary після нього механічно заборонені `audit/help/clean/models`
-  та будь-які інші tool calls; відповідь обмежена чотирма рядками.
+- **Архітектурне виправлення 2026-08-23:** SDK-created sessions не були видимі
+  власнику як Task children. Hidden driver і circuit-команди видалено; production
+  boundary тепер лише native OpenCode Task, результат якого атомарно приймає
+  `translation_result`. Історія вище пояснює відхилену реалізацію, не чинний flow.
 
 Робочий журнал напряму. Оновлювати після кожного суттєвого кроку.
 Дата останнього оновлення: 2026-08-22.

@@ -25,10 +25,9 @@ tools:
 Вхід - JSON просто в промпті, який надрукував `bdo payload qa`. Структура:
 `identity_hash`, `source_text`, `candidate` (переклад на перевірку), і за
 наявності `semantic_type`, `glossary`, `keep`, `canonical_pending`, `unresolved`,
-`examples`, `limits`, `non_translatable`. Інструментів у тебе немає ЖОДНИХ: не читай
-файлів, не шукай в інтернеті, не звертайся до API. Якщо в промпті прийшов шлях
-до файла замість самого JSON - це помилка виклику: відповідай порожнім масивом,
-а не здогадками про вміст файла.
+`examples`, `limits`, `non_translatable`. Payload JSON передано прямо в Task
+prompt. Інструментів у тебе немає ЖОДНИХ: не читай файлів, не шукай в інтернеті
+й не звертайся до API.
 
 Для кожного рядка перевір `candidate` проти `source_text`:
 

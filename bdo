@@ -63,7 +63,6 @@ bdo · переклад рядків BDO через Agent API і субаген�
   smoke                envelope для OpenCode translation-smoke без API/PHP
   platform             macOS, Linux або Windows/WSL2 preflight
   run start|show|end|drive   зафіксувати / показати / зняти ціль; JSON-крок рушія
-  retry status|reset   child circuit поточної пачки; reset архівує failure
   mode status|start <mode>   preset або наступна пачка: patch|manual|proposal|improve
   gate [профіль]       quality gate: preflight docs shell agents runtime api full
 
@@ -119,9 +118,9 @@ flow() {
   пропозиції    усе в модерацію
   покращення    поліпшення наявного machine layer
 
-Режим виконує цикл `./bdo mode start <mode>` -> `./bdo run drive` -> справжня
-дочірня сесія OpenCode -> `./bdo run drive`, доки вибірка не поверне нуль.
-Payload читає плагін із state й передає дитині напряму; primary його не бачить.
+Режим виконує цикл `./bdo mode start <mode>` -> `./bdo run drive` -> видимий
+штатний Task-субагент OpenCode -> `translation_result` -> `./bdo run drive`,
+доки вибірка не поверне нуль. Кожну child session можна відкрити в OpenCode.
 
 --- Окремі команди · лише для розбору збою, не для роботи ------------------
 
@@ -171,7 +170,6 @@ case "$group" in
             *) die 'mode: потрібно status або start' ;;
         esac
         ;;
-    retry) sh_run cli/run/retry-child.sh "${@:2}" ;;
 
     # --- вибірка й пачка -----------------------------------------------------
     patch)    sh_run cli/api/patch-info.sh "${@:2}" ;;

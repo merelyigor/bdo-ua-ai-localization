@@ -66,10 +66,9 @@ provider/model`. Primary виконає `./bdo smoke`; цей smoke не зап�
 capability test виконує `./bdo runtime`; зовнішні credentials навмисно не
 обходяться прямим HTTP-запитом.
 
-Якщо child вичерпав три спроби, driver відкриває persistent circuit і більше не
-створює порожні сесії для того самого artifact. Діагностика · `./bdo retry
-status`; після усунення причини власник виконує `./bdo retry reset`. Failure
-receipt архівується, поточна пачка продовжується без повторного fetch.
+Кожна мовна роль запускається штатним OpenCode Task і показується як child
+session, яку можна відкрити з батьківської. Її JSON атомарно зберігає
+`translation_result`; plugins не створюють сесій самостійно.
 
 У Windows OpenCode та репозиторій мають бути відкриті через WSL2. Залежності
 ставляться всередині WSL (`sudo apt install php-cli jq curl git shellcheck`), а

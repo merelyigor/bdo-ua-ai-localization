@@ -13,17 +13,18 @@ OpenCode WSL server, and run `./bdo gate preflight`. Native PowerShell is not a
 supported second implementation.
 
 Smoke is a separate control path, not a translation mode: the primary runs
-`./bdo smoke`, then passes its `next` envelope to `translation_child`. It never
-calls `mode start`, reads the API or asks for patch confirmation.
+`./bdo smoke`, then starts a native visible Task with
+`subagent_type=translation-smoke`. It never calls `mode start`, reads the API
+or asks for patch confirmation.
 
 ## Routing guarantees (mechanical, not instructional)
 
 Independent layers prevent an unintended or hidden model route:
 
-1. `opencode.json` denies `task` for every agent except the five named
-   `translation-*` agents (`"*": "deny"` + explicit allows).
-2. Frontmatter pins the first role route, while the session driver passes the
-   exact provider/model explicitly, so a child never inherits the primary model.
+1. `opencode.json` permits every primary to call only the five named
+   `translation-*` Task agents (`"*": "deny"` + explicit allows).
+2. Frontmatter pins each child role route, so a child never inherits the
+   primary model.
 3. The project plugin rejects any route absent from the active role policy.
    Paid routes require `allow_paid=true`; Ollama MLX is rejected because it
    ignores constrained decoding.
@@ -36,7 +37,8 @@ Independent layers prevent an unintended or hidden model route:
    `permission.task` blocks stay in the config on purpose, so re-enabling one
    cannot silently restore unrestricted delegation.
 6. `translation-worker`, `translation-repair`, `translation-qa` and
-   `translation-smoke` disable every tool (`tools: {"*": false}`). Verified the
+   `translation-smoke` allow no tools. Primary places the exact staged payload
+   in the native Task prompt. Verified the
    hard way: a worker run reached `context7`, `playwright` and `skill`, spent
    85901 input tokens instead of 19838, and searched the web for BDO naming
    conventions instead of translating. Constrained decoding does NOT stop tool
@@ -53,23 +55,13 @@ and leaves `content` empty) and refuses to run `translation-worker` or
 успіх перевіряє не лише доступність зовнішньої моделі, а й критичну capability
 constrained decoding до першої реальної пачки.
 
-## Persistent child circuit
+## Visible child boundary
 
-Production driver sends child work with non-blocking `session.promptAsync`, then
-polls short `session.messages` requests until the assistant message completes.
-Do not restore blocking `session.prompt`: OpenCode SDK can terminate that long
-HTTP request with `HeadersTimeoutError -> fetch failed` while a schema-bound
-local model is still running.
-
-`translation_child` має один загальний бюджет із трьох спроб на response
-artifact. Після вичерпання він атомарно пише `*.failure.json`; повторний tool-call
-бачить receipt до створення session і повертає `circuit is open`. Primary не має
-права повторювати envelope або міняти model route, вгадуючи причину.
-
-`./bdo retry status` показує збережені attempt/error/cause. Після усунення
-runtime-проблеми власник явно виконує `./bdo retry reset`; receipt не стирається,
-а перейменовується в timestamped audit archive. Поточна пачка лишається в тому
-самому `awaiting_*` і продовжується без нового fetch.
+Production translation roles run only through OpenCode's native `Task` tool.
+The resulting child appears in the parent session tree and can be opened and
+inspected. Plugins must not call `client.session.create` or `session.prompt*`.
+After Task completes, primary passes its exact JSON to `translation_result`,
+which only validates JSON and atomically writes the staged response artifact.
 
 ## Sequence
 

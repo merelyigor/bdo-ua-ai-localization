@@ -67,16 +67,20 @@
             "model": "ollama-local/qwen3.6:35b-a3b-mtp-q4_K_M"
         },
         "патч": {
-            "mode": "primary"
+            "mode": "primary",
+            "permission": {"task": {"*": "deny", "translation-terminology": "allow", "translation-worker": "allow", "translation-qa": "allow", "translation-repair": "allow", "translation-smoke": "allow"}}
         },
         "ручний": {
-            "mode": "primary"
+            "mode": "primary",
+            "permission": {"task": {"*": "deny", "translation-terminology": "allow", "translation-worker": "allow", "translation-qa": "allow", "translation-repair": "allow", "translation-smoke": "allow"}}
         },
         "пропозиції": {
-            "mode": "primary"
+            "mode": "primary",
+            "permission": {"task": {"*": "deny", "translation-terminology": "allow", "translation-worker": "allow", "translation-qa": "allow", "translation-repair": "allow", "translation-smoke": "allow"}}
         },
         "покращення": {
-            "mode": "primary"
+            "mode": "primary",
+            "permission": {"task": {"*": "deny", "translation-terminology": "allow", "translation-worker": "allow", "translation-qa": "allow", "translation-repair": "allow", "translation-smoke": "allow"}}
         }
     },
     "subagent_depth": 1,
