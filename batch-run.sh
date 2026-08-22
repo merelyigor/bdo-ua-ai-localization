@@ -43,7 +43,7 @@ while [ $# -gt 0 ]; do
 done
 
 step=0
-say() { step=$((step + 1)); printf '\n[%d/11] %s\n' "$step" "$1"; }
+say() { step=$((step + 1)); printf '\n[%d/13] %s\n' "$step" "$1"; }
 die() { printf '\nЗУПИНКА на кроці %d: %s\n' "$step" "$1" >&2; exit 1; }
 
 # --- 1. ціль прогону ---------------------------------------------------------
@@ -120,8 +120,14 @@ say 'Гейти identity й русизмів'
 "$SCRIPT_DIR/check-russianisms.sh" "$B/clean.json" "$B/rows.json" 2>&1 | grep -E 'Перевірено|ВИРОК' || true
 
 # --- 9. серверна валідація ---------------------------------------------------
+# Файл відповіді запамʼятовуємо: у ньому лежить `repaired_text`, тобто рядки, які
+# сервер полагодив САМ. Це найдешевша сходинка лікування, і раніше ми її просто
+# викидали, бо шлях до файла нікуди не передавався.
 say 'Валідація на боці API'
-"$SCRIPT_DIR/validate.sh" "$B/items.json" 2>&1 | grep -E 'Результат:|REJECTED' | head -8 || true
+VALIDATE_OUT="$("$SCRIPT_DIR/validate.sh" "$B/items.json" 2>&1 || true)"
+printf '%s\n' "$VALIDATE_OUT" | grep -E 'Результат:|REJECTED' | head -8 || true
+VALIDATE_FILE="$(printf '%s\n' "$VALIDATE_OUT" | grep -oE '/[^ ]*/output/validate_[0-9_]+\.json' | tail -1 || true)"
+if [ -z "$VALIDATE_FILE" ] || [ ! -f "$VALIDATE_FILE" ]; then VALIDATE_FILE=""; fi
 
 # --- 10. QA ------------------------------------------------------------------
 # У каналі `machine` вироки QA на маршрут НЕ впливають: пишеться все, що має
@@ -155,10 +161,124 @@ foreach ($c as $k => $n) printf("%s=%d ", $k, $n);
 echo "\n";
 ' "$B/verdicts.json"
 
-# --- 11. запис ---------------------------------------------------------------
+# --- 11. лікування: безкоштовні сходинки -------------------------------------
+# `heal-plan.sh` рахує сходинки від найдешевшої до найдорожчої: `repaired_text`
+# від сервера, потім дрібний `fix` від QA, що пройшов детермінований фільтр, і
+# лише потім модель. Він же готує payload для repair і переставляє схеми repair
+# і контрольного QA на ПІДМНОЖИНУ проблемних рядків · без цього модель добиває
+# довжину під схему повної пачки й видає дублікати (виміряно 2026-08-20).
+#
+# Збій цього кроку не спиняє пачку: без лікування кандидат просто лишається
+# таким, яким його дав worker, і йде на запис. Втратити пачку через лікування
+# було б абсурдом · воно тут для покращення, не для допуску.
+say 'Лікування: безкоштовні сходинки'
+FINAL_CAND="$B/clean.json"
+FINAL_VERDICTS="$B/verdicts.json"
+if "$SCRIPT_DIR/heal-plan.sh" "$B/rows.json" "$B/clean.json" "$B/verdicts.json" "$VALIDATE_FILE" \
+        > "$B/heal-report.txt" 2>&1; then
+    grep -E 'з дефектами:|сервером|fix QA|translation-repair|модерацію \(після' "$B/heal-report.txt" || true
+    if [ -s "$B/heal-merged.json" ]; then FINAL_CAND="$B/heal-merged.json"; fi
+else
+    echo 'УВАГА: план лікування не склався · пачка йде далі з кандидатом від worker' >&2
+    tail -3 "$B/heal-report.txt" >&2 || true
+fi
+
+# --- 12. repair і контрольний QA ---------------------------------------------
+# Рівно ОДНЕ коло. `BDO_HEAL_MAX_ATTEMPTS` (типово 1) тримає це в heal-plan, і
+# другого кола тут немає за побудовою: прогін 2026-08-16 зʼїв 11 сесій на 20
+# рядків саме через гонитву за 100% PASS.
+say 'Repair і контрольний QA'
+REPAIR_PAYLOAD="$B/heal-repair-payload.json"
+NEED_REPAIR=0
+if [ -s "$REPAIR_PAYLOAD" ]; then
+    NEED_REPAIR="$(php -r 'echo count(json_decode(file_get_contents($argv[1]), true) ?: []);' \
+        "$REPAIR_PAYLOAD" 2>/dev/null || echo 0)"
+fi
+if [ "$NEED_REPAIR" -gt 0 ]; then
+    echo "у repair: $NEED_REPAIR рядків"
+    if "$SCRIPT_DIR/translate.sh" repair "$REPAIR_PAYLOAD" \
+            "$SCRIPT_DIR/state/current-response-schema.json" > "$B/fixes.json" \
+       && "$SCRIPT_DIR/merge-items.sh" "$FINAL_CAND" "$B/fixes.json" "$B/healed.json" >/dev/null 2>&1; then
+        FINAL_CAND="$B/healed.json"
+    else
+        # Repair · покращення, а не допуск. Якщо модель не дала придатних правок
+        # або її хеші не збіглися з пачкою, пишемо те, що вже є.
+        echo 'УВАГА: repair не дав придатних правок · пишемо кандидата до лікування' >&2
+    fi
+else
+    echo 'лікувати нічого · repair не потрібен'
+fi
+
+# Контрольний QA · лише по рядках, чий текст РЕАЛЬНО змінився (сервером, fix-ом
+# QA або repair). Так вирок у звіті відповідає тому, що піде в базу, і коштує це
+# один виклик на підмножину, а не на пачку.
+CHANGED="$(php -r '
+$a = json_decode((string) file_get_contents($argv[1]), true) ?: [];
+$b = json_decode((string) file_get_contents($argv[2]), true) ?: [];
+$orig = [];
+foreach ($a as $r) { $orig[(string) ($r["identity_hash"] ?? "")] = (string) ($r["text"] ?? ""); }
+$changed = []; $subset = [];
+foreach ($b as $r) {
+    $h = (string) ($r["identity_hash"] ?? ""); $t = (string) ($r["text"] ?? "");
+    if ($h === "") continue;
+    if (!array_key_exists($h, $orig) || $orig[$h] !== $t) {
+        $changed[] = $h;
+        $subset[] = ["identity_hash" => $h, "text" => $t];
+    }
+}
+file_put_contents($argv[3], json_encode($subset, JSON_UNESCAPED_UNICODE));
+echo implode(",", $changed);
+' "$B/clean.json" "$FINAL_CAND" "$B/healed-subset-candidate.json" 2>/dev/null || true)"
+
+if [ -n "$CHANGED" ]; then
+    echo "контрольний QA по змінених рядках: $(($(printf '%s' "$CHANGED" | tr -cd ',' | wc -c) + 1))"
+    if "$SCRIPT_DIR/subset-rows.sh" "$B/rows.json" "$CHANGED" "$B/healed-subset.json" >/dev/null 2>&1 \
+       && "$SCRIPT_DIR/translate.sh" qa "$B/healed-subset.json" "$B/healed-subset-candidate.json" \
+            > "$B/verdicts-control.json"; then
+        php -r '
+$base = json_decode((string) file_get_contents($argv[1]), true) ?: [];
+$new = json_decode((string) file_get_contents($argv[2]), true) ?: [];
+$byHash = [];
+foreach ($base as $v) { $byHash[(string) ($v["identity_hash"] ?? "")] = $v; }
+foreach ($new as $v) {
+    $h = (string) ($v["identity_hash"] ?? "");
+    if ($h !== "") $byHash[$h] = $v;
+}
+file_put_contents($argv[3], json_encode(array_values($byHash), JSON_UNESCAPED_UNICODE));
+' "$B/verdicts.json" "$B/verdicts-control.json" "$B/verdicts-final.json" \
+            && FINAL_VERDICTS="$B/verdicts-final.json"
+        php -r '
+$v = json_decode((string) file_get_contents($argv[1]), true) ?: [];
+$c = [];
+foreach ($v as $x) { $c[$x["status"] ?? "?"] = ($c[$x["status"] ?? "?"] ?? 0) + 1; }
+foreach ($c as $k => $n) printf("%s=%d ", $k, $n);
+echo "\n";
+' "$FINAL_VERDICTS"
+    else
+        # Старий вирок лишається чинним: у ШІ-шарі він на маршрут не впливає, а в
+        # ручному каналі рядок піде до людини · це безпечний бік помилки.
+        echo 'УВАГА: контрольний QA не вдався · лишаються вироки першого кола' >&2
+    fi
+fi
+
+# Гейт identity після лікування: кандидат змінився, тому перевіряємо ЩЕ РАЗ. Якщо
+# вилікуваний кандидат гейт не проходить, повертаємось до того, що його вже
+# пройшов на кроці 8 · пачка все одно пишеться.
+if [ "$FINAL_CAND" != "$B/clean.json" ]; then
+    if ! "$SCRIPT_DIR/build-items.sh" "$B/rows.json" "$FINAL_CAND" "$B/items.json" "" --require-all >/dev/null 2>&1; then
+        echo 'УВАГА: вилікуваний кандидат не пройшов гейт identity · беру кандидата до лікування' >&2
+        FINAL_CAND="$B/clean.json"
+        FINAL_VERDICTS="$B/verdicts.json"
+        "$SCRIPT_DIR/build-items.sh" "$B/rows.json" "$FINAL_CAND" "$B/items.json" "" --require-all >/dev/null \
+            || die 'гейт identity не пройдено навіть на кандидаті до лікування'
+    fi
+fi
+
+# --- 13. запис ---------------------------------------------------------------
 say "Запис (канал $CHANNEL${DO_WRITE:+, у базу})"
+echo "кандидат: $(basename "$FINAL_CAND") | вироки: $(basename "$FINAL_VERDICTS")"
 # shellcheck disable=SC2086
-"$SCRIPT_DIR/batch-commit.sh" "$B/rows.json" "$B/clean.json" "$B/verdicts.json" \
+"$SCRIPT_DIR/batch-commit.sh" "$B/rows.json" "$FINAL_CAND" "$FINAL_VERDICTS" \
     --channel "$CHANNEL" $DO_WRITE 2>&1 | grep -E 'Пачка:|До запису:|ЗАПИСАНО|МОДЕРАЦ|ЗАБЛОКОВАНО|Запису не було' \
     || die 'commit не дав звіту'
 

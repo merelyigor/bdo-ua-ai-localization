@@ -69,7 +69,7 @@ bdo · переклад рядків BDO через Agent API і локальн�
 ВИБІРКА Й ПАЧКА
   patch                стан патча: скільки лишилось
   fetch                взяти одну пачку рядків з API
-  batch run            УВЕСЬ цикл однією командою: вибірка -> переклад -> запис
+  batch run            УВЕСЬ цикл однією командою: вибірка -> переклад -> лікування -> запис
   batch new|dir|check|end   тека пачки, її шлях, належність файлів, закриття
   subset               підмножина рядків за identity (для repair)
   show                 показати рядки людині
@@ -122,7 +122,8 @@ flow() {
 
 Усередині, по порядку, з нумерацією кроків і названою причиною зупинки:
 ціль прогону -> вибірка -> тека пачки -> памʼять -> глосарій -> переклад ->
-збірка кандидата -> гейт identity й русизми -> валідація API -> QA -> запис.
+збірка кандидата -> гейт identity й русизми -> валідація API -> QA ->
+лікування -> repair і контрольний QA -> запис.
 
 Мовний виклик бере payload і схему з ДИСКА, тому «payload не дійшов» неможливий.
 
@@ -135,6 +136,7 @@ flow() {
   ./bdo translate qa rows.json clean.json           QA напряму
   ./bdo items rows.json clean.json items.json "" --require-all
   ./bdo validate items.json
+  ./bdo heal rows.json clean.json verdicts.json [validate.json]
   ./bdo commit rows.json clean.json verdicts.json --write
   ./bdo audit                                       правда про сесії
 
