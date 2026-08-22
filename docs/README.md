@@ -8,6 +8,7 @@
 | Потреба | Документ |
 |---|---|
 | Які взагалі є команди | `./bdo` · дерево, `./bdo help flow` · порядок пачки |
+| Запуск на Windows | [WINDOWS_WSL2.md](WINDOWS_WSL2.md) · повний WSL2 setup і діагностика |
 | Призначення, межі й структура | [PROJECT_OVERVIEW.md](PROJECT_OVERVIEW.md) |
 | Публічна безпека, `.env`, класи даних | [SECURITY.md](SECURITY.md) |
 | Повний норматив для агентів | [AI_AGENT_RULES_REFERENCE.md](AI_AGENT_RULES_REFERENCE.md) |
