@@ -79,6 +79,7 @@ bdo · переклад рядків BDO через Agent API і локальн�
   glossary gaps|resolve     прогалини глосарію (ВИРОК) і запит терміна
   schema build|qa|clear|show  staged-схема constrained decoding
   payload worker|qa|terminology  компактний payload для субагента
+  translate worker|qa|repair     виклик локальної моделі з payload із ДИСКА
 
 ПЕРЕВІРКА Й ЛІКУВАННЯ
   normalize            детерміновані виправлення (латинські гомогліфи)
@@ -212,6 +213,7 @@ case "$group" in
             *)     die 'schema: потрібно build, qa, clear або show' ;;
         esac
         ;;
+    translate)  sh_run translate.sh "${@:2}" ;;
     payload)
         case "${2:-}" in
             worker)      sh_run worker-payload.sh "${@:3}" ;;
