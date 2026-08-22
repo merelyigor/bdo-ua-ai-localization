@@ -124,9 +124,29 @@ say 'Валідація на боці API'
 "$SCRIPT_DIR/validate.sh" "$B/items.json" 2>&1 | grep -E 'Результат:|REJECTED' | head -8 || true
 
 # --- 10. QA ------------------------------------------------------------------
+# У каналі `machine` вироки QA на маршрут НЕ впливають: пишеться все, що має
+# текст. Тому збій QA тут не має права зупиняти пачку · інакше повертається та
+# сама катастрофа, від якої й пішла ця архітектура: токени спалено, у базі нуль.
+# QA лишається діагностикою, і в звіті це видно окремим рядком.
+# У ручних каналах планка справді залежить від вироків, тому там збій QA - стоп.
 say 'QA'
-"$SCRIPT_DIR/translate.sh" qa "$B/rows.json" "$B/clean.json" > "$B/verdicts.json" \
-    || die 'QA не дав придатних вердиктів'
+if ! "$SCRIPT_DIR/translate.sh" qa "$B/rows.json" "$B/clean.json" > "$B/verdicts.json"; then
+    if [ "$CHANNEL" = machine ]; then
+        echo 'УВАГА: QA не дав придатних вердиктів. Канал machine · пачка ПИШЕТЬСЯ далі,' >&2
+        echo '       бо в ШІ-шарі маршрут вирішує канал, а не вирок QA. QA тут діагностика.' >&2
+        php -r '
+$c = json_decode(file_get_contents($argv[1]), true) ?: [];
+$out = [];
+foreach ($c as $r) {
+    $out[] = ["identity_hash" => $r["identity_hash"] ?? "", "status" => "REVIEW",
+              "severity" => "minor", "issue" => "QA недоступний у цій пачці", "fix" => ""];
+}
+file_put_contents($argv[2], json_encode($out, JSON_UNESCAPED_UNICODE));
+' "$B/clean.json" "$B/verdicts.json"
+    else
+        die "QA не дав придатних вердиктів, а канал $CHANNEL спирається на його вироки"
+    fi
+fi
 php -r '
 $v = json_decode(file_get_contents($argv[1]), true) ?: [];
 $c = [];

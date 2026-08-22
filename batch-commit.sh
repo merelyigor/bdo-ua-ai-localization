@@ -133,7 +133,11 @@ if ($missing !== []) {
         // Лише назви ПРЕДМЕТІВ і лише коли це явно попросили: титул гравця
         // чи будь-який інший домен у модерацію не йде.
         $row = $rowSet->getOrEmpty($hash);
-        $unresolved = ($argv[12] === "1" && $row->isItemName()) ? $row->unresolvedEntities() : [];
+        // Канал вирішує: у ШІ-шарі нова назва предмета не є причиною віддавати
+        // рядок людині НІКОЛИ, навіть із прапорцем. Прапорець має сенс лише в
+        // ручному прогоні, де рядок і так іде на розгляд.
+        $unresolved = ($argv[13] !== "machine" && $argv[12] === "1" && $row->isItemName())
+            ? $row->unresolvedEntities() : [];
         if ($unresolved !== [] && is_string($text) && trim($text) !== "") {
             $moderation[] = ["identity_hash" => $hash,
                              "source_hash" => $rowByHash[$hash]["source_hash"] ?? "",
@@ -142,23 +146,33 @@ if ($missing !== []) {
             $unresolvedCount++;
             continue;
         }
-        // Планка ШІ-шару: PASS і REVIEW/minor. Рішення власника 2026-08-20 після
-        // заміру на живому патчі: зі 162 не-PASS вердиктів 121 виявився
-        // REVIEW/minor, і саме вони забили чергу модерації. ШІ-шар не є ручним
-        // перекладом, і дрібне зауваження ("стилістично звучить буквально",
-        // "бажано узгодити з глосарієм") не варте рішення людини. Усе, що
-        // серйозніше - major, critical і будь-який REJECT - як і раніше йде до
-        // людини: там спотворені назви на кшталт "Революці Канпе Револьвери".
+        // МАРШРУТ ВИРІШУЄ КАНАЛ. Рішення власника 2026-08-22.
+        //
+        // ШІ-шар (`machine`): пишемо ВСЕ, що має текст. Модерація тут не
+        // задіюється взагалі. Причина названа власником прямо: ШІ-шар для того й
+        // існує окремим шаром, щоб не бути ручною правдою; гейт, який замість
+        // запису відправляє рядок людині, дає прогони з нулем записаних рядків.
+        // Якщо текст справді поганий · його місце в repair і потім у шар як є,
+        // а не в черзі, де він стає боргом. Технічно зламане однаково не пройде:
+        // сервер відхиляє markup, keep і межі довжини на `validate` і на записі.
+        //
+        // Ручний шар (`manual`/`proposal`): планка лишається. Чисте йде в ручний
+        // з автоапрувом за роллю, а справді проблемне · у пропозиції до людини,
+        // бо ручний шар І Є людська правда.
         $severity = strtolower((string) ($v["severity"] ?? ""));
-        $writable = $status === "PASS" || ($status === "REVIEW" && in_array($severity, ["none", "minor"], true));
-        if ($writable && is_string($text) && trim($text) !== "") {
+        $hasText = is_string($text) && trim($text) !== "";
+        if ($argv[13] === "machine") {
+            $writable = true;
+        } else {
+            $writable = $status === "PASS" || ($status === "REVIEW" && in_array($severity, ["none", "minor"], true));
+        }
+        if ($writable && $hasText) {
             $pass[] = ["identity_hash" => $hash,
                        "source_hash" => $rowByHash[$hash]["source_hash"] ?? "",
                        "text" => $text];
-        } elseif (is_string($text) && trim($text) !== "") {
-            // Замість файлового карантину - черга модерації. Недосконалий
-            // переклад видно в адмінці, де його можна прийняти або виправити;
-            // у файлі його не бачить ніхто, і він накопичується як борг.
+        } elseif ($hasText) {
+            // Лише для ручних каналів: недосконалий переклад видно в адмінці, де
+            // його можна прийняти або виправити.
             $moderation[] = ["identity_hash" => $hash,
                              "source_hash" => $rowByHash[$hash]["source_hash"] ?? "",
                              "text" => $text];
@@ -199,7 +213,7 @@ printf("До запису: %d | у модерацію: %d (з них нероз�
     count($pass), count($moderation), $unresolvedCount, count($held), $remaining);
 if ($blocked !== null) printf("ЗАПИС ЗАБЛОКОВАНО: %s\n", $blocked);
 ' "$ROWS_FILE" "$CAND_FILE" "$VERDICT_FILE" "$QUARANTINE" "$PASS_ITEMS" \
-  "$BDO_API_ENV" "$RUN_TARGET" "$REMAINING" "$DO_WRITE" "$SCRIPT_DIR/lib/autoload.php" "$HELD_ITEMS" "$NAMES_TO_MODERATION"
+  "$BDO_API_ENV" "$RUN_TARGET" "$REMAINING" "$DO_WRITE" "$SCRIPT_DIR/lib/autoload.php" "$HELD_ITEMS" "$NAMES_TO_MODERATION" "$PASS_CHANNEL"
 
 COUNT="$(php -r 'echo count(json_decode(file_get_contents($argv[1]), true) ?: []);' "$PASS_ITEMS")"
 MOD_COUNT="$(php -r 'echo count(json_decode(file_get_contents($argv[1]), true) ?: []);' "$HELD_ITEMS")"
