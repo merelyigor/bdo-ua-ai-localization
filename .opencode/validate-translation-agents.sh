@@ -109,4 +109,29 @@ test "$(jq -r '.subagent_depth' "$CONFIG")" = '1' || {
     exit 1
 }
 
+# Only `translation` is selectable, and it is selected by default.
+#
+# Owner decision 2026-08-22: this project has exactly one working flow, so the
+# agent picker must not offer a general-purpose primary at all. `build` and
+# `plan` keep their `permission.task` blocks above on purpose - re-enabling one
+# must not silently restore unrestricted delegation.
+#
+# `default_agent` is mandatory here, not cosmetic: the schema falls back to
+# `build` when it is unset or invalid, and `build` is disabled - so a typo would
+# leave the session with no usable primary.
+test "$(jq -r '.default_agent // empty' "$CONFIG")" = 'translation' || {
+    printf 'ERROR: default_agent must be "translation"\n' >&2
+    exit 1
+}
+test "$(jq -r '.agent.translation.mode // empty' "$CONFIG")" = 'primary' || {
+    printf 'ERROR: translation must be mode "primary" to serve as default_agent\n' >&2
+    exit 1
+}
+for primary in build plan general explore; do
+    test "$(jq -r --arg p "$primary" '.agent[$p].disable // empty' "$CONFIG")" = 'true' || {
+        printf 'ERROR: primary agent %s must be disabled; only translation is selectable\n' "$primary" >&2
+        exit 1
+    }
+done
+
 printf 'Translation UI agents: %s is active and consistent across config and frontmatter.\n' "$active"

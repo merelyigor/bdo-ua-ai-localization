@@ -20,6 +20,11 @@ Four independent layers make a paid-model or wrong-model child impossible:
    `ollama-local/qwen3.5:9b`. GGUF only: the Ollama MLX runner silently ignores
    constrained decoding, which would break the identity guarantee.
 4. `subagent_depth: 1` plus `task: deny` in every child stops nested agents.
+   `default_agent: translation` plus `disable: true` on `build`, `plan`,
+   `general` and `explore` means the picker offers no general-purpose primary at
+   all: the orchestrator cannot be swapped for one by accident. Their
+   `permission.task` blocks stay in the config on purpose, so re-enabling one
+   cannot silently restore unrestricted delegation.
 5. `translation-worker`, `translation-repair`, `translation-qa` and
    `translation-smoke` disable every tool (`tools: {"*": false}`). Verified the
    hard way: a worker run reached `context7`, `playwright` and `skill`, spent

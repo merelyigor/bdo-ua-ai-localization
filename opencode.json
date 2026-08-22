@@ -1,5 +1,6 @@
 {
   "$schema": "https://opencode.ai/config.json",
+  "default_agent": "translation",
   "permission": {
     "bash": {
       "*migrate:fresh*": "deny",
@@ -14,6 +15,7 @@
   },
   "agent": {
     "build": {
+      "disable": true,
       "permission": {
         "task": {
           "*": "deny",
@@ -26,6 +28,7 @@
       }
     },
     "plan": {
+      "disable": true,
       "permission": {
         "task": {
           "*": "deny",
