@@ -64,7 +64,22 @@ check_rules() {
         || fail 'у .opencode/critical-rules.md немає правила про push'
     grep -Fq '§4.2 `git push` виконує ВИКЛЮЧНО власник' "$RULE_REFERENCE" \
         || fail "у $RULE_REFERENCE немає §4.2 про push"
+    # Переклад робиться в OpenCode, і пачка виконується ОДНОЮ командою.
+    # Це не стилістика: передавання payload у субагента текстом дало чотири
+    # прогони підряд із нулем записаних рядків. Правило не має права зникнути з
+    # промпта диригента при наступному переписуванні.
+    grep -Fq 'ПЕРЕКЛАД РОБИТЬСЯ В OPENCODE' bdo \
+        || fail 'у `bdo help flow` немає рядка «ПЕРЕКЛАД РОБИТЬСЯ В OPENCODE»'
+    grep -Fq './bdo batch run' .opencode/agents/translation.md \
+        || fail 'промпт диригента не вказує виконувати пачку через `./bdo batch run`'
+    grep -Fq 'НЕ викликай `@translation-worker`' .opencode/agents/translation.md \
+        || fail 'промпт диригента не забороняє ручний виклик worker/qa/repair'
+    grep -Fq 'Переклад робиться В OPENCODE' .opencode/critical-rules.md \
+        || fail 'у critical-rules.md немає правила «переклад робиться в OpenCode»'
+    grep -Fq 'Переклад робиться В OPENCODE' AGENTS.md \
+        || fail 'у AGENTS.md немає правила «переклад робиться в OpenCode»'
     note "4 дзеркала ідентичні; AGENTS.md: $lines/$RULE_MAP_MAX_LINES рядків"
+    note 'правило «переклад в OpenCode однією командою» присутнє в промпті, правилах і help flow'
     note 'правило про push присутнє в карті, критичних правилах і нормативі'
 }
 

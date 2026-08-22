@@ -69,6 +69,7 @@ bdo · переклад рядків BDO через Agent API і локальн�
 ВИБІРКА Й ПАЧКА
   patch                стан патча: скільки лишилось
   fetch                взяти одну пачку рядків з API
+  batch run            УВЕСЬ цикл однією командою: вибірка -> переклад -> запис
   batch new|dir|check|end   тека пачки, її шлях, належність файлів, закриття
   subset               підмножина рядків за identity (для repair)
   show                 показати рядки людині
@@ -112,37 +113,30 @@ TXT
 
 flow() {
     cat <<'TXT'
-Одна пачка, у порядку виконання. Ціль прогону вже задана BDO_ENV у .env.
+ПЕРЕКЛАД РОБИТЬСЯ В OPENCODE. Ви говорите з агентом `translation`, а він робить
+усю пачку ОДНОЮ командою:
+
+  ./bdo batch run 15 "patch=active&missing=machine"
+  ./bdo batch run 15 "missing=machine" --dry           усе, крім запису
+  ./bdo batch run 15 "missing=machine" --channel manual
+
+Усередині, по порядку, з нумерацією кроків і названою причиною зупинки:
+ціль прогону -> вибірка -> тека пачки -> памʼять -> глосарій -> переклад ->
+збірка кандидата -> гейт identity й русизми -> валідація API -> QA -> запис.
+
+Мовний виклик бере payload і схему з ДИСКА, тому «payload не дійшов» неможливий.
+
+--- Окремі команди · лише для розбору збою, не для роботи ------------------
 
   ./bdo runtime                                     перед ПЕРШОЮ пачкою прогону
-  ./bdo run start                                   зафіксувати ціль прогону
-
-  ./bdo fetch 15 "patch=active&missing=machine"      прапорець exclude_proposed=1
-                                                    додається лише коли пишемо пропозиції
-  ./bdo batch new rows.json                         тека пачки; далі файли лише туди
-  ./bdo memory find rows.json                       чи вже перекладено цей оригінал
-  ./bdo memory apply rows.json memory.json          закрити такі рядки без моделі
-  ./bdo glossary gaps rows.json                     ЗАВЖДИ; читай останній рядок ВИРОК
-      прогалини є -> ./bdo payload terminology rows.json -> @translation-terminology
-      (resolve уже зроблений скриптом; субагент лише пропонує відповідник)
-
-  ./bdo schema build to-translate.json              staged-схема пачки
-  ./bdo payload worker to-translate.json            -> @translation-worker (вміст, не шлях)
-  ./bdo memory expand candidate.json twins.json memory-candidate.json > full.json
-  ./bdo normalize full.json > clean.json            гомогліфи, безкоштовно
+  ./bdo env                                         яка ціль стоїть у .env
+  ./bdo payload terminology rows.json               -> @translation-terminology
+  ./bdo translate worker to-translate.json          переклад напряму
+  ./bdo translate qa rows.json clean.json           QA напряму
   ./bdo items rows.json clean.json items.json "" --require-all
-  ./bdo russianisms clean.json rows.json            код 1 = є русизми
-  ./bdo validate items.json                         валідація на боці API
-
-  ./bdo schema qa rows.json                         схема вердиктів
-  ./bdo payload qa rows.json clean.json             -> @translation-qa
-  ./bdo heal rows.json candidate.json verdicts.json validate.json
-      є проблемні -> @translation-repair -> ./bdo merge -> контрольний QA по підмножині
-      РІВНО ОДНЕ коло лікування; далі рядок іде в модерацію
-
-  ./bdo commit rows.json heal-merged.json verdicts.json --write
-  ./bdo schema clear && ./bdo batch end
-  ./bdo audit                                       правда про сесії, не самозвіт
+  ./bdo validate items.json
+  ./bdo commit rows.json clean.json verdicts.json --write
+  ./bdo audit                                       правда про сесії
 
 Повна послідовність із причинами · UI_SUBAGENT_WORKFLOW.md
 TXT
@@ -184,7 +178,8 @@ case "$group" in
             dir)   sh_run batch-dir.sh "${@:3}" ;;
             check) sh_run batch-assert.sh "${@:3}" ;;
             end)   sh_run batch-new.sh --end ;;
-            *)     die 'batch: потрібно new, dir, check або end' ;;
+            run)   sh_run batch-run.sh "${@:3}" ;;
+            *)     die 'batch: потрібно run, new, dir, check або end' ;;
         esac
         ;;
 
