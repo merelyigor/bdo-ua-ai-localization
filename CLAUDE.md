@@ -70,6 +70,8 @@ Black Desert Online через BDO UA Translate Agent API. Тут немає с�
 - Диригент повторює машинний цикл `./bdo mode start` -> `./bdo run drive` ->
   `translation_child`. Payload читає плагін зі `state/` і передає справжній
   дочірній сесії напряму; primary payload не бачить і текст не виправляє.
+- Child session запускається тільки через `session.promptAsync` із polling
+  messages; блокуючий `session.prompt` заборонений через headers timeout.
 - Прямий мовний runner і production fallback в Ollama заборонені.
 - Повністю скриптовий flow без чату ВИДАЛЕНО 2026-08-22; відновлення · з коміта
   `dac631e`. Не відтворювати його й не пропонувати як альтернативу.

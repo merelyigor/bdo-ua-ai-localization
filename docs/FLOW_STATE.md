@@ -24,6 +24,28 @@
 - WSL-помилка залежностей прямо вимагає встановлення всередині WSL2, не через
   `winget`; runtime радить `profile fast`, якщо Ollama вже має `qwen3.5:9b`.
 
+## 2026-08-23 · девʼять порожніх worker sessions
+
+- На DEV-пачці `20260823_002817_be55ebf31a833c86` driver тричі отримав
+  `fetch failed` і правильно створив failure receipt, але primary ще двічі
+  повторив той самий tool-call. Локальний attempt array починався з нуля, тому
+  загалом OpenCode створив 9 worker sessions із `input=0`, `output=0`.
+- Висновок primary про «невідповідний маршрут» був хибним: усі девʼять receipt
+  мали очікуваний `ollama-local/qwen3.6:35b-a3b-mtp-q4_K_M`; `fetch failed` є
+  transport/runtime failure, а не доказом неправильної моделі.
+- Failure receipt тепер є persistent circuit breaker. Четверта спроба не створює
+  session. Error receipt зберігає також nested `cause`; відновлення · тільки
+  `./bdo retry reset`, який архівує, а не видаляє попередній failure.
+- **Виправлення попереднього висновку:** `fetch failed` тут не лишився
+  невизначеним runtime failure. Driver використовував довгий блокуючий
+  `client.session.prompt()`, для якого OpenCode SDK має відтворюваний
+  `HeadersTimeoutError`. Production boundary переведено на `promptAsync` із
+  polling `session.messages`, тому генерація більше не залежить від lifetime
+  одного довгого HTTP response.
+- Open circuit повертається як нормальний JSON result з `action:"stop"`, а не
+  exception. Primary після нього механічно заборонені `audit/help/clean/models`
+  та будь-які інші tool calls; відповідь обмежена чотирма рядками.
+
 Робочий журнал напряму. Оновлювати після кожного суттєвого кроку.
 Дата останнього оновлення: 2026-08-22.
 

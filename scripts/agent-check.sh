@@ -300,6 +300,7 @@ check_shell() {
     run php tests/pipeline-unit.php
     run php tests/pipeline-faults.php
     run bash tests/smoke-envelope.sh
+    run bash tests/retry-child.sh
 }
 
 check_agents() {

@@ -10,6 +10,14 @@ readonly POLICY="$ROOT/.opencode/translation-models.json"
 
 jq -e . "$CONFIG" >/dev/null
 php -r 'require $argv[1]; Bdo\Translate\Runtime\ModelPolicy::load($argv[2]);' "$ROOT/lib/autoload.php" "$POLICY"
+grep -Fq 'client.session.promptAsync({' "$ROOT/.opencode/plugin/translation-session-driver.ts" || {
+    echo 'ERROR: child driver must use non-blocking session.promptAsync' >&2
+    exit 1
+}
+if grep -Fq 'client.session.prompt({' "$ROOT/.opencode/plugin/translation-session-driver.ts"; then
+    echo 'ERROR: blocking session.prompt reintroduces the OpenCode headers timeout' >&2
+    exit 1
+fi
 active_profile="$(jq -r '.active_profile' "$POLICY")"
 
 for agent in "${AGENTS[@]}"; do
@@ -106,6 +114,10 @@ for primary in патч ручний пропозиції покращення; 
     }
     grep -Fq './bdo smoke' "$ROOT/.opencode/agents/$primary.md" || {
         printf 'ERROR: %s primary does not route smoke separately\n' "$primary" >&2
+        exit 1
+    }
+    grep -Fq 'circuit_open:true' "$ROOT/.opencode/agents/$primary.md" || {
+        printf 'ERROR: %s primary does not respect persistent child circuit\n' "$primary" >&2
         exit 1
     }
 done

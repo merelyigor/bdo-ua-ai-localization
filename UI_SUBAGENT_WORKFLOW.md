@@ -53,6 +53,24 @@ and leaves `content` empty) and refuses to run `translation-worker` or
 успіх перевіряє не лише доступність зовнішньої моделі, а й критичну capability
 constrained decoding до першої реальної пачки.
 
+## Persistent child circuit
+
+Production driver sends child work with non-blocking `session.promptAsync`, then
+polls short `session.messages` requests until the assistant message completes.
+Do not restore blocking `session.prompt`: OpenCode SDK can terminate that long
+HTTP request with `HeadersTimeoutError -> fetch failed` while a schema-bound
+local model is still running.
+
+`translation_child` має один загальний бюджет із трьох спроб на response
+artifact. Після вичерпання він атомарно пише `*.failure.json`; повторний tool-call
+бачить receipt до створення session і повертає `circuit is open`. Primary не має
+права повторювати envelope або міняти model route, вгадуючи причину.
+
+`./bdo retry status` показує збережені attempt/error/cause. Після усунення
+runtime-проблеми власник явно виконує `./bdo retry reset`; receipt не стирається,
+а перейменовується в timestamped audit archive. Поточна пачка лишається в тому
+самому `awaiting_*` і продовжується без нового fetch.
+
 ## Sequence
 
 Every command below is a `./bdo` subcommand; `./bdo` alone prints the whole tree

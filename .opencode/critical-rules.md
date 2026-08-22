@@ -55,6 +55,11 @@
 - Primary виконує лише цикл `./bdo mode start` -> `./bdo run drive` ->
   `translation_child`. Плагін читає payload зі `state/` і передає дочірній сесії
   напряму. Ручне перенесення payload і прямий мовний fallback в Ollama заборонені.
+- Retry child виконує сам driver, максимум 3 спроби на artifact. Після open
+  circuit не повторювати envelope й не міняти модель: `./bdo retry status`, а
+  `reset` робить власник після діагностики. `fetch failed` не доводить model mismatch.
+- Child prompt · тільки неблокуючий `session.promptAsync` із polling messages.
+  Блокуючий `session.prompt` заборонений через upstream HeadersTimeoutError.
 - Повністю скриптовий флоу без чату ВИДАЛЕНО 2026-08-22 (коміт `dac631e`): не
   відтворювати й не пропонувати як альтернативу.
 - `output/` і `state/` · робочий стан, не артефакти для коміту. Курсори пачок і

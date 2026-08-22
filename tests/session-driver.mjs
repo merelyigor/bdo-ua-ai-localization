@@ -23,11 +23,17 @@ const client = {
       parents.push(input.body.parentID)
       return { data: { id: `child-${parents.length}` } }
     },
-    async prompt(input) {
+    async promptAsync(input) {
       prompts += 1
       models.push(input.body.model)
-      if (prompts === 1) return { data: { parts: [] } }
-      return { data: { parts: [{ type: "text", text: '[{"identity_hash":"h","text":"Текст"}]' }] } }
+      if (prompts === 1) throw new TypeError("fetch failed")
+      return { data: undefined }
+    },
+    async messages() {
+      return { data: [{
+        info: { role: "assistant", time: { completed: Date.now() } },
+        parts: [{ type: "text", text: '[{"identity_hash":"h","text":"Текст"}]' }],
+      }] }
     },
     async abort(input) {
       aborted.push(input.path.id)
@@ -55,5 +61,34 @@ const sidecar = JSON.parse(readFileSync(join(directory, "state", "batch", "respo
 assert.equal(sidecar.attempts.length, 2)
 assert.equal(sidecar.child_session_id, "child-2")
 assert.equal(sidecar.route, "remote/fallback")
+
+const failedDirectory = mkdtempSync(join(tmpdir(), "bdo-session-circuit-"))
+mkdirSync(join(failedDirectory, "state", "batch"), { recursive: true })
+mkdirSync(join(failedDirectory, ".opencode"), { recursive: true })
+writeFileSync(join(failedDirectory, "state", "batch", "payload.json"), '{"request":"test"}\n')
+writeFileSync(join(failedDirectory, ".opencode", "translation-models.json"), JSON.stringify({
+  active_profile: "test",
+  profiles: { test: { routes: { "translation-worker": ["local/only"] } } },
+}))
+let failedCreates = 0
+const failingHooks = await TranslationSessionDriver({
+  directory: failedDirectory,
+  client: { session: {
+    async create() { failedCreates += 1; return { data: { id: `failed-${failedCreates}` } } },
+    async promptAsync() { throw new TypeError("fetch failed", { cause: new Error("connection refused") }) },
+    async messages() { return { data: [] } },
+    async abort() { return { data: true } },
+  } },
+})
+const failedArgs = { role: "translation-worker", payload_path: "batch/payload.json", response_path: "batch/response.json" }
+const failedContext = { sessionID: "parent", metadata() {} }
+const failedResult = await failingHooks.tool.translation_child.execute(failedArgs, failedContext)
+assert.equal(JSON.parse(failedResult.output).circuit_open, true)
+assert.equal(failedCreates, 3)
+const failure = JSON.parse(readFileSync(join(failedDirectory, "state", "batch", "response.json.failure.json"), "utf8"))
+assert.equal(failure.attempts[0].cause, "Error: connection refused")
+const repeatedResult = await failingHooks.tool.translation_child.execute(failedArgs, failedContext)
+assert.deepEqual(JSON.parse(repeatedResult.output), { ok: false, circuit_open: true, action: "stop", attempts: 3, command: "./bdo retry status" })
+assert.equal(failedCreates, 3, "open circuit created more child sessions")
 
 console.log("session driver: OK")
