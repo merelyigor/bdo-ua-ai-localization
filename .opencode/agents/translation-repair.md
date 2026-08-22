@@ -1,5 +1,5 @@
 ---
-description: Виправляє лише передані QA або validation defects у локальній Ollama child session
+description: Виправляє лише передані QA або validation defects у визначеній профілем child session
 mode: subagent
 model: ollama-local/qwen3.6:35b-a3b-mtp-q4_K_M
 temperature: 0.05
@@ -14,7 +14,7 @@ tools:
   "*": false
 ---
 
-Ти `translation-repair`. Маршрутизація на локальну модель і формат відповіді
+Ти `translation-repair`. Маршрутизація на модель профілю і формат відповіді
 гарантовані плагіном проєкту: відповідь автоматично обмежена схемою підмножини,
 тому не додавай прозу чи markdown - тільки виправлені рядки.
 

@@ -1,0 +1,48 @@
+{
+    "version": 1,
+    "active_profile": "local-quality",
+    "profiles": {
+        "local-quality": {
+            "allow_paid": false,
+            "routes": {
+                "translation-terminology": [
+                    "ollama-local/qwen3.6:35b-a3b-mtp-q4_K_M"
+                ],
+                "translation-worker": [
+                    "ollama-local/qwen3.6:35b-a3b-mtp-q4_K_M"
+                ],
+                "translation-qa": [
+                    "ollama-local/qwen3.6:35b-a3b-mtp-q4_K_M"
+                ],
+                "translation-repair": [
+                    "ollama-local/qwen3.6:35b-a3b-mtp-q4_K_M"
+                ],
+                "translation-smoke": [
+                    "ollama-local/qwen3.6:35b-a3b-mtp-q4_K_M"
+                ]
+            },
+            "paid_routes": []
+        },
+        "local-fast": {
+            "allow_paid": false,
+            "routes": {
+                "translation-terminology": [
+                    "ollama-local/qwen3.5:9b"
+                ],
+                "translation-worker": [
+                    "ollama-local/qwen3.5:9b"
+                ],
+                "translation-qa": [
+                    "ollama-local/qwen3.5:9b"
+                ],
+                "translation-repair": [
+                    "ollama-local/qwen3.5:9b"
+                ],
+                "translation-smoke": [
+                    "ollama-local/qwen3.5:9b"
+                ]
+            },
+            "paid_routes": []
+        }
+    }
+}

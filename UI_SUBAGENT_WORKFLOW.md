@@ -1,31 +1,37 @@
 # UI subagent workflow
 
-Translation language work runs only in visible OpenCode child sessions. A
-primary agent may use any configured remote model. The named translation child
-agents always use an explicit local `ollama-local` model in their frontmatter:
-`qwen3.6:35b-a3b-mtp-q4_K_M` (quality profile) or `qwen3.5:9b` (fast profile). Switch profiles
-with `./bdo profile quality|fast|status`; verify the runtime
-with `./bdo runtime`.
+Translation language work runs only in visible OpenCode child sessions. Model
+routes are defined once in `.opencode/translation-models.json`, separately for
+each role. Built-in `local-quality` and `local-fast` profiles use Ollama; custom
+profiles may use any provider connected through OpenCode. Credentials remain in
+OpenCode `/connect`, never in this repository. `./bdo profile status` shows the
+active routes; `./bdo profile use NAME` activates one.
+
+Windows uses this same flow through WSL2. Clone the repository into the Linux
+filesystem, install the normal dependencies inside WSL, open it through the
+OpenCode WSL server, and run `./bdo gate preflight`. Native PowerShell is not a
+supported second implementation.
 
 ## Routing guarantees (mechanical, not instructional)
 
-Four independent layers make a paid-model or wrong-model child impossible:
+Independent layers prevent an unintended or hidden model route:
 
 1. `opencode.json` denies `task` for every agent except the five named
    `translation-*` agents (`"*": "deny"` + explicit allows).
-2. Each agent frontmatter pins an explicit `ollama-local` model; a child never
-   inherits the primary model.
-3. The project plugin (`chat.params`) rejects the child request before the LLM
-   call unless the resolved route is `ollama-local/qwen3.6:35b-a3b-mtp-q4_K_M` or
-   `ollama-local/qwen3.5:9b`. GGUF only: the Ollama MLX runner silently ignores
-   constrained decoding, which would break the identity guarantee.
-4. `subagent_depth: 1` plus `task: deny` in every child stops nested agents.
+2. Frontmatter pins the first role route, while the session driver passes the
+   exact provider/model explicitly, so a child never inherits the primary model.
+3. The project plugin rejects any route absent from the active role policy.
+   Paid routes require `allow_paid=true`; Ollama MLX is rejected because it
+   ignores constrained decoding.
+4. Retries use the ordered routes for that role and save the actual route in the
+   session receipt. No route is discovered or enabled implicitly.
+5. `subagent_depth: 1` plus `task: deny` in every child stops nested agents.
    `default_agent: translation` plus `disable: true` on `build`, `plan`,
    `general` and `explore` means the picker offers no general-purpose primary at
    all: the orchestrator cannot be swapped for one by accident. Their
    `permission.task` blocks stay in the config on purpose, so re-enabling one
    cannot silently restore unrestricted delegation.
-5. `translation-worker`, `translation-repair`, `translation-qa` and
+6. `translation-worker`, `translation-repair`, `translation-qa` and
    `translation-smoke` disable every tool (`tools: {"*": false}`). Verified the
    hard way: a worker run reached `context7`, `playwright` and `skill`, spent
    85901 input tokens instead of 19838, and searched the web for BDO naming
@@ -39,6 +45,9 @@ thinking on the Ollama `/v1` endpoint returns the whole budget as `reasoning`
 and leaves `content` empty) and refuses to run `translation-worker` or
 `translation-repair` when no batch schema is staged, so a forgotten
 `bdo schema build` fails before any tokens are spent, not after a full batch.
+`translation-smoke` має вбудовану мінімальну strict JSON schema, тому його
+успіх перевіряє не лише доступність зовнішньої моделі, а й критичну capability
+constrained decoding до першої реальної пачки.
 
 ## Sequence
 

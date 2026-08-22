@@ -141,12 +141,14 @@
 
 ## §8 OpenCode, субагенти й моделі
 
-- §8.1 Лише named `translation-*` agents. Provider/model pin-яться в frontmatter,
-  guard і allowlist; джерело правди після run · `./bdo audit`, не self-report.
+- §8.1 Лише named `translation-*` agents. Provider/model задає активний профіль
+  `.opencode/translation-models.json`, синхронізований із frontmatter і guard;
+  джерело правди після run · receipt та `./bdo audit`, не self-report.
 - §8.2 Worker, repair і QA під constrained schema не мають жодних tools. Payload
   передається текстом. Tool call вимикає constrained decoding.
-- §8.3 Дозволені лише GGUF Ollama models із validator allowlist. MLX заборонений,
-  бо runner ігнорує constrained decoding.
+- §8.3 Дозволені лише маршрути активного профілю. Ollama MLX заборонений, бо
+  runner ігнорує constrained decoding. Платний маршрут вимагає явного
+  `allow_paid`; credentials належать OpenCode і не живуть у repo.
 - §8.4 Staged schema не замінює deterministic gates. Вона фіксує length та enum
   identity; `./bdo items`, quality checks і API validation лишаються обов'язкові.
 - §8.5 Нову модель кваліфікувати кількома прогрітими runs, format compliance,
@@ -154,6 +156,8 @@
 - §8.6 Не створювати alternate model invocation. Санкціоновані entrypoints:
   OpenCode children і ізольований benchmark `./bdo bench`, вихід якого механічно
   не приймається до запису.
+- §8.7 Windows підтримується через WSL2 тим самим Bash/PHP flow. Окремий native
+  PowerShell flow не створювати.
 
 ## §9 Документація і плани
 
