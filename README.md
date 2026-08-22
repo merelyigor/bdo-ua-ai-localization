@@ -16,8 +16,9 @@
 
 ## Про проєкт
 
-- Робота починається в чаті: обираєте агента `translation` і пишете одне речення
-  на кшталт «переклади 20 рядків активного патча».
+- Робота починається в чаті одним реченням: «переклади 15 рядків активного
+    патча». Агент `translation` уже вибраний за замовчуванням, інших primary в
+    цьому проєкті немає.
 - Мовну роботу роблять пʼять вузьких субагентів на локальних GGUF-моделях ·
   жодного платного токена на сам переклад.
 - Формат відповіді субагента прибитий JSON-схемою, тому він не може загубити,
@@ -178,8 +179,9 @@ BDO_API_KEY_PROD=ваш-ключ
 
 Усе живе в `.opencode/` і вантажиться OpenCode автоматично.
 
-**Диригент** · primary-агент `translation` (`.opencode/agents/translation.md`).
-Модель обираєте ви в інтерфейсі. Він веде процес, викликає субагентів, читає
+**Диригент** · primary-агент `translation` (`.opencode/agents/translation.md`),
+і він єдиний: `build`, `plan`, `general` і `explore` у проєкті вимкнені, а
+`default_agent` вказує саме на нього. Модель для нього обираєте ви в інтерфейсі. Він веде процес, викликає субагентів, читає
 вироки перевірок і звітує вам. Сам він **не перекладає, не рецензує і не
 виправляє** текст · це заборонено його промптом.
 
@@ -190,7 +192,7 @@ BDO_API_KEY_PROD=ваш-ключ
 | `translation-worker` | перекладає пачку | немає жодного |
 | `translation-qa` | один вердикт на КОЖЕН рядок | немає жодного |
 | `translation-repair` | виправляє лише названі дефекти | немає жодного |
-| `translation-terminology` | нові терміни й глосарій | `bash`, `read` |
+| `translation-terminology` | нові терміни й глосарій | лише `bash` |
 | `translation-smoke` | перевірка живої маршрутизації | немає жодного |
 
 Порожній список інструментів у перших трьох · не економія, а **умова
@@ -201,15 +203,18 @@ BDO_API_KEY_PROD=ваш-ключ
 
 Робота починається в чаті OpenCode, не в терміналі.
 
-1. Відкрийте цей проєкт в OpenCode.
-2. Виберіть **primary-агента** `translation` у перемикачі агентів. Це не
-   `@`-виклик: `@` в OpenCode кличе субагента, а диригент · саме primary-агент,
-   якого обирають для сесії.
-3. Напишіть звичайною мовою, що зробити. Диригент сам порахує пачки, візьме
+1. Відкрийте цей проєкт в OpenCode. Агент `translation` уже вибраний · він
+   стоїть у `default_agent`, а `build`, `plan`, `general` і `explore` у цьому
+   проєкті вимкнені. Перемикати нічого не треба, і випадково вибрати
+   загальний агент неможливо.
+2. Напишіть звичайною мовою, що зробити. Диригент сам порахує пачки, візьме
    рядки, покличе субагентів і запише результат.
 
+`@` у чаті кличе СУБАГЕНТА (`@translation-smoke`), а диригент · це primary-агент
+сесії, не `@`-виклик.
+
 ```text
-переклади 20 рядків активного патча
+переклади 15 рядків активного патча
 переклади 5 пачок
 перевір 20 рядків без запису
 переклади назви предметів, у ручний шар
@@ -226,14 +231,16 @@ BDO_API_KEY_PROD=ваш-ключ
 ./bdo runtime                                   # перед першою пачкою
 ./bdo run start                                 # зафіксувати ціль прогону
 
-./bdo fetch 15 "patch=active&missing=machine&exclude_proposed=1"
+./bdo fetch 15 "patch=active&missing=machine"   # +&exclude_proposed=1 лише для пропозицій
 ./bdo batch new rows.json                       # тека пачки; далі файли лише туди
 ./bdo memory find rows.json                     # чи вже перекладено цей оригінал
 ./bdo memory apply rows.json memory.json        # закрити такі рядки без моделі
 ./bdo glossary gaps rows.json                   # ЗАВЖДИ; читати останній рядок ВИРОК
-                                                # -> @translation-terminology, якщо є прогалини
+./bdo payload terminology rows.json             # -> @translation-terminology, якщо є прогалини
+                                                # resolve уже зроблений скриптом
 ./bdo schema build to-translate.json            # прибити формат відповіді
 ./bdo payload worker to-translate.json          # -> @translation-worker
+./bdo memory expand candidate.json twins.json memory-candidate.json > full.json
 ./bdo normalize full.json > clean.json          # гомогліфи, безкоштовно
 ./bdo items rows.json clean.json items.json "" --require-all
 ./bdo russianisms clean.json rows.json
@@ -242,6 +249,7 @@ BDO_API_KEY_PROD=ваш-ключ
 ./bdo schema qa rows.json
 ./bdo payload qa rows.json clean.json           # -> @translation-qa
 ./bdo heal rows.json candidate.json verdicts.json validate.json
+                                                # -> @translation-repair, ./bdo merge, контрольний QA
                                                 # -> @translation-repair, потім контрольний QA
 ./bdo commit rows.json heal-merged.json verdicts.json --write
 ./bdo schema clear && ./bdo batch end
@@ -386,8 +394,10 @@ commit`. Що лишилось дефектним, іде в модерацію,
 вже перекладені рядки лишаються у вибірці. `./bdo fetch` додає фільтр сам, якщо
 його не задано явно.
 
-**API відповідає `active_proposal_exists` на всю пачку.** Ці рядки вже чекають на
-людину в черзі модерації. Потрібен `exclude_proposed=1` у вибірці.
+**API відповідає `active_proposal_exists` на всю пачку.** Так буває лише коли
+пачка пише ПРОПОЗИЦІЇ: у цього автора для цих рядків уже є відкриті. Додайте
+`exclude_proposed=1` у вибірку. При записі в ШІ-шар ця помилка не виникає ·
+шари незалежні, і відкрита ручна пропозиція машинному запису не перешкоджає.
 
 **Диригент пішов старими кроками після зміни промпта.** Системний промпт
 прибитий до сесії на момент її створення. Перезапуску застосунку не досить ·
