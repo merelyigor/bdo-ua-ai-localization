@@ -15,6 +15,15 @@
   `translation-smoke` із вбудованою strict JSON schema у OpenCode, не через
   ad-hoc HTTP із ключами.
 
+## 2026-08-23 · окремий smoke boundary
+
+- Простий prompt про `translation-smoke` раніше потрапляв у default `патч`, який
+  запускав `mode status patch` і просив підтвердження замість child smoke.
+- `./bdo smoke` тепер без PHP/API готує payload та child envelope; усі чотири
+  primary-режими обробляють smoke до будь-якого `mode start`.
+- WSL-помилка залежностей прямо вимагає встановлення всередині WSL2, не через
+  `winget`; runtime радить `profile fast`, якщо Ollama вже має `qwen3.5:9b`.
+
 Робочий журнал напряму. Оновлювати після кожного суттєвого кроку.
 Дата останнього оновлення: 2026-08-22.
 

@@ -12,6 +12,10 @@ filesystem, install the normal dependencies inside WSL, open it through the
 OpenCode WSL server, and run `./bdo gate preflight`. Native PowerShell is not a
 supported second implementation.
 
+Smoke is a separate control path, not a translation mode: the primary runs
+`./bdo smoke`, then passes its `next` envelope to `translation_child`. It never
+calls `mode start`, reads the API or asks for patch confirmation.
+
 ## Routing guarantees (mechanical, not instructional)
 
 Independent layers prevent an unintended or hidden model route:

@@ -60,6 +60,7 @@ bdo · переклад рядків BDO через Agent API і субаген�
 ПРОГІН І СЕРЕДОВИЩЕ
   env                  яка ціль стоїть у .env (PROD або DEV)
   runtime              capability gate активної моделі перед першою пачкою
+  smoke                envelope для OpenCode translation-smoke без API/PHP
   platform             macOS, Linux або Windows/WSL2 preflight
   run start|show|end|drive   зафіксувати / показати / зняти ціль; JSON-крок рушія
   mode status|start <mode>   preset або наступна пачка: patch|manual|proposal|improve
@@ -151,6 +152,7 @@ case "$group" in
     env)      sh_run cli/system/select-env.sh ;;
     platform) sh_run cli/system/check-platform.sh ;;
     runtime)  sh_run cli/runtime/check-runtime.sh "${@:2}" ;;
+    smoke)    sh_run cli/runtime/prepare-smoke.sh ;;
     gate)     sh_run scripts/agent-check.sh "${@:2}" ;;
     run)
         case "${2:-}" in

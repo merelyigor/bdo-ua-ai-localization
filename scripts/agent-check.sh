@@ -78,6 +78,11 @@ check_rules() {
     done
     grep -Fq 'Переклад робиться В OPENCODE' .opencode/critical-rules.md \
         || fail 'у critical-rules.md немає правила «переклад робиться в OpenCode»'
+    test -f docs/WINDOWS_WSL2.md || fail 'немає канонічної Windows/WSL2 інструкції'
+    grep -Fq 'На Windows працювати ТІЛЬКИ у WSL2' .opencode/critical-rules.md \
+        || fail 'critical-rules не забороняє native Windows flow'
+    grep -Fq '[WINDOWS_WSL2.md](WINDOWS_WSL2.md)' docs/README.md \
+        || fail 'docs/README.md не посилається на Windows/WSL2 інструкцію'
     grep -Fq 'Переклад робиться В OPENCODE' AGENTS.md \
         || fail 'у AGENTS.md немає правила «переклад робиться в OpenCode»'
     note "4 дзеркала ідентичні; AGENTS.md: $lines/$RULE_MAP_MAX_LINES рядків"
@@ -294,6 +299,7 @@ check_shell() {
     step 'Pipeline unit contracts'
     run php tests/pipeline-unit.php
     run php tests/pipeline-faults.php
+    run bash tests/smoke-envelope.sh
 }
 
 check_agents() {

@@ -19,6 +19,14 @@ Linux)
 esac
 
 for tool in bash php jq curl git; do
-    command -v "$tool" >/dev/null 2>&1 || { echo "FAIL: немає $tool" >&2; exit 1; }
+    if ! command -v "$tool" >/dev/null 2>&1; then
+        echo "FAIL: немає $tool" >&2
+        if grep -qi microsoft /proc/version 2>/dev/null; then
+            echo 'Встанови залежність ВСЕРЕДИНІ WSL2, не через winget. Ubuntu 24.04: sudo apt update && sudo apt install php-cli jq curl git shellcheck' >&2
+        fi
+        exit 1
+    fi
 done
+php_version="$(php -r 'echo PHP_MAJOR_VERSION.".".PHP_MINOR_VERSION;' 2>/dev/null || true)"
+php -r 'exit(PHP_VERSION_ID >= 80300 ? 0 : 1);' 2>/dev/null || { echo "FAIL: потрібен PHP 8.3+, знайдено ${php_version:-невідому версію}." >&2; exit 1; }
 echo 'Platform preflight: OK'

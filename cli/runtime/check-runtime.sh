@@ -38,7 +38,15 @@ echo "Runtime check для: $MODEL_FULL"
 echo -n "1. endpoint і модель... "
 curl -fsS -m 5 "$OLLAMA_URL/v1/models" 2>/dev/null \
     | jq -e --arg m "$MODEL" '.data[] | select(.id == $m)' >/dev/null \
-    || { echo "FAIL: $OLLAMA_URL не відповідає або моделі $MODEL немає (ollama pull $MODEL)"; exit 1; }
+    || {
+        echo "FAIL: $OLLAMA_URL не відповідає або моделі $MODEL немає."
+        if curl -fsS -m 5 "$OLLAMA_URL/v1/models" 2>/dev/null | jq -e '.data[] | select(.id == "qwen3.5:9b")' >/dev/null; then
+            echo 'Наявна fast-модель. Перемкни без завантаження 35B: ./bdo profile fast'
+        else
+            echo "Завантаж модель: ollama pull $MODEL"
+        fi
+        exit 1
+    }
 echo "OK"
 
 echo -n "2. не MLX... "

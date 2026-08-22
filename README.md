@@ -43,6 +43,7 @@
 Windows підтримується через WSL2, тим самим Bash/PHP flow без копії на
 PowerShell. Репозиторій краще клонувати у Linux filesystem WSL (`~/GitHub`), а
 не в `/mnt/c`; після встановлення залежностей виконайте `./bdo gate preflight`.
+Повна покрокова інструкція: [Windows через WSL2](docs/WINDOWS_WSL2.md).
 
 Моделі всіх ролей задає `.opencode/translation-models.json`. Ключі провайдерів
 налаштовуються лише через OpenCode `/connect` і не потрапляють у проєкт:
@@ -59,9 +60,16 @@ PowerShell. Репозиторій краще клонувати у Linux filesy
 `MODEL` береться з актуального `/models` у OpenCode: назви та безкоштовність
 зовнішніх моделей можуть змінюватися. Для платної моделі треба явно вказати
 `paid`; прихований платний fallback policy не пропускає. Після зміни профілю
-перезапустіть OpenCode і запустіть `translation-smoke`. Для Ollama повний
+перезапустіть OpenCode і попросіть: `Запусти smoke та покажи фактичний
+provider/model`. Primary виконає `./bdo smoke`; цей smoke не запускає patch, не
+звертається до API і не потребує PHP для підготовки envelope. Для Ollama повний
 capability test виконує `./bdo runtime`; зовнішні credentials навмисно не
 обходяться прямим HTTP-запитом.
+
+У Windows OpenCode та репозиторій мають бути відкриті через WSL2. Залежності
+ставляться всередині WSL (`sudo apt install php-cli jq curl git shellcheck`), а
+не через `winget`. Якщо вже встановлено лише `qwen3.5:9b`, після PHP виконайте
+`./bdo profile fast`; завантажувати 35B модель для smoke не обовʼязково.
 
 ## Пов'язані проєкти
 

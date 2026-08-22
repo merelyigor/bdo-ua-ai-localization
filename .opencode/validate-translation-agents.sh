@@ -104,6 +104,10 @@ for primary in патч ручний пропозиції покращення; 
         printf 'ERROR: %s must be mode "primary"\n' "$primary" >&2
         exit 1
     }
+    grep -Fq './bdo smoke' "$ROOT/.opencode/agents/$primary.md" || {
+        printf 'ERROR: %s primary does not route smoke separately\n' "$primary" >&2
+        exit 1
+    }
 done
 for primary in build plan general explore; do
     test "$(jq -r --arg p "$primary" '.agent[$p].disable // empty' "$CONFIG")" = 'true' || {
