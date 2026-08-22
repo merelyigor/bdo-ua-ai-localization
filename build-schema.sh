@@ -92,16 +92,35 @@ if ($argv[3] === "qa") {
     ];
     $required = ["identity_hash", "text"];
 }
+// ПОЗИЦІЙНЕ прибивання identity, а не спільний enum.
+//
+// Раніше тут стояла одна схема на всі елементи, а `identity_hash` мав
+// `enum` з УСІМА хешами пачки. Формально це обмеження, практично · дірка:
+// масив із 13 обʼєктів, у кожного той самий хеш, повністю валідний. Саме це
+// сталось 2026-08-22 тричі підряд: воркер повернув 13 обʼєктів з одним
+// `identity_hash`, constrained decoding при цьому "тримався", а пачка
+// зупинилась на `bdo items`.
+//
+// Тепер кожна позиція масиву прибита до СВОГО хеша через `const`. Модель
+// фізично не може ні повторити, ні переставити, ні пропустити рядок:
+// позиція i приймає рівно hashes[i].
+$positional = [];
+foreach ($hashes as $i => $hash) {
+    $props = $properties;
+    $props["identity_hash"] = ["type" => "string", "const" => $hash];
+    $positional[] = [
+        "type" => "object",
+        "properties" => $props,
+        "required" => $required,
+        "additionalProperties" => false,
+    ];
+}
 $schema = [
     "type" => "array",
     "minItems" => $count,
     "maxItems" => $count,
-    "items" => [
-        "type" => "object",
-        "properties" => $properties,
-        "required" => $required,
-        "additionalProperties" => false,
-    ],
+    // Tuple-форма draft-07: масив схем означає "позиція i за схемою i".
+    "items" => $positional,
 ];
 file_put_contents($argv[2], json_encode($schema, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT | JSON_THROW_ON_ERROR));
 echo "Схему поставлено на $count рядків.\n";

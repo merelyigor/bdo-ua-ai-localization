@@ -79,6 +79,60 @@ END {
     exit (fails == 0) ? 0 : 1
 }' || RC=1
 
+# ФОРМА ВІДПОВІДІ: те, чого тут бракувало найдорожче.
+#
+# 2026-08-22 три прогони підряд провалились так: воркер повертав 13 обʼєктів з
+# ОДНИМ повтореним `identity_hash`, а цей аудит казав «усі дочірні сесії
+# відповідають контракту». Маршрут, reasoning, інструменти й непорожній вихід
+# були в нормі · і саме тому перевірки не було достатньо. Пачка зупинялась аж на
+# `bdo items`, вже після витрачених токенів, а причина лишалась невидимою.
+#
+# Тому для агентів під схемою відповідь перевіряється ЗА ЗМІСТОМ: це мусить бути
+# JSON-масив із РІЗНИМИ identity_hash і непорожніми текстами. Проза, повтор або
+# порожній текст · SHAPE.
+echo
+echo "Форма відповіді агентів під схемою:"
+shape_fail=0
+while IFS='|' read -r sid agent; do
+    [ -n "$sid" ] || continue
+    answer="$(sqlite3 -noheader "$TMP" "
+        SELECT COALESCE(json_extract(p.data,'\$.text'),'')
+        FROM part p JOIN message m ON m.id = p.message_id
+        WHERE p.session_id = '$sid'
+          AND json_extract(p.data,'\$.type') = 'text'
+          AND json_extract(m.data,'\$.role') = 'assistant'
+        ORDER BY length(COALESCE(json_extract(p.data,'\$.text'),'')) DESC LIMIT 1;" 2>/dev/null || true)"
+    verdict="$(printf '%s' "$answer" | php -r '
+    $raw = stream_get_contents(STDIN);
+    if (trim($raw) === "") { echo "SHAPE відповіді немає в базі"; exit; }
+    $d = json_decode($raw, true);
+    if (! is_array($d) || ! array_is_list($d)) { echo "SHAPE не JSON-масив (проза або обірвано)"; exit; }
+    $ids = array_map(static fn ($x) => is_array($x) ? ($x["identity_hash"] ?? null) : null, $d);
+    $ids = array_filter($ids, static fn ($x) => is_string($x) && $x !== "");
+    if (count($ids) !== count($d)) { echo "SHAPE не в усіх обʼєктах є identity_hash"; exit; }
+    if (count(array_unique($ids)) !== count($ids)) {
+        printf("SHAPE повторений identity_hash (%d обʼєктів, %d унікальних)", count($ids), count(array_unique($ids)));
+        exit;
+    }
+    $empty = 0;
+    foreach ($d as $x) {
+        $t = $x["text"] ?? ($x["status"] ?? null);
+        if (! is_string($t) || trim($t) === "") { $empty++; }
+    }
+    if ($empty > 0) { printf("SHAPE порожній текст у %d обʼєктах", $empty); exit; }
+    printf("OK %d обʼєктів, усі identity різні", count($d));
+    ')"
+    case "$verdict" in
+        SHAPE*) printf "FAIL %-22s %s\n" "$agent" "$verdict"; shape_fail=1 ;;
+        *)      printf "OK   %-22s %s\n" "$agent" "$verdict" ;;
+    esac
+done < <(sqlite3 -noheader -separator '|' "$TMP" "
+    SELECT s.id, s.agent FROM session s
+    WHERE s.agent IN ('translation-worker','translation-repair','translation-qa')
+      AND s.time_created >= $SINCE
+    ORDER BY s.time_created DESC LIMIT $LIMIT;")
+test "$shape_fail" = 0 || RC=1
+
 # Диригент свідомо на платній моделі, тому під ROUTE/THINK не підпадає.
 # Показуємо його окремо: тут важливо СКІЛЬКИ платних токенів пішло на пачку.
 echo
