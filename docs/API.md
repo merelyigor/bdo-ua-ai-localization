@@ -9,11 +9,11 @@
 
 | Що | Значення |
 |---|---|
-| База | обирається за `BDO_ENV`; production · `https://bdo-ua.com.ua/api/agent/v1`, зашита в `select-env.sh` |
+| База | обирається за `BDO_ENV`; production · `https://bdo-ua.com.ua/api/agent/v1`, зашита в `cli/system/select-env.sh` |
 | Автентифікація | заголовок `X-API-Key: <ключ>` |
 | Формат | JSON; відповідь у конверті `data` / `meta` / `error` |
 | Ліміти | 120 запитів/хв; денна квота ЗАПИСАНИХ рядків · з `GET /me` |
-| Середовище | одна константа `BDO_ENV=PROD|DEV`, див. [PROJECT_OVERVIEW.md](PROJECT_OVERVIEW.md) |
+| Середовище | одна константа `BDO_ENV=PROD\|DEV`, див. [PROJECT_OVERVIEW.md](PROJECT_OVERVIEW.md) |
 
 Розбір конверта · `Bdo\Translate\Api\Response`, підказки за кодами помилок ·
 `Bdo\Translate\Api\ErrorCodes`. Свій `curl` в обхід штатних команд заборонений:
@@ -133,7 +133,7 @@ resolve по кожному терміну пачки сам, включно з 
 | Канал | `layer` | `mode` | `auto_approve` | Куди потрапляє |
 |---|---|---|---|---|
 | `machine` | `machine` | `direct` | `true` | ШІ-шар напряму |
-| `manual` | `manual` | `proposal` | `true` | пропозиція; схвалюється, якщо роль дозволяє |
+| `manual` | `manual` | `proposal` | `true` | чистий рядок: пропозиція, яку сервер схвалює за роллю; проблемний рядок автоматично переходить у канал `proposal` |
 | `proposal` | `manual` | `proposal` | `false` | черга модерації |
 
 `manual + direct` і `machine + proposal` сервер відхиляє. Прямий машинний запис

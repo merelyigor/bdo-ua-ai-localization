@@ -5,33 +5,18 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 readonly ROOT
 readonly CONFIG="$ROOT/opencode.json"
-# GGUF only: Ollama MLX runner ignores constrained decoding, so -mlx models are forbidden.
-readonly ALLOWED_MODELS=('ollama-local/qwen3.6:35b-a3b-mtp-q4_K_M' 'ollama-local/qwen3.5:9b')
 readonly AGENTS=(translation-terminology translation-worker translation-qa translation-repair translation-smoke)
+readonly POLICY="$ROOT/.opencode/translation-models.json"
 
 jq -e . "$CONFIG" >/dev/null
-
-active="$(jq -r '.agent["translation-worker"].model // empty' "$CONFIG")"
-allowed=false
-for model in "${ALLOWED_MODELS[@]}"; do
-    test "$active" = "$model" && allowed=true
-done
-if [ "$allowed" != true ]; then
-    printf 'ERROR: active model %s is not in the allowed list: %s\n' \
-        "$active" "${ALLOWED_MODELS[*]}" >&2
-    exit 1
-fi
-case "$active" in
-*-mlx*)
-    printf 'ERROR: %s is an MLX model; the MLX runner ignores constrained decoding\n' "$active" >&2
-    exit 1
-    ;;
-esac
+php -r 'require $argv[1]; Bdo\Translate\Runtime\ModelPolicy::load($argv[2]);' "$ROOT/lib/autoload.php" "$POLICY"
+active_profile="$(jq -r '.active_profile' "$POLICY")"
 
 for agent in "${AGENTS[@]}"; do
+    active="$(jq -r --arg agent "$agent" --arg profile "$active_profile" '.profiles[$profile].routes[$agent][0] // empty' "$POLICY")"
     configured="$(jq -r --arg agent "$agent" '.agent[$agent].model // empty' "$CONFIG")"
     test "$configured" = "$active" || {
-        printf 'ERROR: %s model %s differs from active model %s\n' "$agent" "$configured" "$active" >&2
+        printf 'ERROR: %s model %s differs from policy model %s\n' "$agent" "$configured" "$active" >&2
         exit 1
     }
     grep -Fqx "model: $active" "$ROOT/.opencode/agents/$agent.md" || {
@@ -57,7 +42,7 @@ for agent in translation-worker translation-repair translation-qa translation-sm
     # дублює та вигадує identity_hash. Виміряно 2026-08-20 на QA-сесії
     # ses_fe11de584ffeLjGxtFaJkIuDzp: 4 виклики `read`, на виході 20 обʼєктів
     # лише з 11 унікальними identity, хоча схема має enum і фіксовану довжину.
-    # Payload передається текстом у промпті (`worker-payload.sh`/`qa-payload.sh`).
+    # Payload передається текстом у промпті (`cli/prepare/worker-payload.sh`/`cli/prepare/qa-payload.sh`).
     # Коментарі всередині блоку пропускаємо: вони пояснюють саме це правило.
     extra="$(sed -n '/^tools:/,/^---$/p' "$ROOT/.opencode/agents/$agent.md" \
         | grep -E '^  ' | grep -v '^  *#' | grep -v '"\*": false' || true)"
@@ -109,29 +94,22 @@ test "$(jq -r '.subagent_depth' "$CONFIG")" = '1' || {
     exit 1
 }
 
-# Only `translation` is selectable, and it is selected by default.
-#
-# Owner decision 2026-08-22: this project has exactly one working flow, so the
-# agent picker must not offer a general-purpose primary at all. `build` and
-# `plan` keep their `permission.task` blocks above on purpose - re-enabling one
-# must not silently restore unrestricted delegation.
-#
-# `default_agent` is mandatory here, not cosmetic: the schema falls back to
-# `build` when it is unset or invalid, and `build` is disabled - so a typo would
-# leave the session with no usable primary.
-test "$(jq -r '.default_agent // empty' "$CONFIG")" = 'translation' || {
-    printf 'ERROR: default_agent must be "translation"\n' >&2
+# Four workflow primaries are selectable; patch is the safe weekly default.
+test "$(jq -r '.default_agent // empty' "$CONFIG")" = 'патч' || {
+    printf 'ERROR: default_agent must be "патч"\n' >&2
     exit 1
 }
-test "$(jq -r '.agent.translation.mode // empty' "$CONFIG")" = 'primary' || {
-    printf 'ERROR: translation must be mode "primary" to serve as default_agent\n' >&2
-    exit 1
-}
+for primary in патч ручний пропозиції покращення; do
+    test "$(jq -r --arg p "$primary" '.agent[$p].mode // empty' "$CONFIG")" = 'primary' || {
+        printf 'ERROR: %s must be mode "primary"\n' "$primary" >&2
+        exit 1
+    }
+done
 for primary in build plan general explore; do
     test "$(jq -r --arg p "$primary" '.agent[$p].disable // empty' "$CONFIG")" = 'true' || {
-        printf 'ERROR: primary agent %s must be disabled; only translation is selectable\n' "$primary" >&2
+        printf 'ERROR: general primary agent %s must be disabled\n' "$primary" >&2
         exit 1
     }
 done
 
-printf 'Translation UI agents: %s is active and consistent across config and frontmatter.\n' "$active"
+printf 'Translation UI agents: profile %s is consistent across policy, config and frontmatter.\n' "$active_profile"

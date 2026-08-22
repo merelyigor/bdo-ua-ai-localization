@@ -4,7 +4,7 @@
 
 `bdo-ua-ai-localization` · окремий публічний клієнтський toolkit для перекладу
 рядків Black Desert Online українською. Він читає й записує дані через BDO UA
-Translate Agent API, запускає локальні GGUF-моделі в Ollama та механічно перевіряє
+Translate Agent API, запускає моделі через OpenCode та механічно перевіряє
 identity, markup і якість до запису.
 
 Toolkit не містить серверної БД, Laravel application, moderation UI або deploy.
@@ -46,11 +46,11 @@ git checkout dac631e -- archive/legacy-script-flow/              # усю тек
 
 `BDO_ENV=PROD|DEV` у локальному `.env` задає середовище для читання й запису
 разом. Перемикання · правка одного рядка: адреси API не в `.env`, а в
-`select-env.sh` (production · публічна константа; DEV дефолта не має, бо це
+`cli/system/select-env.sh` (production · публічна константа; DEV дефолта не має, бо це
 приватна інфраструктура). У `.env` лишаються лише ключі · `BDO_API_KEY_PROD` і
 `BDO_API_KEY_DEV`.
 
-Розвʼязує це `select-env.sh`, і воно ж відмовляє, коли префікс `BDO_API_ENV=`
+Розвʼязує це `cli/system/select-env.sh`, і воно ж відмовляє, коли префікс `BDO_API_ENV=`
 суперечить файлу · щоб частина прогону не поїхала в інше середовище. Показує
 поточну ціль `./bdo env`.
 
@@ -83,7 +83,9 @@ HTTP write, model invocation та state lifecycle мають штатні entryp
   history не перезаписуються.
 - Batch належність перевіряє manifest; cursor рухається після завершення batch.
 - Worker/repair/QA під schema не мають tools; payload передається текстом.
-- Лише allowlisted GGUF; MLX не забезпечує constrained decoding.
+- Маршрути моделей задає `.opencode/translation-models.json`; Ollama MLX не
+  забезпечує constrained decoding, а платні fallback за замовчуванням заборонені.
+- Windows підтримується через WSL2; native PowerShell flow не дублюється.
 - Ціль і дозвіл на запис дає `BDO_ENV`; `run start` фіксує ціль, `commit --write` її звіряє.
 
 ## Локальні дані
@@ -100,6 +102,6 @@ database не є публічними артефактами. Вони не ко
 - `docs` · mirrors, норматив, plans, посилання в усіх документах і промптах, public secret scan;
 - `shell` · Bash/ShellCheck/PHP syntax;
 - `agents` · OpenCode JSON, frontmatter, allowlist, guard;
-- `runtime` · локальна Ollama-модель;
+- `runtime` · локальна Ollama capability-перевірка або інструкція OpenCode smoke;
 - `api` · read-only API smoke проти цілі з `.env`;
 - `full` · усі deterministic local gates без model/API calls.

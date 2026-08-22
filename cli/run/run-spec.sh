@@ -1,0 +1,36 @@
+#!/usr/bin/env bash
+# Керувати immutable RunSpec для чотирьох готових режимів OpenCode.
+#
+#   ./run-spec.sh status patch
+#   ./run-spec.sh plan patch <parent-session-id> [batch-size]
+#
+# Цей скрипт не викликає API та не створює мовних сесій. Він лише формує
+# машинний контракт, який session driver і run engine можуть прийняти без
+# парсингу тексту primary-агента.
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "$0")/../.." && pwd)"
+source "$SCRIPT_DIR/cli/system/select-env.sh"
+
+ACTION="${1:?Потрібно status або plan}"
+MODE="${2:?Потрібен режим patch|manual|proposal|improve}"
+
+case "$ACTION" in
+    status)
+        php -r '
+        require $argv[1];
+        use Bdo\Translate\Pipeline\RunSpec;
+        echo json_encode(["ok" => true, "mode" => $argv[2], "preset" => RunSpec::preset($argv[2])], JSON_UNESCAPED_UNICODE), "\n";
+        ' "$SCRIPT_DIR/lib/autoload.php" "$MODE"
+        ;;
+    plan)
+        PARENT="${3:?plan потребує OpenCode parent session ID}"
+        SIZE="${4:-15}"
+        php -r '
+        require $argv[1];
+        use Bdo\Translate\Pipeline\RunSpec;
+        echo json_encode(["ok" => true, "run_spec" => RunSpec::create($argv[2], $argv[3], $argv[4], (int) $argv[5])->toArray()], JSON_UNESCAPED_UNICODE), "\n";
+        ' "$SCRIPT_DIR/lib/autoload.php" "$MODE" "$BDO_ENV" "$PARENT" "$SIZE"
+        ;;
+    *) echo "Дозволено status або plan." >&2; exit 2 ;;
+esac

@@ -20,7 +20,7 @@ final class WritePayload
     public const PROMPT_VERSION = 'patch-batch-v1';
 
     /**
-     * @param  list<array<string,string>>  $items  вихід build-items.sh
+     * @param  list<array<string,string>>  $items  вихід cli/quality/build-items.sh
      *
      * @throws RuntimeException якщо форма не та
      */
@@ -56,14 +56,14 @@ final class WritePayload
     {
         if ($items === [] || ! array_is_list($items)) {
             throw new RuntimeException(
-                "Вхід має бути НЕПОРОЖНІМ масивом items від build-items.sh, а не обʼєктом.\n"
-                .'Схоже на rows.json? Спочатку ./build-items.sh rows.json candidate.json items.json'
+                "Вхід має бути НЕПОРОЖНІМ масивом items від cli/quality/build-items.sh, а не обʼєктом.\n"
+                .'Схоже на rows.json? Спочатку ./bdo items rows.json candidate.json items.json'
             );
         }
         foreach ($items as $i => $item) {
             foreach (['identity_hash', 'source_hash', 'text'] as $field) {
                 if (! isset($item[$field]) || ! is_string($item[$field]) || trim($item[$field]) === '') {
-                    throw new RuntimeException("Елемент #$i не має поля $field. Це не вихід build-items.sh.");
+                    throw new RuntimeException("Елемент #$i не має поля $field. Це не вихід cli/quality/build-items.sh.");
                 }
             }
         }

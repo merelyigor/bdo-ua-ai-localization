@@ -67,7 +67,7 @@
   `preflight|docs|shell|agents|runtime|api|full` без порожніх заглушок.
 - [x] Перевіряти структуру планів, docs links, rule mirrors, hooks, `.gitignore`,
   `.env.example`, secret patterns, shell syntax і наявні project validators.
-- [x] Залишити сумісний `check-rules.sh` як вузький entrypoint або wrapper без
+- [x] Залишити сумісний `cli/system/check-rules.sh` як вузький entrypoint або wrapper без
   дублювання реалізації.
 - [x] Додати негативні fixture-перевірки, що secret gate справді падає, не
   створюючи tracked чи робочих секретів.

@@ -6,11 +6,8 @@
 #   ./bdo help flow       порядок команд однієї пачки, рядок за рядком
 #   ./bdo <команда> ...    аргументи передаються скрипту без змін
 #
-# Навіщо. Набір · це 40 файлів `*.sh` в одній теці, і агент, який не знайшов
-# штатну команду, писав власну (задокументовано: диригент зібрав items у `php -r`
-# і обійшов гейт identity). Одне дерево команд робить штатний шлях коротшим за
-# саморобний. Файли навмисно НЕ переміщені: на них посилаються промпти й
-# документація, і переміщення · окремий крок із картою перейменувань.
+# Єдиний публічний вхід до категоризованої реалізації в `cli/**`. Низькорівневі
+# скрипти лишаються внутрішніми деталями, тому оператору не треба знати їх шляхи.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")" && pwd)"
@@ -30,7 +27,7 @@ print_header() {
 
 # Запустити скрипт набору, передавши аргументи без змін.
 #
-# Через `bash`, а не напряму: `select-env.sh` навмисно не має біта виконання (він
+# Через `bash`, а не напряму: `cli/system/select-env.sh` навмисно не має біта виконання (він
 # призначений для `source`), і вимагати його тут означало б або зробити файл
 # виконуваним без потреби, або втратити команду `bdo env`.
 #
@@ -55,21 +52,22 @@ sh_run() {
 
 usage() {
     cat <<'TXT'
-bdo · переклад рядків BDO через Agent API і локальні субагенти
+bdo · переклад рядків BDO через Agent API і субагенти OpenCode
 
   ./bdo help flow      порядок команд однієї пачки
   ./bdo help <команда> довідка самого скрипта
 
 ПРОГІН І СЕРЕДОВИЩЕ
   env                  яка ціль стоїть у .env (PROD або DEV)
-  runtime              контракт локального рантайму перед першою пачкою
-  run start|show|end   зафіксувати / показати / зняти ціль прогону
+  runtime              capability gate активної моделі перед першою пачкою
+  platform             macOS, Linux або Windows/WSL2 preflight
+  run start|show|end|drive   зафіксувати / показати / зняти ціль; JSON-крок рушія
+  mode status|start <mode>   preset або наступна пачка: patch|manual|proposal|improve
   gate [профіль]       quality gate: preflight docs shell agents runtime api full
 
 ВИБІРКА Й ПАЧКА
   patch                стан патча: скільки лишилось
   fetch                взяти одну пачку рядків з API
-  batch run            УВЕСЬ цикл однією командою: вибірка -> переклад -> лікування -> запис
   batch new|dir|check|end   тека пачки, її шлях, належність файлів, закриття
   subset               підмножина рядків за identity (для repair)
   show                 показати рядки людині
@@ -80,7 +78,6 @@ bdo · переклад рядків BDO через Agent API і локальн�
   glossary gaps|resolve     прогалини глосарію (ВИРОК) і запит терміна
   schema build|qa|clear|show  staged-схема constrained decoding
   payload worker|qa|terminology  компактний payload для субагента
-  translate worker|qa|repair     виклик локальної моделі з payload із ДИСКА
 
 ПЕРЕВІРКА Й ЛІКУВАННЯ
   normalize            детерміновані виправлення (латинські гомогліфи)
@@ -99,8 +96,8 @@ bdo · переклад рядків BDO через Agent API і локальн�
 ОБСЛУГОВУВАННЯ
   audit                аудит сесій субагентів за базою OpenCode
   audit-dump           повний зріз сесій OpenCode
-  profile              профіль моделі: quality | fast | status
-  models               звірка моделей із провайдером OpenCode
+  profile              моделі за ролями: status|use|set|fallback|paid
+  models               звірка локальних Ollama-моделей із OpenCode
   bench                вимір локальної моделі на реальній пачці
   clean                ротація тек пачок і output/
   paths                що куди вирішилось із розкладкою
@@ -113,27 +110,22 @@ TXT
 
 flow() {
     cat <<'TXT'
-ПЕРЕКЛАД РОБИТЬСЯ В OPENCODE. Ви говорите з агентом `translation`, а він робить
-усю пачку ОДНОЮ командою:
+ПЕРЕКЛАД РОБИТЬСЯ В OPENCODE. Оберіть primary-режим:
 
-  ./bdo batch run 15 "patch=active&missing=machine"
-  ./bdo batch run 15 "missing=machine" --dry           усе, крім запису
-  ./bdo batch run 15 "missing=machine" --channel manual
+  патч          активний патч -> machine
+  ручний        ручний шар; складне -> proposal
+  пропозиції    усе в модерацію
+  покращення    поліпшення наявного machine layer
 
-Усередині, по порядку, з нумерацією кроків і названою причиною зупинки:
-ціль прогону -> вибірка -> тека пачки -> памʼять -> глосарій -> переклад ->
-збірка кандидата -> гейт identity й русизми -> валідація API -> QA ->
-лікування -> repair і контрольний QA -> запис.
-
-Мовний виклик бере payload і схему з ДИСКА, тому «payload не дійшов» неможливий.
+Режим виконує цикл `./bdo mode start <mode>` -> `./bdo run drive` -> справжня
+дочірня сесія OpenCode -> `./bdo run drive`, доки вибірка не поверне нуль.
+Payload читає плагін із state й передає дитині напряму; primary його не бачить.
 
 --- Окремі команди · лише для розбору збою, не для роботи ------------------
 
   ./bdo runtime                                     перед ПЕРШОЮ пачкою прогону
   ./bdo env                                         яка ціль стоїть у .env
   ./bdo payload terminology rows.json               -> @translation-terminology
-  ./bdo translate worker to-translate.json          переклад напряму
-  ./bdo translate qa rows.json clean.json           QA напряму
   ./bdo items rows.json clean.json items.json "" --require-all
   ./bdo validate items.json
   ./bdo heal rows.json clean.json verdicts.json [validate.json]
@@ -156,94 +148,101 @@ case "$group" in
         ;;
 
     # --- прогін і середовище -------------------------------------------------
-    env)      sh_run select-env.sh ;;
-    runtime)  sh_run check-runtime.sh "${@:2}" ;;
+    env)      sh_run cli/system/select-env.sh ;;
+    platform) sh_run cli/system/check-platform.sh ;;
+    runtime)  sh_run cli/runtime/check-runtime.sh "${@:2}" ;;
     gate)     sh_run scripts/agent-check.sh "${@:2}" ;;
     run)
         case "${2:-}" in
-            start) sh_run run-start.sh "${@:3}" ;;
-            show)  sh_run run-start.sh --show ;;
-            end)   sh_run run-start.sh --end ;;
-            *)     die 'run: потрібно start, show або end' ;;
+            start) sh_run cli/run/run-start.sh "${@:3}" ;;
+            show)  sh_run cli/run/run-start.sh --show ;;
+            end)   sh_run cli/run/run-start.sh --end ;;
+            drive) sh_run cli/run/run-drive.sh "${@:3}" ;;
+            *)     die 'run: потрібно start, show, end або drive' ;;
+        esac
+        ;;
+    mode)
+        case "${2:-}" in
+            status) sh_run cli/run/run-spec.sh status "${3:?mode status потребує режим}" ;;
+            start) sh_run cli/run/run-mode.sh "${3:?mode start потребує режим}" "${4:-15}" ;;
+            *) die 'mode: потрібно status або start' ;;
         esac
         ;;
 
     # --- вибірка й пачка -----------------------------------------------------
-    patch)    sh_run patch-info.sh "${@:2}" ;;
-    fetch)    sh_run fetch-rows.sh "${@:2}" ;;
-    subset)   sh_run subset-rows.sh "${@:2}" ;;
-    show)     sh_run show-rows.sh "${@:2}" ;;
-    context)  sh_run row-context.sh "${@:2}" ;;
+    patch)    sh_run cli/api/patch-info.sh "${@:2}" ;;
+    fetch)    sh_run cli/api/fetch-rows.sh "${@:2}" ;;
+    subset)   sh_run cli/batch/subset-rows.sh "${@:2}" ;;
+    show)     sh_run cli/api/show-rows.sh "${@:2}" ;;
+    context)  sh_run cli/api/row-context.sh "${@:2}" ;;
     batch)
         case "${2:-}" in
-            new)   sh_run batch-new.sh "${@:3}" ;;
-            dir)   sh_run batch-dir.sh "${@:3}" ;;
-            check) sh_run batch-assert.sh "${@:3}" ;;
-            end)   sh_run batch-new.sh --end ;;
-            run)   sh_run batch-run.sh "${@:3}" ;;
-            *)     die 'batch: потрібно run, new, dir, check або end' ;;
+            new)   sh_run cli/batch/batch-new.sh "${@:3}" ;;
+            dir)   sh_run cli/batch/batch-dir.sh "${@:3}" ;;
+            check) sh_run cli/batch/batch-assert.sh "${@:3}" ;;
+            end)   sh_run cli/batch/batch-new.sh --end ;;
+            *)     die 'batch: потрібно new, dir, check або end' ;;
         esac
         ;;
 
     # --- підготовка пачки ----------------------------------------------------
     memory)
         case "${2:-}" in
-            find)   sh_run memory-lookup.sh "${@:3}" ;;
-            apply)  sh_run memory-apply.sh "${@:3}" ;;
-            expand) sh_run memory-expand.sh "${@:3}" ;;
+            find)   sh_run cli/prepare/memory-lookup.sh "${@:3}" ;;
+            apply)  sh_run cli/prepare/memory-apply.sh "${@:3}" ;;
+            expand) sh_run cli/prepare/memory-expand.sh "${@:3}" ;;
             *)      die 'memory: потрібно find, apply або expand' ;;
         esac
         ;;
     glossary)
         case "${2:-}" in
-            gaps)    sh_run glossary-gaps.sh "${@:3}" ;;
-            resolve) sh_run glossary-resolve.sh "${@:3}" ;;
+            gaps)    sh_run cli/prepare/glossary-gaps.sh "${@:3}" ;;
+            resolve) sh_run cli/api/glossary-resolve.sh "${@:3}" ;;
             *)       die 'glossary: потрібно gaps або resolve' ;;
         esac
         ;;
     schema)
         case "${2:-}" in
-            build) sh_run build-schema.sh "${@:3}" ;;
-            qa)    sh_run build-schema.sh --qa "${@:3}" ;;
-            clear) sh_run build-schema.sh --clear ;;
-            show)  sh_run build-schema.sh --show ;;
+            build) sh_run cli/prepare/build-schema.sh "${@:3}" ;;
+            qa)    sh_run cli/prepare/build-schema.sh --qa "${@:3}" ;;
+            clear) sh_run cli/prepare/build-schema.sh --clear ;;
+            show)  sh_run cli/prepare/build-schema.sh --show ;;
             *)     die 'schema: потрібно build, qa, clear або show' ;;
         esac
         ;;
-    translate)  sh_run translate.sh "${@:2}" ;;
     payload)
         case "${2:-}" in
-            worker)      sh_run worker-payload.sh "${@:3}" ;;
-            qa)          sh_run qa-payload.sh "${@:3}" ;;
-            terminology) sh_run terminology-payload.sh "${@:3}" ;;
+            worker)      sh_run cli/prepare/worker-payload.sh "${@:3}" ;;
+            qa)          sh_run cli/prepare/qa-payload.sh "${@:3}" ;;
+            terminology) sh_run cli/prepare/terminology-payload.sh "${@:3}" ;;
             *)           die 'payload: потрібно worker, qa або terminology' ;;
         esac
         ;;
 
     # --- перевірка й лікування ----------------------------------------------
-    normalize)   sh_run normalize-candidate.sh "${@:2}" ;;
-    items)       sh_run build-items.sh "${@:2}" ;;
-    russianisms) sh_run check-russianisms.sh "${@:2}" ;;
-    validate)    sh_run validate.sh "${@:2}" ;;
-    heal)        sh_run heal-plan.sh "${@:2}" ;;
-    qa-fixes)    sh_run qa-fixes.sh "${@:2}" ;;
-    merge)       sh_run merge-items.sh "${@:2}" ;;
+    normalize)   sh_run cli/quality/normalize-candidate.sh "${@:2}" ;;
+    items)       sh_run cli/quality/build-items.sh "${@:2}" ;;
+    russianisms) sh_run cli/quality/check-russianisms.sh "${@:2}" ;;
+    validate)    sh_run cli/api/validate.sh "${@:2}" ;;
+    heal)        sh_run cli/heal/heal-plan.sh "${@:2}" ;;
+    qa-fixes)    sh_run cli/quality/qa-fixes.sh "${@:2}" ;;
+    merge)       sh_run cli/quality/merge-items.sh "${@:2}" ;;
 
     # --- завершення ----------------------------------------------------------
-    commit)     sh_run batch-commit.sh "${@:2}" ;;
-    write)      sh_run write-translations.sh "${@:2}" ;;
-    moderation) sh_run moderation-queue.sh "${@:2}" ;;
+    commit)     sh_run cli/batch/batch-commit.sh "${@:2}" ;;
+    write)      sh_run cli/write/write-translations.sh "${@:2}" ;;
+    moderation) sh_run cli/write/moderation-queue.sh "${@:2}" ;;
 
     # --- обслуговування ------------------------------------------------------
-    audit)      sh_run verify-run.sh "${@:2}" ;;
-    audit-dump) sh_run audit-dump.sh "${@:2}" ;;
-    profile)    sh_run set-translation-profile.sh "${@:2}" ;;
-    models)     sh_run sync-opencode-models.sh "${@:2}" ;;
-    bench)      sh_run model-ab.sh "${@:2}" ;;
-    clean)      sh_run batch-clean.sh "${@:2}" ;;
-    paths)      sh_run paths.sh "${@:2}" ;;
-    api)        sh_run test-api.sh "${@:2}" ;;
-    docker)     sh_run run-in-docker.sh "${@:2}" ;;
+    audit)      sh_run cli/audit/verify-run.sh "${@:2}" ;;
+    audit-dump) sh_run cli/audit/audit-dump.sh "${@:2}" ;;
+    profile)    sh_run cli/runtime/set-translation-profile.sh "${@:2}" ;;
+    models)     sh_run cli/runtime/sync-opencode-models.sh "${@:2}" ;;
+    bench)      sh_run cli/runtime/model-ab.sh "${@:2}" ;;
+    clean)      sh_run cli/batch/batch-clean.sh "${@:2}" ;;
+    paths)      sh_run cli/system/paths.sh "${@:2}" ;;
+    api)        sh_run cli/api/test-api.sh "${@:2}" ;;
+    docker)     sh_run cli/system/run-in-docker.sh "${@:2}" ;;
 
     *) die "невідома команда '$group'. Дерево команд · ./bdo" ;;
 esac

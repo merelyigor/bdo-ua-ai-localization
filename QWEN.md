@@ -63,15 +63,14 @@ Black Desert Online через BDO UA Translate Agent API. Тут немає с�
   а вміст усередині перекладається, коли теґа немає в `keep` (`[Титул]`, не
   `[Title]`). Підстановка згадок · лише для предметів.
 - Субагентам під constrained schema заборонені всі tools; payload передається
-  текстом. Лише GGUF-моделі з allowlist; MLX заборонений.
-- **Переклад робиться В OPENCODE**, агентом `translation`, і ніде інде. Це не
-  стильова деталь: власник працює саме там, і будь-який інший вхід є помилкою.
-- **Диригент виконує пачку однією командою `./bdo batch run`.** Він НЕ передає
-  payload у субагента текстом: на цьому чотири прогони підряд дали нуль
-  записаних рядків (303-361 символ замість 45-57 КБ). Послідовність пачки живе
-  в коді, не в промпті.
-- Мовний виклик усередині бере payload і схему з диска (`translate.sh`), тому
-  стан «payload не дійшов» неможливий за побудовою.
+  текстом. Маршрути бере `.opencode/translation-models.json`; Ollama MLX
+  заборонений, платні маршрути · лише з явним `allow_paid` у профілі.
+- **Переклад робиться В OPENCODE** в одному з primary-режимів `патч`,
+  `ручний`, `пропозиції`, `покращення`. Іншого входу немає.
+- Диригент повторює машинний цикл `./bdo mode start` -> `./bdo run drive` ->
+  `translation_child`. Payload читає плагін зі `state/` і передає справжній
+  дочірній сесії напряму; primary payload не бачить і текст не виправляє.
+- Прямий мовний runner і production fallback в Ollama заборонені.
 - Повністю скриптовий flow без чату ВИДАЛЕНО 2026-08-22; відновлення · з коміта
   `dac631e`. Не відтворювати його й не пропонувати як альтернативу.
 
@@ -117,8 +116,8 @@ Black Desert Online через BDO UA Translate Agent API. Тут немає с�
 ./bdo gate full
 ```
 
-`runtime` викликає локальну модель, `api` робить read-only API smoke. `full` не
-викликає зовнішні runtime/API gates. Ніколи не заявляй успіх без exit 0; недоступну
+`runtime` викликає локальну модель; зовнішню перевіряє власник child smoke у
+OpenCode. `api` робить read-only API smoke. `full` не викликає зовнішні gates. Ніколи не заявляй успіх без exit 0; недоступну
 перевірку назви окремо з причиною та ризиком. Гейт не пише в API, не деплоїть,
 не видаляє state і не змінює Git.
 
@@ -132,12 +131,13 @@ Black Desert Online через BDO UA Translate Agent API. Тут немає с�
 | Робочий translation flow | `UI_SUBAGENT_WORKFLOW.md`, `docs/FLOW_STATE.md` |
 | Ендпоінти API і контракт запису | `docs/API.md`, `API_WRITE_CONTRACT.md` |
 | Промпти/guard/allowlist | `.opencode/agents/`, `.opencode/plugin/`, `.opencode/validate-translation-agents.sh` |
-| Ціль прогону та layout | `.env.example`, `select-env.sh`, `paths.sh` |
+| Ціль прогону та layout | `.env.example`, `cli/system/select-env.sh`, `cli/system/paths.sh` |
 | Планування | `docs/plans/README.md`, `docs/plans/BACKLOG.md` |
 | Єдиний gate | `scripts/agent-check.sh` |
 | Видалений скриптовий flow | коміт `dac631e`, історія · `docs/FLOW_STATE.md` |
 
-- Стек: Bash, PHP CLI 8.3+, jq, curl, Ollama GGUF, опційно OpenCode.
+- Стек: Bash, PHP CLI 8.3+, jq, curl, OpenCode; Ollama GGUF або інший
+  OpenCode-provider за model policy. Windows підтримується через WSL2.
 - Shell є transport/orchestration; PHP у `lib/` тримає identity і quality logic.
 - HTTP лише через штатні helpers; ad-hoc запис або власний model runner заборонені.
 - Стан пачок ізольований manifest-ом; cursor рухається лише після завершення пачки.

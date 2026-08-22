@@ -41,9 +41,7 @@
 
 ### У роботі (`active/`)
 
-| План | Створено | Прогрес | Відомі зовнішні gates |
-|---|---|---|---|
-| [2026-08-21_PIPELINE_ENGINE_AND_REPO_STRUCTURE.md](active/2026-08-21_PIPELINE_ENGINE_AND_REPO_STRUCTURE.md) · рушій пачки як машина станів, `bdo` як єдиний вхід, структура `cli/**`, документація за призначенням | 2026-08-21 | етапи 0 і 1 готові 2026-08-22 | Етапи 2-4 потребують еталонного прогону на живих рядках для порівняння байт-у-байт. |
+Активних планів немає.
 
 ### Не починалися (`backlog/`)
 
@@ -55,4 +53,7 @@
 
 | План | Закрито | Відомі зовнішні gates |
 |---|---|---|
+| [2026-08-22_WSL2_AND_MODEL_ROUTING.md](done/2026-08-22_WSL2_AND_MODEL_ROUTING.md) · один flow для WSL2 та provider-neutral профілі субагентів | 2026-08-22 | OpenCode smoke потрібен один раз для кожного нового зовнішнього provider/model. |
+| [2026-08-22_UNATTENDED_OPENCODE_TRANSLATION_SYSTEM.md](done/2026-08-22_UNATTENDED_OPENCODE_TRANSLATION_SYSTEM.md) · українські режими OpenCode, child sessions, retry/resume, idempotent PROD write | 2026-08-22 | Live patch acceptance: 1/1 записано в `machine`, manifest `verified`; сім gates exit 0. |
+| [2026-08-21_PIPELINE_ENGINE_AND_REPO_STRUCTURE.md](done/2026-08-21_PIPELINE_ENGINE_AND_REPO_STRUCTURE.md) · машина станів, `bdo`, масштабована структура `cli/**` | 2026-08-22 | Root `*.sh`: 0; shell gate перевірив 47 файлів і 10 категорій. |
 | [2026-08-21_PUBLIC_REPOSITORY_RULES_AND_DOCUMENTATION.md](done/2026-08-21_PUBLIC_REPOSITORY_RULES_AND_DOCUMENTATION.md) · правила, публічна безпека, документація, планування й quality gate | 2026-08-21 | Local Agent API `/me` повернув HTTP 401; потрібен чинний local key у приватному `.env` для повторного read-only smoke. |

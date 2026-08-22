@@ -1,0 +1,47 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Bdo\Translate\Pipeline;
+
+use RuntimeException;
+
+final class StateMachine
+{
+    /** @var array<string,list<string>> */
+    private const TRANSITIONS = [
+        'selected' => ['prepared', 'paused', 'failed_terminal'],
+        'prepared' => ['awaiting_worker', 'paused', 'failed_terminal'],
+        'awaiting_worker' => ['candidate_valid', 'retry_scheduled', 'waiting_dependency', 'paused', 'failed_terminal'],
+        'candidate_valid' => ['deterministic_valid', 'retry_scheduled', 'failed_terminal'],
+        'deterministic_valid' => ['awaiting_qa', 'waiting_dependency', 'failed_terminal'],
+        'awaiting_qa' => ['qa_valid', 'retry_scheduled', 'waiting_dependency', 'paused', 'failed_terminal'],
+        'qa_valid' => ['healing', 'ready_to_commit', 'failed_terminal'],
+        'healing' => ['awaiting_control_qa', 'ready_to_commit', 'retry_scheduled', 'waiting_dependency', 'failed_terminal'],
+        'awaiting_control_qa' => ['ready_to_commit', 'retry_scheduled', 'waiting_dependency', 'failed_terminal'],
+        'ready_to_commit' => ['committing', 'waiting_dependency', 'failed_terminal'],
+        'committing' => ['committed', 'waiting_dependency', 'failed_terminal'],
+        'committed' => ['verified', 'waiting_dependency', 'failed_terminal'],
+        'waiting_dependency' => ['retry_scheduled', 'paused', 'failed_terminal'],
+        'retry_scheduled' => ['awaiting_worker', 'awaiting_qa', 'healing', 'awaiting_control_qa', 'ready_to_commit', 'waiting_dependency', 'failed_terminal'],
+        'paused' => ['retry_scheduled', 'failed_terminal'],
+        'verified' => [],
+        'failed_terminal' => [],
+    ];
+
+    public static function assertTransition(string $from, string $to): void
+    {
+        if (! array_key_exists($from, self::TRANSITIONS)) {
+            throw new RuntimeException("Невідомий поточний стан пачки: $from");
+        }
+        if (! in_array($to, self::TRANSITIONS[$from], true)) {
+            throw new RuntimeException("Заборонений перехід стану: $from -> $to");
+        }
+    }
+
+    /** @return list<string> */
+    public static function states(): array
+    {
+        return array_keys(self::TRANSITIONS);
+    }
+}

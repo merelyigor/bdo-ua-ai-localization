@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Bdo\Translate\Batch;
 
+use Bdo\Translate\Pipeline\StateMachine;
 use RuntimeException;
 
 /**
@@ -29,6 +30,10 @@ final class Workspace
 
     private const MANIFEST = 'manifest.json';
 
+    private const JOURNAL = 'journal.jsonl';
+
+    private const LOCK = 'manifest.lock';
+
     private function __construct(
         private readonly string $stateDir,
         private readonly string $id,
@@ -50,12 +55,17 @@ final class Workspace
         if (! is_dir($dir) && ! mkdir($dir, 0o755, true) && ! is_dir($dir)) {
             throw new RuntimeException("Не вдалося створити теку пачки: $dir");
         }
-        file_put_contents($workspace->path(self::MANIFEST), json_encode([
+        $workspace->writeManifest([
             'id' => $id,
             'identity_key' => $rows->key(),
             'rows' => count($rows),
             'created_at' => $stamp,
-        ], JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT));
+            'state' => 'selected',
+            'steps' => [],
+            'attempts' => [],
+            'artifacts' => [],
+            'write_receipt' => null,
+        ]);
         file_put_contents($stateDir.'/'.self::POINTER, $id."\n");
 
         return $workspace;
@@ -88,7 +98,7 @@ final class Workspace
         $current = self::current($stateDir);
         if ($current === null) {
             throw new RuntimeException(
-                "Пачку не розпочато. Спочатку: ./batch-new.sh rows.json\n"
+                "Пачку не розпочато. Спочатку: ./bdo batch new rows.json\n"
                 .'Без цього робочі файли не мають куди лягти, не змішавшись із чужими.'
             );
         }
@@ -124,8 +134,132 @@ final class Workspace
             throw new RuntimeException("Пачка $this->id не має manifest.json");
         }
         $manifest = json_decode((string) file_get_contents($path), true);
+        if (! is_array($manifest)) {
+            throw new RuntimeException("Пошкоджений manifest пачки $this->id. Він не перезаписується автоматично.");
+        }
 
-        return is_array($manifest) ? $manifest : [];
+        return $manifest;
+    }
+
+    /**
+     * Атомарно оновити manifest і зафіксувати подію в append-only journal.
+     *
+     * @param callable(array<string,mixed>):array<string,mixed> $mutate
+     * @return array<string,mixed>
+     */
+    public function updateManifest(callable $mutate, string $event): array
+    {
+        $lockPath = $this->path(self::LOCK);
+        $lock = fopen($lockPath, 'c+b');
+        if ($lock === false || ! flock($lock, LOCK_EX)) {
+            throw new RuntimeException("Не вдалося взяти lock manifest пачки $this->id.");
+        }
+
+        try {
+            $before = $this->manifest();
+            $after = $mutate($before);
+            if (! is_array($after)) {
+                throw new RuntimeException('Оновлення manifest має повертати масив.');
+            }
+            $after['updated_at'] = gmdate('c');
+            $this->writeManifest($after);
+            $this->appendJournal($event, $after);
+
+            return $after;
+        } finally {
+            flock($lock, LOCK_UN);
+            fclose($lock);
+        }
+    }
+
+    /** Позначити детермінований або model step завершеним рівно один раз. */
+    public function completeStep(string $name, string $artifact, string $sha256, array $counts = []): array
+    {
+        return $this->updateManifest(static function (array $manifest) use ($name, $artifact, $sha256, $counts): array {
+            $steps = is_array($manifest['steps'] ?? null) ? $manifest['steps'] : [];
+            if (isset($steps[$name])) {
+                $existing = $steps[$name];
+                if (($existing['sha256'] ?? null) !== $sha256) {
+                    throw new RuntimeException("Крок $name вже завершений іншим artifact; повтор заборонений.");
+                }
+
+                return $manifest;
+            }
+            $steps[$name] = [
+                'at' => gmdate('c'),
+                'artifact' => $artifact,
+                'sha256' => $sha256,
+                'counts' => $counts,
+            ];
+            $manifest['steps'] = $steps;
+            $manifest['artifacts'][$name] = ['path' => $artifact, 'sha256' => $sha256];
+
+            return $manifest;
+        }, 'step_completed:'.$name);
+    }
+
+    /** Збільшити лічильник спроб ролі без втрати попереднього стану. */
+    public function incrementAttempt(string $role): array
+    {
+        return $this->updateManifest(static function (array $manifest) use ($role): array {
+            $attempts = is_array($manifest['attempts'] ?? null) ? $manifest['attempts'] : [];
+            $attempts[$role] = (int) ($attempts[$role] ?? 0) + 1;
+            $manifest['attempts'] = $attempts;
+
+            return $manifest;
+        }, 'attempt:'.$role);
+    }
+
+    public function transition(string $state): array
+    {
+        return $this->updateManifest(static function (array $manifest) use ($state): array {
+            StateMachine::assertTransition((string) ($manifest['state'] ?? 'selected'), $state);
+            $manifest['state'] = $state;
+
+            return $manifest;
+        }, 'state:'.$state);
+    }
+
+    public function recordFailure(string $role, string $code, string $detail, int $retryAt): array
+    {
+        return $this->updateManifest(static function (array $manifest) use ($role, $code, $detail, $retryAt): array {
+            $failures = is_array($manifest['failures'] ?? null) ? $manifest['failures'] : [];
+            $failures[] = [
+                'at' => gmdate('c'),
+                'role' => $role,
+                'code' => $code,
+                'detail' => $detail,
+                'retry_at' => gmdate('c', $retryAt),
+            ];
+            $manifest['failures'] = $failures;
+            $manifest['retry'] = ['role' => $role, 'at' => $retryAt];
+
+            return $manifest;
+        }, 'failure:'.$role.':'.$code);
+    }
+
+    private function writeManifest(array $manifest): void
+    {
+        $path = $this->path(self::MANIFEST);
+        $tmp = $path.'.tmp.'.bin2hex(random_bytes(6));
+        $json = json_encode($manifest, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT | JSON_THROW_ON_ERROR);
+        if (file_put_contents($tmp, $json."\n", LOCK_EX) === false || ! rename($tmp, $path)) {
+            @unlink($tmp);
+            throw new RuntimeException("Не вдалося атомарно записати manifest пачки $this->id.");
+        }
+    }
+
+    /** @param array<string,mixed> $manifest */
+    private function appendJournal(string $event, array $manifest): void
+    {
+        $record = json_encode([
+            'at' => gmdate('c'),
+            'event' => $event,
+            'state' => $manifest['state'] ?? null,
+        ], JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+        if (file_put_contents($this->path(self::JOURNAL), $record."\n", FILE_APPEND | LOCK_EX) === false) {
+            throw new RuntimeException("Не вдалося записати journal пачки $this->id.");
+        }
     }
 
     /**
@@ -140,7 +274,7 @@ final class Workspace
             throw new RuntimeException(
                 "Ці рядки не належать поточній пачці $this->id.\n"
                 ."Очікували набір $expected, отримали {$rows->key()}.\n"
-                .'Або передано чужий rows.json, або пачку треба почати заново: ./batch-new.sh'
+                .'Або передано чужий rows.json, або пачку треба почати заново: ./bdo batch new'
             );
         }
     }

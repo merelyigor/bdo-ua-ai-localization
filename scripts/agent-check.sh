@@ -64,22 +64,24 @@ check_rules() {
         || fail 'у .opencode/critical-rules.md немає правила про push'
     grep -Fq '§4.2 `git push` виконує ВИКЛЮЧНО власник' "$RULE_REFERENCE" \
         || fail "у $RULE_REFERENCE немає §4.2 про push"
-    # Переклад робиться в OpenCode, і пачка виконується ОДНОЮ командою.
+    # Переклад робиться в OpenCode через готові primary-режими.
     # Це не стилістика: передавання payload у субагента текстом дало чотири
     # прогони підряд із нулем записаних рядків. Правило не має права зникнути з
     # промпта диригента при наступному переписуванні.
     grep -Fq 'ПЕРЕКЛАД РОБИТЬСЯ В OPENCODE' bdo \
         || fail 'у `bdo help flow` немає рядка «ПЕРЕКЛАД РОБИТЬСЯ В OPENCODE»'
-    grep -Fq './bdo batch run' .opencode/agents/translation.md \
-        || fail 'промпт диригента не вказує виконувати пачку через `./bdo batch run`'
-    grep -Fq 'НЕ викликай `@translation-worker`' .opencode/agents/translation.md \
-        || fail 'промпт диригента не забороняє ручний виклик worker/qa/repair'
+    local primary
+    for primary in патч ручний пропозиції покращення; do
+        test -f ".opencode/agents/$primary.md" || fail "немає primary-режиму $primary"
+        grep -Fq './bdo run drive' ".opencode/agents/$primary.md" \
+            || fail "$primary не використовує run drive"
+    done
     grep -Fq 'Переклад робиться В OPENCODE' .opencode/critical-rules.md \
         || fail 'у critical-rules.md немає правила «переклад робиться в OpenCode»'
     grep -Fq 'Переклад робиться В OPENCODE' AGENTS.md \
         || fail 'у AGENTS.md немає правила «переклад робиться в OpenCode»'
     note "4 дзеркала ідентичні; AGENTS.md: $lines/$RULE_MAP_MAX_LINES рядків"
-    note 'правило «переклад в OpenCode однією командою» присутнє в промпті, правилах і help flow'
+    note 'чотири OpenCode-режими та run drive присутні в prompts, правилах і help flow'
     note 'правило про push присутнє в карті, критичних правилах і нормативі'
 }
 
@@ -186,8 +188,8 @@ check_env_contract() {
     grep -Eq '^BDO_API_KEY_PROD=$' .env.example || fail '.env.example не має порожнього BDO_API_KEY_PROD'
     # Адреса production живе в коді, а не в шаблоні: константа, розмножена по
     # копіях `.env`, розходиться від описки, і жодна перевірка цього не бачить.
-    grep -Eq "^readonly BDO_API_BASE_PROD_DEFAULT=" select-env.sh \
-        || fail 'select-env.sh не має дефолта BDO_API_BASE_PROD_DEFAULT'
+    grep -Eq "^readonly BDO_API_BASE_PROD_DEFAULT=" cli/system/select-env.sh \
+        || fail 'cli/system/select-env.sh не має дефолта BDO_API_BASE_PROD_DEFAULT'
     if grep -Eq '^[[:space:]]*BDO_API_BASE(_PROD|_DEV)?=' .env.example; then
         fail '.env.example задає адресу API активним рядком · вона мусить бути прикладом у комментарі'
     fi
@@ -252,6 +254,15 @@ check_docs() {
 }
 
 check_shell() {
+    step 'CLI layout'
+    local root_shells
+    root_shells="$(find . -maxdepth 1 -type f -name '*.sh' -print)"
+    test -z "$root_shells" || fail "Bash-скрипти лишилися в корені: $root_shells"
+    for dir in api batch prepare quality heal write run runtime audit system; do
+        test -d "cli/$dir" || fail "немає cli/$dir"
+    done
+    note 'root *.sh: 0; cli/** категорії: 10'
+
     step 'Bash syntax'
     local file count=0
     while IFS= read -r file; do
@@ -279,6 +290,10 @@ check_shell() {
         case "$file" in *.php) php -l "$file" >/dev/null || fail "php -l: $file"; count=$((count + 1)) ;; esac
     done < <(public_files)
     note "php -l: $count файлів"
+
+    step 'Pipeline unit contracts'
+    run php tests/pipeline-unit.php
+    run php tests/pipeline-faults.php
 }
 
 check_agents() {
@@ -286,12 +301,14 @@ check_agents() {
     have jq || fail 'jq недоступний'
     jq -e . opencode.json >/dev/null || fail 'opencode.json невалідний JSON'
     run bash .opencode/validate-translation-agents.sh
+    run node --experimental-strip-types tests/routing-guard.mjs
+    run node --experimental-strip-types tests/session-driver.mjs
 }
 
-check_runtime() { run ./check-runtime.sh; }
+check_runtime() { run ./bdo runtime; }
 # Ціль НЕ підставляється: її задає BDO_ENV у `.env`, і нав'язати тут `local`
 # означало б показати результат не того середовища, у якому працює прогін.
-check_api() { run ./test-api.sh; }
+check_api() { run ./bdo api; }
 
 report_preflight() {
     step 'Стан робочого дерева'
@@ -303,12 +320,13 @@ report_preflight() {
     for tool in git bash php jq curl shellcheck perl; do
         if have "$tool"; then note "OK $tool"; else note "ВІДСУТНІЙ $tool"; fi
     done
-    run ./paths.sh
+    run ./bdo paths
+    run ./bdo platform
     # Ціль прогону першою: агент, який не знає середовища, або питає власника
     # про те, що написано у файлі, або йде в чуже. Ключ тут не друкується.
     step 'Ціль прогону'
     if [ -f .env ] || [ -n "${TRANSLATE_ENV_FILE:-}" ]; then
-        bash ./select-env.sh 2>&1 >/dev/null | sed 's/^/   /'
+        bash ./cli/system/select-env.sh 2>&1 >/dev/null | sed 's/^/   /'
     else
         note 'немає .env · скопіюй .env.example і задай BDO_ENV, BDO_API_BASE, BDO_API_KEY'
     fi
