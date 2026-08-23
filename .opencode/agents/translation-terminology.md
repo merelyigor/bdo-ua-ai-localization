@@ -1,7 +1,7 @@
 ---
 description: Пропонує українські відповідники для невідомих термінів BDO
 mode: subagent
-model: opencode/x-preview-f-free
+model: opencode/mimo-v2.5-free
 temperature: 0.05
 permission:
   bash: deny

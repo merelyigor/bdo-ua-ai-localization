@@ -148,7 +148,9 @@ case "$group" in
         ;;
 
     # --- прогін і середовище -------------------------------------------------
-    env)      sh_run cli/system/select-env.sh; sh_run cli/runtime/set-translation-profile.sh env ;;
+    # `sh_run` використовує exec для односкриптових команд, тому тут потрібні
+    # два звичайні виклики: спочатку ціль/API, потім синхронізація child-моделі.
+    env)      bash "$ROOT/cli/system/select-env.sh"; bash "$ROOT/cli/runtime/set-translation-profile.sh" env ;;
     platform) sh_run cli/system/check-platform.sh ;;
     runtime)  sh_run cli/runtime/check-runtime.sh "${@:2}" ;;
     smoke)    sh_run cli/runtime/prepare-smoke.sh ;;

@@ -1,7 +1,7 @@
 ---
 description: Виправляє лише дефектні переклади після QA або validation
 mode: subagent
-model: opencode/x-preview-f-free
+model: opencode/mimo-v2.5-free
 temperature: 0.05
 permission:
   bash: deny

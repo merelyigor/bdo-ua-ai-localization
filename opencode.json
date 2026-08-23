@@ -48,23 +48,23 @@
         },
         "translation-terminology": {
             "mode": "subagent",
-            "model": "opencode/x-preview-f-free"
+            "model": "opencode/mimo-v2.5-free"
         },
         "translation-worker": {
             "mode": "subagent",
-            "model": "opencode/x-preview-f-free"
+            "model": "opencode/mimo-v2.5-free"
         },
         "translation-qa": {
             "mode": "subagent",
-            "model": "opencode/x-preview-f-free"
+            "model": "opencode/mimo-v2.5-free"
         },
         "translation-repair": {
             "mode": "subagent",
-            "model": "opencode/x-preview-f-free"
+            "model": "opencode/mimo-v2.5-free"
         },
         "translation-smoke": {
             "mode": "subagent",
-            "model": "opencode/x-preview-f-free"
+            "model": "opencode/mimo-v2.5-free"
         },
         "патч": {
             "mode": "primary",

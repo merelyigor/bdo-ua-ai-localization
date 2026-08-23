@@ -1,7 +1,7 @@
 ---
 description: Мінімально перевіряє запуск субагента активного профілю
 mode: subagent
-model: opencode/x-preview-f-free
+model: opencode/mimo-v2.5-free
 temperature: 0
 steps: 1
 permission:

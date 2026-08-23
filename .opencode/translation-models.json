@@ -82,19 +82,19 @@
             "allow_paid": false,
             "routes": {
                 "translation-terminology": [
-                    "opencode/x-preview-f-free"
+                    "opencode/mimo-v2.5-free"
                 ],
                 "translation-worker": [
-                    "opencode/x-preview-f-free"
+                    "opencode/mimo-v2.5-free"
                 ],
                 "translation-qa": [
-                    "opencode/x-preview-f-free"
+                    "opencode/mimo-v2.5-free"
                 ],
                 "translation-repair": [
-                    "opencode/x-preview-f-free"
+                    "opencode/mimo-v2.5-free"
                 ],
                 "translation-smoke": [
-                    "opencode/x-preview-f-free"
+                    "opencode/mimo-v2.5-free"
                 ]
             },
             "paid_routes": [],
