@@ -103,7 +103,6 @@ bdo · переклад рядків BDO через Agent API і субаген�
   clean                ротація тек пачок і output/
   paths                що куди вирішилось із розкладкою
   api                  read-only smoke Agent API
-  docker               запуск команди в контейнері проєкту
 
 Скриптовий флоу без чату видалено 2026-08-22 · історія в коміті dac631e
 TXT
@@ -244,7 +243,6 @@ case "$group" in
     clean)      sh_run cli/batch/batch-clean.sh "${@:2}" ;;
     paths)      sh_run cli/system/paths.sh "${@:2}" ;;
     api)        sh_run cli/api/test-api.sh "${@:2}" ;;
-    docker)     sh_run cli/system/run-in-docker.sh "${@:2}" ;;
 
     *) die "невідома команда '$group'. Дерево команд · ./bdo" ;;
 esac

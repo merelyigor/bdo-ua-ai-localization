@@ -46,6 +46,10 @@
   власнику як Task children. Hidden driver і circuit-команди видалено; production
   boundary тепер лише native OpenCode Task, результат якого атомарно приймає
   `translation_result`. Історія вище пояснює відхилену реалізацію, не чинний flow.
+- Обхід native Task заблоковано runtime: `translation-execution-guard` приймає
+  лише `bash`, `read`, `task`, `translation_result`, а в Bash - лише фіксовані
+  одиночні команди `./bdo`.
+  `opencode run`, SDK/HTTP, MCP shell, pipes, chaining і substitutions недоступні.
 
 Робочий журнал напряму. Оновлювати після кожного суттєвого кроку.
 Дата останнього оновлення: 2026-08-22.
@@ -1228,3 +1232,16 @@ repair не дав придатних правок, контрольний QA н
 пропускає ні чужий хеш, ні порожній текст, тому спровокувати цей стан синтетично
 не вдалося). Це захист другого рубежу, і його ціна · один зайвий виклик
 `cli/quality/build-items.sh`.
+
+## Уточнення каналів і режиму покращення (2026-08-23)
+
+- `manual` надсилає якісний рядок як `layer=manual, mode=proposal,
+  auto_approve=true`. Це запит, а не гарантія: сервер схвалює лише за дозволом
+  API-ключа; без нього всі такі рядки лишаються в черзі. Проблемний рядок завжди
+  надсилається через `proposal` з `auto_approve=false`.
+- `proposal` завжди використовує `auto_approve=false`, навіть якщо ключ має
+  право схвалення.
+- `improve` використовує затверджений manual-шар як translation memory, а
+  поточний machine-текст передає worker окремим полем `current`. Старий machine
+  не додається до lookup: інакше точний збіг закрив би рядок до оцінки worker.
+  Worker змінює `current` лише за наявності суттєво кращого варіанта.

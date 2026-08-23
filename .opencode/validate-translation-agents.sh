@@ -18,6 +18,10 @@ test -f "$ROOT/.opencode/plugin/translation-result-writer.ts" || {
     echo 'ERROR: native Task results need the atomic result writer' >&2
     exit 1
 }
+test -f "$ROOT/.opencode/plugin/translation-execution-guard.ts" || {
+    echo 'ERROR: native Task flow requires the shell execution guard' >&2
+    exit 1
+}
 active_profile="$(jq -r '.active_profile' "$POLICY")"
 
 for agent in "${AGENTS[@]}"; do
@@ -91,6 +95,26 @@ for primary in патч ручний пропозиції покращення; 
     denied="$(jq -r --arg primary "$primary" '.agent[$primary].permission.task["*"] // empty' "$CONFIG")"
     test "$denied" = 'deny' || {
         printf 'ERROR: %s must deny all unnamed subagents\n' "$primary" >&2
+        exit 1
+    }
+done
+
+# Runtime prompts intentionally stay small enough for cheap models.
+declare -A MAX_LINES=(
+    [translation-smoke]=20 [translation-worker]=50 [translation-qa]=55
+    [translation-repair]=40 [translation-terminology]=45
+    [патч]=35 [ручний]=35 [пропозиції]=35 [покращення]=35
+)
+for agent in "${!MAX_LINES[@]}"; do
+    lines="$(wc -l < "$ROOT/.opencode/agents/$agent.md" | tr -d ' ')"
+    test "$lines" -le "${MAX_LINES[$agent]}" || {
+        printf 'ERROR: %s prompt has %s lines; maximum is %s\n' "$agent" "$lines" "${MAX_LINES[$agent]}" >&2
+        exit 1
+    }
+done
+for agent in translation-worker translation-qa translation-repair translation-terminology; do
+    grep -Fq 'Поверни тільки JSON-масив' "$ROOT/.opencode/agents/$agent.md" || {
+        printf 'ERROR: %s lacks an exact JSON-only output rule\n' "$agent" >&2
         exit 1
     }
 done

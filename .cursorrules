@@ -70,6 +70,9 @@ Black Desert Online через BDO UA Translate Agent API. Тут немає с�
 - Диригент запускає кожну роль штатним OpenCode `Task`; child session має бути
   видимою та відкриватися з батьківської. Plugin `client.session.create`
   заборонений. JSON дитини зберігається лише через `translation_result`.
+- Runtime guard пропускає лише `bash`, `read`, native `task` і
+  `translation_result`; у Bash лише фіксовані `./bdo` команди.
+  CLI/HTTP/SDK/MCP обхід Task заборонений.
 - Прямий мовний runner і production fallback в Ollama заборонені.
 - Повністю скриптовий flow без чату ВИДАЛЕНО 2026-08-22; відновлення · з коміта
   `dac631e`. Не відтворювати його й не пропонувати як альтернативу.

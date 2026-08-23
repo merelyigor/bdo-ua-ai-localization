@@ -1,6 +1,6 @@
 {
     "version": 1,
-    "active_profile": "local-quality",
+    "active_profile": "session-free",
     "profiles": {
         "local-quality": {
             "allow_paid": false,
@@ -40,6 +40,27 @@
                 ],
                 "translation-smoke": [
                     "ollama-local/qwen3.5:9b"
+                ]
+            },
+            "paid_routes": []
+        },
+        "session-free": {
+            "allow_paid": false,
+            "routes": {
+                "translation-terminology": [
+                    "opencode/x-preview-f-free"
+                ],
+                "translation-worker": [
+                    "opencode/x-preview-f-free"
+                ],
+                "translation-qa": [
+                    "opencode/x-preview-f-free"
+                ],
+                "translation-repair": [
+                    "opencode/x-preview-f-free"
+                ],
+                "translation-smoke": [
+                    "opencode/x-preview-f-free"
                 ]
             },
             "paid_routes": []

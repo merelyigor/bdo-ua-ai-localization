@@ -9,7 +9,7 @@
 
 | Що | Значення |
 |---|---|
-| База | обирається за `BDO_ENV`; production · `https://bdo-ua.com.ua/api/agent/v1`, зашита в `cli/system/select-env.sh` |
+| База | `BDO_ENV=PROD` · `https://bdo-ua.com.ua/api/agent/v1`; DEV · локальний `BDO_API_BASE_DEV`; прямий `BDO_API_BASE` має пріоритет |
 | Автентифікація | заголовок `X-API-Key: <ключ>` |
 | Формат | JSON; відповідь у конверті `data` / `meta` / `error` |
 | Ліміти | 120 запитів/хв; денна квота ЗАПИСАНИХ рядків · з `GET /me` |
@@ -133,8 +133,8 @@ resolve по кожному терміну пачки сам, включно з 
 | Канал | `layer` | `mode` | `auto_approve` | Куди потрапляє |
 |---|---|---|---|---|
 | `machine` | `machine` | `direct` | `true` | ШІ-шар напряму |
-| `manual` | `manual` | `proposal` | `true` | чистий рядок: пропозиція, яку сервер схвалює за роллю; проблемний рядок автоматично переходить у канал `proposal` |
-| `proposal` | `manual` | `proposal` | `false` | черга модерації |
+| `manual` | `manual` | `proposal` | `true` | чистий рядок: сервер схвалює лише за дозволом API-ключа, інакше лишає в черзі; проблемний завжди переходить у `proposal` |
+| `proposal` | `manual` | `proposal` | `false` | завжди черга модерації, навіть якщо ключ має право схвалення |
 
 `manual + direct` і `machine + proposal` сервер відхиляє. Прямий машинний запис
 вимагає ролі `admin`/`super_admin` і здатності `translations:write-machine` ·

@@ -42,9 +42,8 @@ Independent layers prevent an unintended or hidden model route:
    hard way: a worker run reached `context7`, `playwright` and `skill`, spent
    85901 input tokens instead of 19838, and searched the web for BDO naming
    conventions instead of translating. Constrained decoding does NOT stop tool
-   calls - only an empty tool list does. `translation-terminology` keeps `bash`
-   alone as a narrow fallback for the glossary API and blocks every MCP server;
-   its `read` was removed on 2026-08-22 once its input became a payload.
+   calls - only an empty tool list does. `translation-terminology` також не має
+   tools: resolve вже входить у payload, а відповідь обмежена strict JSON.
 
 The same plugin sends `reasoning_effort = "none"` for the five agents (Qwen
 thinking on the Ollama `/v1` endpoint returns the whole budget as `reasoning`
@@ -62,6 +61,10 @@ The resulting child appears in the parent session tree and can be opened and
 inspected. Plugins must not call `client.session.create` or `session.prompt*`.
 After Task completes, primary passes its exact JSON to `translation_result`,
 which only validates JSON and atomically writes the staged response artifact.
+A runtime hook accepts only `bash`, `read`, native `task` and
+`translation_result`; for Bash it accepts only the fixed single-command `./bdo`
+workflow. It rejects MCP discovery, chained shell, OpenCode CLI, HTTP and SDK
+routes before execution.
 
 ## Sequence
 
@@ -166,8 +169,8 @@ when the EN-based version is genuinely better.
 | Channel | API | What it is for |
 |---|---|---|
 | `machine` | `layer=machine, mode=direct` | the AI layer, as before (default) |
-| `manual` | `layer=manual, mode=proposal, auto_approve=true` | same as editing on the site: approved at once if the role allows |
-| `proposal` | same, `auto_approve=false` | stays in the moderation queue |
+| `manual` | `layer=manual, mode=proposal, auto_approve=true` | same as editing on the site: approved only if the API key actor may approve; otherwise pending |
+| `proposal` | same, `auto_approve=false` | always stays in the moderation queue, even when the actor may approve |
 
 Three rules hold regardless of channel and role:
 
@@ -175,8 +178,8 @@ Three rules hold regardless of channel and role:
    healing round is written with `auto_approve=false` even when the actor's role
    would approve it. A defect must be seen by a human.
 2. **A clean row follows the site's own rules.** `machine` writes the AI layer;
-   `manual` writes a proposal that the server approves by itself when the actor
-   holds `review_translation`, and leaves pending when it does not.
+   `manual` requests auto-approval, but the server approves only when the API
+   key actor holds `review_translation`. Without it every clean row stays pending.
 3. **A new item name is not a defect, and in an AI-layer run it does not go to
    moderation.** If nothing in the layers or the glossary translates it yet, it
    is simply a new translation. Measured: 13 of 20 rows in one batch - routing
@@ -390,7 +393,7 @@ block a full-batch call by length mismatch.
   `translation-qa` (verdict schema). Each pins `identity_hash` through `enum`
   and fixes the array length, so the model cannot drop, duplicate or invent an
   identity, and cannot answer for fewer rows than the batch holds.
-  `translation-terminology` answers in prose and is never constrained.
+  `translation-terminology` також має strict JSON schema з фіксованими полями.
 - `translation-worker`, `translation-repair` and `translation-qa` receive their
   rules and their whole input from the prompt and have no tools at all. A schema
   does not prevent tool calls, so the empty tool list is what keeps a child from

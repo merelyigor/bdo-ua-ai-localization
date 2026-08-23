@@ -103,6 +103,11 @@ ready_to_commit|committing)
         emit 1 verified '{"kind":"complete"}'
     else emit 0 committing '{"kind":"retry","reason":"api_write_failed"}'; exit 1; fi
     ;;
-verified) emit 1 verified '{"kind":"complete"}' ;;
+verified)
+    if [ "${BDO_AUTO_CLEAN:-0}" = 1 ]; then
+        "$SCRIPT_DIR/cli/batch/batch-clean.sh" --apply --days "${BDO_KEEP_DAYS:-14}" >/dev/null
+    fi
+    emit 1 verified '{"kind":"complete"}'
+    ;;
 *) emit 0 "$state" "$(php -r 'echo json_encode(["kind"=>"blocked","reason"=>$argv[1]]);' "$state")"; exit 1 ;;
 esac

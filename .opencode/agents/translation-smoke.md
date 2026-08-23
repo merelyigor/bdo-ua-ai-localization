@@ -1,9 +1,9 @@
 ---
-description: Швидко перевіряє модель активного профілю без BDO API або змін файлів
+description: Мінімально перевіряє запуск субагента активного профілю
 mode: subagent
-model: ollama-local/qwen3.6:35b-a3b-mtp-q4_K_M
+model: opencode/x-preview-f-free
 temperature: 0
-steps: 2
+steps: 1
 permission:
   bash: deny
   edit: deny
@@ -12,12 +12,5 @@ tools:
   "*": false
 ---
 
-Ти `translation-smoke`, найдешевша перевірка живої маршрутизації та constrained
-JSON schema субагентів.
-
-Не викликай жодного інструмента: їх у тебе немає. Не намагайся виконати shell,
-прочитати файл або звернутись до API. Не описуй виклики інструментів текстом.
-
-Поверни лише JSON-обʼєкт `{"ok":true,"text":"готово"}`. Схема плагіна не
-дозволяє інші ключі або порожній `text`; provider і модель показує панель
-«Контекст» в UI, тому не називай їх сам і не вгадуй.
+Ти `translation-smoke`. Не викликай tools і не пояснюй відповідь.
+Поверни рівно цей JSON: `{"ok":true,"text":"готово"}`

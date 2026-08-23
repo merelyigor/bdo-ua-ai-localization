@@ -69,6 +69,11 @@ try {
     $spec = RunSpec::create('proposal', 'PROD', 'ses_parent', 15)->toArray();
     expect(($spec['channel'] ?? null) === 'proposal', 'proposal preset selected a wrong channel');
     expect(($spec['filter'] ?? null) === 'patch=active&missing=manual&exclude_proposed=1', 'proposal preset selected a wrong filter');
+    $manualSpec = RunSpec::preset('manual');
+    expect($manualSpec['channel'] === 'manual', 'manual preset selected a wrong channel');
+    $improveSpec = RunSpec::preset('improve');
+    expect($improveSpec['memory_layers'] === ['manual'], 'improve must not reuse old machine translations as memory');
+    expect($improveSpec['include_current'] === true, 'improve did not provide the current machine text to worker');
 
     expect(ChannelRouter::route('manual', 'PASS', 'none', true) === ChannelRouter::PASS, 'clean manual row did not use auto-approve path');
     expect(ChannelRouter::route('manual', 'REVIEW', 'minor', true) === ChannelRouter::PASS, 'minor manual row did not use auto-approve path');
@@ -79,7 +84,10 @@ try {
     expect(ChannelRouter::route('proposal', 'REJECT', 'critical', true) === ChannelRouter::PASS, 'proposal-only mode filtered a problematic non-empty row');
 
     $policy = ModelPolicy::load(dirname(__DIR__).'/.opencode/translation-models.json');
-    expect(ModelPolicy::routes($policy, 'translation-worker')[0] === 'ollama-local/qwen3.6:35b-a3b-mtp-q4_K_M', 'active worker route is wrong');
+    $activeProfile = $policy['active_profile'];
+    $expectedWorkerRoute = $policy['profiles'][$activeProfile]['routes']['translation-worker'][0] ?? null;
+    expect(is_string($expectedWorkerRoute) && $expectedWorkerRoute !== '', 'active worker route is absent');
+    expect(ModelPolicy::routes($policy, 'translation-worker')[0] === $expectedWorkerRoute, 'active worker route is wrong');
     $broken = $policy;
     $broken['profiles']['local-quality']['routes']['translation-worker'] = ['ollama-local/model-mlx'];
     try {

@@ -11,7 +11,7 @@ writeFileSync(join(directory, ".opencode", "translation-models.json"), JSON.stri
   profiles: { test: {
     allow_paid: false,
     paid_routes: ["paid/model"],
-    routes: { "translation-smoke": ["free/model", "paid/model"], "translation-worker": ["free/model"] },
+    routes: { "translation-smoke": ["free/model", "paid/model"], "translation-worker": ["free/model"], "translation-terminology": ["free/model"] },
   } },
 }))
 
@@ -20,6 +20,11 @@ const output = { options: {} }
 await hooks["chat.params"]({ agent: "translation-smoke", model: { providerID: "free", id: "model" } }, output)
 assert.equal(output.options.response_format.type, "json_schema")
 assert.equal(output.options.response_format.json_schema.strict, true)
+
+const terminologyOutput = { options: {} }
+await hooks["chat.params"]({ agent: "translation-terminology", model: { providerID: "free", id: "model" } }, terminologyOutput)
+assert.equal(terminologyOutput.options.response_format.json_schema.name, "terminology")
+assert.equal(terminologyOutput.options.response_format.json_schema.schema.items.additionalProperties, false)
 
 await assert.rejects(
   hooks["chat.params"]({ agent: "translation-smoke", model: { providerID: "other", id: "model" } }, { options: {} }),

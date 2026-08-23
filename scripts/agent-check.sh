@@ -301,6 +301,7 @@ check_shell() {
     run php tests/pipeline-faults.php
     run bash tests/smoke-envelope.sh
     run bash tests/run-target-env.sh
+    run bash tests/rotation.sh
 }
 
 check_agents() {
@@ -309,6 +310,7 @@ check_agents() {
     jq -e . opencode.json >/dev/null || fail 'opencode.json невалідний JSON'
     run bash .opencode/validate-translation-agents.sh
     run node --experimental-strip-types tests/routing-guard.mjs
+    run node --experimental-strip-types tests/execution-guard.mjs
     run node --experimental-strip-types tests/result-writer.mjs
 }
 

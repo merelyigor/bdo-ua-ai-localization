@@ -48,39 +48,75 @@
         },
         "translation-terminology": {
             "mode": "subagent",
-            "model": "ollama-local/qwen3.6:35b-a3b-mtp-q4_K_M"
+            "model": "opencode/x-preview-f-free"
         },
         "translation-worker": {
             "mode": "subagent",
-            "model": "ollama-local/qwen3.6:35b-a3b-mtp-q4_K_M"
+            "model": "opencode/x-preview-f-free"
         },
         "translation-qa": {
             "mode": "subagent",
-            "model": "ollama-local/qwen3.6:35b-a3b-mtp-q4_K_M"
+            "model": "opencode/x-preview-f-free"
         },
         "translation-repair": {
             "mode": "subagent",
-            "model": "ollama-local/qwen3.6:35b-a3b-mtp-q4_K_M"
+            "model": "opencode/x-preview-f-free"
         },
         "translation-smoke": {
             "mode": "subagent",
-            "model": "ollama-local/qwen3.6:35b-a3b-mtp-q4_K_M"
+            "model": "opencode/x-preview-f-free"
         },
         "патч": {
             "mode": "primary",
-            "permission": {"task": {"*": "deny", "translation-terminology": "allow", "translation-worker": "allow", "translation-qa": "allow", "translation-repair": "allow", "translation-smoke": "allow"}}
+            "permission": {
+                "task": {
+                    "*": "deny",
+                    "translation-terminology": "allow",
+                    "translation-worker": "allow",
+                    "translation-qa": "allow",
+                    "translation-repair": "allow",
+                    "translation-smoke": "allow"
+                }
+            }
         },
         "ручний": {
             "mode": "primary",
-            "permission": {"task": {"*": "deny", "translation-terminology": "allow", "translation-worker": "allow", "translation-qa": "allow", "translation-repair": "allow", "translation-smoke": "allow"}}
+            "permission": {
+                "task": {
+                    "*": "deny",
+                    "translation-terminology": "allow",
+                    "translation-worker": "allow",
+                    "translation-qa": "allow",
+                    "translation-repair": "allow",
+                    "translation-smoke": "allow"
+                }
+            }
         },
         "пропозиції": {
             "mode": "primary",
-            "permission": {"task": {"*": "deny", "translation-terminology": "allow", "translation-worker": "allow", "translation-qa": "allow", "translation-repair": "allow", "translation-smoke": "allow"}}
+            "permission": {
+                "task": {
+                    "*": "deny",
+                    "translation-terminology": "allow",
+                    "translation-worker": "allow",
+                    "translation-qa": "allow",
+                    "translation-repair": "allow",
+                    "translation-smoke": "allow"
+                }
+            }
         },
         "покращення": {
             "mode": "primary",
-            "permission": {"task": {"*": "deny", "translation-terminology": "allow", "translation-worker": "allow", "translation-qa": "allow", "translation-repair": "allow", "translation-smoke": "allow"}}
+            "permission": {
+                "task": {
+                    "*": "deny",
+                    "translation-terminology": "allow",
+                    "translation-worker": "allow",
+                    "translation-qa": "allow",
+                    "translation-repair": "allow",
+                    "translation-smoke": "allow"
+                }
+            }
         }
     },
     "subagent_depth": 1,

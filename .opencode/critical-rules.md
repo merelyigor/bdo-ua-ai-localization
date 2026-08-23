@@ -57,6 +57,10 @@
   session мусить бути видимою та відкриватися з батьківської.
 - Plugin `client.session.create`, `session.prompt*`, shell/model runner і прямий
   fallback в Ollama заборонені.
+- `translation-execution-guard` runtime пропускає лише `bash`, `read`, `task`,
+  `translation_result`; усі MCP/discovery tools
+  відхиляються runtime. Bash приймає тільки фіксовані одиночні `./bdo` команди
+  без pipes, chaining, redirection чи substitutions.
 - Повністю скриптовий флоу без чату ВИДАЛЕНО 2026-08-22 (коміт `dac631e`): не
   відтворювати й не пропонувати як альтернативу.
 - `output/` і `state/` · робочий стан, не артефакти для коміту. Курсори пачок і

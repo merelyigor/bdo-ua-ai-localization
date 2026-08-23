@@ -34,6 +34,23 @@ const SMOKE_SCHEMA = {
   required: ["ok", "text"],
   additionalProperties: false,
 }
+const TERMINOLOGY_SCHEMA = {
+  type: "array",
+  items: {
+    type: "object",
+    properties: {
+      canonical_source: { type: "string" },
+      status: { type: "string", enum: ["ready", "blocked_identity", "no_answer"] },
+      term_id: { type: "string" },
+      entity_type: { type: "string" },
+      source_identity: { type: "string" },
+      ukrainian_proposal: { type: "string" },
+      next_action: { type: "string" },
+    },
+    required: ["canonical_source", "status", "term_id", "entity_type", "source_identity", "ukrainian_proposal", "next_action"],
+    additionalProperties: false,
+  },
+}
 
 
 // Returns the staged schema, or undefined when nothing is staged. Read per request
@@ -86,6 +103,13 @@ export const TranslationRoutingGuard: Plugin = async ({ directory }) => ({
       output.options.response_format = {
         type: "json_schema",
         json_schema: { name: "translation_capability", strict: true, schema: SMOKE_SCHEMA },
+      }
+      return
+    }
+    if (input.agent === "translation-terminology") {
+      output.options.response_format = {
+        type: "json_schema",
+        json_schema: { name: "terminology", strict: true, schema: TERMINOLOGY_SCHEMA },
       }
       return
     }

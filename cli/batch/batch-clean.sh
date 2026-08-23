@@ -5,8 +5,8 @@
 #   ./batch-clean.sh --apply      # прибрати
 #   ./batch-clean.sh --days 3 --apply
 #
-# Що прибирається: теки пачок у state/batches/ і файли в output/, старші за
-# BDO_KEEP_DAYS (типово 7). Поточна пачка не чіпається ніколи.
+# Що прибирається: лише теки пачок зі станом `verified` і файли в output/,
+# старші за BDO_KEEP_DAYS (типово 7). Поточна пачка не чіпається ніколи.
 #
 # Що НЕ прибирається за жодних умов:
 #   - state/quarantine.jsonl - це перелік рядків, які не доїхали; його розбирає
@@ -49,6 +49,14 @@ if [ -d "$STATE_DIR/batches" ]; then
         name="$(basename "$dir")"
         if [ -n "$CURRENT_ID" ] && [ "$name" = "$CURRENT_ID" ]; then
             echo "  ПРОПУСК (поточна): $name"
+            continue
+        fi
+        batch_state="$(php -r '
+            $m = is_file($argv[1]) ? json_decode((string) file_get_contents($argv[1]), true) : null;
+            echo is_array($m) ? (string) ($m["state"] ?? "") : "";
+        ' "$dir/manifest.json")"
+        if [ "$batch_state" != verified ]; then
+            echo "  ПРОПУСК (не завершена: ${batch_state:-пошкоджена}): $name"
             continue
         fi
         size="$(du -sh "$dir" 2>/dev/null | cut -f1)"
