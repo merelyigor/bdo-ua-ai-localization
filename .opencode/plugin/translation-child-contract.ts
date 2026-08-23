@@ -1,6 +1,15 @@
-import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs"
-import { dirname, isAbsolute, relative, resolve, sep } from "node:path"
+import { readFileSync } from "node:fs"
+import { resolve } from "node:path"
 import type { Plugin } from "@opencode-ai/plugin"
+import {
+  atomicWrite,
+  clearIncident,
+  pendingIncident,
+  recordIncident,
+  retryNote,
+  stateFile,
+  unwrapJson,
+} from "../lib/child-response.ts"
 
 const ROLES = new Set([
   "translation-terminology",
@@ -12,16 +21,6 @@ const ROLES = new Set([
 
 type ChildEnvelope = { kind?: string; role?: string; payload_path?: string; response_path?: string }
 
-// Обидва шляхи envelope зобовʼязані жити під state/: payload читається в prompt,
-// response пишеться атомарно, і жоден із них не має права вийти за межі проєкту.
-function stateFile(directory: string, path: string): string {
-  const root = resolve(directory, "state")
-  const absolute = isAbsolute(path) ? resolve(path) : resolve(root, path)
-  const rel = relative(root, absolute)
-  if (rel === "" || rel === ".." || rel.startsWith(`..${sep}`)) throw new Error("Child contract path must be below project state/.")
-  return absolute
-}
-
 function envelope(directory: string): ChildEnvelope | undefined {
   try {
     return JSON.parse(readFileSync(resolve(directory, "state/next-child.json"), "utf8")) as ChildEnvelope
@@ -30,23 +29,20 @@ function envelope(directory: string): ChildEnvelope | undefined {
   }
 }
 
-function atomicWrite(path: string, content: string): void {
-  mkdirSync(dirname(path), { recursive: true })
-  const temporary = `${path}.tmp.${crypto.randomUUID()}`
-  writeFileSync(temporary, `${content.trim()}\n`)
-  renameSync(temporary, path)
-}
-
 /**
  * Механічний child-контракт для native Task.
  *
- * Слабка модель-диригент не є надійним носієм байтів: копія payload з read-виводу
- * може принести префікси рядків або обрізання, а позиційна схема тоді ЗМУШУЄ
- * child галюцинувати переклади рядків, яких він не бачив. Тому:
- *  - before: prompt Task для translation-* ролі замінюється точним вмістом
- *    staged payload з envelope (state/next-child.json);
- *  - after: JSON-результат Task зберігається у response_path механічно, і
- *    translation_result підтверджує саме його, а не копію диригента.
+ * Слабка модель-диригент не є надійним носієм байтів: копія payload у
+ * аргументах виклику вже коштувала пачки. Тому диригент передає лише посилання,
+ * а цей плагін:
+ *  - before: підставляє в prompt точний вміст staged payload зі
+ *    `state/next-child.json`, а на повторній спробі додає уточнення про те, чим
+ *    попередня відповідь була погана;
+ *  - after: зберігає JSON-відповідь Task у `response_path`, знявши обгортку
+ *    `<task_result>` і, за потреби, markdown-огорожу.
+ *
+ * Дефект формату не зупиняє прогін: він фіксується в журналі, файл відповіді не
+ * зʼявляється, і наступний `./bdo run drive` перезапускає того самого child.
  */
 export const TranslationChildContract: Plugin = async ({ directory }) => ({
   "tool.execute.before": async (input, output) => {
@@ -75,7 +71,8 @@ export const TranslationChildContract: Plugin = async ({ directory }) => ({
     if (payload === "") {
       throw new Error(`Staged payload ${next.payload_path} порожній; повтори ./bdo run drive.`)
     }
-    output.args.prompt = payload
+    const previous = pendingIncident(directory, next.response_path)
+    output.args.prompt = previous === undefined ? payload : `${payload}${retryNote(previous)}`
   },
   "tool.execute.after": async (input, output) => {
     if (input.tool !== "task" || !output) return
@@ -85,16 +82,27 @@ export const TranslationChildContract: Plugin = async ({ directory }) => ({
     if (!next || next.kind !== "child" || next.role !== role || !next.response_path) return
     const text = typeof output.output === "string" ? output.output : ""
     // TaskTool загортає відповідь child у <task_result>…</task_result>; зняття
-    // обгортки детерміноване. Зберігається лише те, що є валідним JSON · прозу
-    // або task_error лишаємо диригентові, який мусить зупинитись.
+    // обгортки детерміноване. Далі лишається або чистий JSON, або той самий
+    // JSON у markdown-огорожі · обидва приймаються без зміни жодного символа.
     const match = text.match(/<task_result>\n?([\s\S]*?)\n?<\/task_result>/)
-    if (!match) return
-    const content = match[1].trim()
-    try {
-      JSON.parse(content)
-    } catch {
+    const answer = match ? match[1].trim() : ""
+    const json = answer === "" ? undefined : unwrapJson(answer)
+    if (json === undefined) {
+      // Прогін не зупиняється: файл відповіді не зʼявляється, тому наступний
+      // `./bdo run drive` перезапустить того самого child, а він отримає
+      // уточнення. Журнал лишається власнику для виправлення на рівні проєкту.
+      recordIncident(
+        directory,
+        next.response_path,
+        role,
+        answer === "" ? "порожня відповідь child" : "відповідь не є валідним JSON",
+        answer,
+        new Date().toISOString(),
+      )
+
       return
     }
-    atomicWrite(stateFile(directory, next.response_path), content)
+    atomicWrite(stateFile(directory, next.response_path), json)
+    clearIncident(directory, next.response_path)
   },
 })

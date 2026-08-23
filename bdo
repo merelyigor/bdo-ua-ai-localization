@@ -97,6 +97,7 @@ bdo · переклад рядків BDO через Agent API і субаген�
 ОБСЛУГОВУВАННЯ
   audit                аудит сесій субагентів за базою OpenCode
   audit-dump           повний зріз сесій OpenCode
+  incidents            дефекти відповідей child, які флоу вилікував сам
   profile              моделі за ролями: status|use|set|fallback|paid
   models               звірка локальних Ollama-моделей із OpenCode
   bench                вимір локальної моделі на реальній пачці
@@ -238,6 +239,7 @@ case "$group" in
 
     # --- обслуговування ------------------------------------------------------
     audit)      sh_run cli/audit/verify-run.sh "${@:2}" ;;
+    incidents)  sh_run cli/audit/flow-incidents.sh "${@:2}" ;;
     audit-dump) sh_run cli/audit/audit-dump.sh "${@:2}" ;;
     profile)    sh_run cli/runtime/set-translation-profile.sh "${@:2}" ;;
     models)     sh_run cli/runtime/sync-opencode-models.sh "${@:2}" ;;

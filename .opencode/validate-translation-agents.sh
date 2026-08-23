@@ -107,7 +107,7 @@ done
 declare -A MAX_LINES=(
     [translation-smoke]=20 [translation-worker]=50 [translation-qa]=55
     [translation-repair]=40 [translation-terminology]=45
-    [патч]=55 [ручний]=55 [пропозиції]=55 [покращення]=55
+    [патч]=60 [ручний]=60 [пропозиції]=60 [покращення]=60
 )
 for agent in "${!MAX_LINES[@]}"; do
     lines="$(wc -l < "$ROOT/.opencode/agents/$agent.md" | tr -d ' ')"
@@ -199,6 +199,12 @@ for primary in патч ручний пропозиції покращення; 
     # Помилка аргументів `task` · не привід оголосити інструмент відсутнім.
     grep -Fq 'Missing key subagent_type' "$ROOT/.opencode/agents/$primary.md" || {
         printf 'ERROR: %s primary must distinguish a bad task call from a missing task tool\n' "$primary" >&2
+        exit 1
+    }
+    # Мета власника · безперервний ланцюжок. Дефект формату відповіді лікується
+    # повтором того самого child з уточненням, а не зупинкою прогону в чаті.
+    grep -Fq 'НЕ зупиняє прогін' "$ROOT/.opencode/agents/$primary.md" || {
+        printf 'ERROR: %s primary stops the run on a recoverable child/writer error\n' "$primary" >&2
         exit 1
     }
     grep -Fq 'Передай результат Task без змін' "$ROOT/.opencode/agents/$primary.md" || {

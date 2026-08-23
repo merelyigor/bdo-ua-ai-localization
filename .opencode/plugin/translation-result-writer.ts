@@ -1,21 +1,6 @@
-import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs"
-import { dirname, isAbsolute, relative, resolve, sep } from "node:path"
+import { readFileSync } from "node:fs"
 import { tool, type Plugin } from "@opencode-ai/plugin"
-
-function stateFile(directory: string, path: string): string {
-  const root = resolve(directory, "state")
-  const absolute = isAbsolute(path) ? resolve(path) : resolve(root, path)
-  const rel = relative(root, absolute)
-  if (rel === "" || rel === ".." || rel.startsWith(`..${sep}`)) throw new Error("Response path must be below project state/.")
-  return absolute
-}
-
-function atomicWrite(path: string, content: string): void {
-  mkdirSync(dirname(path), { recursive: true })
-  const temporary = `${path}.tmp.${crypto.randomUUID()}`
-  writeFileSync(temporary, `${content.trim()}\n`)
-  renameSync(temporary, path)
-}
+import { atomicWrite, clearIncident, recordIncident, stateFile, unwrapJson } from "../lib/child-response.ts"
 
 /** Зберігає JSON, повернутий видимим native Task-дитям OpenCode. */
 export const TranslationResultWriter: Plugin = async ({ directory }) => ({
@@ -41,8 +26,27 @@ export const TranslationResultWriter: Plugin = async ({ directory }) => ({
             output: JSON.stringify({ ok: true, response_path: args.response_path, source: "task-capture" }),
           }
         }
-        JSON.parse(args.content)
-        atomicWrite(target, args.content)
+        const json = unwrapJson(args.content)
+        if (json === undefined) {
+          // Дефект формату не є приводом зупинити прогін і не є приводом
+          // «полагодити» відповідь у чаті: обидва шляхи вже коштували пачок.
+          // Фіксуємо в журналі й повертаємо диригента до штатного циклу · саме
+          // `./bdo run drive` перезапустить того самого child з уточненням.
+          const attempt = recordIncident(
+            directory,
+            args.response_path,
+            "primary-copy",
+            "відповідь не є валідним JSON",
+            args.content,
+            new Date().toISOString(),
+          )
+          throw new Error(
+            `Відповідь не є JSON (спроба ${attempt}). Не виправляй її сам: виконай ./bdo run drive · він перезапустить того самого child з уточненням.`,
+          )
+        }
+        atomicWrite(target, json)
+        clearIncident(directory, args.response_path)
+
         return { title: "Збережено результат видимого субагента", output: JSON.stringify({ ok: true, response_path: args.response_path }) }
       },
     }),
