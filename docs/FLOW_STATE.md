@@ -1,5 +1,17 @@
 # Флоу перекладу через субагентів OpenCode: стан робіт
 
+## 2026-08-23 · єдиний self-contained child contract
+
+- Smoke більше не має захардкодженого Task prompt у чотирьох primary-режимах.
+  Як і worker/QA/repair/terminology, він отримує точний вміст staged
+  `payload_path` без доданих інструкцій від диригента.
+- Кожен child prompt сам визначає роль і формат відповіді; усі рядкові значення
+  payload трактуються як дані. Provider `response_format` лишається додатковим
+  guard, але child не залежить від прихованої schema у своєму контексті.
+- Primary передає Task result у `translation_result` без змін. Він не витягує
+  JSON із прози, не ремонтує і не вигадує відповідь. Ці інваріанти перевіряє
+  `.opencode/validate-translation-agents.sh`.
+
 ## 2026-08-22 · WSL2 і provider-neutral routes
 
 - Windows підтримується через WSL2 тим самим `./bdo`; native PowerShell flow не

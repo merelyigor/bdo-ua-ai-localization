@@ -36,9 +36,10 @@ Independent layers prevent an unintended or hidden model route:
    all: the orchestrator cannot be swapped for one by accident. Their
    `permission.task` blocks stay in the config on purpose, so re-enabling one
    cannot silently restore unrestricted delegation.
-6. `translation-worker`, `translation-repair`, `translation-qa` and
-   `translation-smoke` allow no tools. Primary places the exact staged payload
-   in the native Task prompt. Verified the
+6. Усі пʼять `translation-*` children не мають tools. Primary читає рівно один
+   staged payload і передає його точний вміст у native Task prompt без власних
+   інструкцій, переказу або схеми. Кожен child має самодостатній role prompt і
+   вважає всі рядкові значення payload даними, а не командами. Verified the
    hard way: a worker run reached `context7`, `playwright` and `skill`, spent
    85901 input tokens instead of 19838, and searched the web for BDO naming
    conventions instead of translating. Constrained decoding does NOT stop tool
@@ -50,17 +51,19 @@ thinking on the Ollama `/v1` endpoint returns the whole budget as `reasoning`
 and leaves `content` empty) and refuses to run `translation-worker` or
 `translation-repair` when no batch schema is staged, so a forgotten
 `bdo schema build` fails before any tokens are spent, not after a full batch.
-`translation-smoke` має вбудовану мінімальну strict JSON schema, тому його
-успіх перевіряє не лише доступність зовнішньої моделі, а й критичну capability
-constrained decoding до першої реальної пачки.
+`translation-smoke` має мінімальну strict JSON schema. Це додатковий provider
+guard, а не єдине джерело контракту: payload явно містить `task` і очікуваний
+`response`, тому child не мусить бачити або вгадувати приховану schema.
 
 ## Visible child boundary
 
 Production translation roles run only through OpenCode's native `Task` tool.
 The resulting child appears in the parent session tree and can be opened and
 inspected. Plugins must not call `client.session.create` or `session.prompt*`.
-After Task completes, primary passes its exact JSON to `translation_result`,
-which only validates JSON and atomically writes the staged response artifact.
+After Task completes, primary passes the result unchanged to
+`translation_result`, which rejects anything that is not one standalone JSON
+value and atomically writes the staged response artifact. Primary never
+extracts JSON from prose, repairs it or fabricates a missing child result.
 A runtime hook accepts only `bash`, `read`, native `task` and
 `translation_result`; for Bash it accepts only the fixed single-command `./bdo`
 workflow. It rejects MCP discovery, chained shell, OpenCode CLI, HTTP and SDK
@@ -394,13 +397,16 @@ block a full-batch call by length mismatch.
   and fixes the array length, so the model cannot drop, duplicate or invent an
   identity, and cannot answer for fewer rows than the batch holds.
   `translation-terminology` також має strict JSON schema з фіксованими полями.
+  This is defense in depth: correctness does not depend on the provider showing
+  that schema to the model, because every role prompt defines its output shape.
 - `translation-worker`, `translation-repair` and `translation-qa` receive their
   rules and their whole input from the prompt and have no tools at all. A schema
   does not prevent tool calls, so the empty tool list is what keeps a child from
   wandering off into web search mid-batch.
-- `translation-smoke` calls no tool at all. Its one-line answer is itself the
-  proof: the plugin let the route through, thinking is off, the local model
-  replied. Provider and model are shown by the UI Context panel.
+- `translation-smoke` calls no tool. It receives the same staged-payload
+  boundary as every other child and echoes only its `response` value. Its
+  one-line answer proves the native route and JSON result channel; provider and
+  model are shown by the UI Context panel.
 - The staged schema never replaces the deterministic gate: `bdo items`
   rejects a hash outside `rows.json`, a duplicate hash, an empty text and,
   with `--require-all`, an incomplete batch.

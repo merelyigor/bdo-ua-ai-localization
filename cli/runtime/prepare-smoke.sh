@@ -7,7 +7,7 @@ ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 STATE_DIR="${BDO_STATE_DIR:-$ROOT/state}"
 SMOKE_DIR="$STATE_DIR/smoke"
 mkdir -p "$SMOKE_DIR"
-printf '%s\n' '{"request":"Return the exact capability object required by your strict schema."}' > "$SMOKE_DIR/payload.json"
+printf '%s\n' '{"task":"echo_response","response":{"ok":true,"text":"готово"}}' > "$SMOKE_DIR/payload.json"
 php -r 'echo json_encode(["ok" => true, "state" => "smoke", "next" => [
     "kind" => "child", "role" => "translation-smoke",
     "payload_path" => $argv[1] . "/payload.json",
