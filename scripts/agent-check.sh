@@ -198,7 +198,22 @@ check_env_contract() {
     if grep -Eq '^[[:space:]]*BDO_API_BASE(_PROD|_DEV)?=' .env.example; then
         fail '.env.example задає адресу API активним рядком · вона мусить бути прикладом у комментарі'
     fi
-    note '.env* приватні; .env.example · PROD, порожній ключ, адреси в коді'
+    # Шаблонів більше одного (`.env.minimal.example`), і кожен наступний · це
+    # новий шанс залишити в публічному файлі справжній ключ. Тому ті самі три
+    # вимоги перевіряються для КОЖНОГО `*.example`, а не лише для основного.
+    local template count=0
+    for template in .env*.example; do
+        test -f "$template" || continue
+        count=$((count + 1))
+        git check-ignore -q "$template" && fail "$template помилково ігнорується · його не побачить коміт"
+        if grep -E '^[[:space:]]*BDO_API_KEY(_PROD|_DEV|_LOCALHOST)?=.+' "$template" >/dev/null; then
+            fail "$template містить непорожній API key"
+        fi
+        if grep -Eq '^[[:space:]]*BDO_API_BASE(_PROD|_DEV)?=' "$template"; then
+            fail "$template задає адресу API активним рядком"
+        fi
+    done
+    note ".env* приватні; шаблонів $count · PROD, порожній ключ, адреси в коді"
 }
 
 # Приватна інфраструктура власника не потрапляє в публічні файли (§2). Перевірка
