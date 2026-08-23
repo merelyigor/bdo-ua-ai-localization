@@ -104,9 +104,21 @@ while IFS='|' read -r sid agent; do
           AND json_extract(m.data,'\$.role') = 'assistant'
         ORDER BY length(COALESCE(json_extract(p.data,'\$.text'),'')) DESC LIMIT 1;" 2>/dev/null || true)"
     verdict="$(printf '%s' "$answer" | php -r '
+    $agent = $argv[1] ?? "";
     $raw = stream_get_contents(STDIN);
     if (trim($raw) === "") { echo "SHAPE відповіді немає в базі"; exit; }
     $d = json_decode($raw, true);
+    if ($agent === "translation-smoke") {
+        if (! is_array($d) || array_is_list($d)
+            || ($d["ok"] ?? null) !== true
+            || ($d["text"] ?? null) !== "готово"
+            || count($d) !== 2) {
+            echo "SHAPE smoke не дорівнює точному {ok:true,text:готово}";
+            exit;
+        }
+        echo "OK точний smoke capability object";
+        exit;
+    }
     if (! is_array($d) || ! array_is_list($d)) { echo "SHAPE не JSON-масив (проза або обірвано)"; exit; }
     $ids = array_map(static fn ($x) => is_array($x) ? ($x["identity_hash"] ?? null) : null, $d);
     $ids = array_filter($ids, static fn ($x) => is_string($x) && $x !== "");
@@ -122,14 +134,14 @@ while IFS='|' read -r sid agent; do
     }
     if ($empty > 0) { printf("SHAPE порожній текст у %d обʼєктах", $empty); exit; }
     printf("OK %d обʼєктів, усі identity різні", count($d));
-    ')"
+    ' "$agent")"
     case "$verdict" in
         SHAPE*) printf "FAIL %-22s %s\n" "$agent" "$verdict"; shape_fail=1 ;;
         *)      printf "OK   %-22s %s\n" "$agent" "$verdict" ;;
     esac
 done < <(sqlite3 -noheader -separator '|' "$TMP" "
     SELECT s.id, s.agent FROM session s
-    WHERE s.agent IN ('translation-worker','translation-repair','translation-qa')
+    WHERE s.agent IN ('translation-worker','translation-repair','translation-qa','translation-smoke')
       AND s.time_created >= $SINCE
     ORDER BY s.time_created DESC LIMIT $LIMIT;")
 test "$shape_fail" = 0 || RC=1
