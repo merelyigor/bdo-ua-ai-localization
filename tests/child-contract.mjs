@@ -19,10 +19,25 @@ const hooks = await TranslationChildContract({ directory })
 const before = hooks["tool.execute.before"]
 const after = hooks["tool.execute.after"]
 
-// Промпт диригента замінюється точним вмістом staged payload.
-const args = { subagent_type: "translation-worker", description: "d", prompt: "СПОТВОРЕНА КОПІЯ" }
+// Диригент передає лише посилання; точний payload підставляє плагін.
+const args = { subagent_type: "translation-worker", description: "d", prompt: `payload:${envelope.payload_path}` }
 await before({ tool: "task", sessionID: "s", callID: "c" }, { args })
 if (args.prompt !== payload) throw new Error("prompt was not replaced with the staged payload")
+
+// Порожній або відсутній payload зупиняє виклик зрозуміло, а не віддає child
+// порожній prompt: диригент більше не носить payload сам, підмінити нікому.
+writeFileSync(join(directory, "state/batch/payload.json"), "\n")
+await before({ tool: "task", sessionID: "s", callID: "c" }, { args: { subagent_type: "translation-worker", prompt: "x" } }).then(
+  () => { throw new Error("empty staged payload was accepted") },
+  (error) => { if (!/порожній/.test(error.message)) throw new Error(`wrong empty-payload error: ${error.message}`) },
+)
+writeFileSync(join(directory, "state/next-child.json"), JSON.stringify({ ...envelope, payload_path: join(directory, "state/batch/gone.json") }))
+await before({ tool: "task", sessionID: "s", callID: "c" }, { args: { subagent_type: "translation-worker", prompt: "x" } }).then(
+  () => { throw new Error("missing staged payload was accepted") },
+  (error) => { if (!/недоступний/.test(error.message)) throw new Error(`wrong missing-payload error: ${error.message}`) },
+)
+writeFileSync(join(directory, "state/batch/payload.json"), `${payload}\n`)
+writeFileSync(join(directory, "state/next-child.json"), JSON.stringify(envelope))
 
 // Невідповідна роль зупиняється до створення сесії.
 await before({ tool: "task", sessionID: "s", callID: "c" }, { args: { subagent_type: "translation-qa", prompt: "x" } }).then(

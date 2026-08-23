@@ -63,7 +63,19 @@ export const TranslationChildContract: Plugin = async ({ directory }) => ({
     if (next.role !== role) {
       throw new Error(`Staged envelope чекає ${next.role}; Task викликає ${role}.`)
     }
-    output.args.prompt = readFileSync(stateFile(directory, next.payload_path), "utf8").trim()
+    // Диригент передає лише посилання на payload, тому цей плагін є ЄДИНИМ його
+    // носієм: порожній або відсутній файл мусить зупинити виклик зрозуміло, а не
+    // віддати child порожній prompt і отримати `[]` як «відповідь моделі».
+    let payload: string
+    try {
+      payload = readFileSync(stateFile(directory, next.payload_path), "utf8").trim()
+    } catch (cause) {
+      throw new Error(`Staged payload ${next.payload_path} недоступний; повтори ./bdo run drive.`, { cause })
+    }
+    if (payload === "") {
+      throw new Error(`Staged payload ${next.payload_path} порожній; повтори ./bdo run drive.`)
+    }
+    output.args.prompt = payload
   },
   "tool.execute.after": async (input, output) => {
     if (input.tool !== "task" || !output) return

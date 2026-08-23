@@ -185,8 +185,20 @@ for primary in патч ручний пропозиції покращення; 
         printf 'ERROR: %s primary does not save native Task output\n' "$primary" >&2
         exit 1
     }
-    grep -Fq 'prompt - точний вміст payload без доданих інструкцій' "$ROOT/.opencode/agents/$primary.md" || {
-        printf 'ERROR: %s primary may rewrite the staged child prompt\n' "$primary" >&2
+    # Диригент передає лише посилання на staged payload; точний вміст підставляє
+    # translation-child-contract. Перенесення payload руками вже ламало виклик:
+    # 2.2 КБ екранованого JSON · і модель загубила обовʼязковий subagent_type.
+    grep -Fq 'payload:<next.payload_path>' "$ROOT/.opencode/agents/$primary.md" || {
+        printf 'ERROR: %s primary must pass the staged payload by reference, not by value\n' "$primary" >&2
+        exit 1
+    }
+    grep -Fq 'Сам payload НЕ читай' "$ROOT/.opencode/agents/$primary.md" || {
+        printf 'ERROR: %s primary must not read the staged payload into its own context\n' "$primary" >&2
+        exit 1
+    }
+    # Помилка аргументів `task` · не привід оголосити інструмент відсутнім.
+    grep -Fq 'Missing key subagent_type' "$ROOT/.opencode/agents/$primary.md" || {
+        printf 'ERROR: %s primary must distinguish a bad task call from a missing task tool\n' "$primary" >&2
         exit 1
     }
     grep -Fq 'Передай результат Task без змін' "$ROOT/.opencode/agents/$primary.md" || {
