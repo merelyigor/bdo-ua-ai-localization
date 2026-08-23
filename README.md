@@ -61,7 +61,10 @@ PowerShell. Репозиторій краще клонувати у Linux filesy
 зовнішніх моделей можуть змінюватися. Для платної моделі треба явно вказати
 `paid`; прихований платний fallback policy не пропускає. Після зміни профілю
 перезапустіть OpenCode і попросіть: `Запусти smoke та покажи фактичний
-provider/model`. Primary виконає `./bdo smoke`; цей smoke не запускає patch, не
+provider/model`. Зручний варіант для власника — задати в локальному `.env`
+`TRANSLATE_MODEL_PROFILE=session-free|local-fast|local-quality`: кожен виклик
+`./bdo env` синхронізує цей профіль із child-конфігом, а основну модель не змінює.
+Primary виконає `./bdo smoke`; цей smoke не запускає patch, не
 звертається до API і не потребує PHP для підготовки envelope. Для Ollama повний
 capability test виконує `./bdo runtime`; зовнішні credentials навмисно не
 обходяться прямим HTTP-запитом.

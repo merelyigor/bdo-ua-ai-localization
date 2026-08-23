@@ -59,6 +59,10 @@ curl -fsS http://127.0.0.1:11434/v1/models | jq '.data[].id'
 
 Якщо в списку є лише `qwen3.5:9b`, не завантажуйте 35B заради перевірки:
 
+Можна також задати профіль child-моделей у локальному `.env` через
+`TRANSLATE_MODEL_PROFILE=local-fast`, `local-quality` або `session-free`. Команда
+`./bdo env` синхронізує його перед наступною child-сесією.
+
 ```bash
 ./bdo profile fast
 ./bdo profile status

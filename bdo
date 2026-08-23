@@ -148,7 +148,7 @@ case "$group" in
         ;;
 
     # --- прогін і середовище -------------------------------------------------
-    env)      sh_run cli/system/select-env.sh ;;
+    env)      sh_run cli/system/select-env.sh; sh_run cli/runtime/set-translation-profile.sh env ;;
     platform) sh_run cli/system/check-platform.sh ;;
     runtime)  sh_run cli/runtime/check-runtime.sh "${@:2}" ;;
     smoke)    sh_run cli/runtime/prepare-smoke.sh ;;
