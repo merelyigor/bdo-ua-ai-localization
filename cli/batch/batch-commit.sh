@@ -217,7 +217,8 @@ COUNT="$(php -r 'echo count(json_decode(file_get_contents($argv[1]), true) ?: []
 MOD_COUNT="$(php -r 'echo count(json_decode(file_get_contents($argv[1]), true) ?: []);' "$HELD_ITEMS")"
 # Модель воркера з frontmatter: щоб кожен запис мав реальну назву моделі,
 # а не дефолтний "agent-local". Так можна відрізнити старі переклади від нових.
-WORKER_RECEIPT="$B/candidate.json.session.json"
+BATCH_DIR="$("$SCRIPT_DIR/cli/batch/batch-dir.sh" 2>/dev/null || true)"
+WORKER_RECEIPT="$BATCH_DIR/candidate.json.session.json"
 WORKER_MODEL="$(php -r '$d=is_file($argv[1])?json_decode(file_get_contents($argv[1]),true):[];echo $d["route"]??"";' "$WORKER_RECEIPT")"
 test -n "$WORKER_MODEL" || WORKER_MODEL="$(awk -F': ' '/^model: /{print $2; exit}' "$TRANSLATE_AGENTS_DIR/translation-worker.md" 2>/dev/null || echo 'unknown/agent')"
 WORKER_PROVIDER="${WORKER_MODEL%%/*}"
