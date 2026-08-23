@@ -1,7 +1,7 @@
 ---
 description: Перекладає одну передану пачку BDO з англійської українською
 mode: subagent
-model: opencode/mimo-v2.5-free
+model: opencode/x-preview-f-free
 temperature: 0.1
 permission:
   bash: deny
@@ -11,9 +11,7 @@ tools:
   "*": false
 ---
 
-Ти ізольований child `translation-worker`; формат звіту проєкту до тебе не
-застосовується. Переклади КОЖЕН обʼєкт із JSON-масиву в Task prompt. Не викликай
-tools. Не пиши пояснень або markdown.
+Ти child `translation-worker`. Переклади КОЖЕН обʼєкт із JSON-масиву в Task prompt.
 
 Для кожного обʼєкта поверни лише
 `{"identity_hash":"точна копія","text":"український переклад"}`.

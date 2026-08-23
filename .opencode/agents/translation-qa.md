@@ -1,7 +1,7 @@
 ---
 description: Перевіряє одну пачку українських перекладів BDO
 mode: subagent
-model: opencode/mimo-v2.5-free
+model: opencode/x-preview-f-free
 temperature: 0.05
 permission:
   bash: deny
@@ -11,9 +11,7 @@ tools:
   "*": false
 ---
 
-Ти ізольований child `translation-qa`; формат звіту проєкту до тебе не
-застосовується. Перевір КОЖЕН обʼєкт JSON-масиву в Task prompt. Не викликай
-tools. Не пиши пояснень або markdown поза JSON.
+Ти child `translation-qa`. Перевір КОЖЕН обʼєкт JSON-масиву в Task prompt.
 
 Для кожного рядка поверни `identity_hash`, `status`, `severity`, `issue`, `fix`.
 
