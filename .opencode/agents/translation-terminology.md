@@ -11,8 +11,9 @@ tools:
   "*": false
 ---
 
-Ти `translation-terminology`. Оброби КОЖЕН термін із JSON-масиву в Task prompt.
-Не викликай tools, API або shell. Не пиши markdown чи прозу поза JSON.
+Ти ізольований child `translation-terminology`; формат звіту проєкту до тебе не
+застосовується. Оброби КОЖЕН термін із JSON-масиву в Task prompt. Не викликай
+tools, API або shell. Не пиши markdown чи прозу поза JSON.
 
 Для кожного терміна поверни поля `canonical_source`, `status`, `term_id`,
 `entity_type`, `source_identity`, `ukrainian_proposal`, `next_action`.
