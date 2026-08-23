@@ -1,4 +1,4 @@
-import { mkdtempSync, mkdirSync, readFileSync } from "node:fs"
+import { mkdtempSync, mkdirSync, readFileSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { TranslationResultWriter } from "../.opencode/plugin/translation-result-writer.ts"
@@ -13,4 +13,16 @@ await hooks.tool.translation_result.execute({ response_path: "../outside.json", 
   () => { throw new Error("writer accepted a path outside state") },
   () => undefined,
 )
+
+// Механічно захоплений результат канонічний: копія диригента його не перезаписує.
+writeFileSync(join(directory, "state/batch/verdicts.json"), '[{"status":"PASS"}]\n')
+const captured = await hooks.tool.translation_result.execute({ response_path: "batch/verdicts.json", content: '[{"status":"ЗІПСОВАНА КОПІЯ"}]' })
+if (JSON.parse(captured.output).source !== "task-capture") throw new Error("writer did not report the captured source")
+if (JSON.parse(readFileSync(join(directory, "state/batch/verdicts.json"), "utf8"))[0].status !== "PASS") throw new Error("model copy overwrote the captured result")
+
+// Битий існуючий файл не є капчером: валідна копія диригента його замінює.
+writeFileSync(join(directory, "state/batch/fixes.json"), "{broken\n")
+await hooks.tool.translation_result.execute({ response_path: "batch/fixes.json", content: '[{"text":"Полагоджено"}]' })
+if (JSON.parse(readFileSync(join(directory, "state/batch/fixes.json"), "utf8"))[0].text !== "Полагоджено") throw new Error("writer kept a broken stale file")
+
 console.log("translation result writer: OK")

@@ -8,6 +8,9 @@ source "$SCRIPT_DIR/cli/system/select-env.sh"
 preset="$($SCRIPT_DIR/cli/run/run-spec.sh status "$MODE")"
 query="$(php -r '$x=json_decode($argv[1],true);echo $x["preset"]["filter"]??"";' "$preset")"
 channel="$(php -r '$x=json_decode($argv[1],true);echo $x["preset"]["channel"]??"";' "$preset")"
+# Скаляр для Memory::fromFile: у improve памʼяттю є лише manual-шар, інакше
+# RU-похідний machine-текст закриває рядки, які цей режим має покращити.
+memory_layers="$(php -r '$x=json_decode($argv[1],true);$l=$x["preset"]["memory_layers"]??[];echo $l===["manual"]?"manual":"all";' "$preset")"
 # Завжди звіряємо наявний run-target із поточним BDO_ENV. Просте `--show`
 # приймало старий `prod` lock після перемикання `.env` на DEV, і DEV-пачка
 # доходила до commit із несумісною ціллю.
@@ -20,5 +23,5 @@ count="$(php -r 'echo count(json_decode(file_get_contents($argv[1]),true)["data"
 if [ "$count" -eq 0 ]; then printf '{"ok":true,"mode":"%s","state":"complete","rows":0}\n' "$MODE"; exit 0; fi
 "$SCRIPT_DIR/cli/batch/batch-new.sh" "$rows" >/dev/null
 B="$($SCRIPT_DIR/cli/batch/batch-dir.sh)"
-php -r 'require $argv[1];$w=Bdo\Translate\Batch\Workspace::requireCurrent($argv[2]);$w->updateManifest(function($m)use($argv){$m["mode"]=$argv[3];$m["channel"]=$argv[4];$m["query"]=$argv[5];return $m;},"run_spec");' "$SCRIPT_DIR/lib/autoload.php" "${BDO_STATE_DIR:-$SCRIPT_DIR/state}" "$MODE" "$channel" "$query"
+php -r 'require $argv[1];$w=Bdo\Translate\Batch\Workspace::requireCurrent($argv[2]);$w->updateManifest(function($m)use($argv){$m["mode"]=$argv[3];$m["channel"]=$argv[4];$m["query"]=$argv[5];$m["memory_layers"]=$argv[6];return $m;},"run_spec");' "$SCRIPT_DIR/lib/autoload.php" "${BDO_STATE_DIR:-$SCRIPT_DIR/state}" "$MODE" "$channel" "$query" "$memory_layers"
 printf '{"ok":true,"mode":"%s","state":"selected","rows":%d,"batch_dir":"%s"}\n' "$MODE" "$count" "$B"

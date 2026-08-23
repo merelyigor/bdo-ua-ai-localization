@@ -28,7 +28,9 @@ Primary-режим звертається до документа лише ко�
 
 Child-контракт повністю визначений власним prompt, staged payload і schema.
 Технічне обмеження tools забезпечують `opencode.json`,
-`translation-execution-guard` і `translation-routing-guard`.
+`translation-execution-guard` і `translation-routing-guard`; доставку payload у
+Task prompt і збереження результату Task робить механічно
+`translation-child-contract` (envelope у `state/next-child.json`).
 
 ## Правило зміни
 

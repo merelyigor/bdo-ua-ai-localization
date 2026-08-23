@@ -10,7 +10,8 @@ final class StateMachine
 {
     /** @var array<string,list<string>> */
     private const TRANSITIONS = [
-        'selected' => ['prepared', 'paused', 'failed_terminal'],
+        'selected' => ['awaiting_terminology', 'prepared', 'paused', 'failed_terminal'],
+        'awaiting_terminology' => ['prepared', 'retry_scheduled', 'waiting_dependency', 'paused', 'failed_terminal'],
         'prepared' => ['awaiting_worker', 'paused', 'failed_terminal'],
         'awaiting_worker' => ['candidate_valid', 'retry_scheduled', 'waiting_dependency', 'paused', 'failed_terminal'],
         'candidate_valid' => ['deterministic_valid', 'retry_scheduled', 'failed_terminal'],
@@ -23,7 +24,7 @@ final class StateMachine
         'committing' => ['committed', 'waiting_dependency', 'failed_terminal'],
         'committed' => ['verified', 'waiting_dependency', 'failed_terminal'],
         'waiting_dependency' => ['retry_scheduled', 'paused', 'failed_terminal'],
-        'retry_scheduled' => ['awaiting_worker', 'awaiting_qa', 'healing', 'awaiting_control_qa', 'ready_to_commit', 'waiting_dependency', 'failed_terminal'],
+        'retry_scheduled' => ['awaiting_terminology', 'awaiting_worker', 'awaiting_qa', 'healing', 'awaiting_control_qa', 'ready_to_commit', 'waiting_dependency', 'failed_terminal'],
         'paused' => ['retry_scheduled', 'failed_terminal'],
         'verified' => [],
         'failed_terminal' => [],

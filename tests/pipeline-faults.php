@@ -39,5 +39,33 @@ $envelope = json_decode(implode("\n", $lines), true, 512, JSON_THROW_ON_ERROR);
 check(($envelope['next']['role'] ?? null) === 'translation-worker', 'invalid candidate did not schedule worker retry');
 check(! is_file($workspace->path('candidate.json')), 'invalid candidate remained active');
 check(count(glob($workspace->path('candidate.invalid.*.json')) ?: []) === 1, 'invalid candidate was not preserved for audit');
+// Envelope дублюється у state/next-child.json для механічного child-контракту.
+$staged = json_decode((string) file_get_contents($root.'/next-child.json'), true, 512, JSON_THROW_ON_ERROR);
+check(($staged['role'] ?? null) === 'translation-worker', 'child envelope was not staged for the contract plugin');
+check(($staged['payload_path'] ?? '') === $workspace->path('worker-payload.json'), 'staged envelope has a wrong payload path');
+
+// Ліміт повторів child: систематично збійна модель не має права плодити
+// сесії нескінченно · після BDO_DRIVE_MAX_CHILD_RETRIES прогін блокується.
+$root2 = sys_get_temp_dir().'/bdo-fault-retry-'.bin2hex(random_bytes(6));
+if (! mkdir($root2, 0o755, true) && ! is_dir($root2)) {
+    throw new RuntimeException("Не вдалося створити тимчасовий каталог $root2.");
+}
+$workspace2 = Workspace::create($root2, RowSet::fromFile($rowsPath), '20260823_140000');
+copy($rowsPath, $workspace2->path('rows.json'));
+$workspace2->transition('prepared');
+$workspace2->transition('awaiting_worker');
+$command2 = sprintf('BDO_PIPELINE_OFFLINE=1 BDO_STATE_DIR=%s bash %s', escapeshellarg($root2), escapeshellarg($repo.'/cli/run/run-drive.sh'));
+for ($attempt = 1; $attempt <= 3; $attempt++) {
+    file_put_contents($workspace2->path('candidate.json'), '{broken');
+    exec($command2, $out, $code);
+    check($code === 0, "retry $attempt was refused before the limit");
+    $out = [];
+}
+file_put_contents($workspace2->path('candidate.json'), '{broken');
+exec($command2, $out2, $code2);
+check($code2 !== 0, 'driver kept re-emitting the child past the retry limit');
+$blocked = json_decode(implode("\n", $out2), true, 512, JSON_THROW_ON_ERROR);
+check(($blocked['next']['kind'] ?? null) === 'blocked', 'exhausted retries did not block the batch');
+check(($blocked['next']['reason'] ?? null) === 'child_retry_limit', 'blocked envelope carries a wrong reason');
 
 echo "pipeline faults: OK\n";

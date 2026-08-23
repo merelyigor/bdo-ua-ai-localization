@@ -15,24 +15,32 @@ complete() {
 emit() {
     php -r '$n=json_decode($argv[3],true,512,JSON_THROW_ON_ERROR);echo json_encode(["ok"=>$argv[1]==="1","state"=>$argv[2],"next"=>$n],JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES),"\n";' "$1" "$2" "$3"
 }
+# Envelope дублюється у state/next-child.json: плагін translation-child-contract
+# читає його звідти, підставляє точний вміст payload у Task prompt і зберігає
+# результат Task у response_path механічно, без копіювання диригентом.
 child() {
-    emit 1 "$1" "$(php -r 'echo json_encode(["kind"=>"child","role"=>$argv[1],"payload_path"=>$argv[2],"response_path"=>$argv[3]]);' "$2" "$3" "$4")"
+    php -r 'echo json_encode(["kind"=>"child","role"=>$argv[1],"payload_path"=>$argv[2],"response_path"=>$argv[3]],JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES);' "$2" "$3" "$4" > "$STATE_DIR/next-child.json"
+    emit 1 "$1" "$(cat "$STATE_DIR/next-child.json")"
 }
-
-state="$(field state)"
-case "$state" in
-selected)
-    if [ "${BDO_PIPELINE_OFFLINE:-0}" != 1 ]; then "$SCRIPT_DIR/cli/prepare/memory-lookup.sh" "$B/rows.json" >/dev/null 2>&1 || true; fi
-    rows="$B/rows.json"
-    if [ -s "$B/memory.json" ]; then
-        "$SCRIPT_DIR/cli/prepare/memory-apply.sh" "$B/rows.json" "$B/memory.json" >/dev/null 2>&1 || true
-        test -s "$B/to-translate.json" && rows="$B/to-translate.json"
-    fi
-    if [ "${BDO_PIPELINE_OFFLINE:-0}" != 1 ]; then "$SCRIPT_DIR/cli/prepare/glossary-gaps.sh" "$B/rows.json" >/dev/null 2>&1 || true; fi
+# Ліміт повторних викликів child в одному стані: систематично збійна модель
+# інакше плодить сесії нескінченно (інцидент «девʼять порожніх worker sessions»).
+# Повертає 0, коли ліміт вичерпано. Скидання: видалити drive-retries.json у пачці.
+retry_exceeded() {
+    local n
+    n="$(php -r '$f=$argv[1];$a=is_file($f)?(json_decode((string)file_get_contents($f),true)?:[]):[];$a[$argv[2]]=($a[$argv[2]]??0)+1;file_put_contents($f,json_encode($a));echo $a[$argv[2]];' "$B/drive-retries.json" "$1")"
+    [ "$n" -gt "${BDO_DRIVE_MAX_CHILD_RETRIES:-3}" ]
+}
+give_up() {
+    emit 0 "$1" '{"kind":"blocked","reason":"child_retry_limit"}'
+    exit 1
+}
+prepare_worker() {
+    local rows="$B/rows.json" count
+    test -s "$B/to-translate.json" && rows="$B/to-translate.json"
     count="$(php -r 'echo count(json_decode(file_get_contents($argv[1]),true)["data"]["rows"]??[]);' "$rows")"
     if [ "$count" -gt 0 ]; then
         "$SCRIPT_DIR/cli/prepare/build-schema.sh" "$rows" >/dev/null
-        args=(); test "$(field mode)" = improve && args+=(--with-current)
+        local args=(); test "$(field mode)" = improve && args+=(--with-current)
         test "${BDO_PIPELINE_OFFLINE:-0}" = 1 && args+=(--no-context)
         "$SCRIPT_DIR/cli/prepare/worker-payload.sh" "$rows" "${args[@]}" > "$B/worker-payload.json"
     else
@@ -40,12 +48,66 @@ selected)
     fi
     complete prepared "$B/worker-payload.json"; transition prepared; transition awaiting_worker
     child awaiting_worker translation-worker "$B/worker-payload.json" "$B/candidate.json"
+}
+
+# Застарілий envelope не має пережити цей виклик: він потрібен лише між
+# емісією child і native Task, а кожна емісія пише свій.
+rm -f "$STATE_DIR/next-child.json"
+
+state="$(field state)"
+case "$state" in
+selected)
+    # Шари памʼяті задає preset режиму (manifest.memory_layers). Для improve
+    # це manual: старий machine-текст із RU не є памʼяттю для покращення.
+    mem_layers="$(field memory_layers)"
+    test -z "$mem_layers" && test "$(field mode)" = improve && mem_layers=manual
+    test -n "$mem_layers" && export BDO_MEMORY_LAYERS="${BDO_MEMORY_LAYERS:-$mem_layers}"
+    if [ "${BDO_PIPELINE_OFFLINE:-0}" != 1 ]; then "$SCRIPT_DIR/cli/prepare/memory-lookup.sh" "$B/rows.json" >/dev/null 2>&1 || true; fi
+    if [ -s "$B/memory.json" ]; then
+        "$SCRIPT_DIR/cli/prepare/memory-apply.sh" "$B/rows.json" "$B/memory.json" >/dev/null 2>&1 || true
+    fi
+    rows="$B/rows.json"
+    test -s "$B/to-translate.json" && rows="$B/to-translate.json"
+    # Прогалини глосарію закриваються ДО воркера: інакше вигадка воркера для
+    # mandatory-терміна стає фактичним стандартом патча. Пропозиції terminology
+    # лишаються в теці пачки для власника; терміни в каталог додає лише адмінка.
+    if [ "${BDO_PIPELINE_OFFLINE:-0}" != 1 ] && [ ! -s "$B/term-proposals.json" ]; then
+        gaps="$(php -r 'require $argv[2];$n=0;foreach(Bdo\Translate\Batch\RowSet::fromFile($argv[1]) as $r){$n+=count($r->pendingTerms())+count($r->unresolvedEntities());}echo $n;' "$rows" "$SCRIPT_DIR/lib/autoload.php" 2>/dev/null || echo 0)"
+        if [ "${gaps:-0}" -gt 0 ] && "$SCRIPT_DIR/cli/prepare/terminology-payload.sh" "$rows" > "$B/terminology-payload.json" 2>/dev/null; then
+            terms="$(php -r 'echo count(json_decode((string)file_get_contents($argv[1]),true)?:[]);' "$B/terminology-payload.json")"
+            if [ "${terms:-0}" -gt 0 ]; then
+                transition awaiting_terminology
+                child awaiting_terminology translation-terminology "$B/terminology-payload.json" "$B/term-proposals.json"
+                exit 0
+            fi
+        fi
+    fi
+    prepare_worker
+    ;;
+awaiting_terminology)
+    # Пропозиції термінів · артефакт для власника, не ворота пачки: вичерпаний
+    # ліміт повторів не блокує прогін, а веде до воркера без пропозицій.
+    if [ ! -s "$B/term-proposals.json" ]; then
+        if retry_exceeded awaiting_terminology; then prepare_worker; exit 0; fi
+        child awaiting_terminology translation-terminology "$B/terminology-payload.json" "$B/term-proposals.json"; exit 0
+    fi
+    if ! php -r '$a=json_decode((string)file_get_contents($argv[1]),true);exit(is_array($a)?0:1);' "$B/term-proposals.json" 2>/dev/null; then
+        mv "$B/term-proposals.json" "$B/term-proposals.invalid.$(date +%s).json"
+        if retry_exceeded awaiting_terminology; then prepare_worker; exit 0; fi
+        child awaiting_terminology translation-terminology "$B/terminology-payload.json" "$B/term-proposals.json"; exit 0
+    fi
+    complete terminology "$B/term-proposals.json"
+    prepare_worker
     ;;
 awaiting_worker)
-    if [ ! -s "$B/candidate.json" ]; then child awaiting_worker translation-worker "$B/worker-payload.json" "$B/candidate.json"; exit 0; fi
+    if [ ! -s "$B/candidate.json" ]; then
+        if retry_exceeded awaiting_worker; then give_up awaiting_worker; fi
+        child awaiting_worker translation-worker "$B/worker-payload.json" "$B/candidate.json"; exit 0
+    fi
     model_rows="$B/rows.json"; test -s "$B/to-translate.json" && model_rows="$B/to-translate.json"
     if ! "$SCRIPT_DIR/cli/quality/build-items.sh" "$model_rows" "$B/candidate.json" "$B/model-items.json" "" --require-all >/dev/null 2>&1; then
         mv "$B/candidate.json" "$B/candidate.invalid.$(date +%s).json"
+        if retry_exceeded awaiting_worker; then give_up awaiting_worker; fi
         child awaiting_worker translation-worker "$B/worker-payload.json" "$B/candidate.json"
         exit 0
     fi
@@ -65,23 +127,31 @@ awaiting_worker)
     transition awaiting_qa; child awaiting_qa translation-qa "$B/qa-payload.json" "$B/verdicts.json"
     ;;
 awaiting_qa)
-    if [ ! -s "$B/verdicts.json" ]; then child awaiting_qa translation-qa "$B/qa-payload.json" "$B/verdicts.json"; exit 0; fi
+    if [ ! -s "$B/verdicts.json" ]; then
+        if retry_exceeded awaiting_qa; then give_up awaiting_qa; fi
+        child awaiting_qa translation-qa "$B/qa-payload.json" "$B/verdicts.json"; exit 0
+    fi
     if ! php -r 'require $argv[1];Bdo\Translate\Quality\VerdictSet::fromFile($argv[2]);' "$SCRIPT_DIR/lib/autoload.php" "$B/verdicts.json" 2>/dev/null; then
         mv "$B/verdicts.json" "$B/verdicts.invalid.$(date +%s).json"
+        if retry_exceeded awaiting_qa; then give_up awaiting_qa; fi
         child awaiting_qa translation-qa "$B/qa-payload.json" "$B/verdicts.json"
         exit 0
     fi
     complete qa "$B/verdicts.json"; transition qa_valid
     vf=""; test -f "$B/validate-path" && vf="$(cat "$B/validate-path")"
-    BDO_HEAL_MAX_ATTEMPTS="${BDO_HEAL_MAX_ATTEMPTS:-3}" "$SCRIPT_DIR/cli/heal/heal-plan.sh" "$B/rows.json" "$B/clean.json" "$B/verdicts.json" "$vf" > "$B/heal-report.txt" 2>&1 || true
+    BDO_HEAL_MAX_ATTEMPTS="${BDO_HEAL_MAX_ATTEMPTS:-1}" "$SCRIPT_DIR/cli/heal/heal-plan.sh" "$B/rows.json" "$B/clean.json" "$B/verdicts.json" "$vf" > "$B/heal-report.txt" 2>&1 || true
     repairs="$(php -r '$a=is_file($argv[1])?json_decode(file_get_contents($argv[1]),true):[];echo is_array($a)?count($a):0;' "$B/heal-repair-payload.json")"
     if [ "$repairs" -gt 0 ]; then transition healing; child healing translation-repair "$B/heal-repair-payload.json" "$B/fixes.json"
     else cp "$B/heal-merged.json" "$B/final-candidate.json"; cp "$B/verdicts.json" "$B/final-verdicts.json"; transition ready_to_commit; emit 1 ready_to_commit '{"kind":"continue"}'; fi
     ;;
 healing)
-    if [ ! -s "$B/fixes.json" ]; then child healing translation-repair "$B/heal-repair-payload.json" "$B/fixes.json"; exit 0; fi
+    if [ ! -s "$B/fixes.json" ]; then
+        if retry_exceeded healing; then give_up healing; fi
+        child healing translation-repair "$B/heal-repair-payload.json" "$B/fixes.json"; exit 0
+    fi
     if ! "$SCRIPT_DIR/cli/quality/merge-items.sh" "$B/heal-merged.json" "$B/fixes.json" "$B/healed.json" >/dev/null 2>&1; then
         mv "$B/fixes.json" "$B/fixes.invalid.$(date +%s).json"
+        if retry_exceeded healing; then give_up healing; fi
         child healing translation-repair "$B/heal-repair-payload.json" "$B/fixes.json"
         exit 0
     fi
@@ -89,7 +159,10 @@ healing)
     transition awaiting_control_qa; child awaiting_control_qa translation-qa "$B/control-qa-payload.json" "$B/verdicts-control.json"
     ;;
 awaiting_control_qa)
-    if [ ! -s "$B/verdicts-control.json" ]; then child awaiting_control_qa translation-qa "$B/control-qa-payload.json" "$B/verdicts-control.json"; exit 0; fi
+    if [ ! -s "$B/verdicts-control.json" ]; then
+        if retry_exceeded awaiting_control_qa; then give_up awaiting_control_qa; fi
+        child awaiting_control_qa translation-qa "$B/control-qa-payload.json" "$B/verdicts-control.json"; exit 0
+    fi
     php -r '$a=json_decode(file_get_contents($argv[1]),true);$b=json_decode(file_get_contents($argv[2]),true);$x=[];foreach($a as $v)$x[$v["identity_hash"]]=$v;foreach($b as $v)$x[$v["identity_hash"]]=$v;file_put_contents($argv[3],json_encode(array_values($x),JSON_UNESCAPED_UNICODE|JSON_THROW_ON_ERROR));' "$B/verdicts.json" "$B/verdicts-control.json" "$B/final-verdicts.json"
     cp "$B/healed.json" "$B/final-candidate.json"; transition ready_to_commit; emit 1 ready_to_commit '{"kind":"continue"}'
     ;;

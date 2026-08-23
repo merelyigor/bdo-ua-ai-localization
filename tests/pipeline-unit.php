@@ -6,9 +6,11 @@ require __DIR__.'/../lib/autoload.php';
 
 use Bdo\Translate\Api\IdempotencyKey;
 use Bdo\Translate\Pipeline\ChannelRouter;
+use Bdo\Translate\Batch\Memory;
 use Bdo\Translate\Batch\RowSet;
 use Bdo\Translate\Batch\Workspace;
 use Bdo\Translate\Pipeline\RunSpec;
+use Bdo\Translate\Pipeline\StateMachine;
 use Bdo\Translate\Runtime\ModelPolicy;
 
 function expect(bool $condition, string $message): void
@@ -65,6 +67,35 @@ try {
     } catch (RuntimeException $error) {
         expect(str_contains($error->getMessage(), 'source_hash'), 'idempotency key did not reject a raw candidate');
     }
+
+    // Термінологічний етап живе в drive до воркера: прогалина глосарію не має
+    // права мовчки стати «стандартом», який вигадав worker.
+    StateMachine::assertTransition('selected', 'awaiting_terminology');
+    StateMachine::assertTransition('awaiting_terminology', 'prepared');
+    try {
+        StateMachine::assertTransition('awaiting_terminology', 'verified');
+        throw new RuntimeException('awaiting_terminology -> verified was accepted');
+    } catch (RuntimeException $e) {
+        expect(str_contains($e->getMessage(), 'Заборонений перехід'), 'wrong terminology transition error');
+    }
+
+    // Фільтр шарів памʼяті: у improve machine-текст (RU-похідний) не є памʼяттю.
+    $memoryFile = $root.'/memory.json';
+    file_put_contents($memoryFile, json_encode(['data' => ['memory' => [
+        $identity => ['source_text' => $source, 'variants' => [
+            ['layer' => 'machine', 'text' => 'машинний'],
+            ['layer' => 'manual', 'text' => 'ручний'],
+        ]],
+        str_repeat('b', 64) => ['source_text' => 'Other', 'variants' => [
+            ['layer' => 'machine', 'text' => 'лише машинний'],
+        ]],
+    ]]], JSON_THROW_ON_ERROR));
+    $all = Memory::fromFile($memoryFile, 'all');
+    expect($all->best($identity)['text'] === 'машинний', 'layers=all must keep the server order');
+    expect($all->best(str_repeat('b', 64)) !== null, 'layers=all lost a machine-only entry');
+    $manualOnly = Memory::fromFile($memoryFile, 'manual');
+    expect($manualOnly->best($identity)['text'] === 'ручний', 'layers=manual must drop machine variants');
+    expect($manualOnly->best(str_repeat('b', 64)) === null, 'layers=manual kept a machine-only entry');
 
     $spec = RunSpec::create('proposal', 'PROD', 'ses_parent', 15)->toArray();
     expect(($spec['channel'] ?? null) === 'proposal', 'proposal preset selected a wrong channel');

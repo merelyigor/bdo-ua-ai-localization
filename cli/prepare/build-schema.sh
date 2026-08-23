@@ -19,9 +19,11 @@ readonly SCRIPT_DIR
 # обмежене», і його читає плагін OpenCode за фіксованим шляхом. Застаріла схема
 # від попередньої пачки не є діркою в ізоляції - вона себе виявляє одразу, бо
 # фіксує довжину масиву й перелік identity в enum, тож на іншій пачці запит
-# просто не проходить.
-readonly ACTIVE="$SCRIPT_DIR/state/current-response-schema.json"
-readonly ACTIVE_QA="$SCRIPT_DIR/state/current-qa-schema.json"
+# просто не проходить. BDO_STATE_DIR тут той самий, що й у решти скриптів:
+# без нього тест, який будує схему, затирав би активну схему живої пачки.
+readonly STATE_ROOT="${BDO_STATE_DIR:-$SCRIPT_DIR/state}"
+readonly ACTIVE="$STATE_ROOT/current-response-schema.json"
+readonly ACTIVE_QA="$STATE_ROOT/current-qa-schema.json"
 MODE=rows
 OUT_FILE=""
 
@@ -65,7 +67,7 @@ test "$MODE" = qa && TARGET="$ACTIVE_QA"
 if [ -n "$OUT_FILE" ]; then
     TARGET="$OUT_FILE"
 else
-    mkdir -p "$SCRIPT_DIR/state"
+    mkdir -p "$STATE_ROOT"
 fi
 
 php -r '

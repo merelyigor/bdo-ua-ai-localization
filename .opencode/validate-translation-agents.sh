@@ -22,6 +22,10 @@ test -f "$ROOT/.opencode/plugin/translation-execution-guard.ts" || {
     echo 'ERROR: native Task flow requires the shell execution guard' >&2
     exit 1
 }
+test -f "$ROOT/.opencode/plugin/translation-child-contract.ts" || {
+    echo 'ERROR: native Task flow requires the mechanical child contract plugin' >&2
+    exit 1
+}
 active_profile="$(jq -r '.active_profile' "$POLICY")"
 
 for agent in "${AGENTS[@]}"; do
@@ -103,7 +107,7 @@ done
 declare -A MAX_LINES=(
     [translation-smoke]=20 [translation-worker]=50 [translation-qa]=55
     [translation-repair]=40 [translation-terminology]=45
-    [патч]=35 [ручний]=35 [пропозиції]=35 [покращення]=35
+    [патч]=55 [ручний]=55 [пропозиції]=55 [покращення]=55
 )
 for agent in "${!MAX_LINES[@]}"; do
     lines="$(wc -l < "$ROOT/.opencode/agents/$agent.md" | tr -d ' ')"
@@ -131,6 +135,29 @@ done
 for primary in патч ручний пропозиції покращення; do
     grep -Fq 'subagent_type=next.role' "$ROOT/.opencode/agents/$primary.md" || {
         printf 'ERROR: %s must invoke a native visible Task\n' "$primary" >&2
+        exit 1
+    }
+    # Слабкий диригент не має бачити зайвих інструментів: усе, за що
+    # execution-guard убив би сесію, вимкнене поіменно у frontmatter.
+    # Wildcard `"*": false` тут ЗАБОРОНЕНИЙ: перевірено на живій сесії
+    # ses_fd0a013caffe44EGM6Q5cH6DzW (2026-08-23) - він ховає і native task,
+    # попри пізніші явні allow, і диригент завершується `Native Task недоступний`.
+    if grep -Fq '"*": false' "$ROOT/.opencode/agents/$primary.md"; then
+        printf 'ERROR: %s must not use a wildcard tool deny; it hides native task\n' "$primary" >&2
+        exit 1
+    fi
+    for line in '  edit: false' '  write: false' '  patch: false' '  glob: false' \
+        '  grep: false' '  list: false' '  webfetch: false' '  websearch: false' \
+        '  question: false' '  todowrite: false' '  todoread: false' '  skill: false'; do
+        grep -Fqx "$line" "$ROOT/.opencode/agents/$primary.md" || {
+            printf 'ERROR: %s frontmatter must deny the guard-forbidden tool (missing: %s)\n' "$primary" "$line" >&2
+            exit 1
+        }
+    done
+    # Після CHILD-КОНТРАКТу наступний крок · run drive, не mode start: інакше
+    # слабка модель мовчки кидає пачку посеред роботи й починає нову.
+    grep -Fq 'ЗНОВУ `./bdo run drive`' "$ROOT/.opencode/agents/$primary.md" || {
+        printf 'ERROR: %s must loop back to run drive after the child contract, not to mode start\n' "$primary" >&2
         exit 1
     }
 done

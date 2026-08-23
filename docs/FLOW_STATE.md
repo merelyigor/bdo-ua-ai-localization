@@ -1,5 +1,98 @@
 # Флоу перекладу через субагентів OpenCode: стан робіт
 
+## 2026-08-23 · механічний child-контракт і закриті розриви drive
+
+- **Механічна доставка payload і результату.** Новий плагін
+  `.opencode/plugin/translation-child-contract.ts`: на native `task` для
+  translation-ролі він замінює prompt точним вмістом staged payload зі
+  `state/next-child.json` (пишуть `run drive` і `./bdo smoke`), а JSON-результат
+  Task зберігає в `response_path` сам, знявши `<task_result>`-обгортку.
+  Причина: слабкий диригент не є надійним носієм байтів, а позиційна схема
+  ЗМУШУЄ child відповідати за рядки, яких він не бачив, якщо копія payload
+  обрізана. `translation_result` тепер вважає канонічним механічно захоплений
+  файл; копія диригента - лише підтвердження. Task для робочої ролі без staged
+  envelope блокується (ручний `@translation-smoke` лишається легальним).
+- **Terminology повернувся у flow.** `run drive` у `selected` рахує прогалини
+  глосарію механічно і за наявності ставить стан `awaiting_terminology` з child
+  `translation-terminology`; пропозиції лишаються в `term-proposals.json` теки
+  пачки для власника (створення термінів - як і раніше лише адмінка). Вичерпані
+  повтори terminology НЕ блокують пачку - прогін іде до воркера без пропозицій.
+- **Improve більше не їсть machine-памʼять.** Preset `memory_layers` тепер
+  доїжджає до виконання: `mode start` пише його в manifest, `run drive`
+  експортує `BDO_MEMORY_LAYERS`, `Memory::fromFile` фільтрує. Для improve це
+  `manual`: RU-похідний machine-текст не закриває рядки, які режим має
+  покращити. Регресія: `tests/drive-memory-layers.sh`.
+- **Ліміт повторів child у drive.** Кожен стан має лічильник у
+  `drive-retries.json` пачки; після `BDO_DRIVE_MAX_CHILD_RETRIES` (типово 3)
+  drive віддає `blocked: child_retry_limit` замість нескінченних сесій
+  (клас інциденту «девʼять порожніх worker sessions»).
+- **Промпти примарок.** Frontmatter ховає від слабкої моделі всі інструменти,
+  за які execution-guard убив би сесію: поіменні `edit/write/patch/glob/grep/
+  list/webfetch/websearch/question/todowrite/todoread/skill: false`. Wildcard
+  `"*": false` з точковими allow тут НЕ працює: перша ж жива сесія
+  (`ses_fd0a013caffe44EGM6Q5cH6DzW`) показала, що він ховає і native `task` -
+  диригент чесно перелічив свій список tools без `task` і завершився
+  `Native Task недоступний` (escape-hatch спрацював як задумано: гучна зупинка
+  замість обходу). Тому дозволені bash/read/task/translation_result лишаються
+  без правил, а заборони - лише поіменні; регресію тримає validate-скрипт.
+  Цикл виправлено: після CHILD-КОНТРАКТу диригент повертається до
+  `./bdo run drive`, НЕ до `mode start` (старий текст «повернись до кроку 2»
+  мовчки кидав пачку). `mode status` більше не просить показати кількість
+  рядків, якої він не знає.
+- Дрібне: `run drive` вирівняв дефолт `BDO_HEAL_MAX_ATTEMPTS` на 1 (як у
+  heal-plan і докуменах); `build-schema` шанує `BDO_STATE_DIR`, тож тести не
+  затирають активну схему живої пачки; `[]`-fallback у промптах
+  worker/qa/repair уточнено як випадок запуску без staged schema.
+- Перевірено в бандлі OpenCode: `steps` - легальне поле frontmatter
+  (`translation-smoke` коректний), а `AGENTS.md` інʼєктиться в системний prompt
+  УСІХ сесій, включно з child, - тому він і має лишатись коротким.
+
+### Reasoning ніколи не вимикався: snake_case перетирався на undefined
+
+Аудит показував `THINK` на КОЖНІЙ child-сесії, хоча
+`translation-routing-guard` «надсилав» `reasoning_effort: "none"`. Попереднє
+пояснення «провайдер ігнорує» було **помилковим**: параметр не доходив до
+провайдера взагалі.
+
+І Zen (`opencode`), і `ollama-local` ходять через `@ai-sdk/openai-compatible`.
+Він збирає тіло запиту так:
+
+```
+{ model, …, response_format, stop, seed,
+  ...passthrough(providerOptions[provider] мінус ключі схеми опцій),
+  reasoning_effort: compatibleOptions.reasoningEffort,   // ПІСЛЯ спреду
+  verbosity, messages, tools, tool_choice }
+```
+
+Схема опцій знає поле як `reasoningEffort`. Наш `reasoning_effort` не збігався
+з нею, тому проходив як passthrough - і одразу перетирався рядком нижче на
+`compatibleOptions.reasoningEffort`, тобто на `undefined`, який `JSON.stringify`
+викидає. Ключі ДО спреду перетираємо ми (саме тому `response_format` працює й
+constrained decoding діє), ключі ПІСЛЯ спреду перетирають нас.
+
+Тепер плагін ставить `reasoningEffort`. Значення задає одна константа
+локального `.env`: `BDO_REASONING_EFFORT=none|off|minimal|low|medium|high`,
+типово `none`; читається лише цей ключ і лише він. Регресію тримає
+`tests/routing-guard.mjs`: snake_case у опціях заборонений явним assert.
+
+**Виміряно на локальній `qwen3.5:9b` (Ollama `/v1`, прямий curl, 2026-08-23),
+чотири варіанти тіла запиту:**
+
+| Тіло | `content` | reasoning | completion_tokens |
+|---|---|---|---|
+| без параметрів | порожній | 284 символи | 64 (уперся в стелю) |
+| `reasoning_effort: "none"` | `ok` | 0 | 2 |
+| `think: false` | порожній | 287 символів | 64 |
+| обидва | `ok` | 0 | 2 |
+
+Два висновки. Перший: `think: false` на `/v1` НЕ працює · стара примітка в коді
+була права, і моя спроба додати його «про всяк випадок» відхилена власним
+виміром, а не думкою. Другий, важливіший: без робочого параметра модель зʼїдає
+всю стелю виходу на роздуми й повертає ПОРОЖНІЙ `content`. Тобто той самий
+дефект, що в аудиті позначався `EMPTY`, · не окрема поломка, а наслідок того,
+що reasoning не вимикався. Тому виправлення стосується не лише економії
+токенів, а й надійності локальних прогонів.
+
 ## 2026-08-23 · єдиний self-contained child contract
 
 - Smoke більше не має захардкодженого Task prompt у чотирьох primary-режимах.
@@ -233,12 +326,16 @@ qwen3.8 відхилена окремо: втричі повільніша й д
 ## Механічні гарантії (не інструкції, а механізми)
 
 1. `opencode.json`: `task "*": deny` + явні allow лише пʼятьом `translation-*`.
-2. Frontmatter кожного субагента прибиває `ollama-local`-модель.
+2. Frontmatter кожного субагента прибиває модель активного профілю
+   (`.opencode/translation-models.json`); синхронність перевіряє
+   `.opencode/validate-translation-agents.sh`.
 3. Плагін `.opencode/plugin/translation-routing-guard.ts` у хуку `chat.params`:
-   - кидає помилку, якщо маршрут не
-     `ollama-local/qwen3.6:35b-a3b-mtp-q4_K_M|qwen3.5:9b`;
-   - додає `reasoning_effort: "none"` (інакше Qwen на `/v1` віддає весь бюджет
-     у `reasoning` і лишає `content` порожнім);
+   - кидає помилку, якщо маршрут відсутній в активному профілі
+     `.opencode/translation-models.json` (платні маршрути · лише з `allow_paid`);
+   - додає `reasoningEffort` за константою `.env` `BDO_REASONING_EFFORT`
+     (типово `none`; `off` вимикає). Саме камелькейс: snake_case перетирає SDK.
+     Інакше Qwen на `/v1` віддає весь бюджет у `reasoning` і лишає `content`
+     порожнім (виміряно: 284 символи роздумів, порожня відповідь);
    - підставляє `response_format` зі staged-схеми для worker/repair/qa;
    - **кидає помилку, якщо схема не поставлена** - до витрати токенів.
 4. `subagent_depth: 1` + `task: deny` у всіх дітей.
@@ -247,6 +344,14 @@ qwen3.8 відхилена окремо: втричі повільніша й д
    Причина: constrained decoding **НЕ** блокує виклики інструментів. Воркер
    одного разу поліз у context7 і playwright, витратив 85901 вхідних токенів
    замість 19838 і шукав в інтернеті замість перекладати.
+6. Primary-режими поіменно вимикають у frontmatter усі інструменти, за які
+   `translation-execution-guard` убив би сесію (edit/write/patch/glob/grep/list/
+   webfetch/websearch/question/todowrite/todoread/skill). Wildcard `"*": false`
+   для primary заборонений: він ховає і native `task` (виміряно 2026-08-23).
+7. Плагін `.opencode/plugin/translation-child-contract.ts` на native `task`:
+   підставляє в prompt точний вміст staged payload зі `state/next-child.json`
+   (копія диригента не є носієм байтів) і зберігає JSON-результат Task у
+   `response_path` механічно; `translation_result` тоді лише підтверджує його.
 
 ## Матриця режимів (перевірено кодом і журналом записів)
 
@@ -329,7 +434,11 @@ qwen3.8 відхилена окремо: втричі повільніша й д
   НУЛЬ відповіді, вичерпавши ліміт виходу 16384 токени. Прямий виклик із тим
   самим параметром дає reasoning=0, тож сам параметр робочий; різниця
   зʼявляється саме в OpenCode. В автономному флоу такого не спостерігалось.
-  Причина в OpenCode не встановлена - відкрите питання.
+  **ЗАКРИТО 2026-08-23:** параметр не доходив до провайдера. У плагіні він
+  звався `reasoning_effort`, а `@ai-sdk/openai-compatible` бере значення зі
+  схеми опцій (`reasoningEffort`) і перетирає ним passthrough. Прямий виклик
+  працював саме тому, що там snake_case · це поле самого HTTP API, а не опція
+  SDK. Розбір і виправлення · у записі 2026-08-23 вище.
 
 - **Гонитва за 100% PASS коштує більше, ніж дає.** Пачка з 20 рядків з'їла 11
   субагентських сесій: 1 worker, 5 QA, 3 repair, 2 terminology. Цикл ганявся,

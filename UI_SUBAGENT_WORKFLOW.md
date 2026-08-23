@@ -31,11 +31,17 @@ Independent layers prevent an unintended or hidden model route:
 4. Retries use the ordered routes for that role and save the actual route in the
    session receipt. No route is discovered or enabled implicitly.
 5. `subagent_depth: 1` plus `task: deny` in every child stops nested agents.
-   `default_agent: translation` plus `disable: true` on `build`, `plan`,
+   `default_agent: патч` plus `disable: true` on `build`, `plan`,
    `general` and `explore` means the picker offers no general-purpose primary at
    all: the orchestrator cannot be swapped for one by accident. Their
    `permission.task` blocks stay in the config on purpose, so re-enabling one
-   cannot silently restore unrestricted delegation.
+   cannot silently restore unrestricted delegation. Every primary also disables
+   BY NAME every tool the runtime guard would kill the session for (edit, write,
+   patch, glob, grep, list, webfetch, websearch, question, todowrite, todoread,
+   skill), so a weak conductor never even sees them. A wildcard `"*": false`
+   with explicit allows is forbidden for primaries: measured on session
+   `ses_fd0a013caffe44EGM6Q5cH6DzW` (2026-08-23), it hides the native `task`
+   tool itself and the conductor correctly stops with `Native Task недоступний`.
 6. Усі пʼять `translation-*` children не мають tools. Primary читає рівно один
    staged payload і передає його точний вміст у native Task prompt без власних
    інструкцій, переказу або схеми. Кожен child має самодостатній role prompt і
@@ -46,9 +52,27 @@ Independent layers prevent an unintended or hidden model route:
    calls - only an empty tool list does. `translation-terminology` також не має
    tools: resolve вже входить у payload, а відповідь обмежена strict JSON.
 
-The same plugin sends `reasoning_effort = "none"` for the five agents (Qwen
-thinking on the Ollama `/v1` endpoint returns the whole budget as `reasoning`
-and leaves `content` empty) and refuses to run `translation-worker` or
+7. `translation-child-contract` makes payload delivery mechanical: on a native
+   `task` call for a translation role it replaces the prompt with the exact
+   bytes of the staged payload from `state/next-child.json` (written by
+   `./bdo run drive` and `./bdo smoke`), and after the Task it captures the
+   child's JSON answer straight into `response_path`. A weak conductor is not a
+   reliable byte carrier: a truncated payload copy under the positional schema
+   would force the child to hallucinate rows it never saw. `translation_result`
+   treats the captured file as canonical and uses the conductor's copy only as
+   confirmation. A worker/qa/repair/terminology Task without a staged envelope
+   is refused; a manual `@translation-smoke` stays legal.
+
+The same plugin sends `reasoningEffort` for the five agents — the value comes
+from `BDO_REASONING_EFFORT` in the local `.env` (default `none`, `off` sends
+nothing). The camelCase key is mandatory:
+`@ai-sdk/openai-compatible` overwrites any passthrough `reasoning_effort` with
+the value parsed from its own options schema, so the old snake_case key never
+reached the provider at all — which is why every audited child still burned
+reasoning tokens, and why Qwen thinking on the Ollama `/v1` endpoint could
+return the whole budget as `reasoning` and leave `content` empty.
+
+The plugin also refuses to run `translation-worker` or
 `translation-repair` when no batch schema is staged, so a forgotten
 `bdo schema build` fails before any tokens are spent, not after a full batch.
 `translation-smoke` має мінімальну strict JSON schema. Це додатковий provider
@@ -71,10 +95,23 @@ routes before execution.
 
 ## Sequence
 
-Every command below is a `./bdo` subcommand; `./bdo` alone prints the whole tree
-and `./bdo help flow` prints this sequence without the reasoning. Batch files
-live in the batch directory created by `./bdo batch new` and are always passed
-by explicit path.
+This is the OWNER's reference for what happens inside a batch and for manual
+recovery. The OpenCode primary does not run these steps by hand: its shell is
+restricted to `./bdo env|smoke|mode status|mode start|run drive`, and
+`./bdo run drive` executes the same sequence deterministically, one state per
+call. Every command below is a `./bdo` subcommand; `./bdo` alone prints the
+whole tree and `./bdo help flow` prints this sequence without the reasoning.
+Batch files live in the batch directory created by `./bdo batch new` and are
+always passed by explicit path.
+
+Inside `run drive` the order is: memory lookup/apply (with the mode's
+`memory_layers`: `manual` only for improve) -> glossary gap count -> when gaps
+exist, a `translation-terminology` child whose proposals stay in the batch's
+`term-proposals.json` for the owner -> worker -> deterministic gates -> QA ->
+one healing round -> commit. Each re-emitted child is counted; after
+`BDO_DRIVE_MAX_CHILD_RETRIES` (default 3) the batch reports
+`blocked: child_retry_limit` instead of spawning sessions forever (terminology
+is the one non-blocking stage: exhausted retries there continue to the worker).
 
 The run target is not chosen here: `BDO_ENV=PROD|DEV` in `.env` decides it for
 reads and writes alike, and `./bdo env` prints what is currently set.
@@ -420,7 +457,8 @@ block a full-batch call by length mismatch.
   real provider, model, tokens and tool calls of every child session, flagging
   ROUTE, THINK, TOOLS and EMPTY violations. Trust it over any agent's self-report:
   a primary model already claimed a wrong provider and missed a plugin error.
-- Use the `translation` primary agent for batch work. Its rules live
-  in its own definition, so the five children never carry them in context.
+- Use one of the four primary modes (`патч`, `ручний`, `пропозиції`,
+  `покращення`) for batch work. Their rules live in their own definitions, so
+  the five children never carry them in context.
 - Child agents do not write files, call nested tasks or perform BDO write API
   requests.
