@@ -12,6 +12,7 @@
 | Призначення, межі й структура | [PROJECT_OVERVIEW.md](PROJECT_OVERVIEW.md) |
 | Публічна безпека, `.env`, класи даних | [SECURITY.md](SECURITY.md) |
 | Повний норматив для агентів | [AI_AGENT_RULES_REFERENCE.md](AI_AGENT_RULES_REFERENCE.md) |
+| Маршрутизація правил агентів | [AGENT_RULE_ROUTING.md](AGENT_RULE_ROUTING.md) |
 | Стан, виміри та дорогі знахідки flow | [FLOW_STATE.md](FLOW_STATE.md) |
 | Супервізований OpenCode flow | [UI_SUBAGENT_WORKFLOW.md](../UI_SUBAGENT_WORKFLOW.md) |
 | Ендпоінти й параметри Agent API | [API.md](API.md) |
