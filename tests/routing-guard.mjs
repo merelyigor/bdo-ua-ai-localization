@@ -20,6 +20,7 @@ const output = { options: {} }
 await hooks["chat.params"]({ agent: "translation-smoke", model: { providerID: "free", id: "model" } }, output)
 assert.equal(output.options.response_format.type, "json_schema")
 assert.equal(output.options.response_format.json_schema.strict, true)
+assert.deepEqual(output.options.response_format.json_schema.schema.properties.text, { const: "готово" })
 
 const terminologyOutput = { options: {} }
 await hooks["chat.params"]({ agent: "translation-terminology", model: { providerID: "free", id: "model" } }, terminologyOutput)

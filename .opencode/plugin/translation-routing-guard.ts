@@ -30,7 +30,7 @@ const STRUCTURED_AGENTS = new Map([
 ])
 const SMOKE_SCHEMA = {
   type: "object",
-  properties: { ok: { const: true }, text: { type: "string", minLength: 1 } },
+  properties: { ok: { const: true }, text: { const: "готово" } },
   required: ["ok", "text"],
   additionalProperties: false,
 }
