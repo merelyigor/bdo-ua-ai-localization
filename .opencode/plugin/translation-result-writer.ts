@@ -17,7 +17,7 @@ function atomicWrite(path: string, content: string): void {
   renameSync(temporary, path)
 }
 
-/** Saves JSON returned by a native, visible OpenCode Task child. */
+/** Зберігає JSON, повернутий видимим native Task-дитям OpenCode. */
 export const TranslationResultWriter: Plugin = async ({ directory }) => ({
   tool: {
     translation_result: tool({

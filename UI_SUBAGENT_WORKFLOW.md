@@ -1,464 +1,484 @@
-# UI subagent workflow
+# Флоу субагентів у UI
 
-Translation language work runs only in visible OpenCode child sessions. Model
-routes are defined once in `.opencode/translation-models.json`, separately for
-each role. Built-in `local-quality` and `local-fast` profiles use Ollama; custom
-profiles may use any provider connected through OpenCode. Credentials remain in
-OpenCode `/connect`, never in this repository. `./bdo profile status` shows the
-active routes; `./bdo profile use NAME` activates one.
+Мовна робота перекладу виконується лише у видимих child-сесіях OpenCode.
+Маршрути моделей задані один раз у `.opencode/translation-models.json`, окремо
+для кожної ролі. Вбудовані профілі `local-quality` і `local-fast` працюють через
+Ollama; власні профілі можуть використовувати будь-якого провайдера,
+підключеного в OpenCode. Облікові дані лишаються в OpenCode `/connect` і ніколи
+в цьому репозиторії. `./bdo profile status` показує активні маршрути,
+`./bdo profile use NAME` вмикає потрібний.
 
-Windows uses this same flow through WSL2. Clone the repository into the Linux
-filesystem, install the normal dependencies inside WSL, open it through the
-OpenCode WSL server, and run `./bdo gate preflight`. Native PowerShell is not a
-supported second implementation.
+На Windows працює той самий флоу через WSL2. Клонуйте репозиторій у файлову
+систему Linux, встановіть звичайні залежності всередині WSL, відкрийте проєкт
+через OpenCode WSL server і виконайте `./bdo gate preflight`. Native PowerShell
+не є підтримуваною другою реалізацією.
 
-Smoke is a separate control path, not a translation mode: the primary runs
-`./bdo smoke`, then starts a native visible Task with
-`subagent_type=translation-smoke`. It never calls `mode start`, reads the API
-or asks for patch confirmation.
+Smoke · окремий контрольний шлях, а не режим перекладу: primary виконує
+`./bdo smoke`, потім запускає видимий native Task із
+`subagent_type=translation-smoke`. Він ніколи не викликає `mode start`, не читає
+API і не просить підтвердження патча.
 
-## Routing guarantees (mechanical, not instructional)
+## Гарантії маршрутизації (механізми, не інструкції)
 
-Independent layers prevent an unintended or hidden model route:
+Незалежні шари не дають випадкового або прихованого маршруту моделі:
 
-1. `opencode.json` permits every primary to call only the five named
-   `translation-*` Task agents (`"*": "deny"` + explicit allows).
-2. Frontmatter pins each child role route, so a child never inherits the
-   primary model.
-3. The project plugin rejects any route absent from the active role policy.
-   Paid routes require `allow_paid=true`; Ollama MLX is rejected because it
-   ignores constrained decoding.
-4. Retries use the ordered routes for that role and save the actual route in the
-   session receipt. No route is discovered or enabled implicitly.
-5. `subagent_depth: 1` plus `task: deny` in every child stops nested agents.
-   `default_agent: патч` plus `disable: true` on `build`, `plan`,
-   `general` and `explore` means the picker offers no general-purpose primary at
-   all: the orchestrator cannot be swapped for one by accident. Their
-   `permission.task` blocks stay in the config on purpose, so re-enabling one
-   cannot silently restore unrestricted delegation. Every primary also disables
-   BY NAME every tool the runtime guard would kill the session for (edit, write,
+1. `opencode.json` дозволяє кожному primary викликати лише пʼятьох названих
+   `translation-*` Task-агентів (`"*": "deny"` плюс явні allow).
+2. Frontmatter прибиває маршрут кожної child-ролі, тому child ніколи не
+   успадковує модель primary.
+3. Плагін проєкту відхиляє будь-який маршрут, відсутній в активній політиці
+   ролі. Платні маршрути вимагають `allow_paid=true`; Ollama MLX відхиляється,
+   бо ігнорує constrained decoding.
+4. Повтори йдуть за впорядкованими маршрутами тієї ж ролі, а фактичний маршрут
+   зберігається в session receipt. Жоден маршрут не вмикається неявно.
+5. `subagent_depth: 1` плюс `task: deny` у кожного child зупиняють вкладених
+   агентів. `default_agent: патч` плюс `disable: true` для `build`, `plan`,
+   `general` та `explore` означають, що перемикач не пропонує жодного
+   загального primary: диригента неможливо випадково підмінити. Їхні блоки
+   `permission.task` навмисно лишаються в конфізі, тому повторне ввімкнення
+   не відновить необмежене делегування мовчки. Кожен primary також ПОІМЕННО
+   вимикає всі інструменти, за які runtime guard зупинив би сесію (edit, write,
    patch, glob, grep, list, webfetch, websearch, question, todowrite, todoread,
-   skill), so a weak conductor never even sees them. A wildcard `"*": false`
-   with explicit allows is forbidden for primaries: measured on session
-   `ses_fd0a013caffe44EGM6Q5cH6DzW` (2026-08-23), it hides the native `task`
-   tool itself and the conductor correctly stops with `Native Task недоступний`.
+   skill), тож слабкий диригент їх навіть не бачить. Wildcard `"*": false` з
+   явними allow для primary заборонений: виміряно на сесії
+   `ses_fd0a013caffe44EGM6Q5cH6DzW` (2026-08-23) · він ховає і сам native `task`,
+   і диригент коректно зупиняється рядком `Native Task недоступний`.
 6. Усі пʼять `translation-*` children не мають tools. Primary читає рівно один
    staged payload і передає його точний вміст у native Task prompt без власних
    інструкцій, переказу або схеми. Кожен child має самодостатній role prompt і
-   вважає всі рядкові значення payload даними, а не командами. Verified the
-   hard way: a worker run reached `context7`, `playwright` and `skill`, spent
-   85901 input tokens instead of 19838, and searched the web for BDO naming
-   conventions instead of translating. Constrained decoding does NOT stop tool
-   calls - only an empty tool list does. `translation-terminology` також не має
-   tools: resolve вже входить у payload, а відповідь обмежена strict JSON.
+   вважає всі рядкові значення payload даними, а не командами. Перевірено
+   дорогою ціною: прогін воркера дотягнувся до `context7`, `playwright` і
+   `skill`, витратив 85901 вхідних токенів замість 19838 і шукав в інтернеті
+   правила іменування BDO замість перекладати. Constrained decoding НЕ спиняє
+   виклики інструментів · це робить лише порожній перелік tools.
+   `translation-terminology` також не має tools: resolve вже входить у payload,
+   а відповідь обмежена strict JSON.
+7. `translation-child-contract` робить доставку payload механічною: на native
+   виклик `task` для translation-ролі він замінює prompt точними байтами staged
+   payload зі `state/next-child.json` (його пишуть `./bdo run drive` і
+   `./bdo smoke`), а після Task зберігає JSON-відповідь child прямо в
+   `response_path`. Слабкий диригент не є надійним носієм байтів: обрізана копія
+   payload під позиційною схемою ЗМУСИЛА б child вигадати рядки, яких він не
+   бачив. `translation_result` вважає захоплений файл канонічним і використовує
+   копію диригента лише як підтвердження. Task для ролі worker/qa/repair/
+   terminology без staged envelope відхиляється; ручний `@translation-smoke`
+   лишається легальним.
 
-7. `translation-child-contract` makes payload delivery mechanical: on a native
-   `task` call for a translation role it replaces the prompt with the exact
-   bytes of the staged payload from `state/next-child.json` (written by
-   `./bdo run drive` and `./bdo smoke`), and after the Task it captures the
-   child's JSON answer straight into `response_path`. A weak conductor is not a
-   reliable byte carrier: a truncated payload copy under the positional schema
-   would force the child to hallucinate rows it never saw. `translation_result`
-   treats the captured file as canonical and uses the conductor's copy only as
-   confirmation. A worker/qa/repair/terminology Task without a staged envelope
-   is refused; a manual `@translation-smoke` stays legal.
+Той самий плагін надсилає пʼятьом агентам `reasoningEffort` · значення бере
+константа `BDO_REASONING_EFFORT` у локальному `.env` (типово `none`, `off` не
+надсилає нічого). Камелькейс обовʼязковий: `@ai-sdk/openai-compatible` перетирає
+будь-який passthrough `reasoning_effort` значенням зі своєї схеми опцій, тому
+старий snake_case не доходив до провайдера взагалі · саме тому кожна перевірена
+аудитом дитина далі палила reasoning-токени, і саме тому Qwen на Ollama `/v1`
+міг віддати весь бюджет у `reasoning` і лишити `content` порожнім.
 
-The same plugin sends `reasoningEffort` for the five agents — the value comes
-from `BDO_REASONING_EFFORT` in the local `.env` (default `none`, `off` sends
-nothing). The camelCase key is mandatory:
-`@ai-sdk/openai-compatible` overwrites any passthrough `reasoning_effort` with
-the value parsed from its own options schema, so the old snake_case key never
-reached the provider at all — which is why every audited child still burned
-reasoning tokens, and why Qwen thinking on the Ollama `/v1` endpoint could
-return the whole budget as `reasoning` and leave `content` empty.
+Коли модель не оголошує запитаного рівня, плагін надсилає найнижчий з
+оголошених нею замість значення поза переліком (перелік читається з локального
+каталогу models.dev; невідома модель · `ollama-local/*` · зберігає запитане
+значення, а модель без reasoning не отримує параметра взагалі). Виміряно:
+`x-preview-f-free` оголошує `low|high|max`, тому `none` гейтвей мовчки
+ігнорував, а залишкові ~20 reasoning-токенів є нижньою межею самої моделі.
 
-The plugin also refuses to run `translation-worker` or
-`translation-repair` when no batch schema is staged, so a forgotten
-`bdo schema build` fails before any tokens are spent, not after a full batch.
+Плагін також відмовляється запускати `translation-worker` або
+`translation-repair`, коли схема пачки не поставлена, тож забутий
+`bdo schema build` падає до витрати токенів, а не після повної пачки.
 `translation-smoke` має мінімальну strict JSON schema. Це додатковий provider
 guard, а не єдине джерело контракту: payload явно містить `task` і очікуваний
 `response`, тому child не мусить бачити або вгадувати приховану schema.
 
-## Visible child boundary
+## Межа видимого child
 
-Production translation roles run only through OpenCode's native `Task` tool.
-The resulting child appears in the parent session tree and can be opened and
-inspected. Plugins must not call `client.session.create` or `session.prompt*`.
-After Task completes, primary passes the result unchanged to
-`translation_result`, which rejects anything that is not one standalone JSON
-value and atomically writes the staged response artifact. Primary never
-extracts JSON from prose, repairs it or fabricates a missing child result.
-A runtime hook accepts only `bash`, `read`, native `task` and
-`translation_result`; for Bash it accepts only the fixed single-command `./bdo`
-workflow. It rejects MCP discovery, chained shell, OpenCode CLI, HTTP and SDK
-routes before execution.
+Бойові ролі перекладу працюють лише через native інструмент `Task` OpenCode.
+Створений child зʼявляється в дереві батьківської сесії, його можна відкрити й
+перевірити. Плагіни не мають права викликати `client.session.create` чи
+`session.prompt*`. Після завершення Task primary передає результат без змін у
+`translation_result`, який відхиляє все, що не є одним самостійним значенням
+JSON, і атомарно записує staged-артефакт відповіді. Primary ніколи не витягує
+JSON із прози, не ремонтує його й не вигадує відсутній результат child.
 
-## Sequence
+Runtime-хук приймає лише `bash`, `read`, native `task` і `translation_result`;
+для Bash · лише фіксовані команди `./bdo` з переліку, одну або кілька через
+`&&`. MCP discovery, pipes, `;`, redirection, підстановки, OpenCode CLI, HTTP і
+SDK-маршрути відхиляються до виконання. Перше порушення дає зрозумілу відмову
+(виклик і так не виконується), і лише третє поспіль зупиняє сесію: раніше
+`session.abort()` з першого разу перетворював нешкідливий
+`./bdo env && ./bdo smoke` на мертву сесію пʼять разів за день.
 
-This is the OWNER's reference for what happens inside a batch and for manual
-recovery. The OpenCode primary does not run these steps by hand: its shell is
-restricted to `./bdo env|smoke|mode status|mode start|run drive`, and
-`./bdo run drive` executes the same sequence deterministically, one state per
-call. Every command below is a `./bdo` subcommand; `./bdo` alone prints the
-whole tree and `./bdo help flow` prints this sequence without the reasoning.
-Batch files live in the batch directory created by `./bdo batch new` and are
-always passed by explicit path.
+## Послідовність
 
-Inside `run drive` the order is: memory lookup/apply (with the mode's
-`memory_layers`: `manual` only for improve) -> glossary gap count -> when gaps
-exist, a `translation-terminology` child whose proposals stay in the batch's
-`term-proposals.json` for the owner -> worker -> deterministic gates -> QA ->
-one healing round -> commit. Each re-emitted child is counted; after
-`BDO_DRIVE_MAX_CHILD_RETRIES` (default 3) the batch reports
-`blocked: child_retry_limit` instead of spawning sessions forever (terminology
-is the one non-blocking stage: exhausted retries there continue to the worker).
+Це довідник ВЛАСНИКА про те, що відбувається всередині пачки, і про ручне
+відновлення. OpenCode primary не виконує ці кроки руками: його shell обмежений
+`./bdo env|smoke|mode status|mode start|run drive`, а `./bdo run drive`
+детерміновано виконує ту саму послідовність, по одному стану за виклик. Кожна
+команда нижче · підкоманда `./bdo`; сам `./bdo` друкує все дерево, а
+`./bdo help flow` · цю послідовність без обґрунтувань. Файли пачки живуть у теці
+пачки, створеній `./bdo batch new`, і завжди передаються явним шляхом.
 
-The run target is not chosen here: `BDO_ENV=PROD|DEV` in `.env` decides it for
-reads and writes alike, and `./bdo env` prints what is currently set.
+Усередині `run drive` порядок такий: пошук і застосування памʼяті (з
+`memory_layers` режиму: `manual` лише для improve) -> підрахунок прогалин
+глосарію -> за наявності прогалин child `translation-terminology`, чиї
+пропозиції лишаються власнику в `term-proposals.json` теки пачки -> worker ->
+детерміновані гейти -> QA -> одне коло лікування -> commit. Кожен повторний
+виклик child рахується; після `BDO_DRIVE_MAX_CHILD_RETRIES` (типово 3) пачка
+віддає `blocked: child_retry_limit` замість нескінченних сесій (terminology ·
+єдиний неблокуючий етап: вичерпані повтори там ведуть далі до воркера).
 
-1. `./bdo fetch` - primary fetches one fixed snapshot batch (summary only
-   goes into primary context).
-2. `./bdo glossary gaps rows.json` - always. Deterministic, instant, free; its
-   last line is the verdict. Only when it reports gaps start
-   `./bdo payload terminology rows.json` and pass ITS OUTPUT to
-   `translation-terminology`. The script resolves every term against the catalog
-   first, retrying with the row's `identity_hash` on `blocked_identity`, so the
-   child only proposes a rendering. It used to read the batch file itself, which
-   made it the most expensive step of the whole flow.
-3. `./bdo memory find rows.json` then `./bdo memory apply rows.json memory.json`
-   - ask the project whether this exact English source is already translated
-   somewhere, and close those rows without a model call. Measured: 58% of rows
-   on a `missing=manual` fetch, 0% on a fresh patch where nothing is translated
-   yet - but the rate grows inside a run, because rows written earlier become
-   memory for their twins. The same step deduplicates identical sources inside
-   the batch, so one English string is translated once.
+Ціль прогону тут не обирається: її вирішує `BDO_ENV=PROD|DEV` у `.env` разом для
+читання й запису, а `./bdo env` друкує те, що встановлено зараз.
 
-   An applied memory text is not exempt from checks: it passes the same
-   russianism, token and length rules as a fresh translation, and goes back to
-   the model if it fails them.
+1. `./bdo fetch` · primary забирає одну фіксовану пачку-знімок (у контекст
+   primary потрапляє лише підсумок).
+2. `./bdo glossary gaps rows.json` · завжди. Детерміновано, миттєво, безкоштовно;
+   останній рядок · вирок. Лише коли він повідомляє про прогалини, запускайте
+   `./bdo payload terminology rows.json` і передавайте ЙОГО ВИВІД у
+   `translation-terminology`. Скрипт спершу сам резолвить кожен термін у
+   каталозі, повторюючи запит з `identity_hash` рядка при `blocked_identity`,
+   тож child лише пропонує відповідник. Раніше він читав файл пачки сам, і це
+   робило його найдорожчим кроком усього флоу.
+3. `./bdo memory find rows.json`, потім
+   `./bdo memory apply rows.json memory.json` · спитати проєкт, чи цей самий
+   англійський оригінал уже десь перекладено, і закрити такі рядки без виклику
+   моделі. Виміряно: 58% рядків на вибірці `missing=manual`, 0% на свіжому
+   патчі, де ще нічого не перекладено · але частка росте всередині прогону, бо
+   раніше записані рядки стають памʼяттю для своїх близнюків. Той самий крок
+   прибирає дублікати всередині пачки, тож один англійський рядок перекладається
+   один раз.
 
-   Everything after this step runs on `to-translate.json`, not on the full batch.
-4. `./bdo schema build to-translate.json` - stage the constrained-decoding schema.
-5. `./bdo payload worker to-translate.json` - print the compact payload; start
-   `translation-worker` with that payload only. Save its response verbatim as
-   the candidate file.
+   Застосований текст із памʼяті не звільняється від перевірок: він проходить ті
+   самі правила щодо русизмів, токенів і довжини, що й свіжий переклад, і
+   повертається моделі, якщо їх не пройшов.
 
-   Approved `examples` are included BY DEFAULT: the worker prompt calls them the
-   strongest signal it gets, and they were opt-in for so long that they were
-   effectively never used. Three guards keep the old objection (wasted calls on a
-   fresh patch) from returning: the first 3 rows are probed and the rest are
-   skipped when none yields an example, an existing `context.json` in the batch
-   directory is reused instead of re-queried, and an unreachable API degrades to a
-   payload without examples instead of failing the batch. Use `--no-context` to
-   skip them outright.
+   Усе після цього кроку працює на `to-translate.json`, а не на повній пачці.
+4. `./bdo schema build to-translate.json` · поставити схему constrained decoding.
+5. `./bdo payload worker to-translate.json` · надрукувати компактний payload;
+   запустити `translation-worker` лише з ним. Зберегти його відповідь дослівно
+   як файл кандидата.
+
+   Затверджені `examples` вмикаються ЗА ЗАМОВЧУВАННЯМ: промпт воркера сам
+   називає їх найсильнішим сигналом, а вони роками були opt-in, тобто фактично
+   не вживались ніколи. Три запобіжники не дають повернутися старому заперечненню
+   (марні виклики на свіжому патчі): перші 3 рядки йдуть як проба, і решта не
+   питається, якщо жоден не дав прикладу; наявний `context.json` у теці пачки
+   перевикористовується замість повторного запиту; недоступний API деградує до
+   payload без прикладів, а не валить пачку. `--no-context` вимикає їх зовсім.
 6. `./bdo memory expand candidate.json twins.json memory-candidate.json > full.json`
-   - assemble the whole batch back: model output, in-batch twins and memory.
-7. `./bdo normalize full.json > clean.json` - deterministic repairs
-   before any gate: Latin homoglyphs inside Cyrillic words. Free and unambiguous.
-8. `./bdo items rows.json clean.json items.json "" --require-all` -
-   deterministic gate; `./bdo russianisms clean.json rows.json` -
-   dictionary scan; then `./bdo validate items.json` - API validation.
-9. `./bdo schema qa rows.json` then `./bdo payload qa rows.json clean.json`;
-   start `translation-qa` with that payload. It returns one verdict object per
-   row: `identity_hash`, `status`, `severity`, `issue`, `fix`.
-10. If QA found defects - exactly one healing round, then commit. See below.
-11. Writing to local is the normal end of a batch, not a separate permission:
-    PASS rows go to the AI layer, everything else goes to moderation, and
-    `bdo commit --write` does both. Production is the exception and still
-    requires explicit owner approval for that action.
-12. `./bdo schema clear` and `./bdo batch end` once the batch is done.
+   · зібрати пачку назад: вихід моделі, близнюки всередині пачки й памʼять.
+7. `./bdo normalize full.json > clean.json` · детерміновані виправлення до
+   будь-якого гейта: латинські гомогліфи всередині кириличних слів. Безкоштовно
+   й однозначно.
+8. `./bdo items rows.json clean.json items.json "" --require-all` ·
+   детермінований гейт; `./bdo russianisms clean.json rows.json` · сканування за
+   словником; далі `./bdo validate items.json` · валідація через API.
+9. `./bdo schema qa rows.json`, потім `./bdo payload qa rows.json clean.json`;
+   запустити `translation-qa` з цим payload. Він повертає один обʼєкт вироку на
+   рядок: `identity_hash`, `status`, `severity`, `issue`, `fix`.
+10. Якщо QA знайшов дефекти · рівно одне коло лікування, потім commit. Див.
+    нижче.
+11. Запис у local · це нормальне завершення пачки, а не окремий дозвіл: рядки
+    PASS ідуть у ШІ-шар, решта · у модерацію, і `bdo commit --write` робить
+    обидва. Виняток · прод: він і далі потребує явного схвалення власника саме
+    на цю дію.
+12. `./bdo schema clear` і `./bdo batch end`, коли пачку завершено.
 
-## Glossary gaps come first
+## Прогалини глосарію йдуть першими
 
-A term can be `severity: mandatory` while `ukrainian` is still `null`: the name
-is declared canonical but nobody approved a rendering. Measured on a live active
-patch: 12 terms in 15 rows, only 5 resolved, 6 mandatory-but-empty. Those rows
-carry `canonical_pending` in both payloads, which tells the worker to stay
-literal and tells QA there is nothing to verify canonicity against.
+Термін може мати `severity: mandatory`, поки `ukrainian` усе ще `null`: назву
+оголошено канонічною, але відповідника ніхто не затвердив. Виміряно на живому
+активному патчі: 12 термінів у 15 рядках, лише 5 зарезолвлено, 6 mandatory без
+відповідника. Такі рядки несуть `canonical_pending` в обох payload, і це каже
+воркеру лишатися буквальним, а QA · що звіряти канонічність нема з чим.
 
-On a fresh patch run `translation-terminology` BEFORE the worker, not "if
-needed". Whatever the worker invents for an unresolved mandatory term becomes
-the de facto standard for the whole patch.
+На свіжому патчі `translation-terminology` запускається ПЕРЕД воркером, а не
+«за потреби». Те, що воркер вигадає для нерозвʼязаного mandatory-терміна, стає
+фактичним стандартом для всього патча.
 
-## Retranslation: improving existing AI layer
+## Переклад наново: покращення наявного ШІ-шару
 
-The existing machine layer was created from Russian reference text. The goal is
-to replace it with translations from English source. Key differences from normal
-patch translation:
+Наявний machine-шар створювався з російського довідкового тексту. Мета · замінити
+його перекладами з англійського джерела. Ключові відмінності від звичайного
+перекладу патча:
 
-1. **Fetch with `layers`:** add `layers` to the `fields=` parameter so rows.json
-   contains the current machine translation text. `bdo fetch` does this
-   automatically when `exclude_proposed` is in the query.
-2. **`--with-current` flag on bdo payload worker:** passes the current machine
-   translation as a `current` field in the payload. The worker model sees the
-   existing text and decides whether to improve or keep it.
-3. **`--memory manual`:** old machine translations are from RU and should NOT be
-   used as translation memory. Only manual layer counts.
-4. **No `missing=machine` filter:** the query uses `exclude_proposed=1` without
-   `missing=` so rows with existing machine translations are included.
+1. **Fetch із `layers`:** додайте `layers` до параметра `fields=`, щоб rows.json
+   містив поточний текст machine-перекладу. `bdo fetch` робить це автоматично,
+   коли в запиті є `exclude_proposed`.
+2. **Прапорець `--with-current` у bdo payload worker:** передає поточний
+   machine-переклад полем `current` у payload. Модель воркера бачить наявний
+   текст і вирішує, покращувати його чи лишити.
+3. **`--memory manual`:** старі machine-переклади зроблені з RU, і памʼяттю
+   перекладу вони бути НЕ мають. Рахується лише manual-шар.
+4. **Без фільтра `missing=machine`:** запит використовує `exclude_proposed=1` без
+   `missing=`, тож рядки з наявним machine-перекладом входять у вибірку.
 
-The worker prompt instructs: if `current` is already good and EN doesn't yield a
-better result, return `current` unchanged. If `current` has abbreviations that fit
-UI constraints ("Дод." not "Додаткова"), keep the abbreviation. Only retranslate
-when the EN-based version is genuinely better.
+Промпт воркера каже: якщо `current` уже добрий і EN не дає кращого результату,
+поверни `current` без змін. Якщо в `current` є скорочення, що вкладаються в
+обмеження UI («Дод.», а не «Додаткова»), скорочення зберігається. Перекладати
+наново · лише коли версія з EN справді краща.
 
-## Three write channels, and why quarantine is gone
+## Три канали запису і чому карантин зник
 
 `bdo write --channel machine|manual|proposal`:
 
-| Channel | API | What it is for |
+| Канал | API | Для чого |
 |---|---|---|
-| `machine` | `layer=machine, mode=direct` | the AI layer, as before (default) |
-| `manual` | `layer=manual, mode=proposal, auto_approve=true` | same as editing on the site: approved only if the API key actor may approve; otherwise pending |
-| `proposal` | same, `auto_approve=false` | always stays in the moderation queue, even when the actor may approve |
+| `machine` | `layer=machine, mode=direct` | ШІ-шар, як і раніше (дефолт) |
+| `manual` | `layer=manual, mode=proposal, auto_approve=true` | те саме, що правка на сайті: схвалено лише якщо актор ключа API має право схвалювати, інакше чекає |
+| `proposal` | те саме, `auto_approve=false` | завжди лишається в черзі модерації, навіть коли актор має право схвалити |
 
-Three rules hold regardless of channel and role:
+Три правила діють незалежно від каналу й ролі:
 
-1. **A problematic row always goes to moderation** - non-PASS after the single
-   healing round is written with `auto_approve=false` even when the actor's role
-   would approve it. A defect must be seen by a human.
-2. **A clean row follows the site's own rules.** `machine` writes the AI layer;
-   `manual` requests auto-approval, but the server approves only when the API
-   key actor holds `review_translation`. Without it every clean row stays pending.
-3. **A new item name is not a defect, and in an AI-layer run it does not go to
-   moderation.** If nothing in the layers or the glossary translates it yet, it
-   is simply a new translation. Measured: 13 of 20 rows in one batch - routing
-   those to a human buries the real defects under a stream of new names. In a
-   MANUAL run the opposite holds: the row is going to a human anyway, so a new
-   item name is worth showing (`--channel manual --names-to-moderation`).
-   Titles never go to moderation for this reason - only `item/name`.
+1. **Проблемний рядок завжди йде в модерацію** · не-PASS після єдиного кола
+   лікування записується з `auto_approve=false`, навіть коли роль актора його б
+   схвалила. Дефект мусить побачити людина.
+2. **Чистий рядок підкоряється правилам самого сайту.** `machine` пише ШІ-шар;
+   `manual` просить автосхвалення, але сервер схвалює лише тоді, коли актор
+   ключа API має `review_translation`. Без нього кожен чистий рядок лишається в
+   очікуванні.
+3. **Нова назва предмета не є дефектом, і в прогоні ШІ-шару вона в модерацію не
+   йде.** Якщо ані шари, ані глосарій її ще не перекладають, це просто новий
+   переклад. Виміряно: 13 із 20 рядків однієї пачки · відправляти їх людині
+   означає поховати справжні дефекти під потоком нових назв. У РУЧНОМУ прогоні
+   правильно навпаки: рядок і так іде до людини, тож нову назву предмета варто
+   показати (`--channel manual --names-to-moderation`). Заголовки в модерацію з
+   цієї причини не йдуть ніколи · лише `item/name`.
 
-The third channel replaces the file quarantine. A row that fails QA is not a
-row to be hidden in `state/quarantine.jsonl`, where nobody sees it and the debt
-piles up outside the site - it is a row to be shown in the admin moderation
-queue, where it can be accepted or corrected in place. `bdo commit` sends
-every non-PASS row with text through `--channel proposal`.
+Третій канал замінює файловий карантин. Рядок, який не пройшов QA, · це не
+рядок, який ховають у `state/quarantine.jsonl`, де його ніхто не бачить, а борг
+росте поза сайтом; це рядок, який показують у черзі модерації в адмінці, де його
+можна прийняти або виправити на місці. `bdo commit` відправляє кожен не-PASS
+рядок із текстом через `--channel proposal`.
 
-Quarantine still exists, but only for what is not a text-quality problem at all:
-an empty answer, a run that was never started, an environment mismatch, an
-exhausted quota. Those are infrastructure states, not translations.
+Карантин лишається, але тільки для того, що взагалі не є проблемою якості
+тексту: порожня відповідь, непочатий прогін, розбіжність середовища, вичерпана
+квота. Це стани інфраструктури, а не переклади.
 
-The `auto_approve` flag had to be added to the API: without it an admin key
-silently approves its own proposals, so the moderation queue could never be
-reached from the agent flow.
+Прапорець `auto_approve` довелося додати в API: без нього адмінський ключ
+мовчки схвалює власні пропозиції, тож черга модерації з агентського флоу була б
+недосяжна.
 
-## Continuous mode and quarantine
+## Безперервний режим і карантин
 
-`bdo commit rows candidate verdicts [--write]` closes a batch without
-stopping the run: PASS rows go to the API, everything else is appended to
-`state/quarantine.jsonl` with a reason. A run over a whole patch is capped by
-the API quota of 5000 written rows per day.
+`bdo commit rows candidate verdicts [--write]` закриває пачку, не зупиняючи
+прогін: рядки PASS ідуть в API, решта дописується в `state/quarantine.jsonl` із
+причиною. Прогін по цілому патчу обмежений квотою API у 5000 записаних рядків
+на добу.
 
-A run is pinned to one environment. The primary derives it from the owner's
-wording (`на прод` -> prod, otherwise local), states it back in one line, and
-calls `./bdo run start local|prod` before the first batch; `./bdo run end`
-closes the run. Switching target mid-run is refused by the script, because half
-a patch landing in the wrong environment is far more expensive than a restart.
+Прогін прибитий до одного середовища. Primary виводить його з формулювання
+власника (`на прод` -> prod, інакше local), проговорює одним рядком і викликає
+`./bdo run start local|prod` перед першою пачкою; `./bdo run end` закриває
+прогін. Перемикання цілі посеред прогону скрипт відхиляє, бо половина патча в
+чужому середовищі коштує значно дорожче за перезапуск.
 
-`bdo commit --write` checks every batch against the pinned target. A run
-that was never started, a mismatch with the current `BDO_API_ENV`, an exhausted
-quota, or a QA verdict array shorter than the batch all quarantine the batch
-instead of failing the run.
+`bdo commit --write` звіряє кожну пачку з прибитою ціллю. Непочатий прогін,
+розбіжність із поточним `BDO_API_ENV`, вичерпана квота або масив вироків QA
+коротший за пачку · кожен із цих випадків відправляє пачку в карантин, замість
+валити прогін.
 
-Payloads reach `translation-worker`, `translation-repair` and `translation-qa`
-as TEXT in the prompt, never as a file path. These three have no tools at all,
-and that is a correctness requirement, not a preference: a tool call turns
-constrained decoding off, so the staged schema stops binding the answer. Measured
-2026-08-20 on QA session `ses_fe11de584ffeLjGxtFaJkIuDzp` · four `read` calls, and
-an answer of 20 objects carrying only 11 distinct `identity_hash` values, which
-the schema's `enum` plus fixed array length makes impossible when it is in force.
+Payload доходить до `translation-worker`, `translation-repair` і
+`translation-qa` ТЕКСТОМ у промпті, ніколи шляхом до файла. Ці троє не мають
+інструментів узагалі, і це вимога коректності, а не вподобання: виклик
+інструмента вимикає constrained decoding, тож staged-схема перестає звʼязувати
+відповідь. Виміряно 2026-08-20 на QA-сесії `ses_fe11de584ffeLjGxtFaJkIuDzp` ·
+чотири виклики `read` і відповідь із 20 обʼєктів, що несли лише 11 унікальних
+`identity_hash`, хоча `enum` схеми плюс фіксована довжина масиву роблять це
+неможливим, поки схема діє.
 
-An earlier revision passed file paths here to keep batches out of the paid
-context (~6x in paid tokens on the live patch). Keep that saving through smaller
-batches and `to-translate.json` instead. `translation-terminology` is the one
-child without a schema, but it no longer reads files either: its input is a
-compact payload too.
+Раніша редакція передавала сюди шляхи до файлів, щоб тримати пачки поза платним
+контекстом (~6x у платних токенах на живому патчі). Ту економію тримаємо
+меншими пачками й `to-translate.json`. `translation-terminology` · єдиний child
+без схеми, але й він більше не читає файлів: його вхід теж компактний payload.
 
-## Latin homoglyphs are a broken character, not a style issue
+## Латинські гомогліфи · це зламаний символ, а не питання стилю
 
-The model regularly writes a Latin `E` inside a Ukrainian word: `Eданa` instead
-of `Едана`. It looks identical and breaks everything that compares strings -
-search, sorting, glossary matching. On a live 20-row batch this hit 14 rows and
-QA correctly marked every one of them REVIEW, which would have sent 70% of the
-batch to moderation for a defect a script fixes for free.
+Модель регулярно пише латинську `E` всередині українського слова: `Eданa`
+замість `Едана`. Виглядає ідентично й ламає все, що порівнює рядки · пошук,
+сортування, збіг за глосарієм. На живій пачці з 20 рядків це зачепило 14 рядків,
+і QA правильно позначив кожен REVIEW, тобто 70% пачки пішло б у модерацію через
+дефект, який скрипт виправляє безкоштовно.
 
-`./bdo normalize candidate.json > clean.json` runs before the gates and
-repairs it deterministically. The rule is mixed script, not Latin presence: a
-word containing BOTH Cyrillic and Latin is contaminated and gets its Latin
-letters mapped to Cyrillic twins; a purely Latin word (`HAN`, `Everlight`, `AP`)
-is left alone, because those are legitimate and appear in a third of the corpus.
+`./bdo normalize candidate.json > clean.json` виконується перед гейтами й
+виправляє це детерміновано. Правило · змішаний скрипт, а не наявність латиниці:
+слово, де є І кирилиця, І латиниця, вважається забрудненим, і його латинські
+літери мапляться на кириличні двійники; суто латинське слово (`HAN`,
+`Everlight`, `AP`) лишається недоторканим, бо такі слова легітимні й трапляються
+в третині корпусу.
 
-`Quality\Defects` also reports homoglyphs, so anything the normaliser misses
-still surfaces as a defect instead of passing silently.
+`Quality\Defects` теж повідомляє про гомогліфи, тож усе, що пропустив
+нормалізатор, спливає як дефект, а не проходить мовчки.
 
-## Russianisms need a dictionary, not a letter check
+## Русизмам потрібен словник, а не перевірка літер
 
-Checking for `ы`, `э`, `ъ`, `ё` catches only part of the problem. The dangerous
-russianisms are spelled with Ukrainian letters and pass straight through: on a
-live 40-row batch the pre-MTP model wrote `Камень пересікування` in six rows and
-the letter check reported zero defects. Only the dictionary in
-`Quality\Russianisms` found them.
+Перевірка на `ы`, `э`, `ъ`, `ё` ловить лише частину проблеми. Небезпечні русизми
+пишуться українськими літерами й проходять наскрізь: на живій пачці з 40 рядків
+модель до MTP написала `Камень пересікування` в шести рядках, а перевірка літер
+показала нуль дефектів. Знайшов їх лише словник у `Quality\Russianisms`.
 
-`bdo russianisms candidate.json rows.json` exits 1 when it finds any;
-`Quality\FixPolicy` uses the same dictionary to refuse a fix that introduces one.
+`bdo russianisms candidate.json rows.json` виходить із кодом 1, коли щось
+знаходить; `Quality\FixPolicy` тим самим словником відхиляє fix, який русизм
+привносить.
 
-**The glossary always wins.** An approved canonical rendering may itself contain
-a word from the dictionary - `Embers of Ynix - Armor` is canonically `Доспехи
-Жарів Іксіна`. The translator is required to reproduce it, so the detector must
-not block the batch for it: `Russianisms::allowedByGlossary($row)` legalises, for that
-row only, every pattern present in that row's approved `ukrainian`. A `mandatory`
-term with `ukrainian: null` legalises nothing. Always pass `rows.json`, otherwise
-the glossary is invisible and canonical terms turn into false positives.
+**Глосарій завжди перемагає.** Затверджений канонічний відповідник сам може
+містити слово зі словника · `Embers of Ynix - Armor` канонічно є `Доспехи Жарів
+Іксіна`. Перекладач зобовʼязаний його відтворити, тож детектор не має права
+блокувати за це пачку: `Russianisms::allowedByGlossary($row)` легалізує, лише
+для цього рядка, кожен патерн, наявний у затвердженому `ukrainian` цього рядка.
+Термін `mandatory` з `ukrainian: null` не легалізує нічого. Завжди передавайте
+`rows.json`, інакше глосарій невидимий, і канонічні терміни перетворюються на
+хибні спрацювання.
 
-The list holds only words with an unambiguous Ukrainian counterpart, and each
-pattern is matched as `/\b<pattern>\b/iu` with any suffix wildcard written
-explicitly. A greedy stem is not a harmless over-catch: `камен(ь|я|ю)\w*` flagged
-the Ukrainian `Каменюка`, and `каменя`/`каменю` are normal Ukrainian - only the
-nominative `камень` is Russian. Same for `дерево`, `мешканець`, `молоток` and
-`заданий`. A false positive blocks a good translation, which is worse than a
-missed case.
+Перелік містить лише слова з однозначним українським відповідником, і кожен
+патерн зіставляється як `/\b<pattern>\b/iu` з будь-яким суфіксним wildcard,
+виписаним явно. Жадібна основа не є нешкідливим перебором: `камен(ь|я|ю)\w*`
+позначив українське `Каменюка`, а `каменя`/`каменю` є нормальною українською ·
+російським є лише називний відмінок `камень`. Так само з `дерево`, `мешканець`,
+`молоток` і `заданий`. Хибне спрацювання блокує добрий переклад, а це гірше за
+пропущений випадок.
 
-## A QA fix is a proposal, not a verdict
+## Fix від QA · це пропозиція, а не вирок
 
-`bdo qa-fixes` never passes a fix through untouched. Measured on a live 40-row
-batch: QA returned 6 fixes and 4 were corrupted text - `Сутінки Кінця - Сережки`
-came back as `Суттинки Слитинця - Серінка`, and one identical fix was emitted for
-two different rows. Applying them blindly would have replaced good translations
-with garbage.
+`bdo qa-fixes` ніколи не пропускає fix недоторканим. Виміряно на живій пачці з
+40 рядків: QA повернув 6 fix, і 4 з них були спотвореним текстом · `Сутінки
+Кінця - Сережки` повернулось як `Суттинки Слитинця - Серінка`, а один
+ідентичний fix був виданий для двох різних рядків. Застосувати їх наосліп
+означало б замінити добрі переклади на кашу.
 
-Similarity alone does not separate the two: the correct fixes scored 95% and 40%,
-the corrupted ones 72%, 76% and 78% - right between them. So the filter accepts
-only a small edit (>=85% similar) that also keeps tokens, placeholders, limits,
-carries no Russian letters and is not repeated across rows. Everything else goes
-to `translation-repair`, which sees the source and the glossary. An extra repair
-call costs seconds; a silent corruption costs data.
+Сама лише схожість не розділяє ці два випадки: правильні fix дали 95% і 40%,
+спотворені · 72%, 76% і 78%, тобто рівно між ними. Тому фільтр приймає лише
+дрібну правку (>=85% схожості), яка ще й зберігає токени, placeholders і межі
+довжини, не несе російських літер і не повторюється в різних рядках. Усе інше
+йде в `translation-repair`, який бачить джерело й глосарій. Зайвий виклик
+repair коштує секунд; тихе спотворення коштує даних.
 
-## Healing rotation: quarantine is the last resort, not the second step
+## Ротація лікування: карантин · остання інстанція, а не другий крок
 
-The point of a run is delivered translations, not a tidy quarantine file. So a
-non-PASS row is not written off after QA - it climbs a ladder, and each rung is
-tried only because the cheaper one below it failed:
+Сенс прогону · доставлені переклади, а не охайний файл карантину. Тому не-PASS
+рядок не списується після QA · він піднімається сходинками, і кожну наступну
+пробують лише тому, що дешевша під нею не спрацювала:
 
-| Rung | Who fixes | Model calls |
+| Сходинка | Хто виправляє | Викликів моделі |
 |---|---|---|
-| 1 | the API itself - `validate` returns `status: repaired` with `repaired_text` | none |
-| 2 | QA's own `fix`, if it survives the `bdo qa-fixes` filter | none |
-| 3 | `translation-repair`, on the failing rows only | one per round |
-| 4 | quarantine - only what rung 3 could not fix in N attempts | - |
+| 1 | сам API · `validate` повертає `status: repaired` із `repaired_text` | немає |
+| 2 | власний `fix` від QA, якщо він пережив фільтр `bdo qa-fixes` | немає |
+| 3 | `translation-repair`, лише на проблемних рядках | один за коло |
+| 4 | карантин · лише те, що сходинка 3 не полагодила за N спроб | · |
 
-`./bdo heal rows.json candidate.json verdicts.json [validate.json]` runs the
-whole ladder in one command. It writes `state/heal-merged.json` (the candidate
-with rungs 1-2 already applied) and `state/heal-repair-payload.json` (only the
-rows that still need a model, each with its source, current text, concrete
-defects, keep-tokens, glossary and limits). It never calls a model itself.
+`./bdo heal rows.json candidate.json verdicts.json [validate.json]` виконує всі
+сходинки однією командою. Він пише `state/heal-merged.json` (кандидат із уже
+застосованими сходинками 1-2) і `state/heal-repair-payload.json` (лише рядки,
+яким усе ще потрібна модель, кожен зі своїм джерелом, поточним текстом,
+конкретними дефектами, keep-токенами, глосарієм і межами). Сам модель він не
+викликає ніколи.
 
-Rung 1 is free and was being thrown away: the server repairs some rows on its
-own and returns the text, and until now `bdo validate` only printed it.
+Сходинка 1 безкоштовна, і її просто викидали: сервер деякі рядки лагодить сам і
+повертає текст, а `bdo validate` досі його лише друкував.
 
-**Exactly one healing round, and it is enforced by the script.** The sequence is
-fixed: `worker -> QA -> heal-plan -> repair -> control QA -> batch-commit`. That
-is at most five child sessions per batch, terminology aside.
+**Рівно одне коло лікування, і це забезпечує скрипт.** Послідовність фіксована:
+`worker -> QA -> heal-plan -> repair -> контрольний QA -> batch-commit`. Це
+щонайбільше пʼять child-сесій на пачку, не рахуючи terminology.
 
-`bdo heal` counts attempts per row in `state/heal-attempts.json`, keyed by a
-hash of the batch's identity set, so a new batch starts from zero without anyone
-remembering to reset. After `BDO_HEAL_MAX_ATTEMPTS` (1 by default) a row is no
-longer sent to repair: whatever is still not PASS goes to moderation, where a
-human looks at it.
+`bdo heal` рахує спроби на рядок у `state/heal-attempts.json`, з ключем за
+хешем набору identity пачки, тож нова пачка починає з нуля без ручного
+скидання. Після `BDO_HEAL_MAX_ATTEMPTS` (типово 1) рядок більше не йде в repair:
+усе, що досі не PASS, іде в модерацію, де на нього подивиться людина.
 
-The limit is 1 because chasing 100% PASS is expensive and buys little: on
-2026-08-16 a 20-row batch consumed 11 child sessions (5 QA, 3 repair, 2
-terminology) to rescue a handful of rows. Showing such a row in the moderation
-queue costs nothing and is more useful than another model round.
+Ліміт саме 1, бо гонитва за 100% PASS дорога й дає мало: 2026-08-16 пачка з 20
+рядків зʼїла 11 child-сесій (5 QA, 3 repair, 2 terminology), щоб урятувати
+жменю рядків. Показати такий рядок у черзі модерації не коштує нічого й
+корисніше за ще одне коло моделі.
 
-Re-QA the subset, never the whole batch: a row that already passed does not get
-re-judged, which keeps each round cheap and stops a healthy row from being
-"fixed" into a defect.
+Повторний QA робиться по підмножині, ніколи по всій пачці: рядок, який уже
+пройшов, не судять удруге, і це тримає кожне коло дешевим та не дає «виправити»
+здоровий рядок у дефект.
 
-## Recovery playbook: fix at minimal cost
+## Playbook відновлення: полагодити мінімальною ціною
 
-Never restart the whole batch for a partial failure. Each failure has one
-designated recovery step:
+Ніколи не перезапускайте цілу пачку через часткову невдачу. У кожної невдачі є
+один призначений крок відновлення:
 
-| Failure | Recovery (only the affected rows) |
+| Невдача | Відновлення (лише для зачеплених рядків) |
 |---|---|
-| worker died mid-run / timeout | re-run `translation-worker` with the same staged schema and payload; nothing else changes |
-| validation rejected K rows | `./bdo subset rows.json h1,h2 subset.json` -> `./bdo schema build subset.json` -> `./bdo payload worker subset.json` -> `translation-repair` with defects + payload -> `./bdo merge candidate.json fixes.json merged.json` -> re-validate merged |
-| QA reported REVIEW/REJECT rows | `./bdo heal rows candidate verdicts [validate]` - it applies the free rungs and hands you the repair payload; see the healing rotation above |
-| `bdo qa-fixes` rejected a fix | that row goes to `translation-repair`, never to merge. Do not override the filter |
-| QA answer rejected by its schema | re-run `translation-qa` only, same payload, no re-translation |
-| glossary term blocked | `translation-terminology` for that term only; rows wait, nothing is discarded |
-| runtime doubt (wrong model, schema not applied) | `@translation-smoke`, then `./bdo runtime`; zero batch cost |
+| воркер помер посеред прогону / таймаут | перезапустити `translation-worker` із тією ж staged-схемою і payload; більше нічого не змінюється |
+| валідація відхилила K рядків | `./bdo subset rows.json h1,h2 subset.json` -> `./bdo schema build subset.json` -> `./bdo payload worker subset.json` -> `translation-repair` з дефектами й payload -> `./bdo merge candidate.json fixes.json merged.json` -> повторна валідація merged |
+| QA повідомив про рядки REVIEW/REJECT | `./bdo heal rows candidate verdicts [validate]` · він застосовує безкоштовні сходинки й віддає payload для repair; див. ротацію лікування вище |
+| `bdo qa-fixes` відхилив fix | цей рядок іде в `translation-repair`, ніколи в merge. Фільтр не перевизначати |
+| відповідь QA відхилена її схемою | перезапустити лише `translation-qa`, той самий payload, без повторного перекладу |
+| термін глосарію заблоковано | `translation-terminology` лише для цього терміна; рядки чекають, нічого не викидається |
+| сумнів щодо рантайму (не та модель, схема не застосована) | `@translation-smoke`, потім `./bdo runtime`; нульова ціна для пачки |
 
-After any repair: re-stage the FULL batch schema (`./bdo schema build rows.json`)
-before the next full-batch worker run, or clear it; a stale subset schema would
-block a full-batch call by length mismatch.
+Після будь-якого repair: поставте схему ПОВНОЇ пачки наново
+(`./bdo schema build rows.json`) перед наступним викликом воркера на всю пачку
+або зніміть її; застаріла схема підмножини заблокує виклик на повну пачку через
+розбіжність довжини.
 
-## Primary token economy
+## Економія токенів primary
 
-- Child sessions run on the free local model; their tokens cost nothing. The
-  primary pays for what it writes into a child prompt and reads back.
-- Pass `bdo payload terminology` output to `translation-terminology`; it reads
-  nothing. Measured before this change: 420 244 and 124 920 input tokens on two
-  sessions, more than the rest of the flow combined.
-- Pass only `bdo payload worker` output to worker/repair and only
-  `bdo payload qa` output to qa - never the raw rows.json with classification
-  and service fields. QA cannot read files: a schema-constrained answer cannot
-  carry a tool call, so its whole input arrives in the prompt. That costs the
-  primary a bounded ~1-2k tokens per batch and buys a guaranteed per-row
-  verdict, which prose reporting failed to deliver.
-- The primary never translates, reviews or repairs text itself and never
-  "fixes up" a child answer: a defective answer goes back through the playbook.
-- Helpers print one-line summaries; the primary does not re-read written files.
+- Child-сесії працюють на безкоштовній локальній моделі, їхні токени не коштують
+  нічого. Primary платить за те, що він пише в промпт child і читає назад.
+- Передавайте в `translation-terminology` вивід `bdo payload terminology`; сам
+  він не читає нічого. Виміряно до цієї зміни: 420 244 і 124 920 вхідних
+  токенів на двох сесіях · більше, ніж решта флоу разом узята.
+- Передавайте у worker/repair лише вивід `bdo payload worker`, а в qa · лише
+  вивід `bdo payload qa`, ніколи сирий rows.json із classification і службовими
+  полями. QA не вміє читати файли: обмежена схемою відповідь не може нести
+  виклик інструмента, тож увесь його вхід приходить у промпті. Це коштує primary
+  обмежених ~1-2k токенів на пачку й купує гарантований вирок на кожен рядок,
+  чого звітування прозою не давало.
+- Primary ніколи не перекладає, не перевіряє й не ремонтує текст сам і ніколи не
+  «підправляє» відповідь child: дефектна відповідь іде назад через playbook.
+- Допоміжні скрипти друкують однорядкові підсумки; primary не перечитує записані
+  файли.
 
-## Invariants
+## Інваріанти
 
-- Start one translation child session at a time. Wait for its final response
-  before creating the next one.
-- This is the ONLY flow. The autonomous script orchestrator was DELETED from the
-  repository on 2026-08-22 (still in history, commit `dac631e`): it is not an
-  alternative entrypoint, and no shell runner in this flow may invoke a language
-  model. One narrow exception exists: `bdo bench` benchmarks a
-  local model on a real batch. It produces a measurement, not a translation, and
-  that is enforced rather than trusted - its output goes to `output/benchmark/`
-  and both write paths (`bdo items`, `bdo commit`) refuse a candidate
-  from that directory. It also builds its schema with `--out` into a temp file,
-  so a benchmark can never overwrite the staged schema of a live batch.
-- Model choice is decided by speed and format compliance, not by the quality of
-  one sample. Measured on the chosen model: five runs over the same 40 rows
-  produced 0, 6, 0, 6, 0 russianisms. Speed was stable to within 0.2 tok/s across
-  runs; quality was not. Any quality claim needs 3-5 runs, and the mechanical
-  detector stays mandatory regardless of which model is active.
-- The plugin sends a staged schema as `response_format` for
-  `translation-worker`, `translation-repair` (batch schema) and
-  `translation-qa` (verdict schema). Each pins `identity_hash` through `enum`
-  and fixes the array length, so the model cannot drop, duplicate or invent an
-  identity, and cannot answer for fewer rows than the batch holds.
-  `translation-terminology` також має strict JSON schema з фіксованими полями.
-  This is defense in depth: correctness does not depend on the provider showing
-  that schema to the model, because every role prompt defines its output shape.
-- `translation-worker`, `translation-repair` and `translation-qa` receive their
-  rules and their whole input from the prompt and have no tools at all. A schema
-  does not prevent tool calls, so the empty tool list is what keeps a child from
-  wandering off into web search mid-batch.
-- `translation-smoke` calls no tool. It receives the same staged-payload
-  boundary as every other child and echoes only its `response` value. Its
-  one-line answer proves the native route and JSON result channel; provider and
-  model are shown by the UI Context panel.
-- The staged schema never replaces the deterministic gate: `bdo items`
-  rejects a hash outside `rows.json`, a duplicate hash, an empty text and,
-  with `--require-all`, an incomplete batch.
-- Primary agents may delegate only to the five named `translation-*` agents.
-- `translation-smoke` is the fast no-side-effect runtime check. Invoke it with
-  `@translation-smoke` in the OpenCode UI. `./bdo runtime` covers the same
-  ground deterministically and without an LLM.
-- Before restarting OpenCode, run `bash .opencode/validate-translation-agents.sh`.
-  It checks config, frontmatter models and child permissions, not a live session.
-- After a live run, `./bdo audit` reads the OpenCode database and reports the
-  real provider, model, tokens and tool calls of every child session, flagging
-  ROUTE, THINK, TOOLS and EMPTY violations. Trust it over any agent's self-report:
-  a primary model already claimed a wrong provider and missed a plugin error.
-- Use one of the four primary modes (`патч`, `ручний`, `пропозиції`,
-  `покращення`) for batch work. Their rules live in their own definitions, so
-  the five children never carry them in context.
-- Child agents do not write files, call nested tasks or perform BDO write API
-  requests.
+- Запускайте одну child-сесію перекладу за раз. Дочекайтеся її фінальної
+  відповіді, перш ніж створювати наступну.
+- Це ЄДИНИЙ флоу. Автономний скриптовий оркестратор ВИДАЛЕНО з репозиторію
+  2026-08-22 (лишився в історії, коміт `dac631e`): він не є альтернативним
+  входом, і жоден shell-runner у цьому флоу не має права викликати мовну модель.
+  Існує один вузький виняток: `bdo bench` бенчмаркає локальну модель на
+  справжній пачці. Він виробляє вимір, а не переклад, і це забезпечено
+  механічно, а не на довірі · його вихід іде в `output/benchmark/`, а обидва
+  шляхи запису (`bdo items`, `bdo commit`) відмовляються приймати кандидата з
+  цієї теки. Схему він також будує через `--out` у тимчасовий файл, тож
+  бенчмарк ніколи не перезапише staged-схему живої пачки.
+- Модель обирається за швидкістю й дотриманням формату, а не за якістю однієї
+  вибірки. Виміряно на обраній моделі: пʼять прогонів на тих самих 40 рядках
+  дали 0, 6, 0, 6, 0 русизмів. Швидкість була стабільна в межах 0,2 tok/s між
+  прогонами, якість · ні. Будь-яке твердження про якість потребує 3-5 прогонів,
+  а механічний детектор лишається обовʼязковим незалежно від активної моделі.
+- Плагін надсилає staged-схему як `response_format` для `translation-worker`,
+  `translation-repair` (схема пачки) і `translation-qa` (схема вироків). Кожна
+  прибиває `identity_hash` через `enum` і фіксує довжину масиву, тож модель не
+  може пропустити, продублювати чи вигадати identity й не може відповісти за
+  меншу кількість рядків, ніж у пачці. `translation-terminology` також має
+  strict JSON schema з фіксованими полями. Це defense in depth: коректність не
+  залежить від того, чи покаже провайдер цю схему моделі, бо кожен role prompt
+  сам визначає форму своєї відповіді.
+- `translation-worker`, `translation-repair` і `translation-qa` отримують свої
+  правила й увесь свій вхід із промпта і не мають інструментів узагалі. Схема не
+  спиняє виклики інструментів, тож саме порожній перелік tools не дає child
+  піти в пошук по вебу посеред пачки.
+- `translation-smoke` не викликає жодного інструмента. Він отримує ту саму межу
+  staged payload, що й кожен інший child, і повертає лише значення свого
+  `response`. Його однорядкова відповідь доводить native-маршрут і канал
+  результату JSON; провайдера й модель показує панель Context у UI.
+- Staged-схема ніколи не замінює детермінований гейт: `bdo items` відхиляє хеш
+  поза `rows.json`, дублікат хеша, порожній текст і, з `--require-all`, неповну
+  пачку.
+- Primary-агенти можуть делегувати лише пʼятьом названим `translation-*`
+  агентам.
+- `translation-smoke` · швидка перевірка рантайму без побічних ефектів.
+  Викликайте його як `@translation-smoke` в UI OpenCode. `./bdo runtime`
+  покриває те саме детерміновано й без LLM.
+- Перед перезапуском OpenCode виконайте
+  `bash .opencode/validate-translation-agents.sh`. Він перевіряє конфіг, моделі у
+  frontmatter і дозволи children, а не живу сесію.
+- Після живого прогону `./bdo audit` читає базу OpenCode й повідомляє реального
+  провайдера, модель, токени та виклики інструментів кожної child-сесії,
+  позначаючи порушення ROUTE, THINK, TOOLS і EMPTY. Довіряйте йому, а не
+  самозвіту агента: primary-модель уже одного разу назвала неправильного
+  провайдера й не помітила помилку плагіна.
+- Для роботи з пачками використовуйте один із чотирьох primary-режимів (`патч`,
+  `ручний`, `пропозиції`, `покращення`). Їхні правила живуть у власних
+  визначеннях, тож пʼятеро children ніколи не несуть їх у контексті.
+- Child-агенти не пишуть файлів, не викликають вкладених task і не роблять
+  запитів запису в BDO API.

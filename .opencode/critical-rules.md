@@ -60,8 +60,9 @@
   fallback в Ollama заборонені.
 - `translation-execution-guard` runtime пропускає лише `bash`, `read`, `task`,
   `translation_result`; усі MCP/discovery tools
-  відхиляються runtime. Bash приймає тільки фіксовані одиночні `./bdo` команди
-  без pipes, chaining, redirection чи substitutions.
+  відхиляються runtime. Bash приймає тільки фіксовані `./bdo` команди з
+  переліку · одну або кілька через `&&`; pipes, `;`, redirection і substitutions
+  заборонені. Перше порушення дає відмову без виконання, а не смерть сесії.
 - Повністю скриптовий флоу без чату ВИДАЛЕНО 2026-08-22 (коміт `dac631e`): не
   відтворювати й не пропонувати як альтернативу.
 - `output/` і `state/` · робочий стан, не артефакти для коміту. Курсори пачок і

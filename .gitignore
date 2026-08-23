@@ -2,6 +2,7 @@
 .env
 .env.*
 !.env.example
+!.env.minimal.example
 
 # Відповіді API і бенчмарки. Каталог створюють самі скрипти (`mkdir -p`).
 /output/
