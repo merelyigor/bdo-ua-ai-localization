@@ -17,9 +17,27 @@ if ($command === 'status') {
     foreach (ModelPolicy::ROLES as $role) echo '  '.$role.': '.implode(' -> ', ModelPolicy::routes($policy, $role))."\n";
     exit(0);
 }
-if ($command === 'use') {
+if ($command === 'env') {
+    $name = $argv[2] ?? '';
+    $model = $argv[3] ?? '';
+    $cost = $argv[4] ?? 'free';
+    if (!isset($policy['profiles'][$name])) throw new RuntimeException("Невідомий профіль: $name");
+    if (!in_array($cost, ['free', 'paid'], true)) throw new RuntimeException('Вартість має бути free або paid.');
+    $profile = &$policy['profiles'][$name];
+    $profile['routes'] = $profile['default_routes'] ?? $profile['routes'];
+    if ($model !== '') {
+        if (!preg_match('~^[^/\s]+/[^\s]+$~', $model)) throw new RuntimeException('TRANSLATE_MODEL має формат provider/model-id.');
+        if ($cost === 'paid' && $profile['allow_paid'] !== true) throw new RuntimeException("Платна модель заборонена профілем $name.");
+        foreach (ModelPolicy::ROLES as $role) $profile['routes'][$role] = [$model];
+        if ($cost === 'paid' && !in_array($model, $profile['paid_routes'], true)) $profile['paid_routes'][] = $model;
+    }
+    $policy['active_profile'] = $name;
+} elseif ($command === 'use') {
     $name = $argv[2] ?? '';
     if (!isset($policy['profiles'][$name])) throw new RuntimeException("Невідомий профіль: $name");
+    if (isset($policy['profiles'][$name]['default_routes'])) {
+        $policy['profiles'][$name]['routes'] = $policy['profiles'][$name]['default_routes'];
+    }
     $policy['active_profile'] = $name;
 } elseif ($command === 'set') {
     [$name, $role, $model, $cost] = [$argv[2] ?? '', $argv[3] ?? '', $argv[4] ?? '', $argv[5] ?? 'free'];

@@ -7,6 +7,7 @@
 #   ./bdo profile fallback NAME translation-ROLE provider/model-id free|paid
 #   ./bdo profile paid NAME allow|deny
 #   ./bdo profile use NAME
+#   TRANSLATE_MODEL=provider/model-id ./bdo env
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
@@ -19,7 +20,7 @@ if [ "${1:-status}" = env ]; then
         echo 'TRANSLATE_MODEL_PROFILE не заданий: чинний профіль не змінено.'
         exit 0
     fi
-    set -- use "$TRANSLATE_MODEL_PROFILE"
+    set -- env "$TRANSLATE_MODEL_PROFILE" "${TRANSLATE_MODEL:-}" "${TRANSLATE_MODEL_COST:-free}"
 fi
 case "${1:-status}" in
 quality) set -- use local-quality ;;

@@ -28,7 +28,7 @@ assert.equal(terminologyOutput.options.response_format.json_schema.schema.items.
 
 await assert.rejects(
   hooks["chat.params"]({ agent: "translation-smoke", model: { providerID: "other", id: "model" } }, { options: {} }),
-  /requires one of/,
+  /stopped: required route/,
 )
 await assert.rejects(
   hooks["chat.params"]({ agent: "translation-smoke", model: { providerID: "paid", id: "model" } }, { options: {} }),

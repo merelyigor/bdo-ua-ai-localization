@@ -62,6 +62,10 @@ curl -fsS http://127.0.0.1:11434/v1/models | jq '.data[].id'
 Можна також задати профіль child-моделей у локальному `.env` через
 `TRANSLATE_MODEL_PROFILE=local-fast`, `local-quality` або `session-free`. Команда
 `./bdo env` синхронізує його перед наступною child-сесією.
+Конкретну модель активного профілю можна вказати через
+`TRANSLATE_MODEL=provider/model-id`; порожнє значення використовує штатний
+маршрут. Для платної моделі потрібні `TRANSLATE_MODEL_COST=paid` і дозвіл
+платних маршрутів у профілі.
 
 ```bash
 ./bdo profile fast

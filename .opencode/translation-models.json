@@ -21,7 +21,24 @@
                     "ollama-local/qwen3.6:35b-a3b-mtp-q4_K_M"
                 ]
             },
-            "paid_routes": []
+            "paid_routes": [],
+            "default_routes": {
+                "translation-terminology": [
+                    "ollama-local/qwen3.6:35b-a3b-mtp-q4_K_M"
+                ],
+                "translation-worker": [
+                    "ollama-local/qwen3.6:35b-a3b-mtp-q4_K_M"
+                ],
+                "translation-qa": [
+                    "ollama-local/qwen3.6:35b-a3b-mtp-q4_K_M"
+                ],
+                "translation-repair": [
+                    "ollama-local/qwen3.6:35b-a3b-mtp-q4_K_M"
+                ],
+                "translation-smoke": [
+                    "ollama-local/qwen3.6:35b-a3b-mtp-q4_K_M"
+                ]
+            }
         },
         "local-fast": {
             "allow_paid": false,
@@ -42,7 +59,24 @@
                     "ollama-local/qwen3.5:9b"
                 ]
             },
-            "paid_routes": []
+            "paid_routes": [],
+            "default_routes": {
+                "translation-terminology": [
+                    "ollama-local/qwen3.5:9b"
+                ],
+                "translation-worker": [
+                    "ollama-local/qwen3.5:9b"
+                ],
+                "translation-qa": [
+                    "ollama-local/qwen3.5:9b"
+                ],
+                "translation-repair": [
+                    "ollama-local/qwen3.5:9b"
+                ],
+                "translation-smoke": [
+                    "ollama-local/qwen3.5:9b"
+                ]
+            }
         },
         "session-free": {
             "allow_paid": false,
@@ -63,7 +97,24 @@
                     "opencode/x-preview-f-free"
                 ]
             },
-            "paid_routes": []
+            "paid_routes": [],
+            "default_routes": {
+                "translation-terminology": [
+                    "opencode/x-preview-f-free"
+                ],
+                "translation-worker": [
+                    "opencode/x-preview-f-free"
+                ],
+                "translation-qa": [
+                    "opencode/x-preview-f-free"
+                ],
+                "translation-repair": [
+                    "opencode/x-preview-f-free"
+                ],
+                "translation-smoke": [
+                    "opencode/x-preview-f-free"
+                ]
+            }
         }
     }
 }

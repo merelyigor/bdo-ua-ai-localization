@@ -83,7 +83,7 @@ export const TranslationRoutingGuard: Plugin = async ({ directory }) => ({
     const routeKey = `${input.model.providerID}/${input.model.id}`
     if (!allowedRoutes.includes(routeKey)) {
       throw new Error(
-        `Translation agent ${input.agent} requires one of [${allowedRoutes.join(", ")}]; resolved ${routeKey}.`,
+        `Translation agent ${input.agent} stopped: required route [${allowedRoutes.join(", ")}]; resolved ${routeKey}.`,
       )
     }
     if (profile.paid_routes.includes(routeKey) && !profile.allow_paid) {

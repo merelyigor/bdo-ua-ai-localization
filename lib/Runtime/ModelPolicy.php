@@ -34,6 +34,13 @@ final class ModelPolicy
                     if (!is_string($route) || !preg_match('~^[^/\s]+/[^\s]+$~', $route) || str_contains(strtolower($route), '-mlx')) throw new RuntimeException("Invalid or forbidden route in $name/$role: ".(string) $route);
                     if (isset($paid[$route]) && $profile['allow_paid'] !== true) throw new RuntimeException("Paid route $route is disabled in profile $name.");
                 }
+                if (isset($profile['default_routes'])) {
+                    $defaults = $profile['default_routes'][$role] ?? null;
+                    if (!is_array($defaults) || $defaults === []) throw new RuntimeException("Profile $name has no default route for $role.");
+                    foreach ($defaults as $route) {
+                        if (!is_string($route) || !preg_match('~^[^/\s]+/[^\s]+$~', $route) || str_contains(strtolower($route), '-mlx')) throw new RuntimeException("Invalid or forbidden default route in $name/$role: ".(string) $route);
+                    }
+                }
             }
         }
     }

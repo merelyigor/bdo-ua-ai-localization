@@ -64,6 +64,12 @@ PowerShell. Репозиторій краще клонувати у Linux filesy
 provider/model`. Зручний варіант для власника — задати в локальному `.env`
 `TRANSLATE_MODEL_PROFILE=session-free|local-fast|local-quality`: кожен виклик
 `./bdo env` синхронізує цей профіль із child-конфігом, а основну модель не змінює.
+За потреби конкретну модель активного профілю можна зафіксувати через
+`TRANSLATE_MODEL=provider/model-id`; порожнє значення повертає штатну модель
+профілю. Для платного override додайте `TRANSLATE_MODEL_COST=paid`, інакше
+залиште `free`. Профіль має дозволити платні маршрути.
+При зафіксованому `TRANSLATE_MODEL` будь-який child із іншою моделлю блокується
+routing guard до початку генерації.
 Primary виконає `./bdo smoke`; цей smoke не запускає patch, не
 звертається до API і не потребує PHP для підготовки envelope. Для Ollama повний
 capability test виконує `./bdo runtime`; зовнішні credentials навмисно не
