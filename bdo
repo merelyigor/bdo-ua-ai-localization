@@ -169,8 +169,8 @@ case "$group" in
         ;;
     mode)
         case "${2:-}" in
-            status) sh_run cli/run/run-spec.sh status "${3:?mode status потребує режим}" ;;
-            start) sh_run cli/run/run-mode.sh "${3:?mode start потребує режим}" "${4:-15}" ;;
+            status) sh_run cli/run/run-spec.sh status "${3:?mode status потребує режим}" "${4:-active}" ;;
+            start) sh_run cli/run/run-mode.sh "${3:?mode start потребує режим}" "${4:-15}" "${5:-active}" ;;
             *) die 'mode: потрібно status або start' ;;
         esac
         ;;
