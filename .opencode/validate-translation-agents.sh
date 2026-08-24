@@ -124,7 +124,7 @@ done
 declare -A MAX_LINES=(
     [translation-smoke]=20 [translation-worker]=50 [translation-qa]=55
     [translation-repair]=40 [translation-terminology]=45 [translation-judge]=50
-    [патч]=64 [ручний]=64 [пропозиції]=64 [покращення]=64
+    [патч]=68 [ручний]=68 [пропозиції]=68 [покращення]=68
 )
 for agent in "${!MAX_LINES[@]}"; do
     lines="$(wc -l < "$ROOT/.opencode/agents/$agent.md" | tr -d ' ')"

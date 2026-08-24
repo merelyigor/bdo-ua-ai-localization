@@ -123,7 +123,12 @@ JSON із прози, не ремонтує його й не вигадує ві
 
 Runtime-хук приймає лише `bash`, `read`, native `task` і `translation_result`;
 для Bash · лише фіксовані команди `./bdo` з переліку, одну або кілька через
-`&&`. MCP discovery, pipes, `;`, redirection, підстановки, OpenCode CLI, HTTP і
+`&&`. Перелік має дві частини: команди прогону і довідкові ТІЛЬКИ ДЛЯ ЧИТАННЯ
+(`patches`, `patch`, `profile status`, `audit`, `incidents`, `judge`,
+`moderation`, `models`, `runtime`, `api`). Без них диригент не міг відповісти
+навіть на «де є що перекладати», хоча жодного запису в цих командах немає;
+мутуючі близнюки (`--clear`, `--apply`, `--approve`, `profile use`, `fetch`,
+`write`, `commit`, `clean`) у перелік не входять. MCP discovery, pipes, `;`, redirection, підстановки, OpenCode CLI, HTTP і
 SDK-маршрути відхиляються до виконання. Перше порушення дає зрозумілу відмову
 (виклик і так не виконується), і лише третє поспіль зупиняє сесію: раніше
 `session.abort()` з першого разу перетворював нешкідливий

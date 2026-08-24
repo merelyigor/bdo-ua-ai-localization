@@ -28,6 +28,19 @@ const refuse = async (before, input, args, what) => {
     "./bdo env && ./bdo smoke",
     "./bdo env&&./bdo mode status patch",
     "./bdo mode start improve 20 && ./bdo run drive",
+    "./bdo mode start patch 15 3",
+    "./bdo mode status patch 3",
+    // Довідкові, тільки читання: без них диригент не міг відповісти навіть на
+    // «де є що перекладати», хоча жодного запису в цих командах немає.
+    "./bdo patches",
+    "./bdo patches 5",
+    "./bdo patch 3",
+    "./bdo profile status",
+    "./bdo audit",
+    "./bdo incidents --list",
+    "./bdo judge",
+    "./bdo moderation --limit 100",
+    "./bdo env && ./bdo patches",
   ]) {
     await before({ tool: "bash", sessionID: "ok", callID: "c" }, { args: { command } })
   }
@@ -50,10 +63,18 @@ const refuse = async (before, input, args, what) => {
     "node spawn-agent.mjs",
     "./bdo env && curl http://127.0.0.1:8010",
     "./bdo env && rm -rf state",
-    "./bdo audit",
     "true",
     "./bdo run drive > /tmp/out.json",
     "./bdo env && $(echo ./bdo smoke)",
+    // Мутуючі близнюки дозволених довідкових команд: читати можна, змінювати · ні.
+    "./bdo incidents --clear",
+    "./bdo judge --clear",
+    "./bdo clean --apply",
+    "./bdo profile use session-luna",
+    "./bdo moderation --approve 12",
+    "./bdo run end",
+    "./bdo fetch 15",
+    "./bdo patches 0",
   ]) {
     // Кожне порушення в СВОЇЙ сесії: інакше спрацював би лічильник abort.
     await refuse(before, { tool: "bash", sessionID: `s-${command}`, callID: "c" }, { command }, `forbidden command: ${command}`)

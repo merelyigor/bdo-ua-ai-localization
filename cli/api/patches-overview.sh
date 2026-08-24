@@ -33,7 +33,10 @@ ACTIVE="$(curl -fsS -H "X-API-Key: $KEY" --max-time 30 "$API/patch/summary?patch
     | php -r '$d=json_decode((string)file_get_contents("php://stdin"),true);echo (int)($d["meta"]["snapshot_id"]??0);')"
 test "$ACTIVE" -gt 0 || { echo "Не вдалося визначити активний патч." >&2; exit 1; }
 
-FIRST="$ACTIVE"
+# Без аргументу показуємо ВСІ патчі, від активного до першого. Раніше тут
+# лишалось FIRST=$ACTIVE, і команда мовчки друкувала один рядок · виглядало як
+# «інших патчів немає», хоча в патчі 1 лежало 29927 неперекладених рядків.
+FIRST=1
 if [ "$LIMIT" -gt 0 ]; then
     FIRST=$((ACTIVE - LIMIT + 1))
     test "$FIRST" -ge 1 || FIRST=1

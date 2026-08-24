@@ -1,5 +1,6 @@
 import type { Plugin } from "@opencode-ai/plugin"
 
+// Команди прогону: єдиний шлях, яким створюється робота й записуються дані.
 const SAFE_BDO_COMMANDS = [
   /^\.\/bdo env$/,
   /^\.\/bdo smoke$/,
@@ -7,8 +8,26 @@ const SAFE_BDO_COMMANDS = [
   // лише в активному патчі, і без цього набір її просто не бачив.
   /^\.\/bdo mode status (patch|manual|proposal|improve)( (active|[0-9]{1,6}))?$/,
   /^\.\/bdo mode start (patch|manual|proposal|improve)( [1-9][0-9]*( (active|[0-9]{1,6}))?)?$/,
-  /^\.\/bdo patches$/,
   /^\.\/bdo run drive$/,
+  // ДОВІДКОВІ, ТІЛЬКИ ЧИТАННЯ.
+  //
+  // Раніше їх не було, і диригент не міг відповісти навіть на «де є що
+  // перекладати»: питання впиралось у guard, хоча жодного запису в них немає.
+  // Обмеження існує проти прихованих агентів і shell-обходів, а не проти
+  // читання. Мутуючі варіанти тих самих команд сюди НЕ входять: `--clear`,
+  // `--apply`, `--approve`, `--reject`, `profile use|set|paid`, `fetch`,
+  // `write`, `commit`, `clean`, `run start|end`, `schema` лишаються поза
+  // переліком, тож випадкова зміна стану неможлива.
+  /^\.\/bdo$/,
+  /^\.\/bdo help( [a-z]+)?$/,
+  /^\.\/bdo (paths|platform|models|api|runtime)$/,
+  /^\.\/bdo patch( (active|[0-9]{1,6}))?$/,
+  /^\.\/bdo patches( [1-9][0-9]*)?$/,
+  /^\.\/bdo profile status$/,
+  /^\.\/bdo (audit|audit-dump)$/,
+  /^\.\/bdo (incidents|judge)( --list)?$/,
+  /^\.\/bdo moderation( --limit [1-9][0-9]*)?$/,
+  /^\.\/bdo moderation --row [0-9a-f]{64}$/,
 ]
 const SAFE_TOOLS = new Set(["bash", "read", "task", "translation_result"])
 
@@ -33,7 +52,14 @@ function allowedShell(command: string): boolean {
 // кидає помилку до виконання. Тому перші спроби отримують зрозумілу відмову, з
 // якої модель може виправитись, а abort лишається для наполегливого обходу.
 const ABORT_AFTER_VIOLATIONS = 3
-const ALLOWED_HINT = "./bdo env | ./bdo smoke | ./bdo patches | ./bdo mode status <mode> [patch] | ./bdo mode start <mode> [N] [patch] | ./bdo run drive (можна поєднувати через &&)"
+const ALLOWED_HINT = [
+  "прогін: ./bdo env | ./bdo smoke | ./bdo mode status <mode> [patch]",
+  "./bdo mode start <mode> [N] [patch] | ./bdo run drive",
+  "довідка (тільки читання): ./bdo patches [N] | ./bdo patch [N] | ./bdo profile status",
+  "./bdo audit | ./bdo incidents [--list] | ./bdo judge [--list] | ./bdo moderation [--limit N]",
+  "./bdo paths | ./bdo platform | ./bdo models | ./bdo api | ./bdo runtime | ./bdo help",
+  "кілька команд можна поєднати через &&",
+].join(" · ")
 
 /** Закриває всі shell/API/CLI шляхи, якими можна створити невидимого агента. */
 export const TranslationExecutionGuard: Plugin = async ({ client, directory }) => {

@@ -62,7 +62,13 @@
   `translation_result`; усі MCP/discovery tools
   відхиляються runtime. Bash приймає тільки фіксовані `./bdo` команди з
   переліку · одну або кілька через `&&`; pipes, `;`, redirection і substitutions
-  заборонені. Перше порушення дає відмову без виконання, а не смерть сесії.
+  заборонені. Перелік має дві частини: команди прогону (`env`, `smoke`,
+  `mode status|start`, `run drive`) і довідкові ТІЛЬКИ ДЛЯ ЧИТАННЯ (`patches`,
+  `patch`, `profile status`, `audit`, `incidents`, `judge`, `moderation`,
+  `models`, `runtime`, `api`, `paths`, `platform`, `help`). Мутуючі близнюки
+  (`--clear`, `--apply`, `--approve`, `profile use`, `fetch`, `write`, `commit`,
+  `clean`, `run start|end`, `schema`) поза переліком.
+  Перше порушення дає відмову без виконання, а не смерть сесії.
 - Повністю скриптовий флоу без чату ВИДАЛЕНО 2026-08-22 (коміт `dac631e`): не
   відтворювати й не пропонувати як альтернативу.
 - `output/` і `state/` · робочий стан, не артефакти для коміту. Курсори пачок і
