@@ -94,10 +94,11 @@ if ! printf '%s' "$first" | grep -qE '^Версія: [0-9]\.[0-9]\.[0-9]$'; then
     fail=1
 fi
 
-# 2. Атрибуція інструмента заборонена (§2 AGENTS.md).
-if printf '%s\n' "$body" | grep -qiE '^[A-Za-z][A-Za-z-]*-[Bb]y:|generated with|co-authored'; then
-    say "у повідомленні є трейлер або згадка інструмента. Автор комітів · власник."
-    printf '%s\n' "$body" | grep -inE '^[A-Za-z][A-Za-z-]*-[Bb]y:|generated with|co-authored' | head -3 >&2
+# 2. Блокуємо лише заборонену атрибуцію Opus/Sonnet/Claude/Anthropic, а не
+# нейтральні trailers чи назви файлів на кшталт CLAUDE.md.
+if printf '%s\n' "$body" | grep -qiE '^(co-authored-by|generated-by|assisted-by|ai-assisted-by):.*(opus|sonnet|claude|anthropic)|^generated with.*(opus|sonnet|claude|anthropic)'; then
+    say "у повідомленні є заборонена AI-атрибуція Opus/Sonnet/Claude/Anthropic. Автор комітів · власник."
+    printf '%s\n' "$body" | grep -inE '^(co-authored-by|generated-by|assisted-by|ai-assisted-by):.*(opus|sonnet|claude|anthropic)|^generated with.*(opus|sonnet|claude|anthropic)' | head -3 >&2
     fail=1
 fi
 
