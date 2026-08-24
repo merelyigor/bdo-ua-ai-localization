@@ -94,22 +94,22 @@
             "allow_paid": false,
             "routes": {
                 "translation-terminology": [
-                    "ollama-local/qwen3.6:35b-a3b-mtp-q4_K_M"
+                    "opencode/x-preview-f-free"
                 ],
                 "translation-worker": [
-                    "ollama-local/qwen3.6:35b-a3b-mtp-q4_K_M"
+                    "opencode/x-preview-f-free"
                 ],
                 "translation-qa": [
-                    "ollama-local/qwen3.6:35b-a3b-mtp-q4_K_M"
+                    "opencode/x-preview-f-free"
                 ],
                 "translation-repair": [
-                    "ollama-local/qwen3.6:35b-a3b-mtp-q4_K_M"
+                    "opencode/x-preview-f-free"
                 ],
                 "translation-smoke": [
-                    "ollama-local/qwen3.6:35b-a3b-mtp-q4_K_M"
+                    "opencode/x-preview-f-free"
                 ],
                 "translation-judge": [
-                    "ollama-local/qwen3.6:35b-a3b-mtp-q4_K_M"
+                    "opencode/x-preview-f-free"
                 ]
             },
             "paid_routes": [],

@@ -1,7 +1,7 @@
 ---
 description: Перевіряє одну пачку українських перекладів BDO
 mode: subagent
-model: ollama-local/qwen3.6:35b-a3b-mtp-q4_K_M
+model: opencode/x-preview-f-free
 temperature: 0.05
 permission:
   bash: deny
