@@ -28,8 +28,14 @@ while read -r local_ref local_sha _remote_ref _remote_sha; do
 
     while IFS= read -r commit; do
         [ -n "$commit" ] || continue
-        meta="$(git show -s --format='%an%n%ae%n%cn%n%ce%n%B' "$commit")"
-        if printf '%s\n' "$meta" | grep -qiE 'claude|anthropic|^[A-Za-z][A-Za-z-]*-[Bb]y:|generated with|co-authored'; then
+        # `CLAUDE.md` у переліку файлів не є атрибуцією. Попередня перевірка
+        # шукала `claude` у всьому повідомленні й через це хибно блокувала
+        # нормальний push з PhpStorm. Identity перевіряємо окремо, а в тексті
+        # ловимо лише справжні trailers/фрази атрибуції на початку рядка.
+        identity="$(git show -s --format='%an%n%ae%n%cn%n%ce' "$commit")"
+        message="$(git show -s --format='%B' "$commit")"
+        if printf '%s\n' "$identity" | grep -qiE 'opus|sonnet|claude|anthropic' \
+            || printf '%s\n' "$message" | grep -qiE '^(co-authored-by|generated-by|assisted-by|ai-assisted-by):.*(opus|sonnet|claude|anthropic)|^generated with.*(opus|sonnet|claude|anthropic)'; then
             say "ВІДМОВА: $local_ref містить заборонену AI-атрибуцію в коміті $commit"
             git show -s --format='author=%an <%ae>%ncommitter=%cn <%ce>%nsubject=%s' "$commit" >&2
             fail=1
