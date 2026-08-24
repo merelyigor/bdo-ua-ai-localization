@@ -75,8 +75,12 @@ check_rules() {
         test -f ".opencode/agents/$primary.md" || fail "немає primary-режиму $primary"
         grep -Fq './bdo run drive' ".opencode/agents/$primary.md" \
             || fail "$primary не використовує run drive"
-        grep -Fq 'UX-контракт власника' ".opencode/agents/$primary.md" \
+        grep -Fq 'Власник змінює лише `.env`; CLI виконуй сам' ".opencode/agents/$primary.md" \
             || fail "$primary не містить UX-контракт власника"
+        grep -Fq 'СПОЧАТКУ ВИЗНАЧ ТИП ЗАПИТУ' ".opencode/agents/$primary.md" \
+            || fail "$primary не має простого маршрутизатора запитів"
+        grep -Fq '«Перевір патчі», «переклади в ШІ-шар» або «скільки рядків без ШІ-перекладу» -> `./bdo patches all machine`' ".opencode/agents/$primary.md" \
+            || fail "$primary не маршрутизує запит про доступні рядки через API"
         grep -Fq 'МЕЖА ПРОЄКТУ' ".opencode/agents/$primary.md" \
             || fail "$primary не обмежує доступ до серверного проєкту"
         grep -Fq 'docs/API_CHANGE_HANDOFF.md' ".opencode/agents/$primary.md" \
