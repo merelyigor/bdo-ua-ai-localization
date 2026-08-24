@@ -22,7 +22,7 @@ const SAFE_BDO_COMMANDS = [
   /^\.\/bdo help( [a-z]+)?$/,
   /^\.\/bdo (paths|platform|models|api|runtime)$/,
   /^\.\/bdo patch( (active|[0-9]{1,6}))?$/,
-  /^\.\/bdo patches( [1-9][0-9]*)?$/,
+  /^\.\/bdo patches( (all|[1-9][0-9]*))?( (machine|manual|both))?( --full)?$/,
   /^\.\/bdo profile status$/,
   /^\.\/bdo (audit|audit-dump)$/,
   /^\.\/bdo (incidents|judge)( --list)?$/,
@@ -55,7 +55,8 @@ const ABORT_AFTER_VIOLATIONS = 3
 const ALLOWED_HINT = [
   "прогін: ./bdo env | ./bdo smoke | ./bdo mode status <mode> [patch]",
   "./bdo mode start <mode> [N] [patch] | ./bdo run drive",
-  "довідка (тільки читання): ./bdo patches [N] | ./bdo patch [N] | ./bdo profile status",
+  "довідка (тільки читання): ./bdo patches [N|all] [machine|manual|both] [--full]",
+  "./bdo patch [N] | ./bdo profile status",
   "./bdo audit | ./bdo incidents [--list] | ./bdo judge [--list] | ./bdo moderation [--limit N]",
   "./bdo paths | ./bdo platform | ./bdo models | ./bdo api | ./bdo runtime | ./bdo help",
   "кілька команд можна поєднати через &&",

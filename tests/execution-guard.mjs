@@ -34,6 +34,8 @@ const refuse = async (before, input, args, what) => {
     // «де є що перекладати», хоча жодного запису в цих командах немає.
     "./bdo patches",
     "./bdo patches 5",
+    "./bdo patches all machine",
+    "./bdo patches 5 manual --full",
     "./bdo patch 3",
     "./bdo profile status",
     "./bdo audit",
@@ -75,6 +77,7 @@ const refuse = async (before, input, args, what) => {
     "./bdo run end",
     "./bdo fetch 15",
     "./bdo patches 0",
+    "./bdo patches 5 machine --apply",
   ]) {
     // Кожне порушення в СВОЇЙ сесії: інакше спрацював би лічильник abort.
     await refuse(before, { tool: "bash", sessionID: `s-${command}`, callID: "c" }, { command }, `forbidden command: ${command}`)

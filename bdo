@@ -63,7 +63,7 @@ bdo · переклад рядків BDO через Agent API і субаген�
   smoke                envelope для OpenCode translation-smoke без API/PHP
   platform             macOS, Linux або Windows/WSL2 preflight
   run start|show|end|drive   зафіксувати / показати / зняти ціль; JSON-крок рушія
-  patches              де ще є робота: рядки без перекладу за патчами
+  patches [N|all] [machine|manual|both] [--full]   де ще є робота за патчами
   mode status|start <mode> [N] [patch]   preset або наступна пачка; patch · active або snapshot_id
   gate [профіль]       quality gate: preflight docs shell agents runtime api full
 
