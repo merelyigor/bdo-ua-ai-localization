@@ -1,6 +1,6 @@
 {
     "version": 1,
-    "active_profile": "session-luna",
+    "active_profile": "session-free",
     "profiles": {
         "local-quality": {
             "allow_paid": false,
@@ -94,22 +94,22 @@
             "allow_paid": false,
             "routes": {
                 "translation-terminology": [
-                    "opencode/x-preview-f-free"
+                    "ollama-local/qwen3.6:35b-a3b-mtp-q4_K_M"
                 ],
                 "translation-worker": [
-                    "opencode/x-preview-f-free"
+                    "ollama-local/qwen3.6:35b-a3b-mtp-q4_K_M"
                 ],
                 "translation-qa": [
-                    "opencode/x-preview-f-free"
+                    "ollama-local/qwen3.6:35b-a3b-mtp-q4_K_M"
                 ],
                 "translation-repair": [
-                    "opencode/x-preview-f-free"
+                    "ollama-local/qwen3.6:35b-a3b-mtp-q4_K_M"
                 ],
                 "translation-smoke": [
-                    "opencode/x-preview-f-free"
+                    "ollama-local/qwen3.6:35b-a3b-mtp-q4_K_M"
                 ],
                 "translation-judge": [
-                    "opencode/x-preview-f-free"
+                    "ollama-local/qwen3.6:35b-a3b-mtp-q4_K_M"
                 ]
             },
             "paid_routes": [],

@@ -92,6 +92,11 @@ export const TranslationExecutionGuard: Plugin = async ({ client, directory }) =
           `Translation primary shell is restricted to the fixed ./bdo workflow. Дозволено: ${ALLOWED_HINT}.`,
         )
       }
+      // OpenCode уже знає фактичний корінь проєкту, а модель інколи повторює
+      // старий абсолютний workdir після перейменування теки. Дозволені тут лише
+      // точні ./bdo-команди, тому канонічний cwd не розширює доступ, зате не дає
+      // успішній пачці впасти на фінальному кроці через вигаданий шлях.
+      output.args.workdir = directory
     },
   }
 }

@@ -45,7 +45,9 @@ const refuse = async (before, input, args, what) => {
     "./bdo moderation --approve 265,266,267",
     "./bdo env && ./bdo patches",
   ]) {
-    await before({ tool: "bash", sessionID: "ok", callID: "c" }, { args: { command } })
+    const output = { args: { command, workdir: "/stale/renamed-project" } }
+    await before({ tool: "bash", sessionID: "ok", callID: "c" }, output)
+    if (output.args.workdir !== "/project") throw new Error("guard did not canonicalize a stale workdir")
   }
   await before({ tool: "task", sessionID: "ok", callID: "c" }, { args: { subagent_type: "translation-worker" } })
   await before({ tool: "read", sessionID: "ok", callID: "c" }, { args: { filePath: "state/payload.json" } })
