@@ -1,7 +1,7 @@
 ---
 description: Виправляє лише дефектні переклади після QA або validation
 mode: subagent
-model: ollama-local/qwen3.6:35b-a3b-mtp-q4_K_M
+model: __BDO_RUNTIME_MODEL__
 temperature: 0.05
 permission:
   bash: deny

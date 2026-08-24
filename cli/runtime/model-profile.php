@@ -121,8 +121,11 @@ foreach (ModelPolicy::ROLES as $role) {
     $agentTemplate = $agentTemplates.'/'.$role.'.md';
     if (!is_file($agentTemplate)) throw new RuntimeException("Відсутній шаблон $agentTemplate");
     $text = (string) file_get_contents($agentTemplate);
-    $updated = preg_replace('/^model: .*$/m', 'model: '.$model, $text, 1, $count);
-    if ($updated === null || $count !== 1) throw new RuntimeException("Не вдалося синхронізувати $agentFile");
+    $placeholder = 'model: __BDO_RUNTIME_MODEL__';
+    $updated = str_replace($placeholder, 'model: '.$model, $text, $count);
+    if ($count !== 1) {
+        throw new RuntimeException("Шаблон $agentTemplate має містити рівно один placeholder $placeholder");
+    }
     $agentDir = dirname($agentFile);
     if (!@mkdir($agentDir, 0777, true) && !is_dir($agentDir)) {
         throw new RuntimeException('Не вдалося створити каталог child runtime: '.$agentDir);

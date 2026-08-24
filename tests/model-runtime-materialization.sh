@@ -14,6 +14,10 @@ mv "$TMP/templates-opencode.json" "$TMP/templates/opencode.json"
 cp "$ROOT/.opencode/templates/translation-models.json" "$TMP/.opencode/templates/translation-models.json"
 cp "$ROOT"/.opencode/agent-templates/translation-*.md "$TMP/.opencode/agent-templates/"
 
+for template in "$TMP"/.opencode/agent-templates/translation-*.md; do
+    test "$(grep -Fc 'model: __BDO_RUNTIME_MODEL__' "$template")" -eq 1
+done
+
 before="$(find "$TMP/templates" "$TMP/.opencode/templates" "$TMP/.opencode/agent-templates" -type f -exec shasum -a 256 {} \; | sort)"
 TRANSLATE_HOME="$TMP" php "$ROOT/cli/runtime/model-profile.php" env session-free opencode/x-preview-f-free free >/dev/null
 after="$(find "$TMP/templates" "$TMP/.opencode/templates" "$TMP/.opencode/agent-templates" -type f -exec shasum -a 256 {} \; | sort)"

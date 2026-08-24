@@ -56,6 +56,11 @@ done
 active_profile="$(jq -r '.active_profile' "$POLICY")"
 
 for agent in "${AGENTS[@]}"; do
+    placeholder_count="$(grep -Fc 'model: __BDO_RUNTIME_MODEL__' "$AGENT_TEMPLATES/$agent.md" || true)"
+    test "$placeholder_count" -eq 1 || {
+        printf 'ERROR: %s template must contain exactly one __BDO_RUNTIME_MODEL__ placeholder\n' "$agent" >&2
+        exit 1
+    }
     active="$(jq -r --arg agent "$agent" --arg profile "$active_profile" '.profiles[$profile].routes[$agent][0] // empty' "$POLICY")"
     configured="$(jq -r --arg agent "$agent" '.agent[$agent].model // empty' "$CONFIG")"
     test "$configured" = "$active" || {
