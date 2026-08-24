@@ -60,7 +60,7 @@ OUT="$SCRIPT_DIR/output/write_${TIMESTAMP}.json"
 # Прямий запис у machine-шар навмисно доступний не кожному ключу. Перевіряємо
 # контракт до побудови payload, щоб скрипт не витрачав квоту запитом, який
 # сервер гарантовано відхилить.
-ME=$(curl -fsS -H "X-API-Key: $KEY" "$API/me")
+ME=$("$SCRIPT_DIR/cli/api/http-request.sh" -fsS -H "X-API-Key: $KEY" "$API/me")
 test "$CHANNEL" = machine || ME='{"data":{"user":{"role":"admin"},"effective_abilities":["translations:write-machine"]}}'
 php -r '
 $me = json_decode($argv[1], true);
@@ -98,7 +98,7 @@ fi
 
 echo "Канал: $CHANNEL (layer=$LAYER, mode=$MODE, auto_approve=$AUTO_APPROVE)"
 echo "Записую з Idempotency-Key=$IDEMPOTENCY_KEY..."
-RESPONSE=$(curl -fsS -X POST \
+RESPONSE=$("$SCRIPT_DIR/cli/api/http-request.sh" -fsS -X POST \
     -H "X-API-Key: $KEY" \
     -H "Content-Type: application/json" \
     -H "Idempotency-Key: $IDEMPOTENCY_KEY" \

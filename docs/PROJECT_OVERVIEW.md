@@ -9,7 +9,10 @@ identity, markup і якість до запису.
 
 Toolkit не містить серверної БД, Laravel application, moderation UI або deploy.
 Серверна реалізація живе в іншому проєкті й доступна звідси лише read-only через
-шлях `TRANSLATE_PROJECT_ROOT`.
+шлях `TRANSLATE_PROJECT_ROOT`: тільки targeted читання контракту, без запуску
+Docker, Artisan, SQL/БД, тестів або будь-яких змін. Операційні дані toolkit
+отримує виключно через Agent API. Серверне доопрацювання передається окремому
+агенту за [API_CHANGE_HANDOFF.md](API_CHANGE_HANDOFF.md).
 
 ## Єдиний вхід
 

@@ -43,7 +43,7 @@ for arg in "$@"; do
     esac
 done
 
-api_get() { curl -fsS -H "X-API-Key: $KEY" --max-time "${2:-60}" "$API/$1" 2>/dev/null || echo '{}'; }
+api_get() { "$SCRIPT_DIR/cli/api/http-request.sh" -fsS -H "X-API-Key: $KEY" "$API/$1" 2>/dev/null || echo '{}'; }
 
 missing_count() {  # $1 = patch, $2 = machine|manual
     api_get "rows?patch=$1&missing=$2&limit=1&include_total=1" 45 \

@@ -64,7 +64,7 @@ case "$BATCH" in ''|*[!0-9]*) echo "--approve-batch має бути числом
 fetch_queue() {
     local query="per_page=$1" body
     [ -n "$ROW" ] && query="$query&identity_hash=$ROW"
-    body="$(curl -fsS -H "X-API-Key: $KEY" "$API/translations/proposals?$query" || true)"
+    body="$("$SCRIPT_DIR/cli/api/http-request.sh" -fsS -H "X-API-Key: $KEY" "$API/translations/proposals?$query" || true)"
     if [ -z "$body" ]; then
         echo "API не віддав чергу: $API/translations/proposals" >&2
         echo "Причини за ймовірністю: маршрут ще не задеплоєний; у ключа немає" >&2
@@ -80,7 +80,7 @@ decide_one() {
     local id="$1" action="$2" body="{}"
     [ -n "$REASON" ] && body="$(php -r 'echo json_encode(["reason" => $argv[1]], JSON_UNESCAPED_UNICODE);' "$REASON")"
 
-    if curl -fsS -X POST -H "X-API-Key: $KEY" -H 'Content-Type: application/json' \
+    if "$SCRIPT_DIR/cli/api/http-request.sh" -fsS -X POST -H "X-API-Key: $KEY" -H 'Content-Type: application/json' \
             -d "$body" "$API/translations/proposals/$id/$action" >/dev/null 2>&1; then
         printf '  %-8s #%s\n' "$action" "$id"
         return 0

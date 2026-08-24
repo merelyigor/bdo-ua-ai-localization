@@ -31,7 +31,7 @@ if ($argv[2] !== "") $body["source_identity"] = ["identity_hash" => $argv[2]];
 echo json_encode($body, JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
 ' "$CANONICAL" "$IDENTITY_HASH")"
 
-RESPONSE="$(curl -sS -X POST \
+RESPONSE="$("$SCRIPT_DIR/cli/api/http-request.sh" -sS -X POST \
     -H "X-API-Key: $BDO_API_KEY" \
     -H "Content-Type: application/json" \
     --data "$PAYLOAD" \

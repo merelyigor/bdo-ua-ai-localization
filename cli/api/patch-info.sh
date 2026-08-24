@@ -23,7 +23,7 @@ echo ""
 
 # --- 1. Summary ---
 echo "== 1. Загальна статистика =="
-curl -fsS -H "X-API-Key: $KEY" "$API/patch/summary?patch=$SNAPSHOT" > "$TMP_DIR/patch_summary.json"
+"$SCRIPT_DIR/cli/api/http-request.sh" -fsS -H "X-API-Key: $KEY" "$API/patch/summary?patch=$SNAPSHOT" > "$TMP_DIR/patch_summary.json"
 
 php -r '
 require $argv[2];
@@ -49,7 +49,7 @@ foreach ($s["domains"] as $d2) {
 # --- 2. Без машинного ---
 echo ""
 echo "== 2. Без машинного перекладу =="
-curl -fsS -H "X-API-Key: $KEY" "$API/rows?patch=$SNAPSHOT&missing=machine&limit=1&include_total=1&fields=core" > "$TMP_DIR/patch_no_machine"
+"$SCRIPT_DIR/cli/api/http-request.sh" -fsS -H "X-API-Key: $KEY" "$API/rows?patch=$SNAPSHOT&missing=machine&limit=1&include_total=1&fields=core" > "$TMP_DIR/patch_no_machine"
 php -r '
 require $argv[2];
 $d = Bdo\Translate\Api\Response::fromFile($argv[1], "rows")->raw();
@@ -59,7 +59,7 @@ echo "  рядків: {$d["meta"]["total_matching"]}\n";
 # --- 3. Без ручного ---
 echo ""
 echo "== 3. Без ручного перекладу =="
-curl -fsS -H "X-API-Key: $KEY" "$API/rows?patch=$SNAPSHOT&missing=manual&limit=1&include_total=1&fields=core" > "$TMP_DIR/patch_no_manual"
+"$SCRIPT_DIR/cli/api/http-request.sh" -fsS -H "X-API-Key: $KEY" "$API/rows?patch=$SNAPSHOT&missing=manual&limit=1&include_total=1&fields=core" > "$TMP_DIR/patch_no_manual"
 php -r '
 require $argv[2];
 $d = Bdo\Translate\Api\Response::fromFile($argv[1], "rows")->raw();
@@ -69,7 +69,7 @@ echo "  рядків: {$d["meta"]["total_matching"]}\n";
 # --- 4. Застарілі ---
 echo ""
 echo "== 4. Застарілі (джерело змінилось) =="
-curl -fsS -H "X-API-Key: $KEY" "$API/rows?patch=$SNAPSHOT&state=stale&limit=1&include_total=1&fields=core" > "$TMP_DIR/patch_stale"
+"$SCRIPT_DIR/cli/api/http-request.sh" -fsS -H "X-API-Key: $KEY" "$API/rows?patch=$SNAPSHOT&state=stale&limit=1&include_total=1&fields=core" > "$TMP_DIR/patch_stale"
 php -r '
 require $argv[2];
 $d = Bdo\Translate\Api\Response::fromFile($argv[1], "rows")->raw();

@@ -40,7 +40,7 @@ echo "Підготовлено " . count($items) . " елементів\n";
 ' "$INPUT" "$OUT" "$SCRIPT_DIR/lib/autoload.php"
 
 echo "Перевіряю..."
-RESPONSE=$(curl -fsS -X POST \
+RESPONSE=$("$SCRIPT_DIR/cli/api/http-request.sh" -fsS -X POST \
     -H "X-API-Key: $KEY" \
     -H "Content-Type: application/json" \
     --data @"$OUT" \

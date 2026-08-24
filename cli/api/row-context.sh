@@ -20,7 +20,7 @@ fi
 RESPONSE_FILE=$(mktemp)
 trap 'rm -f "$RESPONSE_FILE"' EXIT
 
-curl -fsS -H "X-API-Key: $KEY" "$API/rows/$IDENTITY_HASH/context" > "$RESPONSE_FILE"
+"$SCRIPT_DIR/cli/api/http-request.sh" -fsS -H "X-API-Key: $KEY" "$API/rows/$IDENTITY_HASH/context" > "$RESPONSE_FILE"
 
 php -r '
 require $argv[2];

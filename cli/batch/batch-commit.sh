@@ -88,7 +88,7 @@ fi
 # shellcheck source=/dev/null
 source "$SCRIPT_DIR/cli/system/select-env.sh"
 
-REMAINING="$(curl -fsS -H "X-API-Key: $BDO_API_KEY" "$BDO_API_BASE/me" 2>/dev/null \
+REMAINING="$("$SCRIPT_DIR/cli/api/http-request.sh" -fsS -H "X-API-Key: $BDO_API_KEY" "$BDO_API_BASE/me" 2>/dev/null \
     | php -r 'require $argv[1]; echo Bdo\Translate\Api\Response::fromJson((string) file_get_contents("php://stdin"), "/me")->rowsRemainingToday();' "$SCRIPT_DIR/lib/autoload.php" || echo 0)"
 
 RUN_TARGET=""

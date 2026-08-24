@@ -77,9 +77,30 @@ check_rules() {
             || fail "$primary не використовує run drive"
         grep -Fq 'UX-контракт власника' ".opencode/agents/$primary.md" \
             || fail "$primary не містить UX-контракт власника"
+        grep -Fq 'МЕЖА ПРОЄКТУ' ".opencode/agents/$primary.md" \
+            || fail "$primary не обмежує доступ до серверного проєкту"
+        grep -Fq 'docs/API_CHANGE_HANDOFF.md' ".opencode/agents/$primary.md" \
+            || fail "$primary не має handoff для зміни API"
     done
     grep -Fq 'Переклад робиться В OPENCODE' .opencode/critical-rules.md \
         || fail 'у critical-rules.md немає правила «переклад робиться в OpenCode»'
+    grep -Fq 'Межа серверного проєкту' .opencode/critical-rules.md \
+        || fail 'critical-rules не обмежує серверний проєкт режимом read-only'
+    grep -Fq 'API_CHANGE_HANDOFF.md' docs/AI_AGENT_RULES_REFERENCE.md \
+        || fail 'норматив не визначає handoff серверної API-зміни'
+    grep -Fq 'найслабшу дозволену модель' AGENTS.md \
+        || fail 'AGENTS.md не вимагає prompt compatibility зі слабкими моделями'
+    grep -Fq 'Prompts сумісні зі слабкою моделлю' .opencode/critical-rules.md \
+        || fail 'critical-rules не має контракту prompt compatibility'
+    grep -Fq '§8.8 Primary і child prompts' docs/AI_AGENT_RULES_REFERENCE.md \
+        || fail 'норматив не визначає prompt design для слабких моделей'
+    local forbidden_server_command
+    for forbidden_server_command in docker artisan mysql psql sqlite3; do
+        grep -Fq "\"*$forbidden_server_command*\": \"deny\"" opencode.json \
+            || fail "opencode.json не блокує $forbidden_server_command"
+        grep -Fq "\"*$forbidden_server_command*\": \"deny\"" templates/opencode.json \
+            || fail "templates/opencode.json не блокує $forbidden_server_command"
+    done
     test -f docs/WINDOWS_WSL2.md || fail 'немає канонічної Windows/WSL2 інструкції'
     grep -Fq 'На Windows працювати ТІЛЬКИ у WSL2' .opencode/critical-rules.md \
         || fail 'critical-rules не забороняє native Windows flow'
@@ -331,6 +352,7 @@ check_shell() {
     run bash tests/pre-push-attribution.sh
     run bash tests/run-resume.sh
     run bash tests/run-target-env.sh
+    run bash tests/http-retry.sh
     run bash tests/rotation.sh
 }
 

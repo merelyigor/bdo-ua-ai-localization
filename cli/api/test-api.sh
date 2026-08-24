@@ -13,7 +13,7 @@ red()   { printf '\033[31m%s\033[0m\n' "$1"; }
 
 echo "== 1. /me =="
 ME_FILE=$(mktemp)
-curl -fsS -H "X-API-Key: $KEY" "$API/me" > "$ME_FILE"
+"$SCRIPT_DIR/cli/api/http-request.sh" -fsS -H "X-API-Key: $KEY" "$API/me" > "$ME_FILE"
 php -r '
 require $argv[2];
 $response = Bdo\Translate\Api\Response::fromJson((string) file_get_contents($argv[1]), "/me");
@@ -31,7 +31,7 @@ rm -f "$ME_FILE"
 echo ""
 echo "== 2. /guide (хедер) =="
 GUIDE_FILE=$(mktemp)
-curl -fsS -H "X-API-Key: $KEY" "$API/guide" > "$GUIDE_FILE"
+"$SCRIPT_DIR/cli/api/http-request.sh" -fsS -H "X-API-Key: $KEY" "$API/guide" > "$GUIDE_FILE"
 php -r '
 require $argv[2];
 $d = Bdo\Translate\Api\Response::fromJson((string) file_get_contents($argv[1]), "/guide")->raw();
@@ -45,7 +45,7 @@ rm -f "$GUIDE_FILE"
 echo ""
 echo "== 3. /taxonomy =="
 TAX_FILE=$(mktemp)
-curl -fsS -H "X-API-Key: $KEY" "$API/taxonomy" > "$TAX_FILE"
+"$SCRIPT_DIR/cli/api/http-request.sh" -fsS -H "X-API-Key: $KEY" "$API/taxonomy" > "$TAX_FILE"
 php -r '
 require $argv[2];
 $d = Bdo\Translate\Api\Response::fromJson((string) file_get_contents($argv[1]), "/taxonomy")->raw();

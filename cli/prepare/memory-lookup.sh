@@ -39,7 +39,7 @@ foreach (array_chunk($hashes, 50) as $chunk) {
 ' "$SCRIPT_DIR/lib/autoload.php" "$ROWS_FILE" "$TMP_DIR"
 
 for req in "$TMP_DIR"/req-*.json; do
-    curl -fsS -X POST -H "X-API-Key: $BDO_API_KEY" -H 'Content-Type: application/json' \
+    "$SCRIPT_DIR/cli/api/http-request.sh" -fsS -X POST -H "X-API-Key: $BDO_API_KEY" -H 'Content-Type: application/json' \
         --data-binary "@$req" "$BDO_API_BASE/translations/memory" -o "${req%.json}.resp.json"
 done
 

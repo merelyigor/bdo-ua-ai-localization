@@ -49,7 +49,7 @@ case "$EXTRA" in
 esac
 
 echo "Завантажую $BATCH рядків..."
-curl -fsS -H "X-API-Key: $KEY" "$URL" > "$OUT"
+"$SCRIPT_DIR/cli/api/http-request.sh" -fsS -H "X-API-Key: $KEY" "$URL" > "$OUT"
 
 php -r '
 $d = json_decode(file_get_contents("'"$OUT"'"), true);

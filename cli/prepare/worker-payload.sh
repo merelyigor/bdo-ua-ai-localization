@@ -95,11 +95,16 @@ if [ "$WANT_CONTEXT" = 1 ]; then
             $hash = $row["identity_hash"] ?? "";
             if ($hash === "") continue;
             $url = $argv[2] . "/rows/" . $hash . "/context";
-            $ctx = @file_get_contents($url, false, stream_context_create([
-                "http" => ["header" => "X-API-Key: " . $argv[3], "timeout" => 30, "ignore_errors" => true],
-            ]));
+            $command = escapeshellarg($argv[5]) . " -fsS -H "
+                . escapeshellarg("X-API-Key: " . $argv[3]) . " " . escapeshellarg($url);
+            $lines = [];
+            $status = 0;
+            exec($command, $lines, $status);
+            $ctx = $status === 0 ? implode("\n", $lines) : false;
             $asked++;
-            if ($ctx === false) { $failed++; continue; }
+            // Один запит уже використав увесь retry-бюджет. Не множимо
+            // 10 хвилин на решту рядків: контекст optional, payload без нього робочий.
+            if ($ctx === false) { $failed++; break; }
             $data = json_decode($ctx, true)["data"]["context"] ?? [];
             $examples = [];
             foreach (array_slice($data["related_rows"] ?? [], 0, 3) as $related) {
@@ -121,7 +126,7 @@ if [ "$WANT_CONTEXT" = 1 ]; then
             fwrite(STDERR, sprintf("Приклади: %d рядків із %d (запитів %d%s)\n",
                 count($out), $total, $asked, $failed > 0 ? ", невдалих $failed" : ""));
         }
-        ' "$ROWS_FILE" "$BDO_API_BASE" "$BDO_API_KEY" "$CONTEXT_FILE"
+        ' "$ROWS_FILE" "$BDO_API_BASE" "$BDO_API_KEY" "$CONTEXT_FILE" "$SCRIPT_DIR/cli/api/http-request.sh"
     fi
 fi
 

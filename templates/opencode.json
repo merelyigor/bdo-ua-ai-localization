@@ -3,6 +3,11 @@
     "default_agent": "патч",
     "permission": {
         "bash": {
+            "*docker*": "deny",
+            "*artisan*": "deny",
+            "*mysql*": "deny",
+            "*psql*": "deny",
+            "*sqlite3*": "deny",
             "*migrate:fresh*": "deny",
             "*migrate:refresh*": "deny",
             "*migrate:reset*": "deny",
