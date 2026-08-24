@@ -172,6 +172,12 @@
   прихований контекст, широке планування, імпліцитний пріоритет чи здогадливість
   сильної моделі. Identity, routing, permissions, retries, completeness і write
   safety мають бути schema/plugin/code gates, а не проханням у prompt.
+- §8.9 Кожен runtime primary/child prompt є повним і самодостатнім. Заборонені
+  prompt-time `include`, вказівка моделі прочитати спільний файл, plugin lookup
+  правил або інша runtime-композиція: child не має tools, а слабка модель може
+  пропустити залежність. Повторення дозволене заради надійності. Build-time
+  шаблонізація можлива лише тоді, коли OpenCode завантажує готовий автономний
+  `.md`, generator deterministic, а gate звіряє результат із джерелом.
 
 ## §9 Документація і плани
 

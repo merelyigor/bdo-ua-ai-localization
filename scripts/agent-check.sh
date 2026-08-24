@@ -81,11 +81,20 @@ check_rules() {
             || fail "$primary не має простого маршрутизатора запитів"
         grep -Fq '«Перевір патчі», «переклади в ШІ-шар» або «скільки рядків без ШІ-перекладу» -> `./bdo patches all machine`' ".opencode/agents/$primary.md" \
             || fail "$primary не маршрутизує запит про доступні рядки через API"
+        grep -Fq 'Друга колонка · номер у грі; не передавай її як snapshot.' ".opencode/agents/$primary.md" \
+            || fail "$primary плутає номер патча у грі зі snapshot_id"
+        grep -Fq 'Явне «перекладай патч N» уже є підтвердженням; не перепитуй.' ".opencode/agents/$primary.md" \
+            || fail "$primary повторно просить уже надане підтвердження"
         grep -Fq 'МЕЖА ПРОЄКТУ' ".opencode/agents/$primary.md" \
             || fail "$primary не обмежує доступ до серверного проєкту"
         grep -Fq 'docs/API_CHANGE_HANDOFF.md' ".opencode/agents/$primary.md" \
             || fail "$primary не має handoff для зміни API"
     done
+    local prompt_include
+    prompt_include="$(rg -n '^[[:space:]]*(@include|!include|include:)|[Пп]рочитай .*\.md' \
+        .opencode/agents .opencode/agent-templates | sed -n '1p' || true)"
+    test -z "$prompt_include" \
+        || fail "runtime prompt залежить від зовнішнього include/read: $prompt_include"
     grep -Fq 'Переклад робиться В OPENCODE' .opencode/critical-rules.md \
         || fail 'у critical-rules.md немає правила «переклад робиться в OpenCode»'
     grep -Fq 'Межа серверного проєкту' .opencode/critical-rules.md \
@@ -98,6 +107,12 @@ check_rules() {
         || fail 'critical-rules не має контракту prompt compatibility'
     grep -Fq '§8.8 Primary і child prompts' docs/AI_AGENT_RULES_REFERENCE.md \
         || fail 'норматив не визначає prompt design для слабких моделей'
+    grep -Fq 'Не винось спільні правила prompt-ів у runtime include' AGENTS.md \
+        || fail 'AGENTS.md не вимагає самодостатніх runtime prompts'
+    grep -Fq 'Runtime prompt самодостатній' .opencode/critical-rules.md \
+        || fail 'critical-rules дозволяє ненадійну runtime-композицію prompts'
+    grep -Fq '§8.9 Кожен runtime primary/child prompt' docs/AI_AGENT_RULES_REFERENCE.md \
+        || fail 'норматив не забороняє runtime include prompts'
     local forbidden_server_command
     for forbidden_server_command in docker artisan mysql psql sqlite3; do
         grep -Fq "\"*$forbidden_server_command*\": \"deny\"" opencode.json \
