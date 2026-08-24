@@ -150,7 +150,7 @@ try {
     expect(ChannelRouter::route('proposal', 'PASS', 'none', true) === ChannelRouter::PASS, 'proposal-only mode did not retain its write path');
     expect(ChannelRouter::route('proposal', 'REJECT', 'critical', true) === ChannelRouter::PASS, 'proposal-only mode filtered a problematic non-empty row');
 
-    $policy = ModelPolicy::load(dirname(__DIR__).'/.opencode/translation-models.json');
+    $policy = ModelPolicy::load(dirname(__DIR__).'/.opencode/templates/translation-models.json');
     $activeProfile = $policy['active_profile'];
     $expectedWorkerRoute = $policy['profiles'][$activeProfile]['routes']['translation-worker'][0] ?? null;
     expect(is_string($expectedWorkerRoute) && $expectedWorkerRoute !== '', 'active worker route is absent');

@@ -4,7 +4,11 @@
 проєкту працюють у Linux-середовищі WSL2. Native PowerShell, Git Bash і PHP,
 встановлений через `winget`, не є runtime цього toolkit.
 
-## 1. Одноразове встановлення
+## 1. Одноразове встановлення (setup розробника; не основний користувацький workflow)
+
+Цей розділ містить ручні команди лише для первинного setup або діагностики
+розробником. У звичайній роботі власник змінює тільки локальний `.env` і
+передає завдання primary-режиму в OpenCode; команди виконує сам агент.
 
 У PowerShell від адміністратора встановіть WSL2, якщо його ще немає:
 
@@ -39,7 +43,7 @@ OpenCode має працювати з WSL-копією репозиторію, �
 `/home/...`, а не з `C:\...` або `/mnt/c/...`. Якщо використовується Windows
 Desktop app, підключіть її до OpenCode server у WSL за офіційною WSL-схемою.
 
-Перша команда агента завжди:
+Після відкриття проєкту перший крок primary-агента завжди:
 
 ```bash
 ./bdo gate preflight
@@ -49,7 +53,11 @@ Desktop app, підключіть її до OpenCode server у WSL за офіц
 Windows, PowerShell або пропонує `winget install PHP`, відкрито не той runtime:
 зупиніть його й відкрийте WSL-копію проєкту.
 
-## 3. Ollama і вже встановлена модель
+Власник не запускає ці команди вручну: він змінює лише локальний `.env` і
+повідомляє primary «продовжуй». Primary сам виконує preflight, flow, gates та
+фінальну `./bdo gate full && ./bdo api`.
+
+## 3. Ollama і вже встановлена модель (діагностика розробника; не основний користувацький workflow)
 
 Перевірте з Ubuntu, чи WSL бачить Ollama:
 
@@ -111,4 +119,4 @@ route із receipt. Він не має запускати `mode status patch`, �
 | Очікується 35B, але є `qwen3.5:9b` | Активний `local-quality` | `./bdo profile fast` |
 | Ollama працює у Windows, але WSL не бачить порт | Різні network namespaces | Налаштувати WSL networking або запустити Ollama у WSL |
 | Smoke показує patch status | Старі prompts/OpenCode не перезапущено | Оновити repo, перезапустити OpenCode, повторити smoke |
-| Route не `ollama-local/qwen3.5:9b` | Інший активний профіль | `./bdo profile status`, потім потрібний `profile use|fast` |
+| Route не `ollama-local/qwen3.5:9b` | Інший активний профіль | `./bdo profile use\|fast` після `./bdo profile status` |

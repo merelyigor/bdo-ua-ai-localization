@@ -21,13 +21,14 @@
 # попередня форма з єдиним `BDO_API_BASE` була незручною: щоб піти в прод, треба
 # було редагувати адресу, хоча адреси незмінні.
 #
-# Для BDO UA DEV адресу задають через `BDO_API_BASE_DEV` або прямим
-# `BDO_API_BASE`. DEV/self-hosted адреси лишаються локальними й не повинні
+# Для BDO UA DEV адресу задають через `BDO_API_BASE_DEV`. DEV/self-hosted адреси
+# лишаються локальними й не повинні
 # потрапляти в tracked files.
 #
 # Перебивання, коли потрібно (self-hosting, дзеркало, локальний стенд):
 #   BDO_API_BASE_PROD=...    замінити адресу production
-#   BDO_API_BASE=...         задати адресу напряму, незалежно від BDO_ENV
+# Застарілий `BDO_API_BASE` не використовується: інакше DEV URL тихо перемагає
+# `BDO_ENV=PROD`, що робить єдиний перемикач середовища неправдивим.
 #
 # Експортує: BDO_ENV (PROD|DEV), BDO_API_ENV (prod|local · внутрішня назва для
 # скриптів стану), BDO_API_BASE, BDO_API_KEY.
@@ -81,10 +82,8 @@ unset _resolved
 : "${BDO_API_BASE_DEV:=${BDO_API_BASE_LOCALHOST:-}}"
 : "${BDO_API_KEY_DEV:=${BDO_API_KEY_LOCALHOST:-}}"
 
-# База: явне перебивання -> перебивання для цього середовища -> дефолт у коді.
-if [ -n "${BDO_API_BASE:-}" ]; then
-    :
-elif [ "$BDO_ENV" = PROD ]; then
+# База визначається ВИКЛЮЧНО вибраним середовищем.
+if [ "$BDO_ENV" = PROD ]; then
     BDO_API_BASE="${BDO_API_BASE_PROD:-$BDO_API_BASE_PROD_DEFAULT}"
 else
     BDO_API_BASE="${BDO_API_BASE_DEV:-}"

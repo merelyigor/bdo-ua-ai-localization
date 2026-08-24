@@ -53,23 +53,23 @@
         },
         "translation-terminology": {
             "mode": "subagent",
-            "model": "opencode/x-preview-f-free"
+            "model": "ollama-local/qwen3.6:35b-a3b-mtp-q4_K_M"
         },
         "translation-worker": {
             "mode": "subagent",
-            "model": "opencode/x-preview-f-free"
+            "model": "ollama-local/qwen3.6:35b-a3b-mtp-q4_K_M"
         },
         "translation-qa": {
             "mode": "subagent",
-            "model": "opencode/x-preview-f-free"
+            "model": "ollama-local/qwen3.6:35b-a3b-mtp-q4_K_M"
         },
         "translation-repair": {
             "mode": "subagent",
-            "model": "opencode/x-preview-f-free"
+            "model": "ollama-local/qwen3.6:35b-a3b-mtp-q4_K_M"
         },
         "translation-smoke": {
             "mode": "subagent",
-            "model": "opencode/x-preview-f-free"
+            "model": "ollama-local/qwen3.6:35b-a3b-mtp-q4_K_M"
         },
         "патч": {
             "mode": "primary",
@@ -129,7 +129,7 @@
         },
         "translation-judge": {
             "mode": "subagent",
-            "model": "opencode/x-preview-f-free"
+            "model": "ollama-local/qwen3.6:35b-a3b-mtp-q4_K_M"
         }
     },
     "subagent_depth": 1

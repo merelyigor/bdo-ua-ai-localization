@@ -18,6 +18,15 @@
 # Залежності плагіна OpenCode.
 node_modules/
 
+# Локальна матеріалізація OpenCode. Канонічні версії лежать у `templates/`,
+# `.opencode/templates/` і `.opencode/agent-templates/`; `./bdo env` підставляє
+# сюди профіль та модель конкретного користувача.
+/opencode.json
+/.opencode/translation-models.json
+/.opencode/agents/translation-*.md
+/.opencode/runtime-model-state.json
+/.opencode/runtime-model-state.busy
+
 # macOS
 .DS_Store
 

@@ -1,8 +1,12 @@
 # Флоу субагентів у UI
 
 Мовна робота перекладу виконується лише у видимих child-сесіях OpenCode.
-Маршрути моделей задані один раз у `.opencode/translation-models.json`, окремо
-для кожної ролі. Вбудовані профілі `local-quality` і `local-fast` працюють через
+Канонічні маршрути задані у tracked-шаблоні
+`.opencode/templates/translation-models.json`; дозволи OpenCode — у tracked
+`templates/opencode.json`, а тексти child — у tracked
+`.opencode/agent-templates/translation-*.md`. `./bdo env` атомарно матеріалізує
+ignored `.opencode/translation-models.json`, `opencode.json` і child-frontmatter окремо
+для локального користувача. Вбудовані профілі `local-quality` і `local-fast` працюють через
 Ollama, `session-free` · через безплатний маршрут OpenCode Zen, а
 `session-luna` · через платний `openai/gpt-5.6-luna` (він оголошує
 `none|low|…`, тому обидва потрібні рівні reasoning працюють). Власні профілі
@@ -13,15 +17,28 @@ Ollama, `session-free` · через безплатний маршрут OpenCod
 в цьому репозиторії. `./bdo profile status` показує активні маршрути,
 `./bdo profile use NAME` вмикає потрібний.
 
+Власник у повсякденній роботі редагує лише `.env`; усі `./bdo` команди виконує
+primary. Після матеріалізації profile/model плагін порівнює boot fingerprint із
+current перед кожним Task. Розбіжність дає `OPENCODE_RESTART_REQUIRED` до
+створення child: primary не повторює виклик, просить перезапустити OpenCode та
+написати «продовжуй», а поточна пачка лишається незмінною. Відсутній,
+пошкоджений або неузгоджений state дає `OPENCODE_RUNTIME_INVALID` fail closed.
+
 На Windows працює той самий флоу через WSL2. Клонуйте репозиторій у файлову
 систему Linux, встановіть звичайні залежності всередині WSL, відкрийте проєкт
-через OpenCode WSL server і виконайте `./bdo gate preflight`. Native PowerShell
+через OpenCode WSL server; після відкриття проєкту primary сам виконує
+`./bdo gate preflight`. Native PowerShell
 не є підтримуваною другою реалізацією.
 
 Smoke · окремий контрольний шлях, а не режим перекладу: primary виконує
 `./bdo smoke`, потім запускає видимий native Task із
 `subagent_type=translation-smoke`. Він ніколи не викликає `mode start`, не читає
 API і не просить підтвердження патча.
+
+Після завершення роботи primary сам виконує всі потрібні локальні gates і
+`./bdo gate full && ./bdo api`. Власнику не потрібно запускати перевірки вручну;
+якщо після зміни `.env` потрібен новий runtime, достатньо написати primary
+«продовжуй».
 
 ## Гарантії маршрутизації (механізми, не інструкції)
 
@@ -136,8 +153,10 @@ SDK-маршрути відхиляються до виконання. Перш�
 
 ## Послідовність
 
-Це довідник ВЛАСНИКА про те, що відбувається всередині пачки, і про ручне
-відновлення. OpenCode primary не виконує ці кроки руками: його shell обмежений
+Це технічний довідник внутрішнього agent flow та діагностики, **не основний
+користувацький workflow**. Власник не запускає bash/CLI-команди вручну: він
+змінює лише локальний `.env` і повідомляє primary людською мовою, що продовжити.
+OpenCode primary сам виконує ці кроки, а його shell обмежений
 `./bdo env|smoke|mode status|mode start|run drive`, а `./bdo run drive`
 детерміновано виконує ту саму послідовність, по одному стану за виклик. Кожна
 команда нижче · підкоманда `./bdo`; сам `./bdo` друкує все дерево, а
@@ -437,7 +456,7 @@ repair коштує секунд; тихе спотворення коштує �
 | `bdo qa-fixes` відхилив fix | цей рядок іде в `translation-repair`, ніколи в merge. Фільтр не перевизначати |
 | відповідь QA відхилена її схемою | перезапустити лише `translation-qa`, той самий payload, без повторного перекладу |
 | термін глосарію заблоковано | `translation-terminology` лише для цього терміна; рядки чекають, нічого не викидається |
-| сумнів щодо рантайму (не та модель, схема не застосована) | `@translation-smoke`, потім `./bdo runtime`; нульова ціна для пачки |
+| сумнів щодо рантайму (не та модель, схема не застосована) | primary викликає `@translation-smoke`, потім внутрішній `./bdo runtime`; нульова ціна для пачки |
 
 Після будь-якого repair: поставте схему ПОВНОЇ пачки наново
 (`./bdo schema build rows.json`) перед наступним викликом воркера на всю пачку
@@ -502,9 +521,9 @@ repair коштує секунд; тихе спотворення коштує �
 - Primary-агенти можуть делегувати лише пʼятьом названим `translation-*`
   агентам.
 - `translation-smoke` · швидка перевірка рантайму без побічних ефектів.
-  Викликайте його як `@translation-smoke` в UI OpenCode. `./bdo runtime`
+  Primary викликає його як `@translation-smoke` в UI OpenCode. `./bdo runtime`
   покриває те саме детерміновано й без LLM.
-- Перед перезапуском OpenCode виконайте
+- Перед перезапуском OpenCode primary сам виконує
   `bash .opencode/validate-translation-agents.sh`. Він перевіряє конфіг, моделі у
   frontmatter і дозволи children, а не живу сесію.
 - Після живого прогону `./bdo audit` читає базу OpenCode й повідомляє реального

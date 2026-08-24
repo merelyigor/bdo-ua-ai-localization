@@ -1,5 +1,14 @@
 # Флоу перекладу через субагентів OpenCode: стан робіт
 
+## Поточна UX-політика
+
+Власник не запускає bash/CLI-команди проєкту вручну й змінює лише локальний
+`.env`. Робота проходить через primary-режими OpenCode `патч`, `ручний`,
+`пропозиції`, `покращення`; після зміни `.env` власник повідомляє primary
+«продовжуй». Primary сам виконує `./bdo env`, preflight/smoke, `mode
+status/start`, `./bdo run drive`, аудит і перед завершенням
+`./bdo gate full && ./bdo api`. Історичні записи нижче зберігають свій контекст.
+
 ## 2026-08-24 · GPT-5.6 Luna як модель субагентів
 
 Додано профіль `session-luna`: усі шість child-ролей ідуть на
@@ -548,10 +557,17 @@ object. Приписати ту перемогу цьому виправленн
 
 - Windows підтримується через WSL2 тим самим `./bdo`; native PowerShell flow не
   створюється. `./bdo platform` входить у preflight і розпізнає WSL.
-- `.opencode/translation-models.json` є одним джерелом профілів і маршрутів за
-  ролями. Built-in профілі лишають Ollama quality/fast за замовчуванням.
-- `./bdo profile set|fallback|paid|use|status` синхронізує OpenCode config та
-  frontmatter. Provider credentials зберігає сам OpenCode через `/connect`.
+- `.opencode/templates/translation-models.json` є tracked-каноном профілів;
+  runtime-policy, `opencode.json` і child-frontmatter локальні та ignored.
+- `./bdo env` щоразу атомарно матеріалізує runtime з чистих шаблонів; локальний
+  профіль не створює Git diff. Provider credentials зберігає OpenCode `/connect`.
+- Матеріалізація публікує versioned SHA-256 effective profile/routes останнім
+  атомарним кроком. Plugin запамʼятовує його при boot і перед кожним native Task
+  порівнює з current: зміна моделі дає `OPENCODE_RESTART_REQUIRED` до створення
+  child, пошкодження state/policy · `OPENCODE_RUNTIME_INVALID`. API target,
+  reasoning і judge threshold до fingerprint не входять, бо читаються runtime.
+- Власник змінює лише `.env`; primary сам виконує CLI, smoke, audit і gates.
+  Після restart він продовжує наявну пачку, а не викликає `mode start` повторно.
 - Session driver передає модель child-сесії явно, переходить ordered fallback
   після runtime failure і записує фактичний route у receipt. Guard дозволяє
   лише маршрути активного профілю й блокує неавторизовані платні маршрути.
@@ -684,7 +700,7 @@ qwen3.8 відхилена окремо: втричі повільніша й д
 ### Стенд для порівняння моделей
 
 `cli/runtime/model-ab.sh <модель> <rows.json>` бере системний промпт із
-`.opencode/agents/translation-worker.md`, payload із `cli/prepare/worker-payload.sh`, схему з
+tracked `.opencode/agent-templates/translation-worker.md` (runtime-копія generated/ignored), payload із `cli/prepare/worker-payload.sh`, схему з
 `cli/prepare/build-schema.sh` і бʼє напряму в Ollama `/v1`. Сам прогріває модель, друкує
 швидкість і одразу проганяє детектор русизмів.
 
@@ -765,13 +781,15 @@ qwen3.8 відхилена окремо: втричі повільніша й д
 
 ## Механічні гарантії (не інструкції, а механізми)
 
-1. `opencode.json`: `task "*": deny` + явні allow лише пʼятьом `translation-*`.
-2. Frontmatter кожного субагента прибиває модель активного профілю
-   (`.opencode/translation-models.json`); синхронність перевіряє
+1. Generated/ignored `opencode.json` (джерело · tracked `templates/opencode.json`):
+   `task "*": deny` + явні allow лише пʼятьом `translation-*`.
+2. Frontmatter кожного субагента прибиває модель generated/ignored активного профілю
+   (`.opencode/translation-models.json`, джерело · tracked
+   `.opencode/templates/translation-models.json`); синхронність перевіряє
    `.opencode/validate-translation-agents.sh`.
 3. Плагін `.opencode/plugin/translation-routing-guard.ts` у хуку `chat.params`:
    - кидає помилку, якщо маршрут відсутній в активному профілі
-     `.opencode/translation-models.json` (платні маршрути · лише з `allow_paid`);
+     generated/ignored `.opencode/translation-models.json` (платні маршрути · лише з `allow_paid`);
    - додає `reasoningEffort` за константою `.env` `BDO_REASONING_EFFORT`
      (типово `none`; `off` вимикає). Саме камелькейс: snake_case перетирає SDK.
      Інакше Qwen на `/v1` віддає весь бюджет у `reasoning` і лишає `content`
@@ -1059,7 +1077,8 @@ qwen3.8 відхилена окремо: втричі повільніша й д
 
 Конфігурація рантайму: `bdo models` (звірка й правка провайдера
 OpenCode; `--apply` дописує, `--prune provider/model` прибирає застаріле),
-`bdo profile`, `bdo paths` (де лежать промпти агентів, `opencode.json`, валідатор
+`bdo profile`, `bdo paths` (де лежать tracked-шаблони, generated/ignored
+runtime-промпти, `opencode.json`, валідатор
 і корінь обслуговуваного проєкту; `cli/system/paths.sh` sourced іншими скриптами).
 
 Видалено 2026-08-22: `translate-patch.sh` (оркестратор автономного флоу),

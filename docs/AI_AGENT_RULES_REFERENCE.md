@@ -141,8 +141,9 @@
 
 ## §8 OpenCode, субагенти й моделі
 
-- §8.1 Лише named `translation-*` agents. Provider/model задає активний профіль
-  `.opencode/translation-models.json`, синхронізований із frontmatter і guard;
+- §8.1 Лише named `translation-*` agents. Provider/model задає generated/ignored
+  профіль `.opencode/translation-models.json`, матеріалізований із tracked
+  `.opencode/templates/translation-models.json` і синхронізований із frontmatter та guard;
   джерело правди після run · receipt та `./bdo audit`, не self-report.
 - §8.2 Worker, repair і QA під constrained schema не мають жодних tools. Payload
   передається текстом. Tool call вимикає constrained decoding.
@@ -175,9 +176,11 @@
 
 ## §10 Перевірки, завершення і формат звіту
 
-- §10.1 Перед роботою `./bdo gate preflight`. Після зміни · профіль
-  категорії. `full` охоплює локальні deterministic gates, але не викликає модель
-  або API; `runtime` і `api` запускаються явно.
+- §10.1 Primary сам виконує `./bdo gate preflight` перед роботою і після зміни
+  профілю/категорії. Перед завершенням він сам виконує
+  `./bdo gate full && ./bdo api`. `full` охоплює локальні deterministic gates,
+  але не викликає модель або API; API перевіряється окремо. Власник змінює лише
+  `.env`, повідомляє primary «продовжуй» і не запускає ці команди вручну.
 - §10.2 Gate недеструктивний: не пише в API/production, не деплоїть, не видаляє
   state, не змінює Git. Профіль без реальної перевірки заборонений.
 - §10.3 Не заявляти успіх без exit 0. Пропущена команда має точну причину,

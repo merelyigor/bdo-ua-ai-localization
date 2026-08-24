@@ -1,4 +1,5 @@
 import type { Plugin } from "@opencode-ai/plugin"
+import { readRuntimeModelState } from "../lib/runtime-model-state.ts"
 
 // Команди прогону: єдиний шлях, яким створюється робота й записуються дані.
 const SAFE_BDO_COMMANDS = [
@@ -9,6 +10,8 @@ const SAFE_BDO_COMMANDS = [
   /^\.\/bdo mode status (patch|manual|proposal|improve)( (active|[0-9]{1,6}))?$/,
   /^\.\/bdo mode start (patch|manual|proposal|improve)( [1-9][0-9]*( (active|[0-9]{1,6}))?)?$/,
   /^\.\/bdo run drive$/,
+  // Primary завершує зміну повним локальним gate перед read-only API check.
+  /^\.\/bdo gate full$/,
   // ДОВІДКОВІ, ТІЛЬКИ ЧИТАННЯ.
   //
   // Раніше їх не було, і диригент не міг відповісти навіть на «де є що
@@ -56,6 +59,7 @@ const ABORT_AFTER_VIOLATIONS = 3
 const ALLOWED_HINT = [
   "прогін: ./bdo env | ./bdo smoke | ./bdo mode status <mode> [patch]",
   "./bdo mode start <mode> [N] [patch] | ./bdo run drive",
+  "фінальна перевірка: ./bdo gate full && ./bdo api",
   "довідка (тільки читання): ./bdo patches [N|all] [machine|manual|both] [--full]",
   "./bdo patch [N] | ./bdo profile status",
   "./bdo audit | ./bdo incidents [--list] | ./bdo judge [--list] | ./bdo moderation [--limit N]",
@@ -65,6 +69,13 @@ const ALLOWED_HINT = [
 
 /** Закриває всі shell/API/CLI шляхи, якими можна створити невидимого агента. */
 export const TranslationExecutionGuard: Plugin = async ({ client, directory }) => {
+  let bootState: ReturnType<typeof readRuntimeModelState> | undefined
+  let bootError: string | undefined
+  try {
+    bootState = readRuntimeModelState(directory)
+  } catch (error) {
+    bootError = error instanceof Error ? error.message : String(error)
+  }
   const violations = new Map<string, number>()
   const refuse = async (sessionID: string, message: string): Promise<never> => {
     const count = (violations.get(sessionID) ?? 0) + 1
@@ -83,6 +94,18 @@ export const TranslationExecutionGuard: Plugin = async ({ client, directory }) =
           input.sessionID,
           `Tool ${input.tool} is unavailable in translation primary. Use native OpenCode task for subagents.`,
         )
+      }
+      if (input.tool === "task" && /^translation-/.test(String(output.args?.subagent_type ?? ""))) {
+        if (!bootState) {
+          throw new Error(bootError ?? "OPENCODE_RUNTIME_INVALID: OpenCode started without a valid model runtime.")
+        }
+        const current = readRuntimeModelState(directory)
+        if (current.fingerprint !== bootState.fingerprint) {
+          throw new Error(
+            `OPENCODE_RESTART_REQUIRED: child profile changed ${bootState.active_profile} -> ${current.active_profile}. `
+            + "Перезапустіть OpenCode і напишіть «продовжуй»; незавершену пачку збережено.",
+          )
+        }
       }
       if (input.tool !== "bash") return
       const command = typeof output.args?.command === "string" ? output.args.command.trim() : ""

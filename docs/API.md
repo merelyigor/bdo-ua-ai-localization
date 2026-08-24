@@ -5,11 +5,15 @@
 `docs/AGENT_TRANSLATION_API.md` від `TRANSLATE_PROJECT_ROOT`. Тут не
 дублюється: при розбіжності діє серверна документація.
 
+Це технічна довідка для primary-агента, розробника та діагностики, **не основний
+користувацький workflow**. Власник не запускає наведені CLI-команди вручну:
+primary виконує їх усередині agent flow.
+
 ## Базове
 
 | Що | Значення |
 |---|---|
-| База | `BDO_ENV=PROD` · `https://bdo-ua.com.ua/api/agent/v1`; DEV · локальний `BDO_API_BASE_DEV`; прямий `BDO_API_BASE` має пріоритет |
+| База | `BDO_ENV=PROD` · `BDO_API_BASE_PROD` або production default; `BDO_ENV=DEV` · `BDO_API_BASE_DEV`; застарілий `BDO_API_BASE` ігнорується |
 | Автентифікація | заголовок `X-API-Key: <ключ>` |
 | Формат | JSON; відповідь у конверті `data` / `meta` / `error` |
 | Ліміти | 120 запитів/хв; денна квота ЗАПИСАНИХ рядків · з `GET /me` |

@@ -1,6 +1,6 @@
 {
     "version": 1,
-    "active_profile": "session-free",
+    "active_profile": "local-quality",
     "profiles": {
         "local-quality": {
             "allow_paid": false,

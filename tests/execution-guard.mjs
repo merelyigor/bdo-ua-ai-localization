@@ -1,12 +1,41 @@
 import { TranslationExecutionGuard } from "../.opencode/plugin/translation-execution-guard.ts"
+import { mkdtempSync, mkdirSync, readFileSync, writeFileSync } from "node:fs"
+import { createHash } from "node:crypto"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
 
-const makeGuard = async () => {
+const roles = ["translation-terminology", "translation-worker", "translation-qa", "translation-repair", "translation-judge", "translation-smoke"]
+const runtimeState = (active_profile = "session-free", model = "opencode/x-preview-f-free") => {
+  const routes = Object.fromEntries(roles.map((role) => [role, [model]]))
+  const canonical = JSON.stringify({ schema_version: 1, active_profile, routes })
+  return {
+    schema_version: 1,
+    active_profile,
+    routes,
+    fingerprint: createHash("sha256").update(canonical).digest("hex"),
+    generated_at: "2026-08-24T00:00:00Z",
+  }
+}
+const writeRuntime = (directory, state) => {
+  writeFileSync(join(directory, ".opencode/runtime-model-state.json"), JSON.stringify(state))
+  writeFileSync(join(directory, ".opencode/translation-models.json"), JSON.stringify({
+    active_profile: state.active_profile,
+    profiles: { [state.active_profile]: { routes: state.routes } },
+  }))
+}
+const makeGuard = async (directory = mkdtempSync(join(tmpdir(), "bdo-execution-guard-")), seed = true) => {
+  mkdirSync(join(directory, ".opencode"), { recursive: true })
+  if (seed) {
+    // Fingerprint мусить відповідати канонічному effective policy.
+    const state = runtimeState()
+    writeRuntime(directory, state)
+  }
   const aborted = []
   const hooks = await TranslationExecutionGuard({
-    directory: "/project",
+    directory,
     client: { session: { abort: async ({ path }) => { aborted.push(path.id) } } },
   })
-  return { before: hooks["tool.execute.before"], aborted }
+  return { before: hooks["tool.execute.before"], aborted, directory }
 }
 const refuse = async (before, input, args, what) => {
   await before(input, { args }).then(
@@ -18,7 +47,7 @@ const refuse = async (before, input, args, what) => {
 // Дозволені команди, зокрема послідовність через `&&`: диригент обʼєднує сусідні
 // кроки промпта в один виклик, і за це прогін падав п'ять разів за день.
 {
-  const { before, aborted } = await makeGuard()
+  const { before, aborted, directory } = await makeGuard()
   for (const command of [
     "./bdo env",
     "./bdo mode start patch",
@@ -30,6 +59,7 @@ const refuse = async (before, input, args, what) => {
     "./bdo mode start improve 20 && ./bdo run drive",
     "./bdo mode start patch 15 3",
     "./bdo mode status patch 3",
+    "./bdo gate full",
     // Довідкові, тільки читання: без них диригент не міг відповісти навіть на
     // «де є що перекладати», хоча жодного запису в цих командах немає.
     "./bdo patches",
@@ -47,12 +77,62 @@ const refuse = async (before, input, args, what) => {
   ]) {
     const output = { args: { command, workdir: "/stale/renamed-project" } }
     await before({ tool: "bash", sessionID: "ok", callID: "c" }, output)
-    if (output.args.workdir !== "/project") throw new Error("guard did not canonicalize a stale workdir")
+    if (output.args.workdir !== directory) throw new Error("guard did not canonicalize a stale workdir")
   }
   await before({ tool: "task", sessionID: "ok", callID: "c" }, { args: { subagent_type: "translation-worker" } })
   await before({ tool: "read", sessionID: "ok", callID: "c" }, { args: { filePath: "state/payload.json" } })
   await before({ tool: "translation_result", sessionID: "ok", callID: "c" }, { args: { response_path: "smoke/response.json", content: "[]" } })
   if (aborted.length !== 0) throw new Error("guard aborted a legal session")
+}
+
+// Model runtime restart-gate: Task дозволений лише з fingerprint, який OpenCode
+// бачив під час старту plugin instance.
+{
+  const { before, directory } = await makeGuard()
+  await before({ tool: "task", sessionID: "same", callID: "c" }, { args: { subagent_type: "translation-worker" } })
+  const stateFile = join(directory, ".opencode/runtime-model-state.json")
+  const same = JSON.parse(readFileSync(stateFile, "utf8"))
+  writeRuntime(directory, { ...same, generated_at: "later" })
+  await before({ tool: "task", sessionID: "same-metadata", callID: "c" }, { args: { subagent_type: "translation-qa" } })
+  const changed = runtimeState("local-quality", "ollama-local/qwen3.6:35b-a3b-mtp-q4_K_M")
+  writeRuntime(directory, changed)
+  let restart = ""
+  await before({ tool: "task", sessionID: "changed", callID: "c" }, { args: { subagent_type: "translation-worker" } })
+    .catch((error) => { restart = String(error) })
+  if (!restart.includes("OPENCODE_RESTART_REQUIRED") || !restart.includes("session-free -> local-quality")) {
+    throw new Error(`changed model runtime was not blocked clearly: ${restart}`)
+  }
+  const restarted = await makeGuard(directory, false)
+  await restarted.before({ tool: "task", sessionID: "restarted", callID: "c" }, { args: { subagent_type: "translation-worker" } })
+}
+
+// Відсутній fingerprint при boot · fail closed до створення child.
+{
+  const { before } = await makeGuard(undefined, false)
+  let invalid = ""
+  await before({ tool: "task", sessionID: "missing", callID: "c" }, { args: { subagent_type: "translation-worker" } })
+    .catch((error) => { invalid = String(error) })
+  if (!invalid.includes("OPENCODE_RUNTIME_INVALID")) throw new Error(`missing runtime was accepted: ${invalid}`)
+}
+
+// State не може маскувати частково змінений policy або активну матеріалізацію.
+{
+  const { before, directory } = await makeGuard()
+  const policyFile = join(directory, ".opencode/translation-models.json")
+  const policy = JSON.parse(readFileSync(policyFile, "utf8"))
+  policy.profiles[policy.active_profile].routes["translation-worker"] = ["other/model"]
+  writeFileSync(policyFile, JSON.stringify(policy))
+  let mismatch = ""
+  await before({ tool: "task", sessionID: "mismatch", callID: "c" }, { args: { subagent_type: "translation-worker" } })
+    .catch((error) => { mismatch = String(error) })
+  if (!mismatch.includes("OPENCODE_RUNTIME_INVALID")) throw new Error(`policy mismatch was accepted: ${mismatch}`)
+
+  writeRuntime(directory, runtimeState())
+  writeFileSync(join(directory, ".opencode/runtime-model-state.busy"), "123")
+  let busy = ""
+  await before({ tool: "task", sessionID: "busy", callID: "c" }, { args: { subagent_type: "translation-worker" } })
+    .catch((error) => { busy = String(error) })
+  if (!busy.includes("OPENCODE_RUNTIME_INVALID")) throw new Error(`busy runtime was accepted: ${busy}`)
 }
 
 // Обхід лишається забороненим: розділювач `&&` не легалізує ані чужий бінарник,

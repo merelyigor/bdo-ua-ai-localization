@@ -75,6 +75,8 @@ check_rules() {
         test -f ".opencode/agents/$primary.md" || fail "немає primary-режиму $primary"
         grep -Fq './bdo run drive' ".opencode/agents/$primary.md" \
             || fail "$primary не використовує run drive"
+        grep -Fq 'UX-контракт власника' ".opencode/agents/$primary.md" \
+            || fail "$primary не містить UX-контракт власника"
     done
     grep -Fq 'Переклад робиться В OPENCODE' .opencode/critical-rules.md \
         || fail 'у critical-rules.md немає правила «переклад робиться в OpenCode»'
@@ -85,8 +87,14 @@ check_rules() {
         || fail 'docs/README.md не посилається на Windows/WSL2 інструкцію'
     grep -Fq 'Переклад робиться В OPENCODE' AGENTS.md \
         || fail 'у AGENTS.md немає правила «переклад робиться в OpenCode»'
+    grep -Fq 'Власник НЕ запускає bash/CLI-команди' AGENTS.md \
+        || fail 'у AGENTS.md немає UX-контракту власника'
+    grep -Fq 'gate full && ./bdo api' AGENTS.md \
+        || fail 'у AGENTS.md немає фінальної gate full/API-перевірки'
+    grep -Fq 'Головний UX-контракт власника' .opencode/critical-rules.md \
+        || fail 'у critical-rules.md немає UX-контракту власника'
     note "4 дзеркала ідентичні; AGENTS.md: $lines/$RULE_MAP_MAX_LINES рядків"
-    note 'чотири OpenCode-режими та run drive присутні в prompts, правилах і help flow'
+    note 'чотири OpenCode-режими, UX-контракт і run drive присутні в prompts, правилах і help flow'
     note 'правило про push присутнє в карті, критичних правилах і нормативі'
 }
 
@@ -315,6 +323,7 @@ check_shell() {
     run php tests/pipeline-unit.php
     run php tests/pipeline-faults.php
     run bash tests/batch-summary.sh
+    run bash tests/model-runtime-materialization.sh
     run bash tests/smoke-envelope.sh
     run bash tests/drive-memory-layers.sh
     run bash tests/judge-flow.sh
@@ -328,8 +337,8 @@ check_shell() {
 check_agents() {
     step 'OpenCode agents і routing guard'
     have jq || fail 'jq недоступний'
-    jq -e . opencode.json >/dev/null || fail 'opencode.json невалідний JSON'
     run bash .opencode/validate-translation-agents.sh
+    jq -e . opencode.json >/dev/null || fail 'opencode.json невалідний JSON'
     run node --experimental-strip-types tests/routing-guard.mjs
     run node --experimental-strip-types tests/execution-guard.mjs
     run node --experimental-strip-types tests/result-writer.mjs

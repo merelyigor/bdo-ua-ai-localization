@@ -1,7 +1,7 @@
 ---
 description: Мінімально перевіряє запуск субагента активного профілю
 mode: subagent
-model: opencode/x-preview-f-free
+model: ollama-local/qwen3.6:35b-a3b-mtp-q4_K_M
 temperature: 0
 steps: 2
 permission:

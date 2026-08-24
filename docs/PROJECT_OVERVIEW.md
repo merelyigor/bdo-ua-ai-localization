@@ -19,6 +19,12 @@ Toolkit не містить серверної БД, Laravel application, modera
 Причина не косметична: агент, який не знайшов штатну команду, писав власну й
 обходив гейт identity.
 
+Для власника штатний UX інший: він вручну змінює лише локальний `.env` і працює
+через primary-режими OpenCode `патч`, `ручний`, `пропозиції`, `покращення`.
+Primary сам виконує всі `./bdo` кроки, gates, аудит і фінальну
+`./bdo gate full && ./bdo api`; CLI нижче · довідка розробника/діагностики, не
+основний користувацький workflow.
+
 ## Один flow
 
 | Flow | Оркестратор | Мовна робота | State |
@@ -44,11 +50,10 @@ git checkout dac631e -- archive/legacy-script-flow/              # усю тек
 
 ## Ціль прогону
 
-`BDO_ENV=PROD|DEV` у локальному `.env` задає середовище для читання й запису
-разом. Перемикання · правка одного рядка: адреси API не в `.env`, а в
-`cli/system/select-env.sh` (production · публічна константа; DEV дефолта не має, бо це
-приватна інфраструктура). У `.env` лишаються лише ключі · `BDO_API_KEY_PROD` і
-`BDO_API_KEY_DEV`.
+`BDO_ENV=PROD|DEV` у локальному `.env` жорстко задає середовище для читання й запису
+разом. PROD бере `BDO_API_BASE_PROD` або production default; DEV бере
+`BDO_API_BASE_DEV`. Застарілий `BDO_API_BASE` ігнорується. У `.env` лишаються
+ключі `BDO_API_KEY_PROD` і `BDO_API_KEY_DEV` та потрібний override адреси.
 
 Розвʼязує це `cli/system/select-env.sh`, і воно ж відмовляє, коли префікс `BDO_API_ENV=`
 суперечить файлу · щоб частина прогону не поїхала в інше середовище. Показує
@@ -65,7 +70,7 @@ git checkout dac631e -- archive/legacy-script-flow/              # усю тек
 |---|---|
 | Shell | CLI, environment selection, HTTP transport, orchestration, exit codes |
 | `lib/` PHP | stable identity, batch membership, quality defects, safe payloads |
-| `.opencode/agents/` | вузькі ролі translation worker, QA, repair, terminology, smoke |
+| `.opencode/agent-templates/` → generated/ignored `.opencode/agents/translation-*.md` | tracked child-промпти → локальні ролі worker, QA, repair, terminology, smoke |
 | `.opencode/plugin/` | provider/model route, schema й no-thinking guards |
 | Agent API | authoritative rows, glossary, validation, revisions, moderation |
 
@@ -83,7 +88,8 @@ HTTP write, model invocation та state lifecycle мають штатні entryp
   history не перезаписуються.
 - Batch належність перевіряє manifest; cursor рухається після завершення batch.
 - Worker/repair/QA під schema не мають tools; payload передається текстом.
-- Маршрути моделей задає `.opencode/translation-models.json`; Ollama MLX не
+- Маршрути моделей задає generated/ignored `.opencode/translation-models.json`,
+  створений із tracked `.opencode/templates/translation-models.json`; Ollama MLX не
   забезпечує constrained decoding, а платні fallback за замовчуванням заборонені.
 - Windows підтримується через WSL2; native PowerShell flow не дублюється.
 - Ціль і дозвіл на запис дає `BDO_ENV`; `run start` фіксує ціль, `commit --write` її звіряє.

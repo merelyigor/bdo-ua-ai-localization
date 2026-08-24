@@ -6,11 +6,47 @@ require dirname(__DIR__, 2).'/lib/autoload.php';
 
 use Bdo\Translate\Runtime\ModelPolicy;
 
-$root = dirname(__DIR__, 2);
+$root = rtrim((string) (getenv('TRANSLATE_HOME') ?: dirname(__DIR__, 2)), DIRECTORY_SEPARATOR);
 $policyFile = $root.'/.opencode/translation-models.json';
+$policyTemplate = $root.'/.opencode/templates/translation-models.json';
+$configTemplate = $root.'/templates/opencode.json';
+$agentTemplates = $root.'/.opencode/agent-templates';
+$runtimeStateFile = $root.'/.opencode/runtime-model-state.json';
+$runtimeBusyFile = $root.'/.opencode/runtime-model-state.busy';
 $command = $argv[1] ?? 'status';
+
+if (!is_file($policyTemplate) || !is_file($configTemplate) || !is_dir($agentTemplates)) {
+    throw new RuntimeException('Відсутні tracked-шаблони OpenCode; перевірте цілісність репозиторію.');
+}
+if (is_file($runtimeBusyFile)) {
+    $stalePid = trim((string) file_get_contents($runtimeBusyFile));
+    if (ctype_digit($stalePid) && function_exists('posix_kill') && !@posix_kill((int) $stalePid, 0)) {
+        unlink($runtimeBusyFile);
+    }
+}
+$busy = @fopen($runtimeBusyFile, 'x+b');
+if ($busy === false) {
+    throw new RuntimeException('Матеріалізація model runtime вже виконується або попередня завершилась аварійно: '.$runtimeBusyFile);
+}
+fwrite($busy, (string) getmypid());
+$cleanupBusy = true;
+register_shutdown_function(static function () use (&$cleanupBusy, $busy, $runtimeBusyFile): void {
+    if (is_resource($busy)) fclose($busy);
+    if ($cleanupBusy && is_file($runtimeBusyFile)) unlink($runtimeBusyFile);
+});
+// `env` завжди починає з публічного канону: локальний профіль не накопичує
+// зміни в tracked-файлах і не залежить від попереднього запуску користувача.
+if ($command === 'env' || !is_file($policyFile)) {
+    $policyDir = dirname($policyFile);
+    if (!@mkdir($policyDir, 0777, true) && !is_dir($policyDir)) {
+        throw new RuntimeException('Не вдалося створити каталог model policy: '.$policyDir);
+    }
+    $seed = ModelPolicy::load($policyTemplate);
+    ModelPolicy::save($policyFile, $seed);
+}
 $policy = ModelPolicy::load($policyFile);
 
+$statusOnly = false;
 if ($command === 'status') {
     $active = $policy['active_profile'];
     echo "Активний профіль: $active\n";
@@ -26,7 +62,7 @@ if ($command === 'status') {
         echo "\nУВАГА: профіль ПЛАТНИЙ · ".implode(', ', $paid)."\n";
         echo "Кожен рядок пачки оплачується. Безплатний профіль: ./bdo profile use session-free\n";
     }
-    exit(0);
+    $statusOnly = true;
 }
 if ($command === 'env') {
     $name = $argv[2] ?? '';
@@ -73,21 +109,48 @@ if ($command === 'env') {
     [$name, $choice] = [$argv[2] ?? '', $argv[3] ?? ''];
     if (!isset($policy['profiles'][$name]) || !in_array($choice, ['allow', 'deny'], true)) throw new RuntimeException('Використання: profile paid PROFILE allow|deny');
     $policy['profiles'][$name]['allow_paid'] = $choice === 'allow';
-} else throw new RuntimeException('Використання: profile status|use|set|fallback|paid');
+} elseif (!$statusOnly) throw new RuntimeException('Використання: profile status|use|set|fallback|paid');
 
 ModelPolicy::save($policyFile, $policy);
 $configFile = $root.'/opencode.json';
-$config = json_decode((string) file_get_contents($configFile), true, 512, JSON_THROW_ON_ERROR);
+$config = json_decode((string) file_get_contents($configTemplate), true, 512, JSON_THROW_ON_ERROR);
 foreach (ModelPolicy::ROLES as $role) {
     $model = ModelPolicy::routes($policy, $role)[0];
     $config['agent'][$role]['model'] = $model;
     $agentFile = $root.'/.opencode/agents/'.$role.'.md';
-    $text = (string) file_get_contents($agentFile);
+    $agentTemplate = $agentTemplates.'/'.$role.'.md';
+    if (!is_file($agentTemplate)) throw new RuntimeException("Відсутній шаблон $agentTemplate");
+    $text = (string) file_get_contents($agentTemplate);
     $updated = preg_replace('/^model: .*$/m', 'model: '.$model, $text, 1, $count);
     if ($updated === null || $count !== 1) throw new RuntimeException("Не вдалося синхронізувати $agentFile");
-    file_put_contents($agentFile, $updated);
+    $agentDir = dirname($agentFile);
+    if (!@mkdir($agentDir, 0777, true) && !is_dir($agentDir)) {
+        throw new RuntimeException('Не вдалося створити каталог child runtime: '.$agentDir);
+    }
+    $agentTemp = $agentFile.'.tmp.'.bin2hex(random_bytes(5));
+    file_put_contents($agentTemp, $updated);
+    rename($agentTemp, $agentFile);
 }
 $temp = $configFile.'.tmp.'.bin2hex(random_bytes(5));
 file_put_contents($temp, json_encode($config, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR)."\n");
 rename($temp, $configFile);
-echo "Профіль синхронізовано: {$policy['active_profile']}\n";
+
+$routes = [];
+foreach (ModelPolicy::ROLES as $role) $routes[$role] = ModelPolicy::routes($policy, $role);
+$fingerprintInput = [
+    'schema_version' => 1,
+    'active_profile' => $policy['active_profile'],
+    'routes' => $routes,
+];
+$canonical = json_encode($fingerprintInput, JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR);
+$runtimeState = $fingerprintInput + [
+    'fingerprint' => hash('sha256', $canonical),
+    'generated_at' => gmdate('c'),
+];
+$stateTemp = $runtimeStateFile.'.tmp.'.bin2hex(random_bytes(5));
+file_put_contents($stateTemp, json_encode($runtimeState, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR)."\n");
+rename($stateTemp, $runtimeStateFile);
+$cleanupBusy = false;
+fclose($busy);
+unlink($runtimeBusyFile);
+if (!$statusOnly) echo "Профіль синхронізовано: {$policy['active_profile']}\n";

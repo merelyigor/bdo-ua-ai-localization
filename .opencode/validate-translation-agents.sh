@@ -7,8 +7,18 @@ readonly ROOT
 readonly CONFIG="$ROOT/opencode.json"
 readonly AGENTS=(translation-terminology translation-worker translation-qa translation-repair translation-judge translation-smoke)
 readonly POLICY="$ROOT/.opencode/translation-models.json"
+readonly CONFIG_TEMPLATE="$ROOT/templates/opencode.json"
+readonly AGENT_TEMPLATES="$ROOT/.opencode/agent-templates"
+
+# У чистому клоні runtime-файлів навмисно немає: вони локальні й ignored.
+# Валідатор сам матеріалізує канонічний профіль, тому `gate agents` працює ще
+# до першого ручного `./bdo env`.
+if [ ! -f "$CONFIG" ] || [ ! -f "$POLICY" ] || [ ! -f "$ROOT/.opencode/agents/translation-worker.md" ]; then
+    TRANSLATE_HOME="$ROOT" php "$ROOT/cli/runtime/model-profile.php" status >/dev/null
+fi
 
 jq -e . "$CONFIG" >/dev/null
+test -f "$CONFIG_TEMPLATE" || { echo 'ERROR: tracked opencode template is missing' >&2; exit 1; }
 php -r 'require $argv[1]; Bdo\Translate\Runtime\ModelPolicy::load($argv[2]);' "$ROOT/lib/autoload.php" "$POLICY"
 if rg -n 'client\.session\.(create|prompt|promptAsync)' "$ROOT/.opencode/plugin" >/dev/null; then
     echo 'ERROR: plugins must not create hidden child sessions; use native visible Task' >&2
@@ -56,7 +66,29 @@ for agent in "${AGENTS[@]}"; do
         printf 'ERROR: %s frontmatter model does not match project config\n' "$agent" >&2
         exit 1
     }
+    # Runtime prompt відрізняється від tracked-шаблона рівно моделлю. Так
+    # генератор не може тихо загубити permission, schema-правило чи текст ролі.
+    diff -q \
+        <(sed 's/^model: .*/model: __RUNTIME_MODEL__/' "$AGENT_TEMPLATES/$agent.md") \
+        <(sed 's/^model: .*/model: __RUNTIME_MODEL__/' "$ROOT/.opencode/agents/$agent.md") \
+        >/dev/null || {
+        printf 'ERROR: %s runtime differs from its tracked template beyond model\n' "$agent" >&2
+        exit 1
+    }
 done
+
+# У runtime opencode.json змінюються лише шість model-полів.
+config_template_normalized="$(mktemp)"
+config_runtime_normalized="$(mktemp)"
+trap 'rm -f "$config_template_normalized" "$config_runtime_normalized"' EXIT
+jq 'reduce ["translation-terminology","translation-worker","translation-qa","translation-repair","translation-judge","translation-smoke"][] as $r (. ; .agent[$r].model = "__RUNTIME_MODEL__")' "$CONFIG_TEMPLATE" > "$config_template_normalized"
+jq 'reduce ["translation-terminology","translation-worker","translation-qa","translation-repair","translation-judge","translation-smoke"][] as $r (. ; .agent[$r].model = "__RUNTIME_MODEL__")' "$CONFIG" > "$config_runtime_normalized"
+cmp -s "$config_template_normalized" "$config_runtime_normalized" || {
+    echo 'ERROR: runtime opencode.json differs from tracked template beyond models' >&2
+    exit 1
+}
+rm -f "$config_template_normalized" "$config_runtime_normalized"
+trap - EXIT
 
 # Видимі native Task діти отримують payload у prompt. Усі tools заборонені.
 for agent in translation-worker translation-repair translation-qa translation-judge translation-smoke; do
