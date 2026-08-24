@@ -54,6 +54,25 @@ prepare_worker() {
 # емісією child і native Task, а кожна емісія пише свій.
 rm -f "$STATE_DIR/next-child.json"
 
+# Суддя викликається ЛИШЕ за наявності спірних рядків. Механічні дефекти
+# судження не потребують · їхній маршрут визначено без моделі, тому payload
+# їх не містить, і пачка без спорів іде на commit без жодного зайвого виклику.
+judge_or_commit() {
+    local rows="$1" candidate="$2" verdicts="$3" validate="$4"
+    if [ "${BDO_JUDGE:-on}" = off ]; then
+        transition ready_to_commit; emit 1 ready_to_commit '{"kind":"continue"}'; return 0
+    fi
+    "$SCRIPT_DIR/cli/prepare/judge-payload.sh" "$rows" "$candidate" "$verdicts" "$validate" > "$B/judge-payload.json" 2>/dev/null || echo '[]' > "$B/judge-payload.json"
+    local disputed
+    disputed="$(php -r '$a=json_decode((string)file_get_contents($argv[1]),true);echo is_array($a)?count($a):0;' "$B/judge-payload.json")"
+    if [ "${disputed:-0}" -gt 0 ]; then
+        transition awaiting_judge
+        child awaiting_judge translation-judge "$B/judge-payload.json" "$B/judge-verdicts.json"
+    else
+        transition ready_to_commit; emit 1 ready_to_commit '{"kind":"continue"}'
+    fi
+}
+
 state="$(field state)"
 case "$state" in
 selected)
@@ -142,7 +161,10 @@ awaiting_qa)
     BDO_HEAL_MAX_ATTEMPTS="${BDO_HEAL_MAX_ATTEMPTS:-1}" "$SCRIPT_DIR/cli/heal/heal-plan.sh" "$B/rows.json" "$B/clean.json" "$B/verdicts.json" "$vf" > "$B/heal-report.txt" 2>&1 || true
     repairs="$(php -r '$a=is_file($argv[1])?json_decode(file_get_contents($argv[1]),true):[];echo is_array($a)?count($a):0;' "$B/heal-repair-payload.json")"
     if [ "$repairs" -gt 0 ]; then transition healing; child healing translation-repair "$B/heal-repair-payload.json" "$B/fixes.json"
-    else cp "$B/heal-merged.json" "$B/final-candidate.json"; cp "$B/verdicts.json" "$B/final-verdicts.json"; transition ready_to_commit; emit 1 ready_to_commit '{"kind":"continue"}'; fi
+    else
+        cp "$B/heal-merged.json" "$B/final-candidate.json"; cp "$B/verdicts.json" "$B/final-verdicts.json"
+        judge_or_commit "$B/rows.json" "$B/final-candidate.json" "$B/final-verdicts.json" "$vf"
+    fi
     ;;
 healing)
     if [ ! -s "$B/fixes.json" ]; then
@@ -164,14 +186,36 @@ awaiting_control_qa)
         child awaiting_control_qa translation-qa "$B/control-qa-payload.json" "$B/verdicts-control.json"; exit 0
     fi
     php -r '$a=json_decode(file_get_contents($argv[1]),true);$b=json_decode(file_get_contents($argv[2]),true);$x=[];foreach($a as $v)$x[$v["identity_hash"]]=$v;foreach($b as $v)$x[$v["identity_hash"]]=$v;file_put_contents($argv[3],json_encode(array_values($x),JSON_UNESCAPED_UNICODE|JSON_THROW_ON_ERROR));' "$B/verdicts.json" "$B/verdicts-control.json" "$B/final-verdicts.json"
-    cp "$B/healed.json" "$B/final-candidate.json"; transition ready_to_commit; emit 1 ready_to_commit '{"kind":"continue"}'
+    cp "$B/healed.json" "$B/final-candidate.json"
+    vf=""; test -f "$B/validate-path" && vf="$(cat "$B/validate-path")"
+    judge_or_commit "$B/rows.json" "$B/final-candidate.json" "$B/final-verdicts.json" "$vf"
+    ;;
+awaiting_judge)
+    if [ ! -s "$B/judge-verdicts.json" ]; then
+        # Суддя не є ворітьми: вичерпані спроби не блокують пачку, а просто
+        # лишають стару поведінку каналу · це рішення про маршрут, не про дані.
+        if retry_exceeded awaiting_judge; then
+            transition ready_to_commit; emit 1 ready_to_commit '{"kind":"continue"}'; exit 0
+        fi
+        child awaiting_judge translation-judge "$B/judge-payload.json" "$B/judge-verdicts.json"; exit 0
+    fi
+    if ! php -r 'require $argv[1];Bdo\Translate\Pipeline\JudgeDecisions::fromFile($argv[2]);' "$SCRIPT_DIR/lib/autoload.php" "$B/judge-verdicts.json" 2>/dev/null; then
+        mv "$B/judge-verdicts.json" "$B/judge-verdicts.invalid.$(date +%s).json"
+        if retry_exceeded awaiting_judge; then
+            transition ready_to_commit; emit 1 ready_to_commit '{"kind":"continue"}'; exit 0
+        fi
+        child awaiting_judge translation-judge "$B/judge-payload.json" "$B/judge-verdicts.json"; exit 0
+    fi
+    complete judge "$B/judge-verdicts.json"
+    transition ready_to_commit; emit 1 ready_to_commit '{"kind":"continue"}'
     ;;
 ready_to_commit|committing)
     source "$SCRIPT_DIR/cli/system/select-env.sh" >/dev/null
     "$SCRIPT_DIR/cli/quality/build-items.sh" "$B/rows.json" "$B/final-candidate.json" "$B/final-items.json" "" --require-all >/dev/null
     key="$(php -r 'require $argv[1];$x=json_decode(file_get_contents($argv[5]),true,512,JSON_THROW_ON_ERROR);echo Bdo\Translate\Api\IdempotencyKey::forBatch($argv[2],$argv[3],$argv[4],$x);' "$SCRIPT_DIR/lib/autoload.php" "$BDO_ENV" "$(field channel)" "$(basename "$B")" "$B/final-items.json")"
     test "$state" = committing || transition committing
-    if "$SCRIPT_DIR/cli/batch/batch-commit.sh" "$B/rows.json" "$B/final-candidate.json" "$B/final-verdicts.json" --channel "$(field channel)" --idempotency-key-prefix "$key" --write > "$B/commit-report.txt" 2>&1; then
+    judge_args=(); test -s "$B/judge-verdicts.json" && judge_args=(--judge "$B/judge-verdicts.json")
+    if "$SCRIPT_DIR/cli/batch/batch-commit.sh" "$B/rows.json" "$B/final-candidate.json" "$B/final-verdicts.json" --channel "$(field channel)" --idempotency-key-prefix "$key" "${judge_args[@]}" --write > "$B/commit-report.txt" 2>&1; then
         complete commit "$B/commit-report.txt"; transition committed; transition verified; "$SCRIPT_DIR/cli/prepare/build-schema.sh" --clear >/dev/null
         emit 1 verified '{"kind":"complete"}'
     else emit 0 committing '{"kind":"retry","reason":"api_write_failed"}'; exit 1; fi

@@ -18,15 +18,38 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")/../.." && pwd)"
 STATE_DIR="${BDO_STATE_DIR:-$SCRIPT_DIR/state}"
 LOG="$STATE_DIR/flow-incidents.jsonl"
+NOTES="$STATE_DIR/child-notes.jsonl"
 MODE="${1:-summary}"
 
-test -f "$LOG" || { echo "Інцидентів немає: $LOG не створено."; exit 0; }
+# Примітки child · окремий, НЕ дефектний клас. Дитина є моделлю, і разом із
+# коректним JSON вона законно пояснює рішення («торгова марка · без перекладу»).
+# Такі спостереження друкуються тут же: заради них у флоу і стоїть ШІ.
+show_notes() {
+    test -f "$NOTES" || return 0
+    echo
+    php -r '
+    $lines = file($argv[1], FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+    printf("Примітки child: %d\n", count($lines));
+    foreach (array_slice($lines, -($argv[2] === "list" ? 50 : 5)) as $line) {
+        $e = json_decode($line, true);
+        if (! is_array($e)) continue;
+        printf("  %s  %s\n    %s\n", $e["at"] ?? "?", $e["role"] ?? "?",
+            str_replace("\n", " ", substr((string) ($e["note"] ?? ""), 0, 200)));
+    }' "$NOTES" "$1"
+}
+
+if [ ! -f "$LOG" ]; then
+    echo "Інцидентів немає: $LOG не створено."
+    show_notes "${MODE#--}"
+    exit 0
+fi
 
 case "$MODE" in
     --clear)
         mv "$LOG" "$LOG.$(date +%Y%m%d_%H%M%S).archived"
+        test -f "$NOTES" && mv "$NOTES" "$NOTES.$(date +%Y%m%d_%H%M%S).archived"
         rm -f "$STATE_DIR/child-incidents.json"
-        echo "Журнал заархівовано; лічильники спроб скинуто."
+        echo "Журнали заархівовано; лічильники спроб скинуто."
         ;;
     --list)
         php -r '
@@ -56,6 +79,7 @@ case "$MODE" in
         echo "Повторюваний дефект тієї самої ролі означає роботу над промптом або моделлю,\n";
         echo "а не над окремою пачкою.\n";
         ' "$LOG"
-        ;;
+        show_notes summary
+            ;;
     *) echo "Дозволено: (без аргументів) | --list | --clear" >&2; exit 2 ;;
 esac

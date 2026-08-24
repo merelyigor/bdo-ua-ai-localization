@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 require __DIR__.'/../lib/autoload.php';
 
+use Bdo\Translate\Api\ErrorCodes;
 use Bdo\Translate\Api\IdempotencyKey;
 use Bdo\Translate\Pipeline\ChannelRouter;
 use Bdo\Translate\Batch\Memory;
@@ -96,6 +97,13 @@ try {
     $manualOnly = Memory::fromFile($memoryFile, 'manual');
     expect($manualOnly->best($identity)['text'] === 'ручний', 'layers=manual must drop machine variants');
     expect($manualOnly->best(str_repeat('b', 64)) === null, 'layers=manual kept a machine-only entry');
+
+    // Постійні відмови API не йдуть у repair: модель їх не виправить, а коло
+    // коштує повного циклу worker -> QA -> repair за платні токени.
+    expect(ErrorCodes::isPermanent('API: source_equivalent Це англійський оригінал, а не переклад'), 'source_equivalent must be permanent');
+    expect(ErrorCodes::isPermanent('API: non_translatable рядок не перекладається'), 'non_translatable must be permanent');
+    expect(! ErrorCodes::isPermanent('API: length_too_long завеликий рядок'), 'length defect must stay repairable');
+    expect(! ErrorCodes::isPermanent('QA: REVIEW неточний відповідник'), 'QA verdict must stay repairable');
 
     $spec = RunSpec::create('proposal', 'PROD', 'ses_parent', 15)->toArray();
     expect(($spec['channel'] ?? null) === 'proposal', 'proposal preset selected a wrong channel');

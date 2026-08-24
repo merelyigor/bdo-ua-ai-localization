@@ -12,6 +12,7 @@ OpenCode і не підключається через `opencode.json`.
 | `translation-qa` | `.opencode/agents/translation-qa.md` + staged QA schema | перевірка рядків і QA verdict |
 | `translation-repair` | `.opencode/agents/translation-repair.md` + staged response schema | точкове виправлення дефектів |
 | `translation-terminology` | `.opencode/agents/translation-terminology.md` + terminology schema | термінологічні пропозиції |
+| `translation-judge` | `.opencode/agents/translation-judge.md` + judge schema | маршрут спірного рядка й упевненість |
 | `translation-smoke` | `.opencode/agents/translation-smoke.md` + strict smoke schema | capability JSON |
 
 ## Документи за потребою

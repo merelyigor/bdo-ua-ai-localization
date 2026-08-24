@@ -8,7 +8,7 @@ use RuntimeException;
 
 final class ModelPolicy
 {
-    public const ROLES = ['translation-terminology', 'translation-worker', 'translation-qa', 'translation-repair', 'translation-smoke'];
+    public const ROLES = ['translation-terminology', 'translation-worker', 'translation-qa', 'translation-repair', 'translation-judge', 'translation-smoke'];
 
     public static function load(string $file): array
     {

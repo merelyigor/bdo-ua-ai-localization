@@ -5,7 +5,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 readonly ROOT
 readonly CONFIG="$ROOT/opencode.json"
-readonly AGENTS=(translation-terminology translation-worker translation-qa translation-repair translation-smoke)
+readonly AGENTS=(translation-terminology translation-worker translation-qa translation-repair translation-judge translation-smoke)
 readonly POLICY="$ROOT/.opencode/translation-models.json"
 
 jq -e . "$CONFIG" >/dev/null
@@ -26,6 +26,23 @@ test -f "$ROOT/.opencode/plugin/translation-child-contract.ts" || {
     echo 'ERROR: native Task flow requires the mechanical child contract plugin' >&2
     exit 1
 }
+# YAML frontmatter кожного агента мусить бути РОЗБІРНИМ. Невелика деталь із
+# великою ціною: незакавичене значення з `: ` всередині (`Вирішує рядки: у шар`)
+# YAML читає як вкладений ключ, і IDE та завантажувач конфігу дають помилку
+# `block composed value at the same line as key` · агент просто не вантажиться.
+for agent_file in "$ROOT"/.opencode/agents/*.md; do
+    bad="$(awk 'NR==1 && $0=="---" {inside=1; next}
+                inside && $0=="---" {exit}
+                inside && /^[A-Za-z_"][^:]*:[ ]/ {
+                    value=$0; sub(/^[^:]*:[ ]+/, "", value);
+                    if (value ~ /: / && value !~ /^["'"'"']/) print FILENAME ": " $0
+                }' "$agent_file")"
+    test -z "$bad" || {
+        printf 'ERROR: незакавичена двокрапка у frontmatter · YAML читає це як вкладений ключ:\n%s\n' "$bad" >&2
+        exit 1
+    }
+done
+
 active_profile="$(jq -r '.active_profile' "$POLICY")"
 
 for agent in "${AGENTS[@]}"; do
@@ -42,7 +59,7 @@ for agent in "${AGENTS[@]}"; do
 done
 
 # Видимі native Task діти отримують payload у prompt. Усі tools заборонені.
-for agent in translation-worker translation-repair translation-qa translation-smoke; do
+for agent in translation-worker translation-repair translation-qa translation-judge translation-smoke; do
     grep -Eq '^  bash: deny$' "$ROOT/.opencode/agents/$agent.md" || {
         printf 'ERROR: %s frontmatter must deny bash\n' "$agent" >&2
         exit 1
@@ -106,8 +123,8 @@ done
 # Runtime prompts intentionally stay small enough for cheap models.
 declare -A MAX_LINES=(
     [translation-smoke]=20 [translation-worker]=50 [translation-qa]=55
-    [translation-repair]=40 [translation-terminology]=45
-    [патч]=60 [ручний]=60 [пропозиції]=60 [покращення]=60
+    [translation-repair]=40 [translation-terminology]=45 [translation-judge]=50
+    [патч]=64 [ручний]=64 [пропозиції]=64 [покращення]=64
 )
 for agent in "${!MAX_LINES[@]}"; do
     lines="$(wc -l < "$ROOT/.opencode/agents/$agent.md" | tr -d ' ')"
@@ -116,7 +133,7 @@ for agent in "${!MAX_LINES[@]}"; do
         exit 1
     }
 done
-for agent in translation-worker translation-qa translation-repair translation-terminology; do
+for agent in translation-worker translation-qa translation-repair translation-terminology translation-judge; do
     grep -Fq 'Поверни тільки JSON-масив' "$ROOT/.opencode/agents/$agent.md" || {
         printf 'ERROR: %s lacks an exact JSON-only output rule\n' "$agent" >&2
         exit 1
@@ -131,6 +148,31 @@ for agent in "${AGENTS[@]}"; do
         exit 1
     }
 done
+
+# Суддя вирішує МАРШРУТ і ніколи не редагує текст: виміряно на QA, що модель
+# судить надійніше, ніж переписує (4 з 6 fix були спотвореним текстом).
+grep -Fq 'Ти НЕ перекладаєш і НЕ виправляєш текст' "$ROOT/.opencode/agents/translation-judge.md" || {
+    echo 'ERROR: translation-judge must decide the route only, never the text' >&2
+    exit 1
+}
+grep -Fq 'destination' "$ROOT/.opencode/agents/translation-judge.md" || {
+    echo 'ERROR: translation-judge must return a destination' >&2
+    exit 1
+}
+# Механіка вище судді · це властивість КОДУ, а не промпта, тому перевіряється
+# у політиці: інакше достатньо вмовити модель, щоб зламаний рядок пішов у шар.
+php -r '
+require $argv[1];
+use Bdo\Translate\Pipeline\JudgePolicy;
+if (JudgePolicy::destination(["зламаний токен"], JudgePolicy::AI_LAYER, 100, 85) !== JudgePolicy::MODERATION) {
+    fwrite(STDERR, "ERROR: judge verdict overrode a mechanical defect\n");
+    exit(1);
+}
+if (JudgePolicy::destination([], JudgePolicy::AI_LAYER, 84, 85) !== JudgePolicy::MODERATION) {
+    fwrite(STDERR, "ERROR: judge threshold is not enforced\n");
+    exit(1);
+}
+' "$ROOT/lib/autoload.php"
 
 for primary in патч ручний пропозиції покращення; do
     grep -Fq 'subagent_type=next.role' "$ROOT/.opencode/agents/$primary.md" || {
@@ -181,8 +223,16 @@ for primary in патч ручний пропозиції покращення; 
         printf 'ERROR: %s primary does not route smoke separately\n' "$primary" >&2
         exit 1
     }
-    grep -Fq 'translation_result' "$ROOT/.opencode/agents/$primary.md" || {
-        printf 'ERROR: %s primary does not save native Task output\n' "$primary" >&2
+    # Диригент більше НЕ переписує відповідь child: plugin зберігає її сам і
+    # повертає короткий рядок. Виміряно на живому прогоні · переписування через
+    # translation_result коштувало 7395 символів платного контексту на пачках
+    # по одному рядку, а самі відповіді · ще 9929.
+    grep -Fq 'Відповідь child НЕ переписуй' "$ROOT/.opencode/agents/$primary.md" || {
+        printf 'ERROR: %s primary must not echo the child answer back into its context\n' "$primary" >&2
+        exit 1
+    }
+    grep -Fq 'Після Task одразу' "$ROOT/.opencode/agents/$primary.md" || {
+        printf 'ERROR: %s primary must return to run drive right after the Task\n' "$primary" >&2
         exit 1
     }
     # Диригент передає лише посилання на staged payload; точний вміст підставляє
@@ -205,10 +255,6 @@ for primary in патч ручний пропозиції покращення; 
     # повтором того самого child з уточненням, а не зупинкою прогону в чаті.
     grep -Fq 'НЕ зупиняє прогін' "$ROOT/.opencode/agents/$primary.md" || {
         printf 'ERROR: %s primary stops the run on a recoverable child/writer error\n' "$primary" >&2
-        exit 1
-    }
-    grep -Fq 'Передай результат Task без змін' "$ROOT/.opencode/agents/$primary.md" || {
-        printf 'ERROR: %s primary may rewrite or fabricate child output\n' "$primary" >&2
         exit 1
     }
 done

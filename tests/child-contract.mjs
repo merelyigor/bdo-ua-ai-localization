@@ -70,6 +70,37 @@ await after(
 const unfenced = JSON.parse(readFileSync(join(directory, "state/batch/out.json"), "utf8"))
 if (unfenced[0].text !== "Переклад") throw new Error("fenced JSON was not unwrapped")
 
+// Дитина · це модель, а не скрипт: JSON плюс змістовна примітка приймається,
+// дані зберігаються, примітка лишається власнику. Саме через це відхилення
+// пачка колись стала на рядку `AMD FidelityFX`, хоча child був правий.
+rmSync(join(directory, "state/batch/out.json"))
+const withNote = '```json\n[{"identity_hash":"aaaa","text":"AMD FidelityFX"}]\n```\n\nПримітка: це торгова марка, залишено без перекладу.'
+const noteResult = { title: "d", output: wrapped(withNote), metadata: {} }
+await after({ tool: "task", sessionID: "s", callID: "c", args: { subagent_type: "translation-worker" } }, noteResult)
+if (JSON.parse(readFileSync(join(directory, "state/batch/out.json"), "utf8"))[0].text !== "AMD FidelityFX") {
+  throw new Error("answer with a note was rejected")
+}
+const notes = readFileSync(join(directory, "state/child-notes.jsonl"), "utf8").trim().split("\n").map((line) => JSON.parse(line))
+if (!/торгова марка/.test(notes.at(-1).note)) throw new Error("child note was thrown away")
+
+// Диригент отримує підтвердження, а не текст відповіді: саме це знімає з
+// платної моделі найбільший обсяг контексту.
+if (/AMD FidelityFX/.test(noteResult.output)) throw new Error("child answer leaked into the conductor context")
+if (!/Збережено відповідь translation-worker: 1 елементів/.test(noteResult.output)) {
+  throw new Error(`conductor got no compact confirmation: ${noteResult.output}`)
+}
+if (!/примітку/.test(noteResult.output)) throw new Error("conductor was not told about the note")
+
+// JSON без огорожі, але з текстом навколо · та сама історія.
+rmSync(join(directory, "state/batch/out.json"))
+await after(
+  { tool: "task", sessionID: "s", callID: "c", args: { subagent_type: "translation-worker" } },
+  { title: "d", output: wrapped('Ось результат: [{"identity_hash":"aaaa","text":"Готово"}]\nПояснення: нічого не змінював.'), metadata: {} },
+)
+if (JSON.parse(readFileSync(join(directory, "state/batch/out.json"), "utf8"))[0].text !== "Готово") {
+  throw new Error("bare JSON surrounded by prose was rejected")
+}
+
 // Проза не зберігається, але й НЕ зупиняє прогін: інцидент фіксується, файл
 // відповіді не зʼявляється, і наступний drive перезапустить того самого child.
 rmSync(join(directory, "state/batch/out.json"))

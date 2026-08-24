@@ -316,6 +316,7 @@ check_shell() {
     run php tests/pipeline-faults.php
     run bash tests/smoke-envelope.sh
     run bash tests/drive-memory-layers.sh
+    run bash tests/judge-flow.sh
     run bash tests/run-target-env.sh
     run bash tests/rotation.sh
 }

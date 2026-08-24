@@ -19,6 +19,9 @@
                 ],
                 "translation-smoke": [
                     "ollama-local/qwen3.6:35b-a3b-mtp-q4_K_M"
+                ],
+                "translation-judge": [
+                    "ollama-local/qwen3.6:35b-a3b-mtp-q4_K_M"
                 ]
             },
             "paid_routes": [],
@@ -36,6 +39,9 @@
                     "ollama-local/qwen3.6:35b-a3b-mtp-q4_K_M"
                 ],
                 "translation-smoke": [
+                    "ollama-local/qwen3.6:35b-a3b-mtp-q4_K_M"
+                ],
+                "translation-judge": [
                     "ollama-local/qwen3.6:35b-a3b-mtp-q4_K_M"
                 ]
             }
@@ -57,6 +63,9 @@
                 ],
                 "translation-smoke": [
                     "ollama-local/qwen3.5:9b"
+                ],
+                "translation-judge": [
+                    "ollama-local/qwen3.5:9b"
                 ]
             },
             "paid_routes": [],
@@ -74,6 +83,9 @@
                     "ollama-local/qwen3.5:9b"
                 ],
                 "translation-smoke": [
+                    "ollama-local/qwen3.5:9b"
+                ],
+                "translation-judge": [
                     "ollama-local/qwen3.5:9b"
                 ]
             }
@@ -95,6 +107,9 @@
                 ],
                 "translation-smoke": [
                     "opencode/x-preview-f-free"
+                ],
+                "translation-judge": [
+                    "opencode/x-preview-f-free"
                 ]
             },
             "paid_routes": [],
@@ -112,6 +127,9 @@
                     "opencode/x-preview-f-free"
                 ],
                 "translation-smoke": [
+                    "opencode/x-preview-f-free"
+                ],
+                "translation-judge": [
                     "opencode/x-preview-f-free"
                 ]
             }

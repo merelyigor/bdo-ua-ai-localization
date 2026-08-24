@@ -20,7 +20,12 @@ final class WritePayload
     public const PROMPT_VERSION = 'patch-batch-v1';
 
     /**
-     * @param  list<array<string,string>>  $items  вихід cli/quality/build-items.sh
+     * Елемент може нести необовʼязковий `same_as_source: true` · підтвердження,
+     * що переклад свідомо дорівнює джерелу (назва технології, торгова марка).
+     * Сервер тоді створює звичайну ревізію замість відмови `source_equivalent`,
+     * і рядок нарешті виходить із фільтра `missing=machine`.
+     *
+     * @param  list<array<string,mixed>>  $items  вихід cli/quality/build-items.sh
      *
      * @throws RuntimeException якщо форма не та
      */
@@ -64,6 +69,15 @@ final class WritePayload
             foreach (['identity_hash', 'source_hash', 'text'] as $field) {
                 if (! isset($item[$field]) || ! is_string($item[$field]) || trim($item[$field]) === '') {
                     throw new RuntimeException("Елемент #$i не має поля $field. Це не вихід cli/quality/build-items.sh.");
+                }
+            }
+            // `same_as_source` знімає серверну перевірку `source_equivalent` для
+            // ОДНОГО елемента, тому він мусить бути справжнім булом і стояти
+            // лише там, де текст справді дорівнює джерелу. Рядок, поставлений
+            // помилково, тихо записав би англійський оригінал у ШІ-шар.
+            if (array_key_exists('same_as_source', $item)) {
+                if ($item['same_as_source'] !== true) {
+                    throw new RuntimeException("Елемент #$i має `same_as_source` не рівний true; прапорець ставиться лише для збігу з джерелом.");
                 }
             }
         }

@@ -56,6 +56,7 @@ QA_FIXES="$BATCH_DIR/heal-qa-fixes.json"
 
 php -r '
 require $argv[8];
+use Bdo\Translate\Api\ErrorCodes;
 use Bdo\Translate\Api\Response;
 use Bdo\Translate\Batch\Candidate;
 use Bdo\Translate\Batch\RowSet;
@@ -114,9 +115,17 @@ foreach ($validate?->rejections() ?? [] as $hash => $why) {
 $merged = [];
 $forRepair = [];
 $hopeless = [];
+$permanent = [];
 foreach (array_keys($defects) as $hash) {
     if (isset($serverFixed[$hash])) { $merged[$hash] = ["сервер", $serverFixed[$hash]]; continue; }
     if (isset($qaFixed[$hash]))     { $merged[$hash] = ["QA-fix", $qaFixed[$hash]]; continue; }
+    // Постійна відмова API моделі не лікується. `source_equivalent` на назві
+    // продукту означає, що воркер вчинив правильно, не перекладаючи її, і
+    // repair поверне рівно той самий текст · виміряно 2026-08-23.
+    if (array_filter($defects[$hash], static fn (string $d): bool => ErrorCodes::isPermanent($d)) !== []) {
+        $permanent[$hash] = true;
+        continue;
+    }
     $done = (int) ($attempts[$hash] ?? 0);
     if ($done >= $maxAttempts) { $hopeless[$hash] = $done; continue; }
     $forRepair[$hash] = array_values(array_unique($defects[$hash]));
@@ -160,6 +169,7 @@ printf("Рядків у пачці: %d | з дефектами: %d\n", $total, $
 printf("  вилікувано сервером (repaired_text): %d\n", count(array_filter($merged, fn ($m) => $m[0] === "сервер")));
 printf("  вилікувано дрібним fix QA:           %d\n", count(array_filter($merged, fn ($m) => $m[0] === "QA-fix")));
 printf("  у translation-repair:                %d\n", count($forRepair));
+printf("  API не приймає, модель не поможе:    %d\n", count($permanent));
 printf("  у модерацію (після %d кола лікування): %d\n", $maxAttempts, count($hopeless));
 foreach ($hopeless as $hash => $done) printf("    %s  спроб: %d\n", substr($hash, 0, 12), $done);
 

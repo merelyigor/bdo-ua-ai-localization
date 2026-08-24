@@ -6,9 +6,10 @@ import {
   clearIncident,
   pendingIncident,
   recordIncident,
+  recordNote,
   retryNote,
+  splitAnswer,
   stateFile,
-  unwrapJson,
 } from "../lib/child-response.ts"
 
 const ROLES = new Set([
@@ -16,6 +17,7 @@ const ROLES = new Set([
   "translation-worker",
   "translation-qa",
   "translation-repair",
+  "translation-judge",
   "translation-smoke",
 ])
 
@@ -82,27 +84,50 @@ export const TranslationChildContract: Plugin = async ({ directory }) => ({
     if (!next || next.kind !== "child" || next.role !== role || !next.response_path) return
     const text = typeof output.output === "string" ? output.output : ""
     // TaskTool загортає відповідь child у <task_result>…</task_result>; зняття
-    // обгортки детерміноване. Далі лишається або чистий JSON, або той самий
-    // JSON у markdown-огорожі · обидва приймаються без зміни жодного символа.
+    // обгортки детерміноване. Далі відповідь ділиться на JSON і примітку.
     const match = text.match(/<task_result>\n?([\s\S]*?)\n?<\/task_result>/)
     const answer = match ? match[1].trim() : ""
-    const json = answer === "" ? undefined : unwrapJson(answer)
-    if (json === undefined) {
+    const split = answer === "" ? undefined : splitAnswer(answer)
+    const at = new Date().toISOString()
+    if (split === undefined) {
       // Прогін не зупиняється: файл відповіді не зʼявляється, тому наступний
       // `./bdo run drive` перезапустить того самого child, а він отримає
       // уточнення. Журнал лишається власнику для виправлення на рівні проєкту.
-      recordIncident(
+      const attempt = recordIncident(
         directory,
         next.response_path,
         role,
         answer === "" ? "порожня відповідь child" : "відповідь не є валідним JSON",
         answer,
-        new Date().toISOString(),
+        at,
       )
+      // Диригент бачить короткий рядок замість усієї відповіді: далі йому
+      // потрібна лише наступна дія, а не текст, який він не має права правити.
+      output.output = `Відповідь ${role} відхилено (спроба ${attempt}): не JSON. Виконай ./bdo run drive · child повториться з уточненням.`
 
       return
     }
-    atomicWrite(stateFile(directory, next.response_path), json)
+    atomicWrite(stateFile(directory, next.response_path), split.json)
     clearIncident(directory, next.response_path)
+    recordNote(directory, next.response_path, role, split.note, at)
+    // Головна економія платного контексту: відповідь child уже збережена
+    // механічно, тому диригенту вертається підтвердження, а не її текст.
+    // Виміряно на живому прогоні: 9929 символів відповідей плюс 7395 символів
+    // їх повторного переписування у translation_result · усе це було в
+    // контексті основної моделі без жодної для неї потреби.
+    const items = (() => {
+      try {
+        const parsed = JSON.parse(split.json)
+
+        return Array.isArray(parsed) ? `${parsed.length}` : "1"
+      } catch {
+        return "?"
+      }
+    })()
+    output.output = [
+      `Збережено відповідь ${role}: ${items} елементів -> ${next.response_path}.`,
+      split.note === "" ? "" : "Child додав примітку · збережено для власника (./bdo incidents).",
+      "Далі: ./bdo run drive.",
+    ].filter(Boolean).join(" ")
   },
 })

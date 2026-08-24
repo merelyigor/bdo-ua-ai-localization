@@ -100,6 +100,7 @@ const AGENTS = new Set([
   "translation-worker",
   "translation-qa",
   "translation-repair",
+  "translation-judge",
   "translation-smoke",
 ])
 
@@ -116,6 +117,20 @@ const SMOKE_SCHEMA = {
   properties: { ok: { const: true }, text: { const: "готово" } },
   required: ["ok", "text"],
   additionalProperties: false,
+}
+const JUDGE_SCHEMA = {
+  type: "array",
+  items: {
+    type: "object",
+    properties: {
+      identity_hash: { type: "string" },
+      destination: { type: "string", enum: ["ai_layer", "moderation"] },
+      confidence: { type: "integer", minimum: 0, maximum: 100 },
+      reason: { type: "string" },
+    },
+    required: ["identity_hash", "destination", "confidence", "reason"],
+    additionalProperties: false,
+  },
 }
 const TERMINOLOGY_SCHEMA = {
   type: "array",
@@ -202,6 +217,13 @@ export const TranslationRoutingGuard: Plugin = async ({ directory }) => ({
       output.options.response_format = {
         type: "json_schema",
         json_schema: { name: "translation_capability", strict: true, schema: SMOKE_SCHEMA },
+      }
+      return
+    }
+    if (input.agent === "translation-judge") {
+      output.options.response_format = {
+        type: "json_schema",
+        json_schema: { name: "judge", strict: true, schema: JUDGE_SCHEMA },
       }
       return
     }

@@ -31,26 +31,87 @@ export function atomicWrite(path: string, content: string): void {
 // коректний JSON термінів у ```json-огорожі, і пачка стала на рівному місці,
 // хоча відповідь була правильною. Провайдер json_schema не примусує · на
 // відміну від Ollama, де constrained decoding діє.
-const FENCE = /^```[A-Za-z]*[ \t]*\r?\n([\s\S]*?)\r?\n?```$/
+const FENCE = /```[A-Za-z]*[ \t]*\r?\n([\s\S]*?)\r?\n?```/g
 
-export function unwrapJson(raw: string): string | undefined {
-  const text = raw.trim()
-  const candidates = [text]
-  const fenced = FENCE.exec(text)
-  if (fenced) candidates.push(fenced[1].trim())
-  for (const candidate of candidates) {
-    if (candidate === "") continue
-    try {
-      JSON.parse(candidate)
+/**
+ * Знаходить ПЕРШЕ повне значення JSON і межу, де воно закінчується.
+ *
+ * Сканер знає рядки та екранування, тому межа обчислюється, а не вгадується.
+ * Це принципова відмінність від забороненого «витягування JSON із прози»: тут
+ * немає вибору на смак · є детермінований розбір дужок.
+ */
+function firstJsonValue(text: string): { json: string; note: string } | undefined {
+  const start = text.search(/[[{]/)
+  if (start < 0) return undefined
+  const open = text[start]
+  const close = open === "[" ? "]" : "}"
+  let depth = 0
+  let inString = false
+  let escaped = false
+  for (let i = start; i < text.length; i++) {
+    const symbol = text[i]
+    if (inString) {
+      if (escaped) escaped = false
+      else if (symbol === "\\") escaped = true
+      else if (symbol === '"') inString = false
+      continue
+    }
+    if (symbol === '"') { inString = true; continue }
+    if (symbol === open) depth++
+    else if (symbol === close) {
+      depth--
+      if (depth > 0) continue
+      const candidate = text.slice(start, i + 1)
+      try {
+        JSON.parse(candidate)
+      } catch {
+        return undefined
+      }
 
-      return candidate
-    } catch {
-      // Спроба з необгорнутим/обгорнутим JSON може бути невдалою; цикл
-      // природно переходить до наступного кандидата.
+      return { json: candidate, note: `${text.slice(0, start)}\n${text.slice(i + 1)}`.trim() }
     }
   }
 
   return undefined
+}
+
+/**
+ * Розділяє відповідь child на JSON і примітку.
+ *
+ * Дитина · це модель, а не скрипт: разом із коректним JSON вона законно
+ * пояснює рішення («AMD FidelityFX · зареєстрована торгова марка, залишено без
+ * перекладу»). Виміряно 2026-08-23: така відповідь відхилялась цілком, і
+ * корисне спостереження зникало разом із нею, хоча JSON у ній був правильний.
+ *
+ * Тому JSON береться детерміновано (увесь текст / єдиний fenced блок / перше
+ * повне значення), а решта тексту зберігається як примітка для власника.
+ * Неоднозначність (два fenced блоки, зламаний JSON) відхиляється як раніше.
+ */
+export function splitAnswer(raw: string): { json: string; note: string } | undefined {
+  const text = raw.trim()
+  if (text === "") return undefined
+  try {
+    JSON.parse(text)
+
+    return { json: text, note: "" }
+  } catch {
+    // Не чистий JSON · далі перевіряємо огорожу й перше значення.
+  }
+  const fences = [...text.matchAll(FENCE)]
+  if (fences.length === 1 && fences[0].index !== undefined) {
+    const body = fences[0][1].trim()
+    try {
+      JSON.parse(body)
+      const before = text.slice(0, fences[0].index)
+      const after = text.slice(fences[0].index + fences[0][0].length)
+
+      return { json: body, note: `${before}\n${after}`.trim() }
+    } catch {
+      // Огорожа є, але всередині не JSON · лишається останній варіант.
+    }
+  }
+
+  return firstJsonValue(text)
 }
 
 type Incidents = Record<string, { count: number; reason: string }>
@@ -98,6 +159,22 @@ export function clearIncident(directory: string, responsePath: string): void {
   if (incidents[responsePath] === undefined) return
   delete incidents[responsePath]
   atomicWrite(incidentsFile(directory), JSON.stringify(incidents))
+}
+
+/**
+ * Зберігає примітку child окремо від даних.
+ *
+ * Примітка · не дефект: це спостереження моделі, яке власник читає після
+ * прогону (`./bdo incidents`). Саме заради таких спостережень у флоу стоїть ШІ,
+ * а не скрипт, тому вони не мають зникати разом із форматом.
+ */
+export function recordNote(directory: string, responsePath: string, role: string, note: string, at: string): void {
+  if (note === "") return
+  mkdirSync(resolve(directory, "state"), { recursive: true })
+  appendFileSync(
+    resolve(directory, "state", "child-notes.jsonl"),
+    `${JSON.stringify({ at, role, response_path: responsePath, note: note.slice(0, 600) })}\n`,
+  )
 }
 
 /** Уточнення, яке отримує child на повторній спробі. */

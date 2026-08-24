@@ -63,7 +63,8 @@ bdo · переклад рядків BDO через Agent API і субаген�
   smoke                envelope для OpenCode translation-smoke без API/PHP
   platform             macOS, Linux або Windows/WSL2 preflight
   run start|show|end|drive   зафіксувати / показати / зняти ціль; JSON-крок рушія
-  mode status|start <mode>   preset або наступна пачка: patch|manual|proposal|improve
+  patches              де ще є робота: рядки без перекладу за патчами
+  mode status|start <mode> [N] [patch]   preset або наступна пачка; patch · active або snapshot_id
   gate [профіль]       quality gate: preflight docs shell agents runtime api full
 
 ВИБІРКА Й ПАЧКА
@@ -78,7 +79,7 @@ bdo · переклад рядків BDO через Agent API і субаген�
   memory find|apply|expand  памʼять перекладів: пошук, застосування, збірка
   glossary gaps|resolve     прогалини глосарію (ВИРОК) і запит терміна
   schema build|qa|clear|show  staged-схема constrained decoding
-  payload worker|qa|terminology  компактний payload для субагента
+  payload worker|qa|terminology|judge  компактний payload для субагента
 
 ПЕРЕВІРКА Й ЛІКУВАННЯ
   normalize            детерміновані виправлення (латинські гомогліфи)
@@ -98,6 +99,7 @@ bdo · переклад рядків BDO через Agent API і субаген�
   audit                аудит сесій субагентів за базою OpenCode
   audit-dump           повний зріз сесій OpenCode
   incidents            дефекти відповідей child, які флоу вилікував сам
+  judge                вироки судді: розподіл, виродження, калібрування
   profile              моделі за ролями: status|use|set|fallback|paid
   models               звірка локальних Ollama-моделей із OpenCode
   bench                вимір локальної моделі на реальній пачці
@@ -175,6 +177,7 @@ case "$group" in
 
     # --- вибірка й пачка -----------------------------------------------------
     patch)    sh_run cli/api/patch-info.sh "${@:2}" ;;
+    patches)  sh_run cli/api/patches-overview.sh "${@:2}" ;;
     fetch)    sh_run cli/api/fetch-rows.sh "${@:2}" ;;
     subset)   sh_run cli/batch/subset-rows.sh "${@:2}" ;;
     show)     sh_run cli/api/show-rows.sh "${@:2}" ;;
@@ -219,7 +222,8 @@ case "$group" in
             worker)      sh_run cli/prepare/worker-payload.sh "${@:3}" ;;
             qa)          sh_run cli/prepare/qa-payload.sh "${@:3}" ;;
             terminology) sh_run cli/prepare/terminology-payload.sh "${@:3}" ;;
-            *)           die 'payload: потрібно worker, qa або terminology' ;;
+            judge)       sh_run cli/prepare/judge-payload.sh "${@:3}" ;;
+            *)           die 'payload: потрібно worker, qa, terminology або judge' ;;
         esac
         ;;
 
@@ -240,6 +244,7 @@ case "$group" in
     # --- обслуговування ------------------------------------------------------
     audit)      sh_run cli/audit/verify-run.sh "${@:2}" ;;
     incidents)  sh_run cli/audit/flow-incidents.sh "${@:2}" ;;
+    judge)      sh_run cli/audit/judge-report.sh "${@:2}" ;;
     audit-dump) sh_run cli/audit/audit-dump.sh "${@:2}" ;;
     profile)    sh_run cli/runtime/set-translation-profile.sh "${@:2}" ;;
     models)     sh_run cli/runtime/sync-opencode-models.sh "${@:2}" ;;

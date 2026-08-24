@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs"
 import { tool, type Plugin } from "@opencode-ai/plugin"
-import { atomicWrite, clearIncident, recordIncident, stateFile, unwrapJson } from "../lib/child-response.ts"
+import { atomicWrite, clearIncident, recordIncident, recordNote, splitAnswer, stateFile } from "../lib/child-response.ts"
 
 /** Зберігає JSON, повернутий видимим native Task-дитям OpenCode. */
 export const TranslationResultWriter: Plugin = async ({ directory }) => ({
@@ -26,8 +26,8 @@ export const TranslationResultWriter: Plugin = async ({ directory }) => ({
             output: JSON.stringify({ ok: true, response_path: args.response_path, source: "task-capture" }),
           }
         }
-        const json = unwrapJson(args.content)
-        if (json === undefined) {
+        const split = splitAnswer(args.content)
+        if (split === undefined) {
           // Дефект формату не є приводом зупинити прогін і не є приводом
           // «полагодити» відповідь у чаті: обидва шляхи вже коштували пачок.
           // Фіксуємо в журналі й повертаємо диригента до штатного циклу · саме
@@ -44,8 +44,9 @@ export const TranslationResultWriter: Plugin = async ({ directory }) => ({
             `Відповідь не є JSON (спроба ${attempt}). Не виправляй її сам: виконай ./bdo run drive · він перезапустить того самого child з уточненням.`,
           )
         }
-        atomicWrite(target, json)
+        atomicWrite(target, split.json)
         clearIncident(directory, args.response_path)
+        recordNote(directory, args.response_path, "primary-copy", split.note, new Date().toISOString())
 
         return { title: "Збережено результат видимого субагента", output: JSON.stringify({ ok: true, response_path: args.response_path }) }
       },

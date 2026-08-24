@@ -33,4 +33,36 @@ final class ErrorCodes
     {
         return self::hints()[$code] ?? '';
     }
+
+    /**
+     * Коди, які модель виправити НЕ може.
+     *
+     * `source_equivalent` означає «переклад дорівнює оригіналу». Для назви
+     * продукту чи технології (`AMD FidelityFX Super Resolution 3.1`) це не
+     * дефект перекладу, а правильне рішення: усталена практика · не перекладати.
+     * Виміряно 2026-08-23: repair отримав такий рядок і повернув той самий
+     * текст (інакше й бути не могло), рядок не вийшов із фільтра `missing=`,
+     * і прогін пішов по колу · чотири пачки за чотири хвилини.
+     *
+     * Тому такі рядки не йдуть у repair і не беруться в наступні пачки, доки
+     * рішення не ухвалить сервер (позначити рядок `non_translatable`).
+     *
+     * @return list<string>
+     */
+    public static function permanent(): array
+    {
+        return ['source_equivalent', 'non_translatable'];
+    }
+
+    /** Чи описує текст дефекту код, який моделі виправляти марно. */
+    public static function isPermanent(string $defect): bool
+    {
+        foreach (self::permanent() as $code) {
+            if (str_contains($defect, $code)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
 }

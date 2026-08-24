@@ -55,6 +55,7 @@ for arg in "$@"; do [ "$arg" = "--write" ] && DO_WRITE="--write"; done
 # усе одно приймає. Прапорець потрібен лише тоді, коли прогін і так іде в
 # ручний шар: там нову назву предмета справді варто показати людині.
 NAMES_TO_MODERATION=0
+JUDGE_FILE=
 PASS_CHANNEL=machine
 IDEMPOTENCY_KEY_PREFIX=""
 while [ $# -gt 0 ]; do
@@ -62,6 +63,7 @@ while [ $# -gt 0 ]; do
         --names-to-moderation) NAMES_TO_MODERATION=1; shift ;;
         --channel) PASS_CHANNEL="${2:?machine|manual}"; shift 2 ;;
         --idempotency-key-prefix) IDEMPOTENCY_KEY_PREFIX="${2:?потрібен ключ}"; shift 2 ;;
+        --judge) JUDGE_FILE="${2:?потрібен файл вироків судді}"; shift 2 ;;
         *) shift ;;
     esac
 done
@@ -118,6 +120,11 @@ foreach ($verdicts as $v) $seen[$v["identity_hash"] ?? ""] = $v;
 $missing = array_diff(array_keys($rowByHash), array_keys($seen));
 
 $pass = []; $held = []; $moderation = []; $unresolvedCount = 0; $counts = ["PASS" => 0, "REVIEW" => 0, "REJECT" => 0];
+// Вироки судді читаються тут, а не в кожній гілці: відсутній файл дає порожній
+// набір, тобто повністю стару поведінку. Суддя є доповненням, а не умовою.
+$judge = Bdo\Translate\Pipeline\JudgeDecisions::fromFile((string) ($argv[14] ?? ""));
+$minConfidence = Bdo\Translate\Pipeline\JudgePolicy::minConfidence($argv[15] ?? null);
+$judgeLog = []; $judgeCounts = []; $sameAsSource = 0;
 if ($missing !== []) {
     foreach ($rowByHash as $hash => $row) {
         $held[] = ["identity_hash" => $hash, "reason" => "qa_incomplete",
@@ -165,10 +172,47 @@ if ($missing !== []) {
         $severity = strtolower((string) ($v["severity"] ?? ""));
         $hasText = is_string($text) && trim($text) !== "";
         $route = Bdo\Translate\Pipeline\ChannelRouter::route($argv[13], $status, $severity, $hasText);
+        // ВИРОК СУДДІ. Він не скасовує механіку: зламаний токен, довжина,
+        // гомогліф чи русизм · факт, і такий рядок бачить людина попри будь-який
+        // відсоток. Суддя вирішує лише там, де рішення справді є судженням, і
+        // може як пустити спірний рядок у шар, так і зняти з шару той, який
+        // канал `machine` інакше записав би мовчки.
+        if ($hasText && $judge->has($hash)) {
+            $mechanical = Bdo\Translate\Quality\Defects::inTranslation($row, (string) $text);
+            $decision = $judge->get($hash);
+            $destination = $judge->destination($hash, $mechanical, $minConfidence);
+            $judgeLog[] = [
+                "at" => date("c"), "batch" => $argv[17], "identity_hash" => $hash,
+                "verdict" => $decision["destination"], "confidence" => $decision["confidence"],
+                "reason" => $decision["reason"], "qa_status" => $status, "qa_severity" => $severity,
+                "mechanical" => count($mechanical), "applied" => $destination,
+                "min_confidence" => $minConfidence, "channel" => $argv[13],
+            ];
+            $route = $destination === Bdo\Translate\Pipeline\JudgePolicy::AI_LAYER
+                ? Bdo\Translate\Pipeline\ChannelRouter::PASS
+                : Bdo\Translate\Pipeline\ChannelRouter::PROPOSAL;
+            $judgeCounts[$destination] = ($judgeCounts[$destination] ?? 0) + 1;
+        }
         if ($route === Bdo\Translate\Pipeline\ChannelRouter::PASS) {
-            $pass[] = ["identity_hash" => $hash,
-                       "source_hash" => $rowByHash[$hash]["source_hash"] ?? "",
-                       "text" => $text];
+            $item = ["identity_hash" => $hash,
+                     "source_hash" => $rowByHash[$hash]["source_hash"] ?? "",
+                     "text" => $text];
+            // ПІДТВЕРДЖЕННЯ «переклад = джерело» ставить лише вирок судді.
+            //
+            // Сервер приймає такий рядок тільки з цим прапорцем (інакше
+            // `source_equivalent`, і рядок вічно повертається у вибірку). Але
+            // ставити його механічно за самим збігом означало б тихо писати
+            // англійський оригінал у ШІ-шар. Тому прапорець зʼявляється, коли
+            // суддя визнав рішення правильним і його впевненість пройшла поріг:
+            // рішення ухвалює модель, сервер його фіксує ревізією, а модератор
+            // бачить позначку в адмінці.
+            if ($text === ($rowByHash[$hash]["source_text"] ?? null) && $judge->has($hash)
+                && $judge->destination($hash, Bdo\Translate\Quality\Defects::inTranslation($row, (string) $text), $minConfidence)
+                    === Bdo\Translate\Pipeline\JudgePolicy::AI_LAYER) {
+                $item["same_as_source"] = true;
+                $sameAsSource++;
+            }
+            $pass[] = $item;
         } elseif ($route === Bdo\Translate\Pipeline\ChannelRouter::PROPOSAL) {
             // Лише для ручних каналів: недосконалий переклад видно в адмінці, де
             // його можна прийняти або виправити.
@@ -199,6 +243,14 @@ if ($blocked !== null) {
     $pass = [];
 }
 
+// Журнал вироків · для калібрування порога і для аналітики власника.
+// Пишеться завжди, коли суддя щось вирішив, незалежно від того, чи був запис.
+if ($judgeLog !== []) {
+    $jfh = fopen($argv[16], "a");
+    foreach ($judgeLog as $entry) fwrite($jfh, json_encode($entry, JSON_UNESCAPED_UNICODE) . "\n");
+    fclose($jfh);
+}
+
 $stamp = date("c");
 $fh = fopen($quarantine, "a");
 foreach ($held as $h) fwrite($fh, json_encode($h + ["at" => $stamp, "env" => $env], JSON_UNESCAPED_UNICODE) . "\n");
@@ -208,11 +260,20 @@ file_put_contents($argv[11], json_encode($moderation, JSON_UNESCAPED_UNICODE | J
 
 printf("Пачка: %d рядків | PASS %d, REVIEW %d, REJECT %d\n",
     count($rowByHash), $counts["PASS"], $counts["REVIEW"], $counts["REJECT"]);
+if ($sameAsSource > 0) {
+    printf("Переклад = джерело, підтверджено суддею: %d рядків (same_as_source)\n", $sameAsSource);
+}
+if ($judgeCounts !== []) {
+    printf("Суддя: у ШІ-шар %d | до людини %d (поріг %d%%)\n",
+        $judgeCounts[Bdo\Translate\Pipeline\JudgePolicy::AI_LAYER] ?? 0,
+        $judgeCounts[Bdo\Translate\Pipeline\JudgePolicy::MODERATION] ?? 0, $minConfidence);
+}
 printf("До запису: %d | у модерацію: %d (з них нерозпізнані назви: %d) | у карантин (збої): %d | квота: %d\n",
     count($pass), count($moderation), $unresolvedCount, count($held), $remaining);
 if ($blocked !== null) printf("ЗАПИС ЗАБЛОКОВАНО: %s\n", $blocked);
 ' "$ROWS_FILE" "$CAND_FILE" "$VERDICT_FILE" "$QUARANTINE" "$PASS_ITEMS" \
-  "$BDO_API_ENV" "$RUN_TARGET" "$REMAINING" "$DO_WRITE" "$SCRIPT_DIR/lib/autoload.php" "$HELD_ITEMS" "$NAMES_TO_MODERATION" "$PASS_CHANNEL"
+  "$BDO_API_ENV" "$RUN_TARGET" "$REMAINING" "$DO_WRITE" "$SCRIPT_DIR/lib/autoload.php" "$HELD_ITEMS" "$NAMES_TO_MODERATION" "$PASS_CHANNEL" \
+  "$JUDGE_FILE" "${BDO_JUDGE_MIN_CONFIDENCE:-}" "$STATE_DIR/judge-decisions.jsonl" "$(basename "$(dirname "$CAND_FILE")")"
 
 COUNT="$(php -r 'echo count(json_decode(file_get_contents($argv[1]), true) ?: []);' "$PASS_ITEMS")"
 MOD_COUNT="$(php -r 'echo count(json_decode(file_get_contents($argv[1]), true) ?: []);' "$HELD_ITEMS")"
@@ -226,8 +287,13 @@ WORKER_PROVIDER="${WORKER_MODEL%%/*}"
 WORKER_MODEL_NAME="${WORKER_MODEL#*/}"
 if [ "$DO_WRITE" = "--write" ] && [ "$COUNT" -gt 0 ]; then
     KEY_ARGS=(); test -n "$IDEMPOTENCY_KEY_PREFIX" && KEY_ARGS=(--idempotency-key "${IDEMPOTENCY_KEY_PREFIX}-pass")
-    "$SCRIPT_DIR/cli/write/write-translations.sh" --channel "$PASS_CHANNEL" "${KEY_ARGS[@]}" "$PASS_ITEMS" "$WORKER_PROVIDER" "$WORKER_MODEL_NAME" >/dev/null
-    echo "ЗАПИСАНО: $COUNT рядків у $BDO_API_ENV (канал $PASS_CHANNEL)"
+    # Друкуємо ФАКТ від API, а не намір. Раніше тут стояло «ЗАПИСАНО: $COUNT»
+    # за кількістю надісланих рядків, і рядок, який сервер відхилив
+    # (`source_equivalent`), виглядав як успішно записаний · саме через це
+    # причину нескінченного кола шукали не там.
+    WRITE_OUT="$("$SCRIPT_DIR/cli/write/write-translations.sh" --channel "$PASS_CHANNEL" "${KEY_ARGS[@]}" "$PASS_ITEMS" "$WORKER_PROVIDER" "$WORKER_MODEL_NAME")"
+    printf '%s\n' "$WRITE_OUT" | grep -E '^(Записано:|У КАРАНТИН:|НЕ ПЕРЕКЛАДАЄТЬСЯ:)' || true
+    echo "Надіслано: $COUNT рядків у $BDO_API_ENV (канал $PASS_CHANNEL)"
 fi
 if [ "$DO_WRITE" = "--write" ] && [ "$MOD_COUNT" -gt 0 ]; then
     KEY_ARGS=(); test -n "$IDEMPOTENCY_KEY_PREFIX" && KEY_ARGS=(--idempotency-key "${IDEMPOTENCY_KEY_PREFIX}-proposal")
