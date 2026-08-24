@@ -267,10 +267,11 @@ BDO_API_KEY_PROD=ваш-ключ
 
 | Субагент | Роль | Інструменти |
 |---|---|---|
-| `translation-worker` | перекладає пачку | немає жодного |
-| `translation-qa` | один вердикт на КОЖЕН рядок | немає жодного |
-| `translation-repair` | виправляє лише названі дефекти | немає жодного |
-| `translation-terminology` | нові терміни й глосарій | немає жодного |
+| `translation-worker` | перекладач пачки | немає жодного |
+| `translation-qa` | тестувальник перекладу | немає жодного |
+| `translation-judge` | суддя й маршрутизатор спірних рядків | немає жодного |
+| `translation-repair` | ремонтник конкретних дефектів | немає жодного |
+| `translation-terminology` | термінолог і укладач глосарія | немає жодного |
 | `translation-smoke` | перевірка живої маршрутизації | немає жодного |
 
 Порожній список інструментів у перших трьох · не економія, а **умова
@@ -319,44 +320,63 @@ BDO_API_KEY_PROD=ваш-ключ
 що окремо запускаються `Translation-Worker`, `Translation-Qa` і
 `Translation-Judge`.
 
-#### 1. `translation-worker` — створення кандидата
+Актуальний приклад повного flow для 15 рядків показує, як після старту пачки
+послідовно зʼявляються термінолог, перекладач, тестувальник, ремонтник,
+контрольний QA та суддя.
 
-Worker отримує підготовлені рядки пачки й створює для них кандидатські
+![Повний flow пачки з усіма child-сесіями](docs/assets/screenshots/07-full-patch-flow.png)
+
+#### 1. `translation-worker` — перекладач пачки
+
+Перекладач отримує підготовлені рядки пачки й створює для них кандидатські
 переклади. Він не обирає канал запису: його результат переходить до окремої
 перевірки якості.
 
-![Child-сесія translation-worker](docs/assets/screenshots/04-translation-worker.png)
+![Child-сесія translation-worker](docs/assets/screenshots/11-translation-worker-latest.png)
 
 На цьому скріншоті відкрито саме сесію `Translate BDO batch
 (@translation-worker subagent)`.
 
-#### 2. `translation-qa` — перевірка результату
+#### 2. `translation-qa` — тестувальник перекладу
 
-QA запускається після Worker і перевіряє кожен кандидат: identity,
+Тестувальник запускається після перекладача й перевіряє кожен кандидат: identity,
 placeholders, markup, довжину, мовну якість та інші механічні обмеження. Він
 повертає формальний вердикт, а не довільно переписує переклад.
 
-![Child-сесія translation-qa](docs/assets/screenshots/05-translation-qa.png)
+![Child-сесія translation-qa](docs/assets/screenshots/10-translation-qa-latest.png)
 
 На цьому скріншоті відкрито саме сесію `QA BDO batch
 (@translation-qa subagent)`.
 
-#### 3. `translation-judge` — вибір маршруту
+#### 3. `translation-judge` — суддя перекладу
 
-Judge обробляє спірні або неоднозначні результати після QA. Він не перекладає
-заново, а визначає правильний маршрут: `ai_layer`, `manual` або `proposal` на
-модерацію, щоб сумнівний рядок не потрапив тихо не в той канал.
+Суддя розбирає спірні або неоднозначні результати після тестувальника. Він не
+перекладає заново, а вирішує, що справді є проблемою, і затверджує маршрут:
+`ai_layer`, `manual` або `proposal` на модерацію.
 
-![Child-сесія translation-judge](docs/assets/screenshots/06-translation-judge.png)
+![Child-сесія translation-judge](docs/assets/screenshots/09-translation-judge-latest.png)
 
 На цьому скріншоті відкрито саме сесію `Judge BDO batch
 (@translation-judge subagent)`.
 
-У повному flow також можуть зʼявитися `translation-terminology` для нових
-термінів і глосарія та `translation-repair` для виправлення конкретних дефектів.
-Вони викликаються лише за потреби: terminology — коли знайдено термінологічну
-прогалину, repair — коли QA назвав проблему, яку можна виправити повторною
-спробою.
+#### 4. `translation-repair` — ремонтник перекладу
+
+Ремонтник отримує лише рядки й дефекти, названі тестувальником. Він виправляє
+конкретні помилки, зберігаючи identity, markup і зміст, після чого результат
+знову проходить контрольну QA-перевірку.
+
+![Child-сесія translation-repair](docs/assets/screenshots/08-translation-repair.png)
+
+#### 5. `translation-terminology` — термінолог і укладач глосарія
+
+Термінолог перевіряє назви та нові поняття через API, знаходить канонічні
+відповідники й повертає пропозиції глосарія. Його результат використовується
+перекладачем і наступними перевірками, але сам він не записує переклад.
+
+![Child-сесія translation-terminology](docs/assets/screenshots/12-translation-terminology.png)
+
+Контрольний QA після Repair повторює перевірку вже виправлених рядків. Так
+flow не приймає виправлення автоматично лише тому, що їх повернув ремонтник.
 
 У панелі `Контекст` можна відкрити кожну child-сесію та побачити її фактичну
 модель, provider і використання токенів. Текст рядків на прикладах є даними
