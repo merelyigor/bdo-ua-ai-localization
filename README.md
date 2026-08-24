@@ -303,6 +303,29 @@ BDO_API_KEY_PROD=ваш-ключ
    вашого `TRANSLATE_MODEL_PROFILE` і може відрізнятися; статистика токенів
    також змінюється від запиту до запиту.
 
+### Як виглядає обробка пачки
+
+Після підтвердження пачки диригент послідовно показує child-сесії окремих ролей:
+
+- планування пачки й запуск `Translation-Worker`, `Translation-Qa` та
+  `Translation-Judge`;
+- переклад кандидатів у `translation-worker`;
+- перевірка кожного рядка в `translation-qa`;
+- вибір маршруту рядка (`ai_layer`, `manual` або `proposal`) у
+  `translation-judge`.
+
+![Планування пачки та child-сесії](docs/assets/screenshots/03-patch-planning-and-agents.png)
+
+![Child-сесія translation-worker](docs/assets/screenshots/04-translation-worker.png)
+
+![Child-сесія translation-qa](docs/assets/screenshots/05-translation-qa.png)
+
+![Child-сесія translation-judge](docs/assets/screenshots/06-translation-judge.png)
+
+У панелі `Контекст` можна відкрити кожну child-сесію та побачити її фактичну
+модель, provider і використання токенів. Текст рядків на прикладах є даними
+пачки; ваші власні API keys у такі скріншоти потрапляти не повинні.
+
 1. Відкрийте цей проєкт в OpenCode. Агент `translation` уже вибраний · він
    стоїть у `default_agent`, а `build`, `plan`, `general` і `explore` у цьому
    проєкті вимкнені. Перемикати нічого не треба, і випадково вибрати
