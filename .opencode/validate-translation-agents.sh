@@ -157,11 +157,13 @@ for primary in патч ручний пропозиції покращення; 
     }
 done
 
-# Runtime prompts intentionally stay small enough for cheap models.
+# Це верхня аварійна межа, а не ціль скорочення. Слабкі моделі потребують
+# самодостатнього алгоритму, явних станів і прикладів для реальної неоднозначності;
+# validator ловить лише випадкове розростання, не змушує викидати потрібний контекст.
 declare -A MAX_LINES=(
-    [translation-smoke]=20 [translation-worker]=50 [translation-qa]=55
-    [translation-repair]=40 [translation-terminology]=45 [translation-judge]=50
-    [патч]=68 [ручний]=68 [пропозиції]=68 [покращення]=68
+    [translation-smoke]=40 [translation-worker]=90 [translation-qa]=90
+    [translation-repair]=80 [translation-terminology]=80 [translation-judge]=90
+    [патч]=120 [ручний]=120 [пропозиції]=120 [покращення]=120
 )
 for agent in "${!MAX_LINES[@]}"; do
     lines="$(wc -l < "$ROOT/.opencode/agents/$agent.md" | tr -d ' ')"

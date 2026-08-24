@@ -59,9 +59,28 @@ fi
 if [ -f "$TARGET_FILE" ]; then
     CURRENT="$(head -1 "$TARGET_FILE")"
     if [ "$CURRENT" != "$TARGET" ]; then
-        echo "Уже триває прогін у '$CURRENT'. Заверши його через --end, перш ніж" >&2
-        echo "починати у '$TARGET': інакше пачки поїдуть у два середовища." >&2
-        exit 1
+        # Сам run-target може пережити вже завершену пачку або аварійно закриту
+        # сесію OpenCode. У такому випадку вимагати від моделі вгадати команду
+        # очищення безглуздо: без активної пачки перемикання повністю безпечне.
+        # Незавершену пачку, навпаки, не переносимо між DEV/PROD автоматично.
+        BATCH_STATE="$(php -r '
+require $argv[1];
+$w=Bdo\Translate\Batch\Workspace::current($argv[2]);
+if($w===null){echo "none";exit;}
+echo (string)($w->manifest()["state"]??"unknown");
+' "$SCRIPT_DIR/lib/autoload.php" "$STATE_DIR")"
+        case "$BATCH_STATE" in
+            none|verified|failed_terminal)
+                rm -f "$TARGET_FILE" "$STATE_DIR/run-started-at" "$STATE_DIR/run-seen.json"
+                echo "Застарілу ціль '$CURRENT' автоматично замінено на '$TARGET': незавершеної пачки немає." >&2
+                ;;
+            *)
+                echo "ЗАБЛОКОВАНО: незавершена пачка має state='$BATCH_STATE' і ціль '$CURRENT'," >&2
+                echo "а BDO_ENV вимагає '$TARGET'. Не вгадуй --end і не перемикай середовище." >&2
+                echo "Поверни BDO_ENV до '$CURRENT' та заверши пачку або попроси власника явно відмовитися від неї." >&2
+                exit 1
+                ;;
+        esac
     fi
 fi
 
