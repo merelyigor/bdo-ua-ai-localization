@@ -50,5 +50,12 @@ test "$(count_ready "$BATCH/memory-candidate.json")" = 1 \
     || { echo 'FAIL: patch не застосував machine-памʼять'; exit 1; }
 test "$(rows_left "$BATCH/to-translate.json")" = 0 \
     || { echo 'FAIL: patch відправив закритий памʼяттю рядок моделі'; exit 1; }
+jq -e '.next.kind == "continue" and .state == "awaiting_worker"' "$TMP_PATCH/state/drive.json" >/dev/null \
+    || { echo 'FAIL: patch викликав worker для закритої памʼяттю пачки'; exit 1; }
+test "$(count_ready "$BATCH/candidate.json")" = 1 \
+    || { echo 'FAIL: memory-candidate не став кандидатом без worker'; exit 1; }
+BDO_PIPELINE_OFFLINE=1 BDO_STATE_DIR="$TMP_PATCH/state" bash "$ROOT/cli/run/run-drive.sh" > "$TMP_PATCH/state/drive-next.json"
+jq -e '.next.kind == "child" and .next.role == "translation-qa"' "$TMP_PATCH/state/drive-next.json" >/dev/null \
+    || { echo 'FAIL: закрита памʼяттю пачка не перейшла до QA'; exit 1; }
 
 echo 'drive memory layers: OK'

@@ -7,6 +7,7 @@ STATE_DIR="${BDO_STATE_DIR:-$SCRIPT_DIR/state}"
 B="$($SCRIPT_DIR/cli/batch/batch-dir.sh)"
 
 field() { php -r '$m=json_decode(file_get_contents($argv[1]),true,512,JSON_THROW_ON_ERROR);echo $m[$argv[2]]??"";' "$B/manifest.json" "$1"; }
+row_count() { php -r 'echo count(json_decode(file_get_contents($argv[1]),true)["data"]["rows"]??[]);' "$1"; }
 transition() { php -r 'require $argv[1];Bdo\Translate\Batch\Workspace::requireCurrent($argv[2])->transition($argv[3]);' "$SCRIPT_DIR/lib/autoload.php" "$STATE_DIR" "$1"; }
 complete() {
     local sum; sum="$(shasum -a 256 "$2" | awk '{print $1}')"
@@ -36,17 +37,25 @@ give_up() {
 }
 prepare_worker() {
     local rows="$B/rows.json" count
-    test -s "$B/to-translate.json" && rows="$B/to-translate.json"
-    count="$(php -r 'echo count(json_decode(file_get_contents($argv[1]),true)["data"]["rows"]??[]);' "$rows")"
+    count="$(row_count "$rows")"
+    if [ -s "$B/to-translate.json" ]; then
+        count="$(row_count "$B/to-translate.json")"
+        test "$count" -eq 0 || rows="$B/to-translate.json"
+    fi
     if [ "$count" -gt 0 ]; then
         "$SCRIPT_DIR/cli/prepare/build-schema.sh" "$rows" >/dev/null
         local args=(); test "$(field mode)" = improve && args+=(--with-current)
         test "${BDO_PIPELINE_OFFLINE:-0}" = 1 && args+=(--no-context)
         "$SCRIPT_DIR/cli/prepare/worker-payload.sh" "$rows" "${args[@]}" > "$B/worker-payload.json"
     else
-        echo '[]' > "$B/worker-payload.json"; echo '[]' > "$B/candidate.json"
+        echo '[]' > "$B/worker-payload.json"
+        cp "$B/memory-candidate.json" "$B/candidate.json"
     fi
     complete prepared "$B/worker-payload.json"; transition prepared; transition awaiting_worker
+    if [ "$count" -eq 0 ]; then
+        emit 1 awaiting_worker '{"kind":"continue"}'
+        return 0
+    fi
     child awaiting_worker translation-worker "$B/worker-payload.json" "$B/candidate.json"
 }
 
@@ -86,7 +95,7 @@ selected)
         "$SCRIPT_DIR/cli/prepare/memory-apply.sh" "$B/rows.json" "$B/memory.json" >/dev/null 2>&1 || true
     fi
     rows="$B/rows.json"
-    test -s "$B/to-translate.json" && rows="$B/to-translate.json"
+    test -s "$B/to-translate.json" && test "$(row_count "$B/to-translate.json")" -gt 0 && rows="$B/to-translate.json"
     # Прогалини глосарію закриваються ДО воркера: інакше вигадка воркера для
     # mandatory-терміна стає фактичним стандартом патча. Пропозиції terminology
     # лишаються в теці пачки для власника; терміни в каталог додає лише адмінка.
@@ -119,11 +128,17 @@ awaiting_terminology)
     prepare_worker
     ;;
 awaiting_worker)
+    # Повністю закритій памʼяттю пачці worker не потрібен. Також відновлює
+    # пачки, що зависли на старій версії driver із порожнім candidate.json.
+    if [ -s "$B/to-translate.json" ] && [ "$(row_count "$B/to-translate.json")" -eq 0 ] && [ -s "$B/memory-candidate.json" ]; then
+        cp "$B/memory-candidate.json" "$B/candidate.json"
+    fi
     if [ ! -s "$B/candidate.json" ]; then
         if retry_exceeded awaiting_worker; then give_up awaiting_worker; fi
         child awaiting_worker translation-worker "$B/worker-payload.json" "$B/candidate.json"; exit 0
     fi
-    model_rows="$B/rows.json"; test -s "$B/to-translate.json" && model_rows="$B/to-translate.json"
+    model_rows="$B/rows.json"
+    test -s "$B/to-translate.json" && test "$(row_count "$B/to-translate.json")" -gt 0 && model_rows="$B/to-translate.json"
     if ! "$SCRIPT_DIR/cli/quality/build-items.sh" "$model_rows" "$B/candidate.json" "$B/model-items.json" "" --require-all >/dev/null 2>&1; then
         mv "$B/candidate.json" "$B/candidate.invalid.$(date +%s).json"
         if retry_exceeded awaiting_worker; then give_up awaiting_worker; fi
