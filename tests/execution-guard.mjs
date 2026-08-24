@@ -42,6 +42,7 @@ const refuse = async (before, input, args, what) => {
     "./bdo incidents --list",
     "./bdo judge",
     "./bdo moderation --limit 100",
+    "./bdo moderation --approve 265,266,267",
     "./bdo env && ./bdo patches",
   ]) {
     await before({ tool: "bash", sessionID: "ok", callID: "c" }, { args: { command } })
@@ -73,7 +74,9 @@ const refuse = async (before, input, args, what) => {
     "./bdo judge --clear",
     "./bdo clean --apply",
     "./bdo profile use session-luna",
-    "./bdo moderation --approve 12",
+    "./bdo moderation --approve-batch 12",
+    "./bdo moderation --approve 12,",
+    "./bdo moderation --reject 12",
     "./bdo run end",
     "./bdo fetch 15",
     "./bdo patches 0",

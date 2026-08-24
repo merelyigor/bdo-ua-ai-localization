@@ -26,7 +26,7 @@ final class JudgePolicy
     public const MODERATION = 'moderation';
 
     /** Нижче цього відсотка рядок бачить людина. */
-    public const DEFAULT_MIN_CONFIDENCE = 85;
+    public const DEFAULT_MIN_CONFIDENCE = 65;
 
     /**
      * Чи є рядок спірним, тобто чи потрібен для нього виклик судді.
@@ -36,16 +36,13 @@ final class JudgePolicy
      *
      * @param  list<string>  $mechanical
      */
-    public static function isDisputed(string $status, string $severity, array $mechanical, bool $identicalToSource, bool $hasUnresolved): bool
+    public static function isDisputed(string $status, string $severity, array $mechanical, bool $identicalToSource): bool
     {
         if ($mechanical !== []) {
             return false;   // факт, а не спір: маршрут уже визначено
         }
         if ($identicalToSource) {
             return true;    // «залишити оригінал» · рішення, а не дефект
-        }
-        if ($hasUnresolved) {
-            return true;    // назви поза каталогом: єдине, що тут є · судження
         }
         $status = strtoupper($status);
         if ($status === 'PASS') {
@@ -58,9 +55,8 @@ final class JudgePolicy
     /**
      * Куди йде рядок після вироку.
      *
-     * Асиметрія навмисна: у ШІ-шар пускає лише впевнений вирок, усе інше бачить
-     * людина. Помилка в бік модерації коштує одного погляду, помилка в бік шару
-     * · тихого браку перед гравцем.
+     * У ШІ-шар пускає лише вирок із налаштованою мінімальною впевненістю.
+     * Механічні дефекти не може перекрити навіть максимальна впевненість судді.
      *
      * @param  list<string>  $mechanical
      */

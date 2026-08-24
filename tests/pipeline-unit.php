@@ -13,6 +13,7 @@ use Bdo\Translate\Batch\Workspace;
 use Bdo\Translate\Pipeline\RunSpec;
 use Bdo\Translate\Pipeline\StateMachine;
 use Bdo\Translate\Runtime\ModelPolicy;
+use Bdo\Translate\Quality\VerdictSet;
 
 function expect(bool $condition, string $message): void
 {
@@ -36,7 +37,34 @@ try {
         'source_text' => $source,
     ]]]], JSON_THROW_ON_ERROR));
     $rows = RowSet::fromFile($rowsFile);
+
+    $verdictFile = $root.'/verdicts.json';
+    $validVerdict = static fn (string $hash): array => [
+        'identity_hash' => $hash, 'status' => 'PASS', 'severity' => 'none', 'issue' => '', 'fix' => '',
+    ];
+    file_put_contents($verdictFile, json_encode([$validVerdict($identity)], JSON_THROW_ON_ERROR));
+    VerdictSet::fromFile($verdictFile)->assertCoverage($rows);
+    foreach ([
+        [[], 'не покрив'],
+        [[$validVerdict(str_repeat('b', 64))], 'чужий'],
+        [[
+            $validVerdict($identity),
+            $validVerdict($identity),
+        ], 'дублює'],
+        [[['identity_hash' => $identity, 'status' => 'PASS']], 'порушує контракт'],
+    ] as [$invalid, $needle]) {
+        file_put_contents($verdictFile, json_encode($invalid, JSON_THROW_ON_ERROR));
+        try {
+            VerdictSet::fromFile($verdictFile)->assertCoverage($rows);
+            throw new RuntimeException('invalid QA coverage was accepted');
+        } catch (RuntimeException $error) {
+            expect(str_contains($error->getMessage(), $needle), 'wrong QA coverage error');
+        }
+    }
     $workspace = Workspace::create($root, $rows, '20260822_120000');
+    $sameSecond = Workspace::create($root, $rows, '20260822_120000');
+    expect($sameSecond->id() !== $workspace->id(), 'same-second batch reused an existing workspace');
+    expect(is_file($workspace->path('manifest.json')), 'same-second batch overwrote the first manifest');
     $workspace->completeStep('prepared', 'worker-payload.json', hash('sha256', 'payload'), ['selected' => 1]);
     $workspace->completeStep('prepared', 'worker-payload.json', hash('sha256', 'payload'), ['selected' => 1]);
     $workspace->incrementAttempt('translation-worker');

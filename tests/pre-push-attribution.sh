@@ -29,4 +29,13 @@ if printf 'refs/heads/main %s refs/heads/main %s\n' "$bad" "$clean" \
     exit 1
 fi
 
+# Старий заборонений коміт, який уже є на remote, не повинен блокувати новий
+# чистий push.
+printf 'clean again\n' >> "$tmp/file"
+git -C "$tmp" add file
+git -C "$tmp" commit -qm 'clean follow-up'
+newer="$(git -C "$tmp" rev-parse HEAD)"
+printf 'refs/heads/main %s refs/heads/main %s\n' "$newer" "$bad" \
+    | (cd "$tmp" && "$root/.githooks/pre-push" origin unused)
+
 printf 'pre-push attribution: OK\n'

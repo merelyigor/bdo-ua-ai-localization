@@ -314,11 +314,13 @@ check_shell() {
     step 'Pipeline unit contracts'
     run php tests/pipeline-unit.php
     run php tests/pipeline-faults.php
+    run bash tests/batch-summary.sh
     run bash tests/smoke-envelope.sh
     run bash tests/drive-memory-layers.sh
     run bash tests/judge-flow.sh
     run bash tests/patch-argument.sh
     run bash tests/pre-push-attribution.sh
+    run bash tests/run-resume.sh
     run bash tests/run-target-env.sh
     run bash tests/rotation.sh
 }

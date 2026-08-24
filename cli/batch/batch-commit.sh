@@ -277,6 +277,10 @@ if ($blocked !== null) printf("ЗАПИС ЗАБЛОКОВАНО: %s\n", $blocke
 
 COUNT="$(php -r 'echo count(json_decode(file_get_contents($argv[1]), true) ?: []);' "$PASS_ITEMS")"
 MOD_COUNT="$(php -r 'echo count(json_decode(file_get_contents($argv[1]), true) ?: []);' "$HELD_ITEMS")"
+TOTAL_COUNT="$(php -r 'require $argv[1];echo count(Bdo\Translate\Batch\RowSet::fromFile($argv[2]));' "$SCRIPT_DIR/lib/autoload.php" "$ROWS_FILE")"
+HELD_COUNT=$((TOTAL_COUNT - COUNT - MOD_COUNT))
+TARGET_WRITTEN=0 TARGET_SKIPPED=0 TARGET_REJECTED=0
+MOD_WRITTEN=0 MOD_SKIPPED=0 MOD_REJECTED=0
 # Модель воркера з frontmatter: щоб кожен запис мав реальну назву моделі,
 # а не дефолтний "agent-local". Так можна відрізнити старі переклади від нових.
 BATCH_DIR="$("$SCRIPT_DIR/cli/batch/batch-dir.sh" 2>/dev/null || true)"
@@ -292,15 +296,37 @@ if [ "$DO_WRITE" = "--write" ] && [ "$COUNT" -gt 0 ]; then
     # (`source_equivalent`), виглядав як успішно записаний · саме через це
     # причину нескінченного кола шукали не там.
     WRITE_OUT="$("$SCRIPT_DIR/cli/write/write-translations.sh" --channel "$PASS_CHANNEL" "${KEY_ARGS[@]}" "$PASS_ITEMS" "$WORKER_PROVIDER" "$WORKER_MODEL_NAME")"
+    read -r TARGET_WRITTEN TARGET_SKIPPED TARGET_REJECTED < <(printf '%s\n' "$WRITE_OUT" \
+        | sed -nE 's/^Записано: ([0-9]+)  Пропущено: ([0-9]+)  Відкинуто: ([0-9]+)$/\1 \2 \3/p' | tail -1)
+    TARGET_WRITTEN="${TARGET_WRITTEN:-0}" TARGET_SKIPPED="${TARGET_SKIPPED:-0}" TARGET_REJECTED="${TARGET_REJECTED:-0}"
     printf '%s\n' "$WRITE_OUT" | grep -E '^(Записано:|У КАРАНТИН:|НЕ ПЕРЕКЛАДАЄТЬСЯ:)' || true
     echo "Надіслано: $COUNT рядків у $BDO_API_ENV (канал $PASS_CHANNEL)"
 fi
 if [ "$DO_WRITE" = "--write" ] && [ "$MOD_COUNT" -gt 0 ]; then
     KEY_ARGS=(); test -n "$IDEMPOTENCY_KEY_PREFIX" && KEY_ARGS=(--idempotency-key "${IDEMPOTENCY_KEY_PREFIX}-proposal")
-    "$SCRIPT_DIR/cli/write/write-translations.sh" --channel proposal "${KEY_ARGS[@]}" "$HELD_ITEMS" "$WORKER_PROVIDER" "$WORKER_MODEL_NAME" >/dev/null
-    echo "У МОДЕРАЦІЮ: $MOD_COUNT рядків (черга пропозицій, не карантин)"
+    MOD_OUT="$("$SCRIPT_DIR/cli/write/write-translations.sh" --channel proposal "${KEY_ARGS[@]}" "$HELD_ITEMS" "$WORKER_PROVIDER" "$WORKER_MODEL_NAME")"
+    read -r MOD_WRITTEN MOD_SKIPPED MOD_REJECTED < <(printf '%s\n' "$MOD_OUT" \
+        | sed -nE 's/^Записано: ([0-9]+)  Пропущено: ([0-9]+)  Відкинуто: ([0-9]+)$/\1 \2 \3/p' | tail -1)
+    MOD_WRITTEN="${MOD_WRITTEN:-0}" MOD_SKIPPED="${MOD_SKIPPED:-0}" MOD_REJECTED="${MOD_REJECTED:-0}"
+    echo "У МОДЕРАЦІЮ: $((MOD_WRITTEN + MOD_SKIPPED)) рядків (черга пропозицій, не карантин)"
 fi
 if [ "$DO_WRITE" != "--write" ] || [ $((COUNT + MOD_COUNT)) -eq 0 ]; then
     echo "Запису не було (потрібні --write, розпочатий прогін і квота)."
 fi
 echo "Карантин: $QUARANTINE ($(wc -l < "$QUARANTINE" 2>/dev/null || echo 0) рядків усього)"
+
+# Машинний підсумок пачки містить факти відповідей API, а не намір до запису.
+# Його читає run-drive і показує primary-моделі без парсингу людського звіту.
+if [ "$DO_WRITE" = "--write" ]; then
+    php -r '
+    $summary=[
+        "rows"=>(int)$argv[2],"channel"=>$argv[3],
+        "target_written"=>(int)$argv[4],"target_skipped"=>(int)$argv[5],"target_rejected"=>(int)$argv[6],
+        "moderation_written"=>(int)$argv[7],"moderation_skipped"=>(int)$argv[8],"moderation_rejected"=>(int)$argv[9],
+        "quarantine"=>(int)$argv[10]+(int)$argv[6]+(int)$argv[9],
+    ];
+    file_put_contents($argv[1],json_encode($summary,JSON_UNESCAPED_UNICODE|JSON_PRETTY_PRINT|JSON_THROW_ON_ERROR)."\n",LOCK_EX);
+    ' "$BATCH_DIR/batch-summary.json" "$TOTAL_COUNT" "$PASS_CHANNEL" \
+      "$TARGET_WRITTEN" "$TARGET_SKIPPED" "$TARGET_REJECTED" \
+      "$MOD_WRITTEN" "$MOD_SKIPPED" "$MOD_REJECTED" "$HELD_COUNT"
+fi

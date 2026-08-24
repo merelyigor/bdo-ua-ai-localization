@@ -172,6 +172,10 @@ if (JudgePolicy::destination([], JudgePolicy::AI_LAYER, 84, 85) !== JudgePolicy:
     fwrite(STDERR, "ERROR: judge threshold is not enforced\n");
     exit(1);
 }
+if (JudgePolicy::minConfidence(null) !== 65) {
+    fwrite(STDERR, "ERROR: default judge threshold must be 65\n");
+    exit(1);
+}
 ' "$ROOT/lib/autoload.php"
 
 for primary in патч ручний пропозиції покращення; do

@@ -48,12 +48,22 @@ final class Workspace
      */
     public static function create(string $stateDir, RowSet $rows, string $stamp): self
     {
-        $id = $stamp.'_'.$rows->key();
-        $workspace = new self($stateDir, $id);
-
-        $dir = $workspace->dir();
-        if (! is_dir($dir) && ! mkdir($dir, 0o755, true) && ! is_dir($dir)) {
-            throw new RuntimeException("Не вдалося створити теку пачки: $dir");
+        $base = $stamp.'_'.$rows->key();
+        $workspace = null;
+        for ($collision = 0; $collision < 1000; $collision++) {
+            $id = $base.($collision === 0 ? '' : sprintf('_%03d', $collision));
+            $candidate = new self($stateDir, $id);
+            $created = @mkdir($candidate->dir(), 0o755, true);
+            if (! $created && ! is_dir($candidate->dir())) {
+                throw new RuntimeException("Не вдалося створити теку пачки: {$candidate->dir()}");
+            }
+            if ($created) {
+                $workspace = $candidate;
+                break;
+            }
+        }
+        if ($workspace === null) {
+            throw new RuntimeException("Не вдалося підібрати унікальну теку пачки для $base");
         }
         $workspace->writeManifest([
             'id' => $id,

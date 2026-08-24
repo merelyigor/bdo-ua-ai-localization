@@ -10,7 +10,6 @@
 # токен, довжина, гомогліф, русизм) є фактом, і його маршрут визначено без
 # моделі. Спір · це там, де рішення потребує судження:
 #   - переклад дорівнює джерелу (назва продукту або справді пропущений рядок);
-#   - назва поза каталогом глосарію (`unresolved`);
 #   - QA дав не-PASS, але механіка чиста.
 #
 # Суддя не отримує інструментів (виклик інструмента вимикає constrained
@@ -66,7 +65,7 @@ foreach ($rows as $row) {
     $unresolved = $row->unresolvedEntities();
 
     if ($mechanical !== []) { $stats["mechanical"]++; continue; }
-    if (! JudgePolicy::isDisputed($status, $severity, $mechanical, $identical, $unresolved !== [])) continue;
+    if (! JudgePolicy::isDisputed($status, $severity, $mechanical, $identical)) continue;
 
     $item = [
         "identity_hash" => $hash,

@@ -75,7 +75,7 @@ case "$MODE" in
             printf("\nСуддя розрізняє: частка ШІ-шару в межах норми.\n");
         }
         echo "\nКалібрування: звіряйте ці вироки з рішеннями людини в ./bdo moderation.\n";
-        echo "Поріг задає BDO_JUDGE_MIN_CONFIDENCE у .env (типово 85).\n";
+        echo "Поріг задає BDO_JUDGE_MIN_CONFIDENCE у .env (1-100, типово 65; нижче = менше модерації).\n";
         ' "$LOG" "$SCRIPT_DIR/lib/autoload.php"
         ;;
     *) echo "Дозволено: (без аргументів) | --list | --clear" >&2; exit 2 ;;

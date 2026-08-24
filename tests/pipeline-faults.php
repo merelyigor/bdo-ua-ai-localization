@@ -68,4 +68,35 @@ $blocked = json_decode(implode("\n", $out2), true, 512, JSON_THROW_ON_ERROR);
 check(($blocked['next']['kind'] ?? null) === 'blocked', 'exhausted retries did not block the batch');
 check(($blocked['next']['reason'] ?? null) === 'child_retry_limit', 'blocked envelope carries a wrong reason');
 
+// Single-writer: два driver одночасно не мають права емісити child у той самий
+// response_path. Живий PID у lock дає bounded retry до будь-якої мутації стану.
+symlink((string) getmypid(), $workspace2->path('drive.lock'));
+$busyOut = [];
+exec($command2, $busyOut, $busyCode);
+unlink($workspace2->path('drive.lock'));
+check($busyCode === 75, 'concurrent driver was not rejected with temporary-failure code');
+$busy = json_decode(implode("\n", $busyOut), true, 512, JSON_THROW_ON_ERROR);
+check(($busy['next']['reason'] ?? null) === 'driver_busy', 'concurrent driver returned a wrong reason');
+
+// Валідний JSON, але неповний QA не є завершеним QA: drive мусить повторити
+// child, а не провести пачку до commit/verified із карантином усіх рядків.
+$root3 = sys_get_temp_dir().'/bdo-fault-qa-'.bin2hex(random_bytes(6));
+if (! mkdir($root3, 0o755, true) && ! is_dir($root3)) {
+    throw new RuntimeException("Не вдалося створити тимчасовий каталог $root3.");
+}
+$workspace3 = Workspace::create($root3, RowSet::fromFile($rowsPath), '20260823_150000');
+copy($rowsPath, $workspace3->path('rows.json'));
+foreach (['prepared', 'awaiting_worker', 'candidate_valid', 'deterministic_valid', 'awaiting_qa'] as $state) {
+    $workspace3->transition($state);
+}
+file_put_contents($workspace3->path('qa-payload.json'), '[]');
+file_put_contents($workspace3->path('verdicts.json'), '[]');
+$command3 = sprintf('BDO_PIPELINE_OFFLINE=1 BDO_STATE_DIR=%s bash %s', escapeshellarg($root3), escapeshellarg($repo.'/cli/run/run-drive.sh'));
+$qaOut = [];
+exec($command3, $qaOut, $qaCode);
+check($qaCode === 0, 'incomplete QA did not schedule a bounded retry');
+$qaRetry = json_decode((string) end($qaOut), true, 512, JSON_THROW_ON_ERROR);
+check(($qaRetry['next']['role'] ?? null) === 'translation-qa', 'incomplete QA did not retry translation-qa');
+check(count(glob($workspace3->path('verdicts.invalid.*.json')) ?: []) === 1, 'incomplete QA was not preserved for audit');
+
 echo "pipeline faults: OK\n";

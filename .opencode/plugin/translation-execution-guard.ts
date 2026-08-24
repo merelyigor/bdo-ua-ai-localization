@@ -28,6 +28,7 @@ const SAFE_BDO_COMMANDS = [
   /^\.\/bdo (incidents|judge)( --list)?$/,
   /^\.\/bdo moderation( --limit [1-9][0-9]*)?$/,
   /^\.\/bdo moderation --row [0-9a-f]{64}$/,
+  /^\.\/bdo moderation --approve [1-9][0-9]*(,[1-9][0-9]*)*$/,
 ]
 const SAFE_TOOLS = new Set(["bash", "read", "task", "translation_result"])
 

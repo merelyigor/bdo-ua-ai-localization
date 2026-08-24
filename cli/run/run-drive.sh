@@ -8,6 +8,10 @@ B="$($SCRIPT_DIR/cli/batch/batch-dir.sh)"
 
 field() { php -r '$m=json_decode(file_get_contents($argv[1]),true,512,JSON_THROW_ON_ERROR);echo $m[$argv[2]]??"";' "$B/manifest.json" "$1"; }
 row_count() { php -r 'echo count(json_decode(file_get_contents($argv[1]),true)["data"]["rows"]??[]);' "$1"; }
+valid_qa() {
+    php -r 'require $argv[1];$v=Bdo\Translate\Quality\VerdictSet::fromFile($argv[2]);$v->assertCoverage(Bdo\Translate\Batch\RowSet::fromFile($argv[3]));' \
+        "$SCRIPT_DIR/lib/autoload.php" "$1" "$2" 2>/dev/null
+}
 transition() { php -r 'require $argv[1];Bdo\Translate\Batch\Workspace::requireCurrent($argv[2])->transition($argv[3]);' "$SCRIPT_DIR/lib/autoload.php" "$STATE_DIR" "$1"; }
 complete() {
     local sum; sum="$(shasum -a 256 "$2" | awk '{print $1}')"
@@ -23,6 +27,30 @@ child() {
     php -r 'echo json_encode(["kind"=>"child","role"=>$argv[1],"payload_path"=>$argv[2],"response_path"=>$argv[3]],JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES);' "$2" "$3" "$4" > "$STATE_DIR/next-child.json"
     emit 1 "$1" "$(cat "$STATE_DIR/next-child.json")"
 }
+acquire_driver_lock() {
+    local lock="$B/drive.lock" owner=""
+    if ln -s "$$" "$lock" 2>/dev/null; then
+        DRIVE_LOCK="$lock"
+        return 0
+    fi
+    owner="$(readlink "$lock" 2>/dev/null || true)"
+    if [[ "$owner" =~ ^[0-9]+$ ]] && kill -0 "$owner" 2>/dev/null; then
+        emit 0 "$(field state)" '{"kind":"retry","reason":"driver_busy"}'
+        return 1
+    fi
+    # Лише наш службовий symlink усередині поточної пачки; stale PID після
+    # crash не має назавжди блокувати відновлення.
+    test -L "$lock" && rm -f "$lock"
+    if ! ln -s "$$" "$lock" 2>/dev/null; then
+        emit 0 "$(field state)" '{"kind":"retry","reason":"driver_busy"}'
+        return 1
+    fi
+    DRIVE_LOCK="$lock"
+}
+release_driver_lock() {
+    test -n "${DRIVE_LOCK:-}" || return 0
+    test "$(readlink "$DRIVE_LOCK" 2>/dev/null || true)" = "$$" && rm -f "$DRIVE_LOCK"
+}
 # Ліміт повторних викликів child в одному стані: систематично збійна модель
 # інакше плодить сесії нескінченно (інцидент «девʼять порожніх worker sessions»).
 # Повертає 0, коли ліміт вичерпано. Скидання: видалити drive-retries.json у пачці.
@@ -34,6 +62,40 @@ retry_exceeded() {
 give_up() {
     emit 0 "$1" '{"kind":"blocked","reason":"child_retry_limit"}'
     exit 1
+}
+completion() {
+    php -r '
+    $summaryFile=$argv[1];$reportFile=$argv[2];$manifestFile=$argv[3];$runFile=$argv[4];$batch=$argv[5];
+    $manifest=json_decode((string)file_get_contents($manifestFile),true,512,JSON_THROW_ON_ERROR);
+    if(is_file($summaryFile)){
+        $summary=json_decode((string)file_get_contents($summaryFile),true,512,JSON_THROW_ON_ERROR);
+    }else{
+        $report=is_file($reportFile)?(string)file_get_contents($reportFile):"";
+        preg_match("/Пачка: ([0-9]+) рядків/",$report,$total);
+        preg_match("/Записано: ([0-9]+)  Пропущено: ([0-9]+)  Відкинуто: ([0-9]+)/u",$report,$target);
+        preg_match("/У МОДЕРАЦІЮ: ([0-9]+) ряд/u",$report,$moderation);
+        preg_match("/у карантин \(збої\): ([0-9]+)/u",$report,$held);
+        preg_match("/У КАРАНТИН: ([0-9]+) ряд/u",$report,$rejected);
+        $summary=["rows"=>(int)($total[1]??($manifest["rows"]??0)),"channel"=>(string)($manifest["channel"]??""),
+            "target_written"=>(int)($target[1]??0),"target_skipped"=>(int)($target[2]??0),"target_rejected"=>(int)($target[3]??0),
+            "moderation_written"=>(int)($moderation[1]??0),"moderation_skipped"=>0,"moderation_rejected"=>0,
+            "quarantine"=>(int)($held[1]??0)+(int)($rejected[1]??0)];
+        file_put_contents($summaryFile,json_encode($summary,JSON_UNESCAPED_UNICODE|JSON_PRETTY_PRINT|JSON_THROW_ON_ERROR)."\n",LOCK_EX);
+    }
+    $scope=implode(":",[(string)($manifest["mode"]??""),(string)($manifest["patch"]??""),(string)($manifest["channel"]??"")]);
+    $run=is_file($runFile)?json_decode((string)file_get_contents($runFile),true):null;
+    if(!is_array($run)||($run["scope"]??null)!==$scope)$run=["scope"=>$scope,"batches"=>[],"totals"=>[]];
+    if(!isset($run["batches"][$batch])){
+        $run["batches"][$batch]=$summary;
+        foreach(["rows","target_written","target_skipped","target_rejected","moderation_written","moderation_skipped","moderation_rejected","quarantine"] as $key){
+            $run["totals"][$key]=(int)($run["totals"][$key]??0)+(int)($summary[$key]??0);
+        }
+    }
+    $tmp=$runFile.".tmp.".bin2hex(random_bytes(5));
+    file_put_contents($tmp,json_encode($run,JSON_UNESCAPED_UNICODE|JSON_PRETTY_PRINT|JSON_THROW_ON_ERROR)."\n",LOCK_EX);
+    rename($tmp,$runFile);
+    echo json_encode(["kind"=>"complete","batch"=>$summary,"run"=>$run["totals"]],JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES);
+    ' "$B/batch-summary.json" "$B/commit-report.txt" "$B/manifest.json" "$STATE_DIR/run-summary.json" "$(basename "$B")"
 }
 prepare_worker() {
     local rows="$B/rows.json" count
@@ -61,6 +123,8 @@ prepare_worker() {
 
 # Застарілий envelope не має пережити цей виклик: він потрібен лише між
 # емісією child і native Task, а кожна емісія пише свій.
+acquire_driver_lock || exit 75
+trap release_driver_lock EXIT
 rm -f "$STATE_DIR/next-child.json"
 
 # Суддя викликається ЛИШЕ за наявності спірних рядків. Механічні дефекти
@@ -165,7 +229,7 @@ awaiting_qa)
         if retry_exceeded awaiting_qa; then give_up awaiting_qa; fi
         child awaiting_qa translation-qa "$B/qa-payload.json" "$B/verdicts.json"; exit 0
     fi
-    if ! php -r 'require $argv[1];Bdo\Translate\Quality\VerdictSet::fromFile($argv[2]);' "$SCRIPT_DIR/lib/autoload.php" "$B/verdicts.json" 2>/dev/null; then
+    if ! valid_qa "$B/verdicts.json" "$B/rows.json"; then
         mv "$B/verdicts.json" "$B/verdicts.invalid.$(date +%s).json"
         if retry_exceeded awaiting_qa; then give_up awaiting_qa; fi
         child awaiting_qa translation-qa "$B/qa-payload.json" "$B/verdicts.json"
@@ -200,7 +264,13 @@ awaiting_control_qa)
         if retry_exceeded awaiting_control_qa; then give_up awaiting_control_qa; fi
         child awaiting_control_qa translation-qa "$B/control-qa-payload.json" "$B/verdicts-control.json"; exit 0
     fi
-    php -r '$a=json_decode(file_get_contents($argv[1]),true);$b=json_decode(file_get_contents($argv[2]),true);$x=[];foreach($a as $v)$x[$v["identity_hash"]]=$v;foreach($b as $v)$x[$v["identity_hash"]]=$v;file_put_contents($argv[3],json_encode(array_values($x),JSON_UNESCAPED_UNICODE|JSON_THROW_ON_ERROR));' "$B/verdicts.json" "$B/verdicts-control.json" "$B/final-verdicts.json"
+    if ! valid_qa "$B/verdicts-control.json" "$B/heal-repair-subset.json"; then
+        mv "$B/verdicts-control.json" "$B/verdicts-control.invalid.$(date +%s).json"
+        if retry_exceeded awaiting_control_qa; then give_up awaiting_control_qa; fi
+        child awaiting_control_qa translation-qa "$B/control-qa-payload.json" "$B/verdicts-control.json"
+        exit 0
+    fi
+    php -r '$a=json_decode(file_get_contents($argv[1]),true,512,JSON_THROW_ON_ERROR);$b=json_decode(file_get_contents($argv[2]),true,512,JSON_THROW_ON_ERROR);$x=[];foreach($a as $v)$x[$v["identity_hash"]]=$v;foreach($b as $v)$x[$v["identity_hash"]]=$v;file_put_contents($argv[3],json_encode(array_values($x),JSON_UNESCAPED_UNICODE|JSON_THROW_ON_ERROR));' "$B/verdicts.json" "$B/verdicts-control.json" "$B/final-verdicts.json"
     cp "$B/healed.json" "$B/final-candidate.json"
     vf=""; test -f "$B/validate-path" && vf="$(cat "$B/validate-path")"
     judge_or_commit "$B/rows.json" "$B/final-candidate.json" "$B/final-verdicts.json" "$vf"
@@ -232,14 +302,14 @@ ready_to_commit|committing)
     judge_args=(); test -s "$B/judge-verdicts.json" && judge_args=(--judge "$B/judge-verdicts.json")
     if "$SCRIPT_DIR/cli/batch/batch-commit.sh" "$B/rows.json" "$B/final-candidate.json" "$B/final-verdicts.json" --channel "$(field channel)" --idempotency-key-prefix "$key" "${judge_args[@]}" --write > "$B/commit-report.txt" 2>&1; then
         complete commit "$B/commit-report.txt"; transition committed; transition verified; "$SCRIPT_DIR/cli/prepare/build-schema.sh" --clear >/dev/null
-        emit 1 verified '{"kind":"complete"}'
+        emit 1 verified "$(completion)"
     else emit 0 committing '{"kind":"retry","reason":"api_write_failed"}'; exit 1; fi
     ;;
 verified)
     if [ "${BDO_AUTO_CLEAN:-0}" = 1 ]; then
         "$SCRIPT_DIR/cli/batch/batch-clean.sh" --apply --days "${BDO_KEEP_DAYS:-14}" >/dev/null
     fi
-    emit 1 verified '{"kind":"complete"}'
+    emit 1 verified "$(completion)"
     ;;
 *) emit 0 "$state" "$(php -r 'echo json_encode(["kind"=>"blocked","reason"=>$argv[1]]);' "$state")"; exit 1 ;;
 esac

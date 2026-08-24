@@ -65,9 +65,11 @@
   заборонені. Перелік має дві частини: команди прогону (`env`, `smoke`,
   `mode status|start`, `run drive`) і довідкові ТІЛЬКИ ДЛЯ ЧИТАННЯ (`patches`,
   `patch`, `profile status`, `audit`, `incidents`, `judge`, `moderation`,
-  `models`, `runtime`, `api`, `paths`, `platform`, `help`). Мутуючі близнюки
-  (`--clear`, `--apply`, `--approve`, `profile use`, `fetch`, `write`, `commit`,
-  `clean`, `run start|end`, `schema`) поза переліком.
+  `models`, `runtime`, `api`, `paths`, `platform`, `help`). Єдиний вузький
+  запис · `moderation --approve ID[,ID...]`, і лише після прямого поточного
+  рішення власника в чаті. Інші мутуючі близнюки (`--clear`, `--apply`,
+  масове схвалення, `profile use`, `fetch`, `write`, `commit`, `clean`,
+  `run start|end`, `schema`) поза переліком.
   Перше порушення дає відмову без виконання, а не смерть сесії.
 - Повністю скриптовий флоу без чату ВИДАЛЕНО 2026-08-22 (коміт `dac631e`): не
   відтворювати й не пропонувати як альтернативу.

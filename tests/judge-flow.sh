@@ -22,7 +22,9 @@ file_put_contents($file, json_encode(["data" => ["rows" => [
     ["identity_hash" => $identical, "source_hash" => hash("sha256", "a"),
      "source_text" => "AMD FidelityFX Super Resolution 3.1"],
     ["identity_hash" => $clean, "source_hash" => hash("sha256", "b"),
-     "source_text" => "Ancient Sword"],
+     "source_text" => "Ancient Sword", "glossary" => ["terms" => [[
+         "evidence_kind" => "probable_unresolved", "matched_text" => "Ancient Sword",
+     ]]]],
     ["identity_hash" => $broken, "source_hash" => hash("sha256", "c"),
      "source_text" => "Use %1 now", "tokens" => ["must_preserve" => ["%1"]]],
 ]]], JSON_UNESCAPED_UNICODE));
@@ -57,7 +59,8 @@ use Bdo\Translate\Batch\RowSet;
 $payload = json_decode((string) file_get_contents($argv[1]), true);
 $hashes = array_column($payload, "identity_hash");
 
-// 1. Судити треба РІВНО спірний рядок: не чистий PASS і не механічний дефект.
+// 1. Судити треба РІВНО спірний рядок: clean PASS не стає спірним лише через
+// probable_unresolved, а механічний дефект має вже визначений маршрут.
 if ($hashes !== [$argv[2]]) {
     fwrite(STDERR, "FAIL: payload судді має містити лише спірний рядок, отримано: " . json_encode($hashes) . "\n");
     exit(1);
@@ -66,19 +69,25 @@ if (($payload[0]["identical_to_source"] ?? false) !== true) {
     fwrite(STDERR, "FAIL: спірний рядок не позначено identical_to_source\n"); exit(1);
 }
 
-// 2. Вирок «у шар» із високою впевненістю · рядок іде у ШІ-шар.
+// 2. Типовий поріг калібрований на 65: нормальний вирок не створює ручну роботу.
+if (JudgePolicy::minConfidence(null) !== 65) {
+    fwrite(STDERR, "FAIL: типовий поріг судді не дорівнює 65\n"); exit(1);
+}
+if (JudgePolicy::minConfidence("60") !== 60 || JudgePolicy::minConfidence("101") !== 65) {
+    fwrite(STDERR, "FAIL: ENV override порога або fallback 1-100 не працює\n"); exit(1);
+}
 $file = $argv[6];
 file_put_contents($file, json_encode([[
-    "identity_hash" => $argv[2], "destination" => "ai_layer", "confidence" => 92,
+    "identity_hash" => $argv[2], "destination" => "ai_layer", "confidence" => 65,
     "reason" => "назва технології, усталена практика · без перекладу",
 ]], JSON_UNESCAPED_UNICODE));
 $decisions = JudgeDecisions::fromFile($file);
-if ($decisions->destination($argv[2], [], 85) !== JudgePolicy::AI_LAYER) {
-    fwrite(STDERR, "FAIL: впевнений вирок не пустив рядок у шар\n"); exit(1);
+if ($decisions->destination($argv[2], [], JudgePolicy::minConfidence(null)) !== JudgePolicy::AI_LAYER) {
+    fwrite(STDERR, "FAIL: вирок на типовому порозі не пустив рядок у шар\n"); exit(1);
 }
 
-// 3. Той самий вирок нижче порога · до людини.
-if ($decisions->destination($argv[2], [], 95) !== JudgePolicy::MODERATION) {
+// 3. Той самий вирок нижче явно заданого порога · до людини.
+if ($decisions->destination($argv[2], [], 66) !== JudgePolicy::MODERATION) {
     fwrite(STDERR, "FAIL: поріг не спрацював\n"); exit(1);
 }
 

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Bdo\Translate\Quality;
 
+use Bdo\Translate\Batch\RowSet;
 use RuntimeException;
 
 /**
@@ -37,6 +38,44 @@ final class VerdictSet implements \Countable, \IteratorAggregate
     public function count(): int
     {
         return count($this->verdicts);
+    }
+
+    /**
+     * QA зобовʼязаний повернути рівно один вирок на кожен рядок payload.
+     * Constrained schema є першим барʼєром, але artifact перевіряється повторно:
+     * файл може бути старим, частково записаним або прийти від провайдера, який
+     * не дотримався schema.
+     */
+    public function assertCoverage(RowSet $rows): void
+    {
+        $expected = array_fill_keys($rows->identityHashes(), true);
+        $seen = [];
+        foreach ($this->verdicts as $verdict) {
+            if (! is_array($verdict)) {
+                throw new RuntimeException('QA verdict має бути JSON-обʼєктом.');
+            }
+            if (! in_array($verdict['status'] ?? null, ['PASS', 'REVIEW', 'REJECT'], true)
+                || ! in_array($verdict['severity'] ?? null, ['none', 'minor', 'major', 'critical'], true)
+                || ! is_string($verdict['issue'] ?? null)
+                || ! is_string($verdict['fix'] ?? null)) {
+                throw new RuntimeException('QA verdict порушує контракт status/severity/issue/fix.');
+            }
+            $hash = $verdict['identity_hash'] ?? '';
+            if (! is_string($hash) || ! isset($expected[$hash])) {
+                throw new RuntimeException("QA повернув чужий або порожній identity_hash: $hash");
+            }
+            if (isset($seen[$hash])) {
+                throw new RuntimeException("QA дублює identity_hash: $hash");
+            }
+            $seen[$hash] = true;
+        }
+        $missing = array_diff_key($expected, $seen);
+        if ($missing !== []) {
+            throw new RuntimeException(
+                'QA не покрив усю вибірку: отримано '.count($seen).' із '.count($expected)
+                .'; відсутні: '.implode(',', array_slice(array_keys($missing), 0, 5))
+            );
+        }
     }
 
     /**
