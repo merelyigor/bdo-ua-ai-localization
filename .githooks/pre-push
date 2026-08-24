@@ -1,0 +1,36 @@
+#!/usr/bin/env bash
+# Останній механічний бар'єр проти AI-атрибуції в публічній Git-історії.
+# commit-msg ловить проблему під час створення коміту, а цей hook повторно
+# перевіряє фактичні commit objects перед push, зокрема після --no-verify,
+# rebase, cherry-pick або імпорту комітів з іншого клону.
+set -uo pipefail
+
+say() { printf 'pre-push: %s\n' "$1" >&2; }
+zero='0000000000000000000000000000000000000000'
+fail=0
+
+while read -r local_ref local_sha _remote_ref _remote_sha; do
+    [ -n "${local_sha:-}" ] || continue
+    [ "$local_sha" != "$zero" ] || continue # deletion
+
+    # Для branch/tag перевіряємо всю досяжну історію. Це навмисно: новий push
+    # не повинен знову опублікувати старий заборонений commit object.
+    if ! git rev-parse --verify "${local_sha}^{commit}" >/dev/null 2>&1; then
+        continue # annotated tag не на commit або інший некомітний ref
+    fi
+
+    while IFS= read -r commit; do
+        meta="$(git show -s --format='%an%n%ae%n%cn%n%ce%n%B' "$commit")"
+        if printf '%s\n' "$meta" | grep -qiE 'claude|anthropic|^[A-Za-z][A-Za-z-]*-[Bb]y:|generated with|co-authored'; then
+            say "ВІДМОВА: $local_ref містить заборонену AI-атрибуцію в коміті $commit"
+            git show -s --format='author=%an <%ae>%ncommitter=%cn <%ce>%nsubject=%s' "$commit" >&2
+            fail=1
+        fi
+    done < <(git rev-list "$local_sha")
+done
+
+if [ "$fail" -ne 0 ]; then
+    say 'push скасовано: очисти author/committer/message; вимикати hook не можна.'
+    exit 1
+fi
+exit 0

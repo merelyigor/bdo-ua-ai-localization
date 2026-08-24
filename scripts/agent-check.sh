@@ -318,6 +318,7 @@ check_shell() {
     run bash tests/drive-memory-layers.sh
     run bash tests/judge-flow.sh
     run bash tests/patch-argument.sh
+    run bash tests/pre-push-attribution.sh
     run bash tests/run-target-env.sh
     run bash tests/rotation.sh
 }
