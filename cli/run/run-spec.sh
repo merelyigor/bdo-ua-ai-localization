@@ -14,14 +14,18 @@ source "$SCRIPT_DIR/cli/system/select-env.sh"
 
 ACTION="${1:?Потрібно status або plan}"
 MODE="${2:?Потрібен режим patch|manual|proposal|improve}"
+# Третій аргумент status · патч, який планується взяти (`active` або snapshot_id).
+PATCH="${3:-active}"
 
 case "$ACTION" in
     status)
         php -r '
         require $argv[1];
         use Bdo\Translate\Pipeline\RunSpec;
-        echo json_encode(["ok" => true, "mode" => $argv[2], "preset" => RunSpec::preset($argv[2])], JSON_UNESCAPED_UNICODE), "\n";
-        ' "$SCRIPT_DIR/lib/autoload.php" "$MODE"
+        $preset = RunSpec::preset($argv[2]);
+        $preset["filter"] = RunSpec::filterFor($argv[2], $argv[3]);
+        echo json_encode(["ok" => true, "mode" => $argv[2], "patch" => $argv[3], "preset" => $preset], JSON_UNESCAPED_UNICODE), "\n";
+        ' "$SCRIPT_DIR/lib/autoload.php" "$MODE" "$PATCH"
         ;;
     plan)
         PARENT="${3:?plan потребує OpenCode parent session ID}"

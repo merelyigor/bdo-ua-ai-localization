@@ -84,6 +84,29 @@ final class RunSpec
         return self::PRESETS[$mode];
     }
 
+    /**
+     * Фільтр режиму, наведений на конкретний патч.
+     *
+     * Пресети описують АКТИВНИЙ патч, бо це щоденний випадок. Але робота живе й
+     * у старих: виміряно 2026-08-24 · в активному патчі 6 лишався 1 рядок без
+     * machine-перекладу, тоді як у патчі 1 їх 29927, а в патчі 3 · 442. Без
+     * вибору патча набір просто не бачив цієї роботи.
+     *
+     * Значення перевіряється тут, а не в скрипті: воно потрапляє у query
+     * string, тому дозволені лише `active` і числовий `snapshot_id`.
+     */
+    public static function filterFor(string $mode, string $patch = 'active'): string
+    {
+        if (! isset(self::PRESETS[$mode])) {
+            throw new InvalidArgumentException("Невідомий режим: $mode");
+        }
+        if (preg_match('/^(active|[0-9]{1,6})$/', $patch) !== 1) {
+            throw new InvalidArgumentException("Патч має бути `active` або числовим snapshot_id, отримано: $patch");
+        }
+
+        return str_replace('patch=active', 'patch='.$patch, self::PRESETS[$mode]['filter']);
+    }
+
     /** @return list<string> */
     public static function modes(): array
     {

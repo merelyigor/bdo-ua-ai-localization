@@ -3,8 +3,11 @@ import type { Plugin } from "@opencode-ai/plugin"
 const SAFE_BDO_COMMANDS = [
   /^\.\/bdo env$/,
   /^\.\/bdo smoke$/,
-  /^\.\/bdo mode status (patch|manual|proposal|improve)$/,
-  /^\.\/bdo mode start (patch|manual|proposal|improve)( [1-9][0-9]*)?$/,
+  // Третій аргумент · патч (`active` або числовий snapshot_id): робота живе не
+  // лише в активному патчі, і без цього набір її просто не бачив.
+  /^\.\/bdo mode status (patch|manual|proposal|improve)( (active|[0-9]{1,6}))?$/,
+  /^\.\/bdo mode start (patch|manual|proposal|improve)( [1-9][0-9]*( (active|[0-9]{1,6}))?)?$/,
+  /^\.\/bdo patches$/,
   /^\.\/bdo run drive$/,
 ]
 const SAFE_TOOLS = new Set(["bash", "read", "task", "translation_result"])
@@ -30,7 +33,7 @@ function allowedShell(command: string): boolean {
 // кидає помилку до виконання. Тому перші спроби отримують зрозумілу відмову, з
 // якої модель може виправитись, а abort лишається для наполегливого обходу.
 const ABORT_AFTER_VIOLATIONS = 3
-const ALLOWED_HINT = "./bdo env | ./bdo smoke | ./bdo mode status <mode> | ./bdo mode start <mode> [N] | ./bdo run drive (можна поєднувати через &&)"
+const ALLOWED_HINT = "./bdo env | ./bdo smoke | ./bdo patches | ./bdo mode status <mode> [patch] | ./bdo mode start <mode> [N] [patch] | ./bdo run drive (можна поєднувати через &&)"
 
 /** Закриває всі shell/API/CLI шляхи, якими можна створити невидимого агента. */
 export const TranslationExecutionGuard: Plugin = async ({ client, directory }) => {
