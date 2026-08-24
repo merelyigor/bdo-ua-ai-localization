@@ -1,7 +1,7 @@
 ---
 description: Перекладає одну передану пачку BDO з англійської українською
 mode: subagent
-model: opencode/x-preview-f-free
+model: openai/gpt-5.6-luna
 temperature: 0.1
 permission:
   bash: deny

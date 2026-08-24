@@ -1,6 +1,6 @@
 {
     "version": 1,
-    "active_profile": "session-free",
+    "active_profile": "session-luna",
     "profiles": {
         "local-quality": {
             "allow_paid": false,
@@ -133,6 +133,32 @@
                     "opencode/x-preview-f-free"
                 ]
             }
+        },
+        "session-luna": {
+            "allow_paid": true,
+            "routes": {
+                "translation-terminology": [
+                    "openai/gpt-5.6-luna"
+                ],
+                "translation-worker": [
+                    "openai/gpt-5.6-luna"
+                ],
+                "translation-qa": [
+                    "openai/gpt-5.6-luna"
+                ],
+                "translation-repair": [
+                    "openai/gpt-5.6-luna"
+                ],
+                "translation-judge": [
+                    "openai/gpt-5.6-luna"
+                ],
+                "translation-smoke": [
+                    "openai/gpt-5.6-luna"
+                ]
+            },
+            "paid_routes": [
+                "openai/gpt-5.6-luna"
+            ]
         }
     }
 }

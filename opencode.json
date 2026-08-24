@@ -53,23 +53,23 @@
         },
         "translation-terminology": {
             "mode": "subagent",
-            "model": "opencode/x-preview-f-free"
+            "model": "openai/gpt-5.6-luna"
         },
         "translation-worker": {
             "mode": "subagent",
-            "model": "opencode/x-preview-f-free"
+            "model": "openai/gpt-5.6-luna"
         },
         "translation-qa": {
             "mode": "subagent",
-            "model": "opencode/x-preview-f-free"
+            "model": "openai/gpt-5.6-luna"
         },
         "translation-repair": {
             "mode": "subagent",
-            "model": "opencode/x-preview-f-free"
+            "model": "openai/gpt-5.6-luna"
         },
         "translation-smoke": {
             "mode": "subagent",
-            "model": "opencode/x-preview-f-free"
+            "model": "openai/gpt-5.6-luna"
         },
         "патч": {
             "mode": "primary",
@@ -129,7 +129,7 @@
         },
         "translation-judge": {
             "mode": "subagent",
-            "model": "opencode/x-preview-f-free"
+            "model": "openai/gpt-5.6-luna"
         }
     },
     "subagent_depth": 1

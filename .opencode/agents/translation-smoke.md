@@ -1,7 +1,7 @@
 ---
 description: Мінімально перевіряє запуск субагента активного профілю
 mode: subagent
-model: opencode/x-preview-f-free
+model: openai/gpt-5.6-luna
 temperature: 0
 steps: 2
 permission:

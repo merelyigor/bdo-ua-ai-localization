@@ -1,7 +1,7 @@
 ---
 description: Перевіряє одну пачку українських перекладів BDO
 mode: subagent
-model: opencode/x-preview-f-free
+model: openai/gpt-5.6-luna
 temperature: 0.05
 permission:
   bash: deny

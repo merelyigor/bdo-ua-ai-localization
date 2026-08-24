@@ -1,7 +1,7 @@
 ---
 description: Вирішує спірні рядки · у ШІ-шар як є чи до людини в модерацію
 mode: subagent
-model: opencode/x-preview-f-free
+model: openai/gpt-5.6-luna
 temperature: 0.05
 permission:
   bash: deny

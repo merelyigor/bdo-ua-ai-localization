@@ -15,6 +15,17 @@ if ($command === 'status') {
     $active = $policy['active_profile'];
     echo "Активний профіль: $active\n";
     foreach (ModelPolicy::ROLES as $role) echo '  '.$role.': '.implode(' -> ', ModelPolicy::routes($policy, $role))."\n";
+    // Платний профіль має бути видно ЩОРАЗУ, а не лише в памʼяті власника:
+    // субагенти роблять усю мовну роботу, тому ціна набігає на кожному рядку.
+    // У патчі 1 їх 29927, тож різниця між free і paid тут не косметична.
+    $paid = array_values(array_filter(
+        array_unique(array_merge(...array_values($policy['profiles'][$active]['routes'] ?? []))),
+        static fn (string $route): bool => in_array($route, $policy['profiles'][$active]['paid_routes'] ?? [], true),
+    ));
+    if ($paid !== []) {
+        echo "\nУВАГА: профіль ПЛАТНИЙ · ".implode(', ', $paid)."\n";
+        echo "Кожен рядок пачки оплачується. Безплатний профіль: ./bdo profile use session-free\n";
+    }
     exit(0);
 }
 if ($command === 'env') {
