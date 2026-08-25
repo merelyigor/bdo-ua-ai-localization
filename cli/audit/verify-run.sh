@@ -43,7 +43,11 @@ if [ -z "$DB" ]; then
     echo "вкажи домівку в .env: BDO_OPENCODE_HOME=/mnt/c/Users/<user>" >&2
     exit 1
 fi
-command -v sqlite3 >/dev/null || { echo "Потрібен sqlite3" >&2; exit 1; }
+command -v sqlite3 >/dev/null || {
+    echo 'Потрібен sqlite3: саме ним читається база сесій OpenCode.' >&2
+    echo 'Доставити: ./bdo platform --fix' >&2
+    exit 1
+}
 
 # Копія: OpenCode тримає базу відкритою, читаємо без блокування запису.
 TMP="$(mktemp -t ocverify)"

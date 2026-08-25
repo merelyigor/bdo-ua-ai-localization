@@ -43,7 +43,20 @@ if [ -n "$current" ]; then
     exit 0
 fi
 
-fetch="$($SCRIPT_DIR/cli/api/fetch-rows.sh "$SIZE" "$query" 2>&1)"
+# Провал fetch НЕ має права бути тихим.
+#
+# Раніше тут стояло голе `fetch="$(...)"`. Під `set -e` невдалий fetch убивав
+# скрипт мовчки: повідомлення вже було зловлене у змінну, а її ніхто не друкував.
+# Диригент бачив ПОРОЖНІЙ вивід і, за власним промптом, зупинявся без причини ·
+# 2026-08-25 на цьому згоріла ціла сесія з двох десятків команд, бо `mode start
+# patch 15 2` мовчав, а насправді `fetch-rows.sh` відхиляв розмір 15
+# (дозволено 20-100). Тепер причина завжди виходить назовні як JSON.
+if ! fetch="$($SCRIPT_DIR/cli/api/fetch-rows.sh "$SIZE" "$query" 2>&1)"; then
+    php -r 'echo json_encode(["ok"=>false,"state"=>"waiting_dependency","reason"=>"fetch_failed",
+        "size"=>$argv[1],"detail"=>trim($argv[2])],JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES),"\n";' \
+        "$SIZE" "$fetch"
+    exit 1
+fi
 rows="$(printf '%s\n' "$fetch" | grep -oE '/[^ ]*/output/rows_[0-9_]+\.json' | tail -1 || true)"
 test -f "$rows" || rows="$(ls -t "$SCRIPT_DIR"/output/rows_*.json 2>/dev/null | head -1 || true)"
 test -f "$rows" || { echo '{"ok":false,"state":"waiting_dependency","reason":"fetch_failed"}'; exit 1; }

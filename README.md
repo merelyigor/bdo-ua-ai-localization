@@ -79,8 +79,9 @@ routing guard до початку генерації.
 
 Профіль `session-go` призначений для платної підписки OpenCode Go. Типовий
 маршрут — `opencode-go/ox-alpha-free` (Ox Alpha Free); також дозволені
-`opencode-go/mimo-v2.5` (MiMo V2.5) і `opencode-go/mimo-v2.5-pro` (MiMo V2.5
-Pro). У конфігурації це `TRANSLATE_MODEL_COST=paid`: це позначає платний
+`opencode-go/mimo-v2.5` (MiMo V2.5), `opencode-go/mimo-v2.5-pro` (MiMo V2.5
+Pro), `opencode-go/muse-spark-1.2-contributor` (Muse Spark 1.2 Contributor)
+і `opencode-go/hy3` (Hy3). У конфігурації це `TRANSLATE_MODEL_COST=paid`: це позначає платний
 доступ/підписку і явний дозвіл, а не твердження про окрему оплату кожного
 токена. OpenCode Go має бути підключений через `/connect`; актуальність назв
 перевіряється через `/models`. Тихого fallback немає: невідповідний маршрут

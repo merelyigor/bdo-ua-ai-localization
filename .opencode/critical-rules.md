@@ -17,7 +17,11 @@
 - Запобіжник у клоні вмикається один раз: `git config core.hooksPath .githooks`.
 - На Windows toolkit виконується ТІЛЬКИ всередині WSL2 за `docs/WINDOWS_WSL2.md`.
   Не запускати його з PowerShell/Git Bash і не пропонувати `winget` для PHP:
-  `php-cli`, jq, curl, sqlite3, git і shellcheck встановлюються всередині WSL.
+  `php-cli`, jq, curl і git встановлюються всередині WSL; `sqlite3` (тільки
+  `audit`) і `shellcheck` (тільки `gate shell`) необовʼязкові й дають WARN.
+  Середовище контролює сам primary: `./bdo platform` діагностує, а
+  `./bdo platform --fix` доставляє відсутнє. Агент не викликає apt, brew, sudo,
+  winget чи wsl власними руками.
   Сам OpenCode може бути або в WSL, або native Windows-застосунком: у другому
   разі execution-guard сам переписує вже ДОЗВОЛЕНУ команду в
   `wsl.exe --cd <root> bash -lc "<команда>"`. Перелік команд від цього не
@@ -113,6 +117,9 @@
 - Primary виконує цикл `./bdo mode start` -> `./bdo run drive` -> штатний
   OpenCode `task(subagent_type=next.role)` -> `translation_result`. Кожна child
   session мусить бути видимою та відкриватися з батьківської.
+- `resume:true` у `mode start` означає відновлення наявної пачки, а
+  `candidate_valid` є resumable-станом, не автоматичним блокуванням. Primary не
+  називає його проблемою без фактичного `next.kind=blocked` від `run drive`.
 - Plugin `client.session.create`, `session.prompt*`, shell/model runner і прямий
   fallback в Ollama заборонені.
 - `translation-execution-guard` runtime пропускає лише `bash`, `read`, `task`,

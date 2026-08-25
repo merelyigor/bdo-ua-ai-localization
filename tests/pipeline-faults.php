@@ -44,6 +44,29 @@ $staged = json_decode((string) file_get_contents($root.'/next-child.json'), true
 check(($staged['role'] ?? null) === 'translation-worker', 'child envelope was not staged for the contract plugin');
 check(($staged['payload_path'] ?? '') === $workspace->path('worker-payload.json'), 'staged envelope has a wrong payload path');
 
+// Crash-resume: candidate_valid is an intermediate resumable state, not a
+// terminal block. The next drive must continue deterministic/QA preparation.
+$rootCandidate = sys_get_temp_dir().'/bdo-fault-candidate-resume-'.bin2hex(random_bytes(6));
+if (! mkdir($rootCandidate, 0o755, true) && ! is_dir($rootCandidate)) {
+    throw new RuntimeException("Не вдалося створити тимчасовий каталог $rootCandidate.");
+}
+$workspaceCandidate = Workspace::create($rootCandidate, RowSet::fromFile($rowsPath), '20260822_135000');
+copy($rowsPath, $workspaceCandidate->path('rows.json'));
+$workspaceCandidate->transition('prepared');
+$workspaceCandidate->transition('awaiting_worker');
+$workspaceCandidate->transition('candidate_valid');
+file_put_contents($workspaceCandidate->path('candidate.json'), json_encode([[
+    'identity_hash' => $hash,
+    'source_hash' => hash('sha256', 'Ancient Sword'),
+    'text' => 'Стародавній меч',
+]], JSON_THROW_ON_ERROR));
+$resumeCommand = sprintf('BDO_PIPELINE_OFFLINE=1 BDO_STATE_DIR=%s bash %s', escapeshellarg($rootCandidate), escapeshellarg($repo.'/cli/run/run-drive.sh'));
+$resumeOut = [];
+exec($resumeCommand, $resumeOut, $resumeCode);
+check($resumeCode === 0, 'candidate_valid resume stopped the driver');
+$resumeEnvelope = json_decode(implode("\n", $resumeOut), true, 512, JSON_THROW_ON_ERROR);
+check(($resumeEnvelope['next']['role'] ?? null) === 'translation-qa', 'candidate_valid resume did not schedule QA');
+
 // Тимчасовий збій child не блокує пачку назавжди: після вікна driver повертає
 // retry, очищає лише лічильник вікна й дозволяє продовжити ту саму пачку.
 $root2 = sys_get_temp_dir().'/bdo-fault-retry-'.bin2hex(random_bytes(6));

@@ -65,6 +65,14 @@ const refuse = async (before, input, args, what) => {
     "./bdo mode start patch 15 3",
     "./bdo mode status patch 3",
     "./bdo gate full",
+    // Усі профілі gate, а не лише full: `gate preflight` є документованим
+    // першим кроком нової сесії, і guard колись блокував саме його.
+    "./bdo gate preflight",
+    "./bdo gate docs",
+    "./bdo gate agents",
+    "./bdo run show",
+    "./bdo platform",
+    "./bdo platform --fix",
     "./bdo run end",
     "./bdo batch end",
     "./bdo schema clear",
@@ -194,6 +202,13 @@ const refuse = async (before, input, args, what) => {
     "./bdo fetch 15",
     "./bdo patches 0",
     "./bdo patches 5 machine --apply",
+    "./bdo gate nonsense",
+    "./bdo platform --install",
+    "./bdo run start",
+    // Власний префікс запуску: перехід у WSL робить guard, не модель.
+    "wsl ./bdo env",
+    "wsl bash -lc \"./bdo env\"",
+    "bash ./bdo env",
   ]) {
     // Кожне порушення в СВОЇЙ сесії: інакше спрацював би лічильник abort.
     await refuse(before, { tool: "bash", sessionID: `s-${command}`, callID: "c" }, { command }, `forbidden command: ${command}`)

@@ -160,7 +160,8 @@
   runner ігнорує constrained decoding. Платний маршрут вимагає явного
   `allow_paid`; credentials належать OpenCode і не живуть у repo. Профіль
   `session-go` дозволяє лише явні `opencode-go/ox-alpha-free`,
-  `opencode-go/mimo-v2.5` і `opencode-go/mimo-v2.5-pro`, потребує платної
+  `opencode-go/mimo-v2.5`, `opencode-go/mimo-v2.5-pro`,
+  `opencode-go/muse-spark-1.2-contributor` і `opencode-go/hy3`, потребує платної
   підписки OpenCode Go та `COST=paid`.
 - §8.4 Staged schema не замінює deterministic gates. Вона фіксує length та enum
   identity; `./bdo items`, quality checks і API validation лишаються обов'язкові.

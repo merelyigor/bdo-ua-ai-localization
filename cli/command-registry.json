@@ -1,60 +1,222 @@
 {
   "version": 1,
   "sections": [
-    {"title": "ПРОГІН І СЕРЕДОВИЩЕ", "entries": [
-      ["env", "яка ціль стоїть у .env (PROD або DEV)"],
-      ["runtime", "capability gate активної моделі перед першою пачкою"],
-      ["smoke", "envelope для OpenCode translation-smoke без API/PHP"],
-      ["platform", "macOS, Linux або Windows/WSL2 preflight"],
-      ["run start|show|end|drive", "зафіксувати / показати / зняти ціль; JSON-крок рушія"],
-      ["patches [N|all] [machine|manual|both] [--full]", "де ще є робота за патчами"],
-      ["mode status|start <mode> [N] [patch]", "preset або наступна пачка"],
-      ["gate [профіль]", "quality gate: preflight docs shell agents runtime api full"]
-    ]},
-    {"title": "ВИБІРКА Й ПАЧКА", "entries": [
-      ["patch", "стан патча: скільки лишилось"], ["fetch", "взяти одну пачку рядків з API"],
-      ["batch new|dir|check|end", "тека пачки, її шлях, належність файлів, закриття"],
-      ["subset", "підмножина рядків за identity (для repair)"],
-      ["show", "показати рядки людині"], ["context", "підтверджені приклади для одного рядка"]
-    ]},
-    {"title": "ПІДГОТОВКА ПАЧКИ", "entries": [
-      ["memory find|apply|expand", "памʼять перекладів: пошук, застосування, збірка"],
-      ["glossary gaps|resolve", "прогалини глосарію (ВИРОК) і запит терміна"],
-      ["schema build|qa|clear|show", "staged-схема constrained decoding"],
-      ["payload worker|qa|terminology|judge", "компактний payload для субагента"]
-    ]},
-    {"title": "ПЕРЕВІРКА Й ЛІКУВАННЯ", "entries": [
-      ["normalize", "детерміновані виправлення (латинські гомогліфи)"],
-      ["items", "гейт identity: збірка items із перевіркою source_hash"],
-      ["russianisms", "словниковий детектор русизмів"], ["validate", "валідація на боці API"],
-      ["heal", "сходинки лікування й payload для repair"],
-      ["qa-fixes", "фільтр виправлень від QA"], ["merge", "накласти виправлення на кандидата"]
-    ]},
-    {"title": "ЗАВЕРШЕННЯ", "entries": [
-      ["commit", "PASS у шар, решта в модерацію, збої в карантин"],
-      ["write", "прямий запис у вибраний канал"], ["moderation", "черга модерації: список, approve, reject"]
-    ]},
-    {"title": "ОБСЛУГОВУВАННЯ", "entries": [
-      ["audit", "аудит сесій субагентів за базою OpenCode"],
-      ["audit-dump", "повний зріз сесій OpenCode"], ["incidents", "дефекти відповідей child, які флоу вилікував сам"],
-      ["judge", "вироки судді: розподіл, виродження, калібрування"],
-      ["profile", "моделі за ролями: status|use|set|fallback|paid"],
-      ["models", "звірка локальних Ollama-моделей із OpenCode"], ["bench", "вимір локальної моделі на реальній пачці"],
-      ["clean", "ротація тек пачок і output/"], ["paths", "що куди вирішилось із розкладкою"],
-      ["api", "read-only smoke Agent API"]
-    ]}
+    {
+      "title": "ПРОГІН І СЕРЕДОВИЩЕ",
+      "entries": [
+        [
+          "env",
+          "яка ціль стоїть у .env (PROD або DEV)"
+        ],
+        [
+          "runtime",
+          "capability gate активної моделі перед першою пачкою"
+        ],
+        [
+          "smoke",
+          "envelope для OpenCode translation-smoke без API/PHP"
+        ],
+        [
+          "platform",
+          "macOS, Linux або Windows/WSL2 preflight"
+        ],
+        [
+          "run start|show|end|drive",
+          "зафіксувати / показати / зняти ціль; JSON-крок рушія"
+        ],
+        [
+          "patches [N|all] [machine|manual|both] [--full]",
+          "де ще є робота за патчами"
+        ],
+        [
+          "mode status|start <mode> [N] [patch]",
+          "preset або наступна пачка"
+        ],
+        [
+          "gate [профіль]",
+          "quality gate: preflight docs shell agents runtime api full"
+        ]
+      ]
+    },
+    {
+      "title": "ВИБІРКА Й ПАЧКА",
+      "entries": [
+        [
+          "patch",
+          "стан патча: скільки лишилось"
+        ],
+        [
+          "fetch",
+          "взяти одну пачку рядків з API"
+        ],
+        [
+          "batch new|dir|check|end",
+          "тека пачки, її шлях, належність файлів, закриття"
+        ],
+        [
+          "subset",
+          "підмножина рядків за identity (для repair)"
+        ],
+        [
+          "show",
+          "показати рядки людині"
+        ],
+        [
+          "context",
+          "підтверджені приклади для одного рядка"
+        ]
+      ]
+    },
+    {
+      "title": "ПІДГОТОВКА ПАЧКИ",
+      "entries": [
+        [
+          "memory find|apply|expand",
+          "памʼять перекладів: пошук, застосування, збірка"
+        ],
+        [
+          "glossary gaps|resolve",
+          "прогалини глосарію (ВИРОК) і запит терміна"
+        ],
+        [
+          "schema build|qa|clear|show",
+          "staged-схема constrained decoding"
+        ],
+        [
+          "payload worker|qa|terminology|judge",
+          "компактний payload для субагента"
+        ]
+      ]
+    },
+    {
+      "title": "ПЕРЕВІРКА Й ЛІКУВАННЯ",
+      "entries": [
+        [
+          "normalize",
+          "детерміновані виправлення (латинські гомогліфи)"
+        ],
+        [
+          "items",
+          "гейт identity: збірка items із перевіркою source_hash"
+        ],
+        [
+          "russianisms",
+          "словниковий детектор русизмів"
+        ],
+        [
+          "validate",
+          "валідація на боці API"
+        ],
+        [
+          "heal",
+          "сходинки лікування й payload для repair"
+        ],
+        [
+          "qa-fixes",
+          "фільтр виправлень від QA"
+        ],
+        [
+          "merge",
+          "накласти виправлення на кандидата"
+        ]
+      ]
+    },
+    {
+      "title": "ЗАВЕРШЕННЯ",
+      "entries": [
+        [
+          "commit",
+          "PASS у шар, решта в модерацію, збої в карантин"
+        ],
+        [
+          "write",
+          "прямий запис у вибраний канал"
+        ],
+        [
+          "moderation",
+          "черга модерації: список, approve, reject"
+        ]
+      ]
+    },
+    {
+      "title": "ОБСЛУГОВУВАННЯ",
+      "entries": [
+        [
+          "audit",
+          "аудит сесій субагентів за базою OpenCode"
+        ],
+        [
+          "audit-dump",
+          "повний зріз сесій OpenCode"
+        ],
+        [
+          "incidents",
+          "дефекти відповідей child, які флоу вилікував сам"
+        ],
+        [
+          "judge",
+          "вироки судді: розподіл, виродження, калібрування"
+        ],
+        [
+          "profile",
+          "моделі за ролями: status|use|set|fallback|paid"
+        ],
+        [
+          "models",
+          "звірка локальних Ollama-моделей із OpenCode"
+        ],
+        [
+          "bench",
+          "вимір локальної моделі на реальній пачці"
+        ],
+        [
+          "clean",
+          "ротація тек пачок і output/"
+        ],
+        [
+          "paths",
+          "що куди вирішилось із розкладкою"
+        ],
+        [
+          "api",
+          "read-only smoke Agent API"
+        ]
+      ]
+    }
   ],
   "guard_patterns": [
-    "^\\.\\/bdo env$", "^\\.\\/bdo smoke$", "^\\.\\/bdo mode status (patch|manual|proposal|improve)( (active|[0-9]{1,6}))?$",
-    "^\\.\\/bdo mode start (patch|manual|proposal|improve)( [1-9][0-9]*( (active|[0-9]{1,6}))?)?$", "^\\.\\/bdo run drive$",
-    "^\\.\\/bdo run end$", "^\\.\\/bdo batch end$", "^\\.\\/bdo schema clear$",
-    "^\\.\\/bdo clean( --days [0-9]{1,3})?$", "^\\.\\/bdo clean( --days [0-9]{1,3})? --apply$",
-    "^\\.\\/bdo incidents --clear$", "^\\.\\/bdo judge --clear$", "^\\.\\/bdo gate full$",
-    "^\\.\\/bdo$", "^\\.\\/bdo help( [a-z-]+)?$", "^\\.\\/bdo (paths|platform|models|api|runtime)$",
-    "^\\.\\/bdo patch( (active|[0-9]{1,6}))?$", "^\\.\\/bdo patches( (all|[1-9][0-9]*))?( (machine|manual|both))?( --full)?$",
-    "^\\.\\/bdo profile status$", "^\\.\\/bdo (audit|audit-dump)$", "^\\.\\/bdo (incidents|judge)( --list)?$",
-    "^\\.\\/bdo moderation( --limit [1-9][0-9]*)?$", "^\\.\\/bdo moderation --row [0-9a-f]{64}$",
+    "^\\.\\/bdo env$",
+    "^\\.\\/bdo smoke$",
+    "^\\.\\/bdo mode status (patch|manual|proposal|improve)( (active|[0-9]{1,6}))?$",
+    "^\\.\\/bdo mode start (patch|manual|proposal|improve)( [1-9][0-9]*( (active|[0-9]{1,6}))?)?$",
+    "^\\.\\/bdo run drive$",
+    "^\\.\\/bdo run show$",
+    "^\\.\\/bdo run end$",
+    "^\\.\\/bdo batch end$",
+    "^\\.\\/bdo schema clear$",
+    "^\\.\\/bdo clean( --days [0-9]{1,3})?$",
+    "^\\.\\/bdo clean( --days [0-9]{1,3})? --apply$",
+    "^\\.\\/bdo incidents --clear$",
+    "^\\.\\/bdo judge --clear$",
+    "^\\.\\/bdo gate (preflight|docs|shell|agents|runtime|api|full)$",
+    "^\\.\\/bdo$",
+    "^\\.\\/bdo help( [a-z-]+)?$",
+    "^\\.\\/bdo (paths|platform|models|api|runtime)$",
+    "^\\.\\/bdo platform --fix$",
+    "^\\.\\/bdo patch( (active|[0-9]{1,6}))?$",
+    "^\\.\\/bdo patches( (all|[1-9][0-9]*))?( (machine|manual|both))?( --full)?$",
+    "^\\.\\/bdo profile status$",
+    "^\\.\\/bdo (audit|audit-dump)$",
+    "^\\.\\/bdo (incidents|judge)( --list)?$",
+    "^\\.\\/bdo moderation( --limit [1-9][0-9]*)?$",
+    "^\\.\\/bdo moderation --row [0-9a-f]{64}$",
     "^\\.\\/bdo moderation --approve [1-9][0-9]*(,[1-9][0-9]*)*$"
   ],
-  "flow_commands": ["./bdo env", "./bdo mode start", "./bdo run drive", "./bdo gate full", "./bdo api"]
+  "flow_commands": [
+    "./bdo env",
+    "./bdo mode start",
+    "./bdo run drive",
+    "./bdo gate full",
+    "./bdo api"
+  ]
 }

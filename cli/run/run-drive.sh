@@ -4,7 +4,17 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")/../.." && pwd)"
 STATE_DIR="${BDO_STATE_DIR:-$SCRIPT_DIR/state}"
-B="$($SCRIPT_DIR/cli/batch/batch-dir.sh)"
+# Відсутня пачка · це стан, а не мовчанка.
+#
+# `batch-dir.sh` виходить із кодом 1 і БЕЗ тексту, тому голе `B="$(...)"` під
+# `set -e` убивало driver на першому ж рядку. Диригент отримував порожній вивід
+# і, за власним промптом, зупинявся без причини: 2026-08-25 так згоріла ціла
+# сесія, де `run drive` викликали шість разів поспіль і жодного разу не дізналися,
+# що поточної пачки просто немає. Envelope нижче називає і стан, і вихід із нього.
+if ! B="$("$SCRIPT_DIR/cli/batch/batch-dir.sh" 2>/dev/null)" || [ -z "$B" ]; then
+    printf '%s\n' '{"ok":false,"state":"no_batch","next":{"kind":"blocked","reason":"no_current_batch"},"hint":"пачки немає; почни її: ./bdo mode start <mode> <N 20-100> [patch]"}'
+    exit 1
+fi
 
 field() { php -r '$m=json_decode(file_get_contents($argv[1]),true,512,JSON_THROW_ON_ERROR);echo $m[$argv[2]]??"";' "$B/manifest.json" "$1"; }
 row_count() { php -r 'echo count(json_decode(file_get_contents($argv[1]),true)["data"]["rows"]??[]);' "$1"; }
@@ -143,6 +153,28 @@ prepare_worker() {
     child awaiting_worker translation-worker "$B/worker-payload.json" "$B/candidate.json"
 }
 
+# Resume-safe continuation after a valid worker candidate. A crash can happen
+# between `candidate_valid` and `deterministic_valid`; that state is not a
+# failure and must continue the same batch instead of falling into the generic
+# blocked branch.
+candidate_to_qa() {
+    local model_rows="$B/rows.json" validate="" validate_file=""
+    test -s "$B/to-translate.json" && test "$(row_count "$B/to-translate.json")" -gt 0 && model_rows="$B/to-translate.json"
+    if [ -s "$B/twins.json" ] && [ -s "$B/memory-candidate.json" ]; then
+        "$SCRIPT_DIR/cli/prepare/memory-expand.sh" "$B/candidate.json" "$B/twins.json" "$B/memory-candidate.json" > "$B/full.json" 2>/dev/null
+    else cp "$B/candidate.json" "$B/full.json"; fi
+    "$SCRIPT_DIR/cli/quality/normalize-candidate.sh" "$B/full.json" > "$B/clean.json" 2>/dev/null
+    "$SCRIPT_DIR/cli/quality/build-items.sh" "$B/rows.json" "$B/clean.json" "$B/items.json" "" --require-all >/dev/null
+    "$SCRIPT_DIR/cli/quality/check-russianisms.sh" "$B/clean.json" "$B/rows.json" >/dev/null 2>&1 || true
+    if [ "${BDO_PIPELINE_OFFLINE:-0}" != 1 ]; then validate="$($SCRIPT_DIR/cli/api/validate.sh "$B/items.json" 2>&1 || true)"; fi
+    validate_file="$(printf '%s\n' "$validate" | grep -oE '/[^ ]*/output/validate_[0-9_]+\.json' | tail -1 || true)"
+    test -f "$validate_file" && printf '%s\n' "$validate_file" > "$B/validate-path" || true
+    complete deterministic "$B/clean.json"; transition deterministic_valid
+    "$SCRIPT_DIR/cli/prepare/build-schema.sh" --qa "$B/rows.json" >/dev/null
+    "$SCRIPT_DIR/cli/prepare/qa-payload.sh" "$B/rows.json" "$B/clean.json" > "$B/qa-payload.json"
+    transition awaiting_qa; child awaiting_qa translation-qa "$B/qa-payload.json" "$B/verdicts.json"
+}
+
 # Застарілий envelope не має пережити цей виклик: він потрібен лише між
 # емісією child і native Task, а кожна емісія пише свій.
 acquire_driver_lock || exit 75
@@ -232,16 +264,14 @@ awaiting_worker)
         exit 0
     fi
     complete worker "$B/candidate.json"; transition candidate_valid
-    if [ -s "$B/twins.json" ] && [ -s "$B/memory-candidate.json" ]; then
-        "$SCRIPT_DIR/cli/prepare/memory-expand.sh" "$B/candidate.json" "$B/twins.json" "$B/memory-candidate.json" > "$B/full.json" 2>/dev/null
-    else cp "$B/candidate.json" "$B/full.json"; fi
-    "$SCRIPT_DIR/cli/quality/normalize-candidate.sh" "$B/full.json" > "$B/clean.json" 2>/dev/null
-    "$SCRIPT_DIR/cli/quality/build-items.sh" "$B/rows.json" "$B/clean.json" "$B/items.json" "" --require-all >/dev/null
-    "$SCRIPT_DIR/cli/quality/check-russianisms.sh" "$B/clean.json" "$B/rows.json" >/dev/null 2>&1 || true
-    validate=""; if [ "${BDO_PIPELINE_OFFLINE:-0}" != 1 ]; then validate="$($SCRIPT_DIR/cli/api/validate.sh "$B/items.json" 2>&1 || true)"; fi
-    validate_file="$(printf '%s\n' "$validate" | grep -oE '/[^ ]*/output/validate_[0-9_]+\.json' | tail -1 || true)"
-    test -f "$validate_file" && printf '%s\n' "$validate_file" > "$B/validate-path" || true
-    complete deterministic "$B/clean.json"; transition deterministic_valid
+    candidate_to_qa
+    ;;
+candidate_valid)
+    test -s "$B/candidate.json" || { emit 0 candidate_valid '{"kind":"blocked","reason":"candidate_missing"}'; exit 1; }
+    candidate_to_qa
+    ;;
+deterministic_valid)
+    test -s "$B/clean.json" || { emit 0 deterministic_valid '{"kind":"blocked","reason":"clean_candidate_missing"}'; exit 1; }
     "$SCRIPT_DIR/cli/prepare/build-schema.sh" --qa "$B/rows.json" >/dev/null
     "$SCRIPT_DIR/cli/prepare/qa-payload.sh" "$B/rows.json" "$B/clean.json" > "$B/qa-payload.json"
     transition awaiting_qa; child awaiting_qa translation-qa "$B/qa-payload.json" "$B/verdicts.json"

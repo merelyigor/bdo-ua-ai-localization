@@ -24,6 +24,12 @@ if [ -z "$DB" ]; then
     exit 1
 fi
 
+command -v sqlite3 >/dev/null || {
+    echo 'Потрібен sqlite3: саме ним читається база сесій OpenCode.' >&2
+    echo 'Доставити: ./bdo platform --fix' >&2
+    exit 1
+}
+
 STAMP="$(date +%Y%m%d_%H%M%S)"
 OUT_DIR="$SCRIPT_DIR/output/audit_${STAMP}"
 mkdir -p "$OUT_DIR"

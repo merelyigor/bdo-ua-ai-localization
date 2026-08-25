@@ -70,15 +70,35 @@ check_rules() {
     # промпта диригента при наступному переписуванні.
     grep -Fq 'ПЕРЕКЛАД РОБИТЬСЯ В OPENCODE' bdo \
         || fail 'у `bdo help flow` немає рядка «ПЕРЕКЛАД РОБИТЬСЯ В OPENCODE»'
-    local primary
+    # Джерело правди про діапазон · сам валідатор, а не друга копія числа тут.
+    local fetch_min fetch_max primary
+    fetch_min="$(sed -n 's/.*BATCH < \([0-9]\{1,3\}\).*/\1/p' cli/api/fetch-rows.sh | sed -n '1p')"
+    fetch_max="$(sed -n 's/.*BATCH > \([0-9]\{1,3\}\).*/\1/p' cli/api/fetch-rows.sh | sed -n '1p')"
+    test -n "$fetch_min" && test -n "$fetch_max" \
+        || fail 'не вдалося прочитати діапазон розміру пачки з cli/api/fetch-rows.sh'
     for primary in патч ручний пропозиції покращення; do
         test -f ".opencode/agents/$primary.md" || fail "немає primary-режиму $primary"
-        grep -Fq 'Виконай `./bdo platform && ./bdo env` до будь-якого іншого `./bdo`.' ".opencode/agents/$primary.md" \
-            || fail "$primary не має обовʼязкового platform/env preflight"
+        grep -Fq 'Виконай `./bdo platform` до будь-якого іншого `./bdo`' ".opencode/agents/$primary.md" \
+            || fail "$primary не має обовʼязкового platform preflight"
+        grep -Fq 'Виконай `./bdo env`.' ".opencode/agents/$primary.md" \
+            || fail "$primary не має обовʼязкового env preflight"
+        # Власний префікс запуску ламає WSL-міст: перехід у WSL робить guard.
+        grep -Fq 'Ніколи не дописуй' ".opencode/agents/$primary.md" \
+            || fail "$primary не забороняє власний wsl/bash/cd префікс перед ./bdo"
         grep -Fq 'Перед кожним `mode start` повтори `./bdo env`.' ".opencode/agents/$primary.md" \
             || fail "$primary не оновлює ціль перед mode start"
         grep -Fq './bdo run drive' ".opencode/agents/$primary.md" \
             || fail "$primary не використовує run drive"
+        # Розмір пачки в промпті vs діапазон, який реально приймає fetch.
+        #
+        # 2026-08-25 промпти лишились на `15` після того, як `fetch-rows.sh`
+        # звузився до 20-100. Кожна НОВА пачка вмирала, і мовчки. Розбіжність
+        # між промптом і валідатором має падати тут, а не на живому прогоні.
+        local prompt_size
+        prompt_size="$(sed -n 's/.*`\.\/bdo mode start [a-z]* \([0-9]\{1,3\}\) TARGET`.*/\1/p' ".opencode/agents/$primary.md" | sed -n '1p')"
+        test -n "$prompt_size" || fail "$primary не називає розміру пачки в mode start"
+        test "$prompt_size" -ge "$fetch_min" && test "$prompt_size" -le "$fetch_max" \
+            || fail "$primary радить пачку $prompt_size поза діапазоном fetch $fetch_min-$fetch_max"
         grep -Fq 'Власник змінює лише `.env`; CLI виконуй сам' ".opencode/agents/$primary.md" \
             || fail "$primary не містить UX-контракт власника"
         grep -Fq 'СПОЧАТКУ ВИЗНАЧ ТИП ЗАПИТУ' ".opencode/agents/$primary.md" \
@@ -382,6 +402,7 @@ check_shell() {
     run bash tests/run-target-env.sh
     run bash tests/http-retry.sh
     run bash tests/rotation.sh
+    run bash tests/no-silent-failures.sh
 }
 
 check_agents() {

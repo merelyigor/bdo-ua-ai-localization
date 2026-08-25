@@ -125,9 +125,10 @@ export function shellBridge(directory: string, platform: string): string {
 
 const ABORT_AFTER_VIOLATIONS = 3
 const ALLOWED_HINT = [
-  "прогін: ./bdo env | ./bdo smoke | ./bdo mode status <mode> [patch]",
-  "./bdo mode start <mode> [N] [patch] | ./bdo run drive",
-  "фінальна перевірка: ./bdo gate full && ./bdo api",
+  "середовище: ./bdo platform [--fix] | ./bdo env | ./bdo gate preflight",
+  "прогін: ./bdo smoke | ./bdo mode status <mode> [patch]",
+  "./bdo mode start <mode> [N] [patch] | ./bdo run drive | ./bdo run show",
+  "перевірка: ./bdo gate preflight|docs|shell|agents|runtime|api|full && ./bdo api",
   "довідка (тільки читання): ./bdo patches [N|all] [machine|manual|both] [--full]",
   "./bdo patch [N] | ./bdo profile status",
   "./bdo audit | ./bdo incidents [--list] | ./bdo judge [--list] | ./bdo moderation [--limit N]",

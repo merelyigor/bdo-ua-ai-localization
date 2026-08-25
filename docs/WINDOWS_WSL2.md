@@ -1,7 +1,7 @@
 # Windows через WSL2
 
-Toolkit на Windows виконується ТІЛЬКИ всередині WSL2: `./bdo`, PHP, `jq` і
-`sqlite3` живуть у Linux. Native PowerShell, Git Bash і PHP, встановлений через
+Toolkit на Windows виконується ТІЛЬКИ всередині WSL2: `./bdo`, PHP і `jq`
+живуть у Linux. Native PowerShell, Git Bash і PHP, встановлений через
 `winget`, не є runtime цього набору.
 
 Сам OpenCode при цьому може стояти двома способами, і обидва підтримані:
@@ -30,12 +30,17 @@ wsl --install -d Ubuntu-24.04
 
 ```bash
 sudo apt update
-sudo apt install -y git php-cli jq curl sqlite3 shellcheck
+sudo apt install -y git php-cli jq curl
 php -v
 ```
 
-`sqlite3` тут не зайвий: ним `./bdo audit` читає базу сесій OpenCode, а аудит є
-єдиним джерелом правди про роботу субагентів.
+Це весь обовʼязковий набір. Далі все робить сам агент: `./bdo platform` друкує,
+чого бракує, а `./bdo platform --fix` доставляє це через apt без участі власника
+(якщо `sudo` попросить пароль, агент віддасть один рядок для вставки).
+
+Необовʼязкові: `sqlite3` (лише для `./bdo audit` і `audit-dump`) і `shellcheck`
+(лише для `./bdo gate shell`). Без них прогін працює, і preflight дає WARN, а не
+помилку.
 
 Потрібен PHP 8.3+. Репозиторій клонуйте в Linux filesystem, не в `/mnt/c`:
 
@@ -84,7 +89,7 @@ Windows, PowerShell або пропонує `winget install PHP`, відкрит
 
 Що потрібно один раз:
 
-1. WSL2 з розділу 1 з усіма залежностями, зокрема `sqlite3`.
+1. WSL2 з розділу 1 з обовʼязковими залежностями.
 2. У локальному `.env` вказати домівку Windows-користувача, щоб аудит бачив базу
    OpenCode по інший бік межі:
 
@@ -120,8 +125,9 @@ curl -fsS http://127.0.0.1:11434/v1/models | jq '.data[].id'
 Можна також задати профіль child-моделей у локальному `.env` через
 `TRANSLATE_MODEL_PROFILE=local-fast`, `local-quality`, `session-free` або
 `session-go`. Профіль Go потребує платної підписки OpenCode Go і дозволяє
-`opencode-go/ox-alpha-free`, `opencode-go/mimo-v2.5` та
-`opencode-go/mimo-v2.5-pro`; для нього в `.env` потрібен `COST=paid`. Команда
+`opencode-go/ox-alpha-free`, `opencode-go/mimo-v2.5`,
+`opencode-go/mimo-v2.5-pro`, `opencode-go/muse-spark-1.2-contributor` та
+`opencode-go/hy3`; для нього в `.env` потрібен `COST=paid`. Команда
 `./bdo env` синхронізує його перед наступною child-сесією.
 Конкретну модель активного профілю можна вказати через
 `TRANSLATE_MODEL=provider/model-id`; порожнє значення використовує штатний

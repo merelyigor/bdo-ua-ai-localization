@@ -140,69 +140,95 @@
                 "translation-terminology": [
                     "opencode-go/ox-alpha-free",
                     "opencode-go/mimo-v2.5",
-                    "opencode-go/mimo-v2.5-pro"
+                    "opencode-go/mimo-v2.5-pro",
+                    "opencode-go/muse-spark-1.2-contributor",
+                    "opencode-go/hy3"
                 ],
                 "translation-worker": [
                     "opencode-go/ox-alpha-free",
                     "opencode-go/mimo-v2.5",
-                    "opencode-go/mimo-v2.5-pro"
+                    "opencode-go/mimo-v2.5-pro",
+                    "opencode-go/muse-spark-1.2-contributor",
+                    "opencode-go/hy3"
                 ],
                 "translation-qa": [
                     "opencode-go/ox-alpha-free",
                     "opencode-go/mimo-v2.5",
-                    "opencode-go/mimo-v2.5-pro"
+                    "opencode-go/mimo-v2.5-pro",
+                    "opencode-go/muse-spark-1.2-contributor",
+                    "opencode-go/hy3"
                 ],
                 "translation-repair": [
                     "opencode-go/ox-alpha-free",
                     "opencode-go/mimo-v2.5",
-                    "opencode-go/mimo-v2.5-pro"
+                    "opencode-go/mimo-v2.5-pro",
+                    "opencode-go/muse-spark-1.2-contributor",
+                    "opencode-go/hy3"
                 ],
                 "translation-smoke": [
                     "opencode-go/ox-alpha-free",
                     "opencode-go/mimo-v2.5",
-                    "opencode-go/mimo-v2.5-pro"
+                    "opencode-go/mimo-v2.5-pro",
+                    "opencode-go/muse-spark-1.2-contributor",
+                    "opencode-go/hy3"
                 ],
                 "translation-judge": [
                     "opencode-go/ox-alpha-free",
                     "opencode-go/mimo-v2.5",
-                    "opencode-go/mimo-v2.5-pro"
+                    "opencode-go/mimo-v2.5-pro",
+                    "opencode-go/muse-spark-1.2-contributor",
+                    "opencode-go/hy3"
                 ]
             },
             "paid_routes": [
                 "opencode-go/ox-alpha-free",
                 "opencode-go/mimo-v2.5",
-                "opencode-go/mimo-v2.5-pro"
+                "opencode-go/mimo-v2.5-pro",
+                "opencode-go/muse-spark-1.2-contributor",
+                "opencode-go/hy3"
             ],
             "default_routes": {
                 "translation-terminology": [
                     "opencode-go/ox-alpha-free",
                     "opencode-go/mimo-v2.5",
-                    "opencode-go/mimo-v2.5-pro"
+                    "opencode-go/mimo-v2.5-pro",
+                    "opencode-go/muse-spark-1.2-contributor",
+                    "opencode-go/hy3"
                 ],
                 "translation-worker": [
                     "opencode-go/ox-alpha-free",
                     "opencode-go/mimo-v2.5",
-                    "opencode-go/mimo-v2.5-pro"
+                    "opencode-go/mimo-v2.5-pro",
+                    "opencode-go/muse-spark-1.2-contributor",
+                    "opencode-go/hy3"
                 ],
                 "translation-qa": [
                     "opencode-go/ox-alpha-free",
                     "opencode-go/mimo-v2.5",
-                    "opencode-go/mimo-v2.5-pro"
+                    "opencode-go/mimo-v2.5-pro",
+                    "opencode-go/muse-spark-1.2-contributor",
+                    "opencode-go/hy3"
                 ],
                 "translation-repair": [
                     "opencode-go/ox-alpha-free",
                     "opencode-go/mimo-v2.5",
-                    "opencode-go/mimo-v2.5-pro"
+                    "opencode-go/mimo-v2.5-pro",
+                    "opencode-go/muse-spark-1.2-contributor",
+                    "opencode-go/hy3"
                 ],
                 "translation-smoke": [
                     "opencode-go/ox-alpha-free",
                     "opencode-go/mimo-v2.5",
-                    "opencode-go/mimo-v2.5-pro"
+                    "opencode-go/mimo-v2.5-pro",
+                    "opencode-go/muse-spark-1.2-contributor",
+                    "opencode-go/hy3"
                 ],
                 "translation-judge": [
                     "opencode-go/ox-alpha-free",
                     "opencode-go/mimo-v2.5",
-                    "opencode-go/mimo-v2.5-pro"
+                    "opencode-go/mimo-v2.5-pro",
+                    "opencode-go/muse-spark-1.2-contributor",
+                    "opencode-go/hy3"
                 ]
             }
         },
