@@ -38,18 +38,19 @@ type CommandRegistry = { guard_patterns?: unknown }
 // Реєстр є єдиним джерелом allowlist. Помилка/відсутність реєстру блокує shell
 // повністю: краще зупинити прогін, ніж непомітно розширити доступ.
 function registryPatterns(directory: string): RegExp[] {
+  let registry: CommandRegistry
   try {
-    const registry = JSON.parse(
+    registry = JSON.parse(
       readFileSync(join(directory, "cli/command-registry.json"), "utf8"),
     ) as CommandRegistry
-    if (!Array.isArray(registry.guard_patterns) || !registry.guard_patterns.every((pattern) => typeof pattern === "string")) {
-      throw new Error("guard_patterns must be an array of strings")
-    }
-    return registry.guard_patterns.map((pattern) => new RegExp(pattern))
   } catch (cause) {
     const detail = cause instanceof Error ? cause.message : String(cause)
     throw new Error(`OPENCODE_COMMAND_REGISTRY_INVALID: ${detail}`)
   }
+  if (!Array.isArray(registry.guard_patterns) || !registry.guard_patterns.every((pattern) => typeof pattern === "string")) {
+    throw new Error("OPENCODE_COMMAND_REGISTRY_INVALID: guard_patterns must be an array of strings")
+  }
+  return registry.guard_patterns.map((pattern) => new RegExp(pattern))
 }
 const SAFE_TOOLS = new Set(["bash", "read", "task", "translation_result"])
 
