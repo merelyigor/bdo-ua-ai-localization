@@ -95,6 +95,15 @@ const refuse = async (before, input, args, what) => {
     "./bdo moderation --limit 100",
     "./bdo moderation --approve 265,266,267",
     "./bdo env && ./bdo patches",
+    // Read-only розбір збою: без цих команд диригент упирався у власника на
+    // кожному порожньому виводі, хоча жодна з них нічого не змінює.
+    "./bdo batch dir",
+    "./bdo batch check",
+    "./bdo schema show",
+    "./bdo show output/rows_20260825_051513.json",
+    "./bdo show output/rows_20260825_051513.json 20",
+    "./bdo memory find state/batches/x/rows.json",
+    "./bdo glossary gaps state/batches/x/rows.json",
   ]) {
     const output = { args: { command, workdir: "/stale/renamed-project" } }
     await before({ tool: "bash", sessionID: "ok", callID: "c" }, output)
@@ -102,6 +111,10 @@ const refuse = async (before, input, args, what) => {
   }
   await before({ tool: "task", sessionID: "ok", callID: "c" }, { args: { subagent_type: "translation-worker" } })
   await before({ tool: "read", sessionID: "ok", callID: "c" }, { args: { filePath: "state/payload.json" } })
+  // Читання-діагностика дозволена: вона не пише і не створює сесій.
+  for (const tool of ["glob", "grep", "list"]) {
+    await before({ tool, sessionID: "ok", callID: "c" }, { args: { pattern: "state/**" } })
+  }
   await before({ tool: "translation_result", sessionID: "ok", callID: "c" }, { args: { response_path: "smoke/response.json", content: "[]" } })
   if (aborted.length !== 0) throw new Error("guard aborted a legal session")
 }
@@ -200,6 +213,12 @@ const refuse = async (before, input, args, what) => {
     "./bdo moderation --approve 12,",
     "./bdo moderation --reject 12",
     "./bdo fetch 15",
+    "./bdo commit rows.json clean.json verdicts.json --write",
+    "./bdo write rows.json --channel machine",
+    "./bdo bench",
+    "./bdo show ../../etc/passwd",
+    "./bdo show state/../../etc/passwd",
+    "./bdo show /etc/passwd",
     "./bdo patches 0",
     "./bdo patches 5 machine --apply",
     "./bdo gate nonsense",
@@ -213,7 +232,7 @@ const refuse = async (before, input, args, what) => {
     // Кожне порушення в СВОЇЙ сесії: інакше спрацював би лічильник abort.
     await refuse(before, { tool: "bash", sessionID: `s-${command}`, callID: "c" }, { command }, `forbidden command: ${command}`)
   }
-  for (const tool of ["list_mcp_resources", "list_mcp_resource_templates", "serena_execute_shell_command", "webfetch", "write", "edit"]) {
+  for (const tool of ["list_mcp_resources", "list_mcp_resource_templates", "serena_execute_shell_command", "webfetch", "write", "edit", "patch"]) {
     await refuse(before, { tool, sessionID: `t-${tool}`, callID: "c" }, {}, `forbidden tool: ${tool}`)
   }
 }

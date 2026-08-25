@@ -8,6 +8,7 @@
 | Команда | Призначення |
 | --- | --- |
 | `./bdo env` | яка ціль стоїть у .env (PROD або DEV) |
+| `./bdo sync` | показати зміни .env і матеріалізувати generated runtime |
 | `./bdo runtime` | capability gate активної моделі перед першою пачкою |
 | `./bdo smoke` | envelope для OpenCode translation-smoke без API/PHP |
 | `./bdo platform` | macOS, Linux або Windows/WSL2 preflight |

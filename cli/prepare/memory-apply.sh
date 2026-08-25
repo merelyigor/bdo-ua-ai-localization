@@ -43,15 +43,33 @@ $forModel = [];
 
 foreach ($rows as $row) {
     $hash = $row->identityHash();
-    $best = $memory->best($hash);
-    if ($best !== null) {
-        $text = (string) $best["text"];
-        $defects = Defects::inTranslation($row, $text);
-        if ($defects === []) {
-            $ready[$hash] = ["text" => $text, "layer" => $best["layer"] ?? "?"];
+    $accepted = null;
+    $rejectionReasons = [];
+    foreach ($memory->variants($hash) as $variant) {
+        $text = (string) ($variant["text"] ?? "");
+        $layer = (string) ($variant["layer"] ?? "?");
+
+        // Machine memory, яка лише повторює оригінал, не доводить наявності
+        // перекладу. Її має свідомо підтвердити worker/QA/Judge. Manual лишається
+        // авторитетним, а non_translatable за контрактом може збігатися з source.
+        if ($layer === "machine" && ! $row->isNonTranslatable() && trim($text) === trim($row->sourceText())) {
+            $rejectionReasons[] = "source_equivalent_machine_memory";
             continue;
         }
-        $rejected[$hash] = $defects;
+
+        $defects = Defects::inTranslation($row, $text);
+        if ($defects === []) {
+            $accepted = ["text" => $text, "layer" => $layer];
+            break;
+        }
+        array_push($rejectionReasons, ...$defects);
+    }
+    if ($accepted !== null) {
+        $ready[$hash] = $accepted;
+        continue;
+    }
+    if ($rejectionReasons !== []) {
+        $rejected[$hash] = array_values(array_unique($rejectionReasons));
     }
     // Дублікати всередині пачки: той самий оригінал перекладаємо один раз.
     $sourceKey = hash("sha256", $row->sourceText());
@@ -75,7 +93,7 @@ $total = count($rows);
 printf("Рядків у пачці: %d (памʼять: шари %s)\n", $total, getenv("BDO_MEMORY_LAYERS") ?: "all");
 printf("  закрито памʼяттю:            %d\n", count($ready));
 printf("  дублі всередині пачки:       %d\n", count($twins));
-printf("  памʼять відхилено перевірками: %d\n", count($rejected));
+printf("  памʼять відхилено політикою/перевірками: %d\n", count($rejected));
 foreach ($rejected as $hash => $why) printf("    %s  %s\n", substr($hash, 0, 12), implode("; ", $why));
 printf("  лишається моделі:            %d\n", count($forModel));
 if ($forModel === []) {

@@ -9,6 +9,10 @@
           "яка ціль стоїть у .env (PROD або DEV)"
         ],
         [
+          "sync",
+          "показати зміни .env і матеріалізувати generated runtime"
+        ],
+        [
           "runtime",
           "capability gate активної моделі перед першою пачкою"
         ],
@@ -206,6 +210,13 @@
     "^\\.\\/bdo patch( (active|[0-9]{1,6}))?$",
     "^\\.\\/bdo patches( (all|[1-9][0-9]*))?( (machine|manual|both))?( --full)?$",
     "^\\.\\/bdo profile status$",
+    "^\\.\\/bdo batch (dir|check)$",
+    "^\\.\\/bdo show (?!.*\\.\\.)(output|state)/[A-Za-z0-9._/-]+( [1-9][0-9]{0,2})?$",
+    "^\\.\\/bdo context [0-9a-f]{64}$",
+    "^\\.\\/bdo schema show$",
+    "^\\.\\/bdo memory find (?!.*\\.\\.)(output|state)/[A-Za-z0-9._/-]+$",
+    "^\\.\\/bdo glossary gaps (?!.*\\.\\.)(output|state)/[A-Za-z0-9._/-]+$",
+    "^\\.\\/bdo subset (?!.*\\.\\.)(output|state)/[A-Za-z0-9._/-]+( (?!.*\\.\\.)(output|state)/[A-Za-z0-9._/-]+)*$",
     "^\\.\\/bdo (audit|audit-dump)$",
     "^\\.\\/bdo (incidents|judge)( --list)?$",
     "^\\.\\/bdo moderation( --limit [1-9][0-9]*)?$",
@@ -218,5 +229,20 @@
     "./bdo run drive",
     "./bdo gate full",
     "./bdo api"
-  ]
+  ],
+  "guard_denied": {
+    "fetch": "створює пачку повз mode start і ламає реєстр прогону",
+    "items": "проміжний крок пачки; його виконує run drive",
+    "normalize": "проміжний крок пачки; його виконує run drive",
+    "russianisms": "проміжний крок пачки; його виконує run drive",
+    "validate": "проміжний крок пачки; його виконує run drive",
+    "heal": "проміжний крок пачки; його виконує run drive",
+    "qa-fixes": "проміжний крок пачки; його виконує run drive",
+    "merge": "проміжний крок пачки; його виконує run drive",
+    "payload": "payload субагента готує лише run drive",
+    "commit": "запис у бойову базу йде лише через run drive",
+    "write": "прямий запис у канал повз перевірки пачки",
+    "bench": "витрачає токени моделі; запускає власник свідомо",
+    "sync": "матеріалізує runtime; виконується всередині ./bdo env"
+  }
 }

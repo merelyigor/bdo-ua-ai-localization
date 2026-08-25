@@ -163,7 +163,13 @@ done
 declare -A MAX_LINES=(
     [translation-smoke]=40 [translation-worker]=90 [translation-qa]=90
     [translation-repair]=80 [translation-terminology]=80 [translation-judge]=90
-    [патч]=120 [ручний]=120 [пропозиції]=120 [покращення]=120
+    # 2026-08-25: стеля primary піднята зі 120 до 135. Причина не в розростанні,
+    # а в новій відповідальності: диригент тепер сам діагностує середовище
+    # (`platform`/`--fix`), сам виходить із `no_current_batch` і `no_progress`, і
+    # має власний перелік read-only команд розбору. Двічі стискав текст перед
+    # підняттям; далі різати означало б викинути алгоритм, який і зробив агента
+    # самостійним.
+    [патч]=135 [ручний]=135 [пропозиції]=135 [покращення]=135
 )
 for agent in "${!MAX_LINES[@]}"; do
     lines="$(wc -l < "$ROOT/.opencode/agents/$agent.md" | tr -d ' ')"
@@ -231,11 +237,23 @@ for primary in патч ручний пропозиції покращення; 
         printf 'ERROR: %s must not use a wildcard tool deny; it hides native task\n' "$primary" >&2
         exit 1
     fi
-    for line in '  edit: false' '  write: false' '  patch: false' '  glob: false' \
-        '  grep: false' '  list: false' '  webfetch: false' '  websearch: false' \
+    # Перелік дзеркалить SAFE_TOOLS у execution-guard: тут лише те, що guard і так
+    # відхилив би. `glob`, `grep` і `list` свідомо ПІШЛИ звідси 2026-08-25 · це
+    # читання, воно не пише, не запускає процесів і не створює прихованих сесій,
+    # зате без нього диригент не міг самостійно розібрати власний збій.
+    for line in '  edit: false' '  write: false' '  patch: false' \
+        '  webfetch: false' '  websearch: false' \
         '  question: false' '  todowrite: false' '  todoread: false' '  skill: false'; do
         grep -Fqx "$line" "$ROOT/.opencode/agents/$primary.md" || {
             printf 'ERROR: %s frontmatter must deny the guard-forbidden tool (missing: %s)\n' "$primary" "$line" >&2
+            exit 1
+        }
+    done
+    # Read-only діагностика мусить лишатись увімкненою: без неї диригент знову
+    # впирається у власника на кожному порожньому виводі.
+    for line in '  glob: true' '  grep: true' '  list: true'; do
+        grep -Fqx "$line" "$ROOT/.opencode/agents/$primary.md" || {
+            printf 'ERROR: %s frontmatter must keep read-only diagnostics on (missing: %s)\n' "$primary" "$line" >&2
             exit 1
         }
     done

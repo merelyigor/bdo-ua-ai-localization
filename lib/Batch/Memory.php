@@ -67,9 +67,20 @@ final class Memory
     /** Найкращий варіант для рядка або null. Порядок уже задано сервером. */
     public function best(string $identityHash): ?array
     {
-        $variants = $this->byHash[$identityHash]['variants'] ?? [];
+        $variants = $this->variants($identityHash);
 
         return $variants === [] ? null : $variants[0];
+    }
+
+    /** @return list<array<string,mixed>> Варіанти у пріоритетному порядку сервера. */
+    public function variants(string $identityHash): array
+    {
+        $variants = $this->byHash[$identityHash]['variants'] ?? [];
+        if (! is_array($variants)) {
+            return [];
+        }
+
+        return array_values(array_filter($variants, 'is_array'));
     }
 
     public function has(string $identityHash): bool

@@ -52,7 +52,16 @@ function registryPatterns(directory: string): RegExp[] {
   }
   return registry.guard_patterns.map((pattern) => new RegExp(pattern))
 }
-const SAFE_TOOLS = new Set(["bash", "read", "task", "translation_result"])
+// `glob`, `grep` і `list` є ЧИТАННЯМ, і саме тому вони тут.
+//
+// Guard існує проти прихованих агентів і shell-обходів. Пошук файла ні того, ні
+// іншого не дає: він нічого не запускає, нічого не пише і не створює сесій. Без
+// них диригент не міг навіть подивитись, чи існує тека пачки, і на кожній
+// дрібниці впирався у власника · при тому, що `read` йому вже дозволений, тобто
+// заборона обмежувала не доступ, а здатність його СПРЯМУВАТИ. Небезпечні
+// лишаються поза списком: `edit`, `write`, `patch`, `webfetch`, `websearch`,
+// будь-який MCP і будь-який спосіб запустити процес поза `./bdo`.
+const SAFE_TOOLS = new Set(["bash", "read", "glob", "grep", "list", "task", "translation_result"])
 
 // Послідовність дозволених команд через `&&` приймається як одна.
 //

@@ -121,6 +121,7 @@ try {
     ]]], JSON_THROW_ON_ERROR));
     $all = Memory::fromFile($memoryFile, 'all');
     expect($all->best($identity)['text'] === 'машинний', 'layers=all must keep the server order');
+    expect(array_column($all->variants($identity), 'text') === ['машинний', 'ручний'], 'memory variants lost the server order');
     expect($all->best(str_repeat('b', 64)) !== null, 'layers=all lost a machine-only entry');
     $manualOnly = Memory::fromFile($memoryFile, 'manual');
     expect($manualOnly->best($identity)['text'] === 'ручний', 'layers=manual must drop machine variants');

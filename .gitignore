@@ -26,6 +26,7 @@ node_modules/
 /.opencode/agents/translation-*.md
 /.opencode/runtime-model-state.json
 /.opencode/runtime-model-state.busy
+/.opencode/env-sync-state.json
 
 # macOS
 .DS_Store

@@ -107,6 +107,7 @@ case "$group" in
     # `sh_run` використовує exec для односкриптових команд, тому тут потрібні
     # два звичайні виклики: спочатку ціль/API, потім синхронізація child-моделі.
     env)      bash "$ROOT/cli/system/select-env.sh"; bash "$ROOT/cli/runtime/set-translation-profile.sh" env ;;
+    sync)     sh_run cli/runtime/env-sync.sh ;;
     platform) sh_run cli/system/check-platform.sh "${@:2}" ;;
     runtime)  sh_run cli/runtime/check-runtime.sh "${@:2}" ;;
     smoke)    sh_run cli/runtime/prepare-smoke.sh ;;

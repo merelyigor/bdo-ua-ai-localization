@@ -122,9 +122,14 @@
   називає його проблемою без фактичного `next.kind=blocked` від `run drive`.
 - Plugin `client.session.create`, `session.prompt*`, shell/model runner і прямий
   fallback в Ollama заборонені.
-- `translation-execution-guard` runtime пропускає лише `bash`, `read`, `task`,
-  `translation_result`; усі MCP/discovery tools
-  відхиляються runtime. Bash приймає тільки фіксовані `./bdo` команди з
+- `translation-execution-guard` runtime пропускає лише `bash`, `read`, `glob`,
+  `grep`, `list`, `task`, `translation_result`; усі MCP/discovery tools
+  відхиляються runtime. Три інструменти пошуку є ЧИТАННЯМ: вони нічого не пишуть
+  і не створюють сесій, зате без них диригент не міг розібрати власний збій.
+  `edit`, `write`, `patch`, `webfetch`, `websearch` лишаються забороненими.
+  Реєстр мусить мати РІШЕННЯ для кожної команди дерева: патерн у
+  `guard_patterns` або запис у `guard_denied` з письмовою причиною; команда без
+  рішення валить `tests/command-registry.sh`. Bash приймає тільки фіксовані `./bdo` команди з
   переліку · одну або кілька через `&&`; pipes, `;`, redirection і substitutions
   заборонені. Перелік має дві частини: команди прогону (`env`, `smoke`,
   `mode status|start`, `run drive`) і довідкові ТІЛЬКИ ДЛЯ ЧИТАННЯ (`patches`,

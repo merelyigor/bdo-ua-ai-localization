@@ -61,3 +61,40 @@ grep -Fq 'cli/command-registry.json' docs/FLOW_STATE.md \
     || fail 'docs/FLOW_STATE.md не посилається на canonical registry'
 
 printf 'command registry: dispatcher, help, help flow і docs узгоджені\n'
+
+# Кожна коренева команда мусить бути СВІДОМО дозволена або СВІДОМО заборонена.
+#
+# Це і є ліки від класу, який 2026-08-25 з'їв цілу сесію: `./bdo gate preflight`
+# був у документації як перший крок, але не в allowlist, тому guard відхиляв
+# команду з власного нормативу проєкту. Enumerate-allowlist мовчки відстає від
+# дерева команд. Тепер відставання неможливе: нова команда без рішення валить
+# gate, а рішення «заборонено» вимагає письмової причини.
+php -r '
+$r = json_decode(file_get_contents($argv[1]), true, 512, JSON_THROW_ON_ERROR);
+$patterns = $r["guard_patterns"] ?? [];
+$denied = $r["guard_denied"] ?? [];
+if (!is_array($denied)) throw new RuntimeException("guard_denied має бути обʼєктом команда -> причина");
+$missing = [];
+foreach ($r["sections"] ?? [] as $section) foreach ($section["entries"] ?? [] as $entry) {
+    $name = preg_split("/\s|\|/", (string) $entry[0], 2)[0];
+    if ($name === "") continue;
+    if (array_key_exists($name, $denied)) {
+        if (trim((string) $denied[$name]) === "") throw new RuntimeException("guard_denied[$name] без причини");
+        continue;
+    }
+    $allowed = false;
+    foreach ($patterns as $pattern) {
+        if (preg_match("#" . str_replace("#", "\\#", $pattern) . "#", "./bdo " . $name)
+            || str_contains($pattern, "bdo " . $name . " ")
+            || str_contains($pattern, "bdo " . $name . "$")
+            || str_contains($pattern, "|" . $name . ")")
+            || str_contains($pattern, "(" . $name . "|")) { $allowed = true; break; }
+    }
+    if (!$allowed) $missing[] = $name;
+}
+if ($missing !== []) {
+    throw new RuntimeException("команди без рішення guard (додай у guard_patterns або guard_denied з причиною): " . implode(", ", $missing));
+}
+' "$registry" || fail 'є команди, які guard ані не дозволяє, ані свідомо не забороняє'
+
+echo 'command guard coverage: кожна команда має рішення allow або deny'
