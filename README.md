@@ -66,7 +66,7 @@ ignored runtime-policy, `opencode.json` і шість child-frontmatter відп
 `paid`; прихований платний fallback policy не пропускає. Після зміни профілю
 перезапустіть OpenCode і попросіть: `Запусти smoke та покажи фактичний
 provider/model`. Зручний варіант для власника — задати в локальному `.env`
-`TRANSLATE_MODEL_PROFILE=session-free|local-fast|local-quality`: кожен виклик
+`TRANSLATE_MODEL_PROFILE=session-free|session-go|local-fast|local-quality`: кожен виклик
 `./bdo env` матеріалізує цей профіль у локальний child-конфіг, а основну модель не змінює.
 За потреби конкретну модель активного профілю можна зафіксувати через
 `TRANSLATE_MODEL=provider/model-id`; порожнє значення повертає штатну модель
@@ -74,6 +74,17 @@ provider/model`. Зручний варіант для власника — за�
 залиште `free`. Профіль має дозволити платні маршрути.
 При зафіксованому `TRANSLATE_MODEL` будь-який child із іншою моделлю блокується
 routing guard до початку генерації.
+
+### OpenCode Go для child-агентів
+
+Профіль `session-go` призначений для платної підписки OpenCode Go. Типовий
+маршрут — `opencode-go/ox-alpha-free` (Ox Alpha Free); також дозволені
+`opencode-go/mimo-v2.5` (MiMo V2.5) і `opencode-go/mimo-v2.5-pro` (MiMo V2.5
+Pro). У конфігурації це `TRANSLATE_MODEL_COST=paid`: це позначає платний
+доступ/підписку і явний дозвіл, а не твердження про окрему оплату кожного
+токена. OpenCode Go має бути підключений через `/connect`; актуальність назв
+перевіряється через `/models`. Тихого fallback немає: невідповідний маршрут
+guard блокує до генерації.
 Primary виконає `./bdo smoke`; цей smoke не запускає patch, не
 звертається до API і не потребує PHP для підготовки envelope. Для Ollama повний
 capability test виконує `./bdo runtime`; зовнішні credentials навмисно не

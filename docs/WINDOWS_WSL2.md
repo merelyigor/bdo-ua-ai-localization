@@ -68,7 +68,10 @@ curl -fsS http://127.0.0.1:11434/v1/models | jq '.data[].id'
 Якщо в списку є лише `qwen3.5:9b`, не завантажуйте 35B заради перевірки:
 
 Можна також задати профіль child-моделей у локальному `.env` через
-`TRANSLATE_MODEL_PROFILE=local-fast`, `local-quality` або `session-free`. Команда
+`TRANSLATE_MODEL_PROFILE=local-fast`, `local-quality`, `session-free` або
+`session-go`. Профіль Go потребує платної підписки OpenCode Go і дозволяє
+`opencode-go/ox-alpha-free`, `opencode-go/mimo-v2.5` та
+`opencode-go/mimo-v2.5-pro`; для нього в `.env` потрібен `COST=paid`. Команда
 `./bdo env` синхронізує його перед наступною child-сесією.
 Конкретну модель активного профілю можна вказати через
 `TRANSLATE_MODEL=provider/model-id`; порожнє значення використовує штатний

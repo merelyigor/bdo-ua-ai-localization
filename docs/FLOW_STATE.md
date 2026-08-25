@@ -9,6 +9,12 @@
 status/start`, `./bdo run drive`, аудит і перед завершенням
 `./bdo gate full && ./bdo api`. Історичні записи нижче зберігають свій контекст.
 
+Профіль `session-go` є окремим явним профілем платної підписки OpenCode Go для
+child-агентів. Він дозволяє `opencode-go/ox-alpha-free`, `opencode-go/mimo-v2.5`
+та `opencode-go/mimo-v2.5-pro`; для нього в локальному `.env` потрібен
+`TRANSLATE_MODEL_COST=paid`. Це не означає окрему оплату кожного токена, але
+підписка Go потрібна, а тихого fallback на інший provider/model немає.
+
 ## 2026-08-24 · GPT-5.6 Luna як модель субагентів
 
 Додано профіль `session-luna`: усі шість child-ролей ідуть на

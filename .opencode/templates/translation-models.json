@@ -134,6 +134,78 @@
                 ]
             }
         },
+        "session-go": {
+            "allow_paid": true,
+            "routes": {
+                "translation-terminology": [
+                    "opencode-go/ox-alpha-free",
+                    "opencode-go/mimo-v2.5",
+                    "opencode-go/mimo-v2.5-pro"
+                ],
+                "translation-worker": [
+                    "opencode-go/ox-alpha-free",
+                    "opencode-go/mimo-v2.5",
+                    "opencode-go/mimo-v2.5-pro"
+                ],
+                "translation-qa": [
+                    "opencode-go/ox-alpha-free",
+                    "opencode-go/mimo-v2.5",
+                    "opencode-go/mimo-v2.5-pro"
+                ],
+                "translation-repair": [
+                    "opencode-go/ox-alpha-free",
+                    "opencode-go/mimo-v2.5",
+                    "opencode-go/mimo-v2.5-pro"
+                ],
+                "translation-smoke": [
+                    "opencode-go/ox-alpha-free",
+                    "opencode-go/mimo-v2.5",
+                    "opencode-go/mimo-v2.5-pro"
+                ],
+                "translation-judge": [
+                    "opencode-go/ox-alpha-free",
+                    "opencode-go/mimo-v2.5",
+                    "opencode-go/mimo-v2.5-pro"
+                ]
+            },
+            "paid_routes": [
+                "opencode-go/ox-alpha-free",
+                "opencode-go/mimo-v2.5",
+                "opencode-go/mimo-v2.5-pro"
+            ],
+            "default_routes": {
+                "translation-terminology": [
+                    "opencode-go/ox-alpha-free",
+                    "opencode-go/mimo-v2.5",
+                    "opencode-go/mimo-v2.5-pro"
+                ],
+                "translation-worker": [
+                    "opencode-go/ox-alpha-free",
+                    "opencode-go/mimo-v2.5",
+                    "opencode-go/mimo-v2.5-pro"
+                ],
+                "translation-qa": [
+                    "opencode-go/ox-alpha-free",
+                    "opencode-go/mimo-v2.5",
+                    "opencode-go/mimo-v2.5-pro"
+                ],
+                "translation-repair": [
+                    "opencode-go/ox-alpha-free",
+                    "opencode-go/mimo-v2.5",
+                    "opencode-go/mimo-v2.5-pro"
+                ],
+                "translation-smoke": [
+                    "opencode-go/ox-alpha-free",
+                    "opencode-go/mimo-v2.5",
+                    "opencode-go/mimo-v2.5-pro"
+                ],
+                "translation-judge": [
+                    "opencode-go/ox-alpha-free",
+                    "opencode-go/mimo-v2.5",
+                    "opencode-go/mimo-v2.5-pro"
+                ]
+            }
+        },
         "session-luna": {
             "allow_paid": true,
             "routes": {
