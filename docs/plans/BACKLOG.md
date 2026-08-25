@@ -30,6 +30,7 @@
 
 | Статус | Задача | Де деталі |
 |---|---|---|
+| `чекає` | Справжня кросплатформенність: канонічний вхід `php bdo.php` замість bash-скрипта, щоб toolkit працював на macOS, Linux і native Windows 10/11 без WSL2. Заміряно 2026-08-25: 44 з 49 `cli/**/*.sh` уже делегують у PHP, тож bash є плумбінгом. Блокер: спершу probe на Windows (етап 1), бо симптом «команди без output» однаково пояснюється і відсутністю bash, і непрацездатним shell-tool в OpenCode. | [backlog/2026-08-25_NATIVE_CROSS_PLATFORM_PHP_ENTRYPOINT.md](backlog/2026-08-25_NATIVE_CROSS_PLATFORM_PHP_ENTRYPOINT.md) |
 | `готово` | Windows/WSL2 та provider-neutral маршрути субагентів: policy за ролями, явна вартість, fallback і фактичний route у receipt. | [done/2026-08-22_WSL2_AND_MODEL_ROUTING.md](done/2026-08-22_WSL2_AND_MODEL_ROUTING.md) |
 | `готово` | Автономна система OpenCode має чотири українські primary-режими, справжні дочірні worker/QA/repair сесії, відновлювану машину станів, retry та idempotent API write. PROD acceptance записав 1/1 рядок у `machine` і завершив manifest як `verified`. | [done/2026-08-22_UNATTENDED_OPENCODE_TRANSLATION_SYSTEM.md](done/2026-08-22_UNATTENDED_OPENCODE_TRANSLATION_SYSTEM.md) |
 | `готово` | Порядок пачки й відновлення живуть у `./bdo run drive`; root має 0 `*.sh`, реалізацію розкладено в 10 категорій `cli/**`. | [done/2026-08-21_PIPELINE_ENGINE_AND_REPO_STRUCTURE.md](done/2026-08-21_PIPELINE_ENGINE_AND_REPO_STRUCTURE.md) |

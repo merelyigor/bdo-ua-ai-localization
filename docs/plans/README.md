@@ -50,6 +50,7 @@
 
 | План | Створено | Відомі зовнішні gates |
 |---|---|---|
+| [2026-08-25_NATIVE_CROSS_PLATFORM_PHP_ENTRYPOINT.md](backlog/2026-08-25_NATIVE_CROSS_PLATFORM_PHP_ENTRYPOINT.md) · єдиний вхід `php bdo.php` для macOS, Linux і native Windows 10/11 | 2026-08-25 | Етапи 2-4 оплачуються лише після probe на етапі 1: треба довести, що native OpenCode на Windows взагалі виконує зовнішню команду. |
 | [2026-08-24_JUDGE_CALIBRATION_AND_MODEL_ANALYTICS.md](backlog/2026-08-24_JUDGE_CALIBRATION_AND_MODEL_ANALYTICS.md) · калібрування судді рішеннями людини, аналітика дефектів за моделями, борг `source_equivalent` | 2026-08-24 | J1 чекає на непорожню чергу модерації і на відповідь, чи віддає API вже вирішені пропозиції. J3 закрито з обох боків 2026-08-24, лишилась перевірка на живій пачці після деплою сервера. |
 | [2026-08-22_TRANSLATION_QUALITY_IMPROVEMENTS.md](backlog/2026-08-22_TRANSLATION_QUALITY_IMPROVEMENTS.md) · що дати моделі (`unresolved`, `examples`) і що прибрати (суперечність про `[Title]`, розмір пачки, ціна terminology) | 2026-08-22 | Q2 потребує терміна `Title` -> `Титул` у глосарії через адмінку (`manage_glossary`); агентське API термінів не створює. |
 
