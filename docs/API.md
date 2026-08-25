@@ -87,7 +87,7 @@ machine-перекладу, у патчі 5 · два, у патчі 3 · 442, �
 
 | Параметр | Навіщо |
 |---|---|
-| `limit` | розмір пачки; серверна стеля 50 |
+| `limit` | розмір логічної пачки 20–100; клієнт розбиває запит на сторінки до серверної стелі 50 |
 | `patch=active` | лише активний патч; замість `active` приймається числовий `snapshot_id` (`patch=3`), тому працювати можна з будь-яким, зокрема закритим патчем |
 | `missing=machine` | немає машинного перекладу |
 | `missing=manual` | немає ручного перекладу |
@@ -111,8 +111,8 @@ machine-перекладу, у патчі 5 · два, у патчі 3 · 442, �
 запису не перешкоджає. Щоб узяти саме такі рядки, задайте `missing=` явно й не
 додавайте прапорець.
 
-    ./bdo fetch 15 "patch=active&missing=machine"                    # прогін у ШІ-шар
-    ./bdo fetch 15 "patch=active&missing=machine&exclude_proposed=1" # коли пишемо пропозиції
+    ./bdo fetch 50 "patch=active&missing=machine"                    # прогін у ШІ-шар
+    ./bdo fetch 50 "patch=active&missing=machine&exclude_proposed=1" # коли пишемо пропозиції
 
 ### `GET /rows/{identity_hash}/context`
 

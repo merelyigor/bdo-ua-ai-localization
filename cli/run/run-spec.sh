@@ -29,7 +29,7 @@ case "$ACTION" in
         ;;
     plan)
         PARENT="${3:?plan потребує OpenCode parent session ID}"
-        SIZE="${4:-15}"
+        SIZE="${4:-50}"
         php -r '
         require $argv[1];
         use Bdo\Translate\Pipeline\RunSpec;

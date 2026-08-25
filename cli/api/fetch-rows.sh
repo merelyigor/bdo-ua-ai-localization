@@ -6,9 +6,9 @@
 #
 # Приклади:
 #   ./fetch-rows.sh 20                                         # 20 неперекладених
-#   ./fetch-rows.sh 10 "domain=item&semantic_type=name"        # 10 назв предметів
-#   ./fetch-rows.sh 15 "patch=active&diff=added"               # 15 нових з патча
-#   ./fetch-rows.sh 10 "state=stale"                           # 10 застарілих
+#   ./fetch-rows.sh 20 "domain=item&semantic_type=name"        # 20 назв предметів
+#   ./fetch-rows.sh 20 "patch=active&diff=added"               # 20 нових з патча
+#   ./fetch-rows.sh 20 "state=stale"                           # 20 застарілих
 #
 # Вихід: ./output/rows_YYYYMMDD_HHMMSS.json
 set -euo pipefail
@@ -16,16 +16,21 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")/../.." && pwd)"
 source "$SCRIPT_DIR/cli/system/select-env.sh"
 
-BATCH="${1:-20}"
+BATCH="${1:-50}"
 EXTRA="${2:-}"
 API="${BDO_API_BASE:?}"
 KEY="${BDO_API_KEY:?}"
+
+if ! [[ "$BATCH" =~ ^[0-9]+$ ]] || (( BATCH < 20 || BATCH > 100 )); then
+    echo "Розмір логічної пачки має бути від 20 до 100." >&2
+    exit 2
+fi
 
 mkdir -p "$SCRIPT_DIR/output"
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
 OUT="$SCRIPT_DIR/output/rows_${TIMESTAMP}.json"
 
-URL="$API/rows?limit=${BATCH}&include_total=1&fields=classification,tokens,constraints,glossary,reference,patch"
+URL="$API/rows?limit=50&include_total=1&fields=classification,tokens,constraints,glossary,reference,patch"
 # Для переперекладу (exclude_proposed) потрібні поточні machine-переклади як
 # контекст для моделі: щоб не розтягувати скорочення, не портити вже добре.
 case "$EXTRA" in
@@ -49,7 +54,34 @@ case "$EXTRA" in
 esac
 
 echo "Завантажую $BATCH рядків..."
-"$SCRIPT_DIR/cli/api/http-request.sh" -fsS -H "X-API-Key: $KEY" "$URL" > "$OUT"
+TMP_DIR="$(mktemp -d "${TMPDIR:-/tmp}/bdo-fetch.XXXXXX")"
+trap 'rm -rf "$TMP_DIR"' EXIT
+cursor=""
+remaining="$BATCH"
+page=0
+while (( remaining > 0 )); do
+    page_limit=$(( remaining > 50 ? 50 : remaining ))
+    page_url="${URL/limit=50/limit=$page_limit}"
+    [ -n "$cursor" ] && page_url="${page_url}&cursor=${cursor}"
+    page_file="$TMP_DIR/page_${page}.json"
+    "$SCRIPT_DIR/cli/api/http-request.sh" -fsS -H "X-API-Key: $KEY" "$page_url" > "$page_file"
+    php -r '
+        $target = $argv[1];
+        $page = json_decode((string) file_get_contents($argv[2]), true, 512, JSON_THROW_ON_ERROR);
+        $aggregate = is_file($target) ? json_decode((string) file_get_contents($target), true, 512, JSON_THROW_ON_ERROR) : ["data" => ["rows" => []], "meta" => []];
+        $aggregate["data"]["rows"] = array_merge($aggregate["data"]["rows"] ?? [], $page["data"]["rows"] ?? []);
+        if (isset($page["meta"])) $aggregate["meta"] = $page["meta"];
+        file_put_contents($target, json_encode($aggregate, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR));
+        echo json_encode(["count" => count($page["data"]["rows"] ?? []), "has_more" => (bool) ($page["meta"]["has_more"] ?? false), "next_cursor" => $page["meta"]["next_cursor"] ?? null], JSON_UNESCAPED_UNICODE), "\n";
+    ' "$OUT" "$page_file" > "$TMP_DIR/page_${page}.meta"
+    got="$(php -r '$x=json_decode((string)file_get_contents($argv[1]),true); echo (int)($x["count"]??0);' "$TMP_DIR/page_${page}.meta")"
+    has_more="$(php -r '$x=json_decode((string)file_get_contents($argv[1]),true); echo !empty($x["has_more"]) ? "1" : "0";' "$TMP_DIR/page_${page}.meta")"
+    cursor="$(php -r '$x=json_decode((string)file_get_contents($argv[1]),true); echo $x["next_cursor"] ?? "";' "$TMP_DIR/page_${page}.meta")"
+    remaining=$(( remaining - got ))
+    (( got == 0 || has_more == 0 || remaining <= 0 )) && break
+    [[ -z "$cursor" ]] && break
+    page=$(( page + 1 ))
+done
 
 php -r '
 $d = json_decode(file_get_contents("'"$OUT"'"), true);

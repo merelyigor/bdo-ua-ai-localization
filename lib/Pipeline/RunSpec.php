@@ -39,7 +39,7 @@ final class RunSpec
     /** @param array<string,mixed> $data */
     private function __construct(private readonly array $data) {}
 
-    public static function create(string $mode, string $environment, string $parentSession, int $batchSize = 15): self
+    public static function create(string $mode, string $environment, string $parentSession, int $batchSize = 50): self
     {
         if (! isset(self::PRESETS[$mode])) {
             throw new InvalidArgumentException("Невідомий режим: $mode");
@@ -47,8 +47,8 @@ final class RunSpec
         if (! in_array($environment, ['PROD', 'DEV'], true)) {
             throw new InvalidArgumentException("Невідоме середовище: $environment");
         }
-        if ($batchSize < 1 || $batchSize > 50) {
-            throw new InvalidArgumentException('Розмір пачки має бути від 1 до 50.');
+        if ($batchSize < 20 || $batchSize > 100) {
+            throw new InvalidArgumentException('Розмір пачки має бути від 20 до 100.');
         }
         if ($parentSession === '') {
             throw new InvalidArgumentException('RunSpec потребує OpenCode parent session ID.');
