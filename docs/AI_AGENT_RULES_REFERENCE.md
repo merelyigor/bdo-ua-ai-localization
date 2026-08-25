@@ -186,6 +186,10 @@
   помилився або tool не повернув output, flow зупиняється з точним повідомленням:
   модель не вгадує shell, WSL, шлях, URL чи DEV/PROD. Єдина ціль · `BDO_ENV`,
   яку повідомив `./bdo env`.
+- §8.11 Execution guard фіксує fingerprint primary prompts і ключових `./bdo`
+  workflow-файлів під час старту OpenCode. Їхня зміна в живій сесії дає
+  `OPENCODE_RESTART_REQUIRED`; модель зупиняється, просить restart і не виконує
+  кешований flow. Поточна пачка при цьому не видаляється.
 
 ## §9 Документація і плани
 

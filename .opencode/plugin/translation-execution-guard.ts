@@ -1,5 +1,36 @@
 import type { Plugin } from "@opencode-ai/plugin"
+import { createHash } from "node:crypto"
+import { readFileSync } from "node:fs"
+import { join } from "node:path"
 import { readRuntimeModelState } from "../lib/runtime-model-state.ts"
+
+// OpenCode завантажує prompt і plugin один раз на старті. Після git pull стара
+// сесія інакше продовжує виконувати вже видалені команди/прапорці: саме так
+// primary просив `--end`, хоча run-start уже автоматично закривав terminal lock.
+const WORKFLOW_FILES = [
+  "bdo",
+  "cli/run/run-start.sh",
+  "cli/run/run-mode.sh",
+  ".opencode/plugin/translation-execution-guard.ts",
+  ".opencode/agents/патч.md",
+  ".opencode/agents/ручний.md",
+  ".opencode/agents/пропозиції.md",
+  ".opencode/agents/покращення.md",
+]
+
+function workflowFingerprint(directory: string): string {
+  const hash = createHash("sha256")
+  for (const relative of WORKFLOW_FILES) {
+    hash.update(relative).update("\0")
+    try {
+      hash.update(readFileSync(join(directory, relative)))
+    } catch {
+      hash.update("<missing>")
+    }
+    hash.update("\0")
+  }
+  return hash.digest("hex")
+}
 
 // Команди прогону: єдиний шлях, яким створюється робота й записуються дані.
 const SAFE_BDO_COMMANDS = [
@@ -69,6 +100,7 @@ const ALLOWED_HINT = [
 
 /** Закриває всі shell/API/CLI шляхи, якими можна створити невидимого агента. */
 export const TranslationExecutionGuard: Plugin = async ({ client, directory }) => {
+  const bootWorkflowFingerprint = workflowFingerprint(directory)
   let bootState: ReturnType<typeof readRuntimeModelState> | undefined
   let bootError: string | undefined
   try {
@@ -108,6 +140,12 @@ export const TranslationExecutionGuard: Plugin = async ({ client, directory }) =
         }
       }
       if (input.tool !== "bash") return
+      if (workflowFingerprint(directory) !== bootWorkflowFingerprint) {
+        throw new Error(
+          "OPENCODE_RESTART_REQUIRED: primary prompt або ./bdo workflow змінився після старту сесії. "
+          + "Перезапустіть OpenCode і повторіть запит; незавершену пачку збережено.",
+        )
+      }
       const command = typeof output.args?.command === "string" ? output.args.command.trim() : ""
       if (!allowedShell(command)) {
         await refuse(

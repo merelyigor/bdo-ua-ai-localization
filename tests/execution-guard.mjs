@@ -106,6 +106,24 @@ const refuse = async (before, input, args, what) => {
   await restarted.before({ tool: "task", sessionID: "restarted", callID: "c" }, { args: { subagent_type: "translation-worker" } })
 }
 
+// Prompt/CLI restart-gate: стара primary-сесія не має виконувати workflow після
+// git pull або генерації нових інструкцій.
+{
+  const { before, directory } = await makeGuard()
+  const output = { args: { command: "./bdo env" } }
+  await before({ tool: "bash", sessionID: "workflow-same", callID: "c" }, output)
+  mkdirSync(join(directory, ".opencode/agents"), { recursive: true })
+  writeFileSync(join(directory, ".opencode/agents/патч.md"), "changed prompt")
+  let restart = ""
+  await before(
+    { tool: "bash", sessionID: "workflow-changed", callID: "c" },
+    { args: { command: "./bdo env" } },
+  ).catch((error) => { restart = String(error) })
+  if (!restart.includes("OPENCODE_RESTART_REQUIRED") || !restart.includes("workflow змінився")) {
+    throw new Error(`changed primary workflow was not blocked clearly: ${restart}`)
+  }
+}
+
 // Відсутній fingerprint при boot · fail closed до створення child.
 {
   const { before } = await makeGuard(undefined, false)
