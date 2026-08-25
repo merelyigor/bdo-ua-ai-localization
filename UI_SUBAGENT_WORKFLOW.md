@@ -1,5 +1,12 @@
 # Флоу субагентів у UI
 
+## Канонічний реєстр команд
+
+Повне дерево команд, їх короткі описи, `help flow`-послідовність і shell
+allowlist зберігаються в `cli/command-registry.json`. `./bdo help`,
+execution guard і gate читають цей реєстр; нову dispatcher-команду без запису
+в ньому gate відхиляє.
+
 Мовна робота перекладу виконується лише у видимих child-сесіях OpenCode.
 Канонічні маршрути задані у tracked-шаблоні
 `.opencode/templates/translation-models.json`; дозволи OpenCode — у tracked

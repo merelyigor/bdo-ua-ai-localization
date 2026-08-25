@@ -11,6 +11,7 @@ const WORKFLOW_FILES = [
   "bdo",
   "cli/run/run-start.sh",
   "cli/run/run-mode.sh",
+  "cli/command-registry.json",
   ".opencode/plugin/translation-execution-guard.ts",
   ".opencode/agents/патч.md",
   ".opencode/agents/ручний.md",
@@ -32,47 +33,24 @@ function workflowFingerprint(directory: string): string {
   return hash.digest("hex")
 }
 
-// Команди прогону: єдиний шлях, яким створюється робота й записуються дані.
-const SAFE_BDO_COMMANDS = [
-  /^\.\/bdo env$/,
-  /^\.\/bdo smoke$/,
-  // Третій аргумент · патч (`active` або числовий snapshot_id): робота живе не
-  // лише в активному патчі, і без цього набір її просто не бачив.
-  /^\.\/bdo mode status (patch|manual|proposal|improve)( (active|[0-9]{1,6}))?$/,
-  /^\.\/bdo mode start (patch|manual|proposal|improve)( [1-9][0-9]*( (active|[0-9]{1,6}))?)?$/,
-  /^\.\/bdo run drive$/,
-  // Штатне завершення/прибирання. batch end лише знімає pointer, clean
-  // --apply прибирає тільки старі verified-пачки, а schema/incidents/judge
-  // архівують журнали; shell-доступ ці команди не відкривають.
-  /^\.\/bdo run end$/,
-  /^\.\/bdo batch end$/,
-  /^\.\/bdo schema clear$/,
-  /^\.\/bdo clean( --days [0-9]{1,3})?$/,
-  /^\.\/bdo clean( --days [0-9]{1,3})? --apply$/,
-  /^\.\/bdo incidents --clear$/,
-  /^\.\/bdo judge --clear$/,
-  // Primary завершує зміну повним локальним gate перед read-only API check.
-  /^\.\/bdo gate full$/,
-  // ДОВІДКОВІ, ТІЛЬКИ ЧИТАННЯ.
-  //
-  // Раніше їх не було, і диригент не міг відповісти навіть на «де є що
-  // перекладати»: питання впиралось у guard, хоча жодного запису в них немає.
-  // Обмеження існує проти прихованих агентів і shell-обходів, а не проти
-  // безпечного обслуговування. Небезпечні записи/API лишаються поза
-  // переліком (`profile use|set|paid`, `fetch`, `write`, `commit`, reject),
-  // а cleanup вище дозволений лише вузькими командами з власними safety-гейтами.
-  /^\.\/bdo$/,
-  /^\.\/bdo help( [a-z]+)?$/,
-  /^\.\/bdo (paths|platform|models|api|runtime)$/,
-  /^\.\/bdo patch( (active|[0-9]{1,6}))?$/,
-  /^\.\/bdo patches( (all|[1-9][0-9]*))?( (machine|manual|both))?( --full)?$/,
-  /^\.\/bdo profile status$/,
-  /^\.\/bdo (audit|audit-dump)$/,
-  /^\.\/bdo (incidents|judge)( --list)?$/,
-  /^\.\/bdo moderation( --limit [1-9][0-9]*)?$/,
-  /^\.\/bdo moderation --row [0-9a-f]{64}$/,
-  /^\.\/bdo moderation --approve [1-9][0-9]*(,[1-9][0-9]*)*$/,
-]
+type CommandRegistry = { guard_patterns?: unknown }
+
+// Реєстр є єдиним джерелом allowlist. Помилка/відсутність реєстру блокує shell
+// повністю: краще зупинити прогін, ніж непомітно розширити доступ.
+function registryPatterns(directory: string): RegExp[] {
+  try {
+    const registry = JSON.parse(
+      readFileSync(join(directory, "cli/command-registry.json"), "utf8"),
+    ) as CommandRegistry
+    if (!Array.isArray(registry.guard_patterns) || !registry.guard_patterns.every((pattern) => typeof pattern === "string")) {
+      throw new Error("guard_patterns must be an array of strings")
+    }
+    return registry.guard_patterns.map((pattern) => new RegExp(pattern))
+  } catch (cause) {
+    const detail = cause instanceof Error ? cause.message : String(cause)
+    throw new Error(`OPENCODE_COMMAND_REGISTRY_INVALID: ${detail}`)
+  }
+}
 const SAFE_TOOLS = new Set(["bash", "read", "task", "translation_result"])
 
 // Послідовність дозволених команд через `&&` приймається як одна.
@@ -84,9 +62,9 @@ const SAFE_TOOLS = new Set(["bash", "read", "task", "translation_result"])
 // звіряється з тим самим коротким переліком точних команд, а `&&` є єдиним
 // дозволеним розділювачем: pipes, `;`, підстановки й перенаправлення лишаються
 // поза законом, бо після розділення такий сегмент просто не збігається.
-function allowedShell(command: string): boolean {
+function allowedShell(command: string, patterns: RegExp[]): boolean {
   const parts = command.split("&&").map((part) => part.trim())
-  return parts.length > 0 && parts.every((part) => SAFE_BDO_COMMANDS.some((pattern) => pattern.test(part)))
+  return parts.length > 0 && parts.every((part) => patterns.some((pattern) => pattern.test(part)))
 }
 
 // Порушення більше не вбиває сесію з першого разу.
@@ -159,6 +137,7 @@ const ALLOWED_HINT = [
 
 /** Закриває всі shell/API/CLI шляхи, якими можна створити невидимого агента. */
 export const TranslationExecutionGuard: Plugin = async ({ client, directory }) => {
+  const safeBdoCommands = registryPatterns(directory)
   const bootWorkflowFingerprint = workflowFingerprint(directory)
   // Один раз на старті: помилкове значення має впасти зараз, а не посеред пачки.
   const bridge = shellBridge(directory, process.platform)
@@ -208,7 +187,7 @@ export const TranslationExecutionGuard: Plugin = async ({ client, directory }) =
         )
       }
       const command = typeof output.args?.command === "string" ? output.args.command.trim() : ""
-      if (!allowedShell(command)) {
+      if (!allowedShell(command, safeBdoCommands)) {
         await refuse(
           input.sessionID,
           `Translation primary shell is restricted to the fixed ./bdo workflow. Дозволено: ${ALLOWED_HINT}.`,

@@ -321,6 +321,7 @@ check_whitespace() {
 }
 
 check_docs() {
+    run bash tests/command-registry.sh
     check_rules
     check_references
     check_env_contract

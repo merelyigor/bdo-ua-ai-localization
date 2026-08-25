@@ -25,6 +25,11 @@ const writeRuntime = (directory, state) => {
 }
 const makeGuard = async (directory = mkdtempSync(join(tmpdir(), "bdo-execution-guard-")), seed = true) => {
   mkdirSync(join(directory, ".opencode"), { recursive: true })
+  mkdirSync(join(directory, "cli"), { recursive: true })
+  writeFileSync(
+    join(directory, "cli/command-registry.json"),
+    readFileSync(join(process.cwd(), "cli/command-registry.json")),
+  )
   if (seed) {
     // Fingerprint мусить відповідати канонічному effective policy.
     const state = runtimeState()

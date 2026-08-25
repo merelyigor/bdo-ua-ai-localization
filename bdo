@@ -51,69 +51,21 @@ sh_run() {
 }
 
 usage() {
-    cat <<'TXT'
-bdo · переклад рядків BDO через Agent API і субагенти OpenCode
-
-  ./bdo help flow      порядок команд однієї пачки
-  ./bdo help <команда> довідка самого скрипта
-
-ПРОГІН І СЕРЕДОВИЩЕ
-  env                  яка ціль стоїть у .env (PROD або DEV)
-  runtime              capability gate активної моделі перед першою пачкою
-  smoke                envelope для OpenCode translation-smoke без API/PHP
-  platform             macOS, Linux або Windows/WSL2 preflight
-  run start|show|end|drive   зафіксувати / показати / зняти ціль; JSON-крок рушія
-  patches [N|all] [machine|manual|both] [--full]   де ще є робота за патчами
-  mode status|start <mode> [N] [patch]   preset або наступна пачка; patch · active або snapshot_id
-  gate [профіль]       quality gate: preflight docs shell agents runtime api full
-
-ВИБІРКА Й ПАЧКА
-  patch                стан патча: скільки лишилось
-  fetch                взяти одну пачку рядків з API
-  batch new|dir|check|end   тека пачки, її шлях, належність файлів, закриття
-  subset               підмножина рядків за identity (для repair)
-  show                 показати рядки людині
-  context              підтверджені приклади для одного рядка
-
-ПІДГОТОВКА ПАЧКИ
-  memory find|apply|expand  памʼять перекладів: пошук, застосування, збірка
-  glossary gaps|resolve     прогалини глосарію (ВИРОК) і запит терміна
-  schema build|qa|clear|show  staged-схема constrained decoding
-  payload worker|qa|terminology|judge  компактний payload для субагента
-
-ПЕРЕВІРКА Й ЛІКУВАННЯ
-  normalize            детерміновані виправлення (латинські гомогліфи)
-  items                гейт identity: збірка items із перевіркою source_hash
-  russianisms          словниковий детектор русизмів
-  validate             валідація на боці API
-  heal                 сходинки лікування й payload для repair
-  qa-fixes             фільтр виправлень від QA
-  merge                накласти виправлення на кандидата
-
-ЗАВЕРШЕННЯ
-  commit               PASS у шар, решта в модерацію, збої в карантин
-  write                прямий запис у вибраний канал
-  moderation           черга модерації: список, approve, reject
-
-ОБСЛУГОВУВАННЯ
-  audit                аудит сесій субагентів за базою OpenCode
-  audit-dump           повний зріз сесій OpenCode
-  incidents            дефекти відповідей child, які флоу вилікував сам
-  judge                вироки судді: розподіл, виродження, калібрування
-  profile              моделі за ролями: status|use|set|fallback|paid
-  models               звірка локальних Ollama-моделей із OpenCode
-  bench                вимір локальної моделі на реальній пачці
-  clean                ротація тек пачок і output/
-  paths                що куди вирішилось із розкладкою
-  api                  read-only smoke Agent API
-
-Скриптовий флоу без чату видалено 2026-08-22 · історія в коміті dac631e
-TXT
+    php -r '
+        $r=json_decode((string)file_get_contents($argv[1]),true,512,JSON_THROW_ON_ERROR);
+        echo "bdo · переклад рядків BDO через Agent API і субагенти OpenCode\n\n";
+        echo "  ./bdo help flow      порядок команд однієї пачки\n  ./bdo help <команда> довідка самого скрипта\n";
+        foreach($r["sections"] as $s){echo "\n".(string)$s["title"]."\n";foreach($s["entries"] as $e){printf("  %-38s %s\n",$e[0],$e[1]);}}
+        echo "\nРеєстр команд: cli/command-registry.json\n";
+    ' "$ROOT/cli/command-registry.json"
 }
 
 flow() {
     cat <<'TXT'
 ПЕРЕКЛАД РОБИТЬСЯ В OPENCODE. Оберіть primary-режим:
+
+Канонічний реєстр команд: cli/command-registry.json. Gate звіряє його з
+dispatcher, execution guard, цим flow і документацією.
 
   патч          активний патч -> machine
   ручний        ручний шар; складне -> proposal
@@ -123,6 +75,7 @@ flow() {
 Режим виконує цикл `./bdo mode start <mode>` -> `./bdo run drive` -> видимий
 штатний Task-субагент OpenCode -> `translation_result` -> `./bdo run drive`,
 доки вибірка не поверне нуль. Кожну child session можна відкрити в OpenCode.
+Перед завершенням: `./bdo gate full && ./bdo api`.
 
 --- Окремі команди · лише для розбору збою, не для роботи ------------------
 
