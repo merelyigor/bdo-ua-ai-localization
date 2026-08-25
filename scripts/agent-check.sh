@@ -73,6 +73,10 @@ check_rules() {
     local primary
     for primary in патч ручний пропозиції покращення; do
         test -f ".opencode/agents/$primary.md" || fail "немає primary-режиму $primary"
+        grep -Fq 'Виконай `./bdo platform && ./bdo env` до будь-якого іншого `./bdo`.' ".opencode/agents/$primary.md" \
+            || fail "$primary не має обовʼязкового platform/env preflight"
+        grep -Fq 'Перед кожним `mode start` повтори `./bdo env`.' ".opencode/agents/$primary.md" \
+            || fail "$primary не оновлює ціль перед mode start"
         grep -Fq './bdo run drive' ".opencode/agents/$primary.md" \
             || fail "$primary не використовує run drive"
         grep -Fq 'Власник змінює лише `.env`; CLI виконуй сам' ".opencode/agents/$primary.md" \
