@@ -145,10 +145,13 @@ Runtime-хук приймає лише `bash`, `read`, native `task` і `transla
 для Bash · лише фіксовані команди `./bdo` з переліку, одну або кілька через
 `&&`. Перелік має дві частини: команди прогону і довідкові ТІЛЬКИ ДЛЯ ЧИТАННЯ
 (`patches`, `patch`, `profile status`, `audit`, `incidents`, `judge`,
-`moderation`, `models`, `runtime`, `api`). Без них диригент не міг відповісти
+`moderation`, `models`, `runtime`, `api`). Для обслуговування також дозволені
+`batch end`, `run end`, `schema clear`, `incidents/judge --clear` і вузький
+`clean [--days N] [--apply]`; primary виконує їх лише за прямою вказівкою
+власника або після штатного завершення пачки. Без них диригент не міг відповісти
 навіть на «де є що перекладати», хоча жодного запису в цих командах немає;
-мутуючі близнюки (`--clear`, `--apply`, `--approve`, `profile use`, `fetch`,
-`write`, `commit`, `clean`) у перелік не входять. MCP discovery, pipes, `;`, redirection, підстановки, OpenCode CLI, HTTP і
+небезпечні близнюки (`--approve` без рішення, `profile use`, `fetch`, `write`,
+`commit`, reject) у перелік не входять. MCP discovery, pipes, `;`, redirection, підстановки, OpenCode CLI, HTTP і
 SDK-маршрути відхиляються до виконання. Перше порушення дає зрозумілу відмову
 (виклик і так не виконується), і лише третє поспіль зупиняє сесію: раніше
 `session.abort()` з першого разу перетворював нешкідливий

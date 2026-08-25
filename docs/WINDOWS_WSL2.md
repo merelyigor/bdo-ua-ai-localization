@@ -1,8 +1,18 @@
 # Windows через WSL2
 
-Це єдиний підтримуваний Windows flow. OpenCode, `./bdo`, PHP і всі команди
-проєкту працюють у Linux-середовищі WSL2. Native PowerShell, Git Bash і PHP,
-встановлений через `winget`, не є runtime цього toolkit.
+Toolkit на Windows виконується ТІЛЬКИ всередині WSL2: `./bdo`, PHP, `jq` і
+`sqlite3` живуть у Linux. Native PowerShell, Git Bash і PHP, встановлений через
+`winget`, не є runtime цього набору.
+
+Сам OpenCode при цьому може стояти двома способами, і обидва підтримані:
+
+| Режим | Де OpenCode | Що робити |
+|---|---|---|
+| A · усе в WSL | усередині WSL2 | Розділи 1-2 нижче. Нічого додаткового не треба. |
+| B · WSL-міст | native Windows-застосунок | Розділ 2а нижче. `./bdo` автоматично виконується через `wsl`. |
+
+Режим B існує тому, що OpenCode для Windows зазвичай стоїть як звичайна
+програма поза WSL, і в ній `./bdo` просто не запускається · bash там немає.
 
 ## 1. Одноразове встановлення (setup розробника; не основний користувацький workflow)
 
@@ -20,9 +30,12 @@ wsl --install -d Ubuntu-24.04
 
 ```bash
 sudo apt update
-sudo apt install -y git php-cli jq curl shellcheck
+sudo apt install -y git php-cli jq curl sqlite3 shellcheck
 php -v
 ```
+
+`sqlite3` тут не зайвий: ним `./bdo audit` читає базу сесій OpenCode, а аудит є
+єдиним джерелом правди про роботу субагентів.
 
 Потрібен PHP 8.3+. Репозиторій клонуйте в Linux filesystem, не в `/mnt/c`:
 
@@ -56,6 +69,43 @@ Windows, PowerShell або пропонує `winget install PHP`, відкрит
 Власник не запускає ці команди вручну: він змінює лише локальний `.env` і
 повідомляє primary «продовжуй». Primary сам виконує preflight, flow, gates та
 фінальну `./bdo gate full && ./bdo api`.
+
+## 2а. Режим B: native Windows OpenCode через WSL-міст
+
+Тут OpenCode лишається звичайною Windows-програмою, а кожна дозволена команда
+`./bdo` виконується всередині WSL2. Перепис робить
+`.opencode/plugin/translation-execution-guard.ts` уже ПІСЛЯ перевірки команди за
+переліком, тому дозволений набір команд не розширюється, а промпти й
+документація на всіх платформах лишаються однакові: модель і далі пише
+`./bdo env`.
+
+Фактично виконується `wsl.exe --cd <шлях проєкту> bash -lc "<команда>"`. Прапорець
+`--cd` сам транслює `C:\...` у `/mnt/c/...`, тож окремо нічого мапити не треба.
+
+Що потрібно один раз:
+
+1. WSL2 з розділу 1 з усіма залежностями, зокрема `sqlite3`.
+2. У локальному `.env` вказати домівку Windows-користувача, щоб аудит бачив базу
+   OpenCode по інший бік межі:
+
+   ```
+   BDO_OPENCODE_HOME=/mnt/c/Users/<user>
+   ```
+
+   Без неї `./bdo audit`, `./bdo audit-dump` і `./bdo models` шукатимуть базу в
+   `/home/<user>` і не знайдуть її: OpenCode пише в профіль Windows.
+   `./bdo platform` попереджає про це окремим рядком `WARN`.
+3. Нічого більше вмикати не треба: міст стоїть на `auto` і сам вмикається лише
+   на Windows. Аварійне вимкнення · `BDO_SHELL_BRIDGE=off` у `.env`.
+
+Ціна режиму: репозиторій на `C:\` читається через `/mnt/c` повільніше за
+нативний Linux-диск, і `./bdo platform` про це попереджає. Якщо швидкість
+заважає, тримайте клон у WSL (`~/GitHub`) і відкривайте його з Windows через
+`\\wsl$\<distro>\home\<user>\GitHub\...`.
+
+Кінці рядків фіксує `.gitattributes` (`eol=lf`). Без нього Windows-git при
+`core.autocrlf=true` дав би CRLF у кожному `.sh`, і всередині WSL перший же
+скрипт упав би з `\r: command not found`.
 
 ## 3. Ollama і вже встановлена модель (діагностика розробника; не основний користувацький workflow)
 

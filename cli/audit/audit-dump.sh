@@ -13,8 +13,16 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")/../.." && pwd)"
 HOURS="${1:-3}"
-DB="$HOME/.local/share/opencode/opencode.db"
-test -f "$DB" || { echo "Немає бази OpenCode: $DB" >&2; exit 1; }
+# shellcheck source=/dev/null
+source "$SCRIPT_DIR/cli/system/opencode-home.sh"
+DB="$OPENCODE_DB"
+if [ -z "$DB" ]; then
+    echo "Немає бази OpenCode. Перевірено:" >&2
+    printf '%s' "$OPENCODE_TRIED" >&2
+    echo "Якщо OpenCode працює як native Windows-застосунок, а набір · у WSL," >&2
+    echo "вкажи домівку в .env: BDO_OPENCODE_HOME=/mnt/c/Users/<user>" >&2
+    exit 1
+fi
 
 STAMP="$(date +%Y%m%d_%H%M%S)"
 OUT_DIR="$SCRIPT_DIR/output/audit_${STAMP}"

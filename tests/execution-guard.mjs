@@ -1,4 +1,4 @@
-import { TranslationExecutionGuard } from "../.opencode/plugin/translation-execution-guard.ts"
+import { TranslationExecutionGuard, bridgedCommand, shellBridge } from "../.opencode/plugin/translation-execution-guard.ts"
 import { mkdtempSync, mkdirSync, readFileSync, writeFileSync } from "node:fs"
 import { createHash } from "node:crypto"
 import { tmpdir } from "node:os"
@@ -60,6 +60,14 @@ const refuse = async (before, input, args, what) => {
     "./bdo mode start patch 15 3",
     "./bdo mode status patch 3",
     "./bdo gate full",
+    "./bdo run end",
+    "./bdo batch end",
+    "./bdo schema clear",
+    "./bdo clean",
+    "./bdo clean --days 14",
+    "./bdo clean --days 14 --apply",
+    "./bdo incidents --clear",
+    "./bdo judge --clear",
     // Довідкові, тільки читання: без них диригент не міг відповісти навіть на
     // «де є що перекладати», хоча жодного запису в цих командах немає.
     "./bdo patches",
@@ -174,14 +182,10 @@ const refuse = async (before, input, args, what) => {
     "./bdo run drive > /tmp/out.json",
     "./bdo env && $(echo ./bdo smoke)",
     // Мутуючі близнюки дозволених довідкових команд: читати можна, змінювати · ні.
-    "./bdo incidents --clear",
-    "./bdo judge --clear",
-    "./bdo clean --apply",
     "./bdo profile use session-luna",
     "./bdo moderation --approve-batch 12",
     "./bdo moderation --approve 12,",
     "./bdo moderation --reject 12",
-    "./bdo run end",
     "./bdo fetch 15",
     "./bdo patches 0",
     "./bdo patches 5 machine --apply",
@@ -207,6 +211,45 @@ const refuse = async (before, input, args, what) => {
   // Лічильник посесійний: чужа сесія не успадковує чужі порушення.
   await refuse(before, { tool: "bash", sessionID: "other", callID: "c" }, { command: "true" }, "violation in another session")
   if (aborted.length !== 1) throw new Error("violation counter leaked across sessions")
+}
+
+// Windows-міст. Модель і далі пише `./bdo ...`; у WSL іде вже перевірений рядок.
+{
+  const directory = mkdtempSync(join(tmpdir(), "bdo-bridge-"))
+  if (shellBridge(directory, "win32") !== "wsl") throw new Error("bridge is off on native Windows")
+  // OpenCode, запущений УСЕРЕДИНІ WSL, бачить linux · подвійного `wsl` не буває.
+  for (const platform of ["darwin", "linux"]) {
+    if (shellBridge(directory, platform) !== "off") throw new Error(`bridge leaked onto ${platform}`)
+  }
+  writeFileSync(join(directory, ".env"), "BDO_ENV=DEV\nBDO_SHELL_BRIDGE=off  # аварійний вихід\n")
+  if (shellBridge(directory, "win32") !== "off") throw new Error("BDO_SHELL_BRIDGE=off ignored")
+  writeFileSync(join(directory, ".env"), "BDO_SHELL_BRIDGE=wsl\n")
+  if (shellBridge(directory, "darwin") !== "wsl") throw new Error("explicit bridge ignored")
+  writeFileSync(join(directory, ".env"), "BDO_SHELL_BRIDGE=powershell\n")
+  let invalid = ""
+  try { shellBridge(directory, "win32") } catch (error) { invalid = String(error) }
+  if (!invalid.includes("auto|wsl|off")) throw new Error(`invalid bridge accepted: ${invalid}`)
+
+  const windows = "C:\\Users\\owner\\GitHub\\bdo-ua-ai-localization"
+  const bridged = bridgedCommand("./bdo env && ./bdo smoke", windows, "wsl")
+  if (bridged !== `wsl.exe --cd "${windows}" bash -lc "./bdo env && ./bdo smoke"`) {
+    throw new Error(`unexpected bridged command: ${bridged}`)
+  }
+  if (bridgedCommand("./bdo env", "/home/owner/GitHub/x", "off") !== "./bdo env") {
+    throw new Error("bridge rewrote a command with bridging disabled")
+  }
+}
+
+// Міст працює ПІСЛЯ whitelist: заборонена команда не отримує обгортки WSL.
+{
+  const directory = mkdtempSync(join(tmpdir(), "bdo-bridge-guard-"))
+  writeFileSync(join(directory, ".env"), "BDO_SHELL_BRIDGE=wsl\n")
+  const { before } = await makeGuard(directory)
+  const output = { args: { command: "./bdo run drive" } }
+  await before({ tool: "bash", sessionID: "bridge", callID: "c" }, output)
+  if (!output.args.command.startsWith("wsl.exe --cd ")) throw new Error("guard did not bridge an allowed command")
+  if (!output.args.command.endsWith('bash -lc "./bdo run drive"')) throw new Error("guard bridged the wrong payload")
+  await refuse(before, { tool: "bash", sessionID: "bridge-bad", callID: "c" }, { command: "curl http://127.0.0.1:8010" }, "bridged bypass")
 }
 
 console.log("translation execution guard: OK")

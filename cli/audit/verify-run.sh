@@ -33,8 +33,16 @@ esac
 echo "Оцінюємо: $SINCE_NOTE"
 echo
 
-DB="$HOME/.local/share/opencode/opencode.db"
-test -f "$DB" || { echo "Немає бази OpenCode: $DB" >&2; exit 1; }
+# shellcheck source=/dev/null
+source "$SCRIPT_DIR/cli/system/opencode-home.sh"
+DB="$OPENCODE_DB"
+if [ -z "$DB" ]; then
+    echo "Немає бази OpenCode. Перевірено:" >&2
+    printf '%s' "$OPENCODE_TRIED" >&2
+    echo "Якщо OpenCode працює як native Windows-застосунок, а набір · у WSL," >&2
+    echo "вкажи домівку в .env: BDO_OPENCODE_HOME=/mnt/c/Users/<user>" >&2
+    exit 1
+fi
 command -v sqlite3 >/dev/null || { echo "Потрібен sqlite3" >&2; exit 1; }
 
 # Копія: OpenCode тримає базу відкритою, читаємо без блокування запису.

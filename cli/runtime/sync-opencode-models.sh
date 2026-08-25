@@ -29,11 +29,14 @@ case "${1:-}" in
     --prune) PRUNE="${2:?--prune потребує provider/model, напр. ollama-local/qwen3.6:35b}" ;;
 esac
 
-CONFIG=""
-for candidate in "$HOME/.config/opencode/opencode.jsonc" "$HOME/.config/opencode/opencode.json"; do
-    test -f "$candidate" && { CONFIG="$candidate"; break; }
-done
-test -n "$CONFIG" || { echo "Не знайдено конфіг OpenCode у ~/.config/opencode/." >&2; exit 1; }
+# shellcheck source=/dev/null
+source "$SCRIPT_DIR/cli/system/opencode-home.sh"
+CONFIG="$OPENCODE_CONFIG"
+test -n "$CONFIG" || {
+    echo "Не знайдено конфіг OpenCode у $OPENCODE_HOME (.config/opencode або AppData/Roaming/opencode)." >&2
+    echo "Native Windows OpenCode із набором у WSL: додай у .env BDO_OPENCODE_HOME=/mnt/c/Users/<user>" >&2
+    exit 1
+}
 
 # Моделі беремо з фронтматера агентів: це те саме джерело, що читає OpenCode,
 # тому список не може розійтися з реальністю.

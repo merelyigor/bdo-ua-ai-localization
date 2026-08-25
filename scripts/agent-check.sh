@@ -125,8 +125,12 @@ check_rules() {
             || fail "templates/opencode.json не блокує $forbidden_server_command"
     done
     test -f docs/WINDOWS_WSL2.md || fail 'немає канонічної Windows/WSL2 інструкції'
-    grep -Fq 'На Windows працювати ТІЛЬКИ у WSL2' .opencode/critical-rules.md \
+    # Native Windows flow лишається забороненим і після появи WSL-моста: у WSL
+    # виконується САМ toolkit, а міст лише доставляє туди вже дозволену команду.
+    grep -Fq 'На Windows toolkit виконується ТІЛЬКИ всередині WSL2' .opencode/critical-rules.md \
         || fail 'critical-rules не забороняє native Windows flow'
+    grep -Fq 'wsl.exe --cd' .opencode/plugin/translation-execution-guard.ts \
+        || fail 'execution-guard втратив WSL-міст, описаний у critical-rules'
     grep -Fq '[WINDOWS_WSL2.md](WINDOWS_WSL2.md)' docs/README.md \
         || fail 'docs/README.md не посилається на Windows/WSL2 інструкцію'
     grep -Fq 'Переклад робиться В OPENCODE' AGENTS.md \

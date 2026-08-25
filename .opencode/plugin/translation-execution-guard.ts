@@ -41,6 +41,16 @@ const SAFE_BDO_COMMANDS = [
   /^\.\/bdo mode status (patch|manual|proposal|improve)( (active|[0-9]{1,6}))?$/,
   /^\.\/bdo mode start (patch|manual|proposal|improve)( [1-9][0-9]*( (active|[0-9]{1,6}))?)?$/,
   /^\.\/bdo run drive$/,
+  // Штатне завершення/прибирання. batch end лише знімає pointer, clean
+  // --apply прибирає тільки старі verified-пачки, а schema/incidents/judge
+  // архівують журнали; shell-доступ ці команди не відкривають.
+  /^\.\/bdo run end$/,
+  /^\.\/bdo batch end$/,
+  /^\.\/bdo schema clear$/,
+  /^\.\/bdo clean( --days [0-9]{1,3})?$/,
+  /^\.\/bdo clean( --days [0-9]{1,3})? --apply$/,
+  /^\.\/bdo incidents --clear$/,
+  /^\.\/bdo judge --clear$/,
   // Primary завершує зміну повним локальним gate перед read-only API check.
   /^\.\/bdo gate full$/,
   // ДОВІДКОВІ, ТІЛЬКИ ЧИТАННЯ.
@@ -48,10 +58,9 @@ const SAFE_BDO_COMMANDS = [
   // Раніше їх не було, і диригент не міг відповісти навіть на «де є що
   // перекладати»: питання впиралось у guard, хоча жодного запису в них немає.
   // Обмеження існує проти прихованих агентів і shell-обходів, а не проти
-  // читання. Мутуючі варіанти тих самих команд сюди НЕ входять: `--clear`,
-  // `--apply`, `--approve`, `--reject`, `profile use|set|paid`, `fetch`,
-  // `write`, `commit`, `clean`, `run start|end`, `schema` лишаються поза
-  // переліком, тож випадкова зміна стану неможлива.
+  // безпечного обслуговування. Небезпечні записи/API лишаються поза
+  // переліком (`profile use|set|paid`, `fetch`, `write`, `commit`, reject),
+  // а cleanup вище дозволений лише вузькими командами з власними safety-гейтами.
   /^\.\/bdo$/,
   /^\.\/bdo help( [a-z]+)?$/,
   /^\.\/bdo (paths|platform|models|api|runtime)$/,
@@ -86,6 +95,56 @@ function allowedShell(command: string): boolean {
 // перетворювалась на мертву сесію. Але сам виклик і так НЕ виконується: guard
 // кидає помилку до виконання. Тому перші спроби отримують зрозумілу відмову, з
 // якої модель може виправитись, а abort лишається для наполегливого обходу.
+// Windows-міст: native OpenCode поза WSL не має bash, і `./bdo` там не
+// запускається. Дозволена команда виконується всередині WSL2.
+//
+// Перепис відбувається ПІСЛЯ whitelist і НЕ розширює доступ: у WSL іде рівно той
+// рядок, який щойно збігся з переліком точних `./bdo` команд. Модель цього кроку
+// не бачить і не може ним керувати · вона й далі пише `./bdo env`, тому промпти,
+// документація й сам перелік лишаються однакові на всіх платформах. Саме тому
+// міст живе тут, а не в промпті: промпт можна вмовити, перевірку в коді · ні.
+//
+// `wsl --cd` приймає Windows-шлях і сам транслює його в `/mnt/...`, тож ні
+// `wslpath`, ні вкладені підстановки не потрібні. Подвійні лапки безпечні: усі
+// дозволені команди складаються лише з літер, цифр, пробілу та `/ . - , &`,
+// тому власних лапок у рядку не буває.
+export function bridgedCommand(command: string, directory: string, bridge: string): string {
+  if (bridge !== "wsl") return command
+  return `wsl.exe --cd "${directory}" bash -lc "${command}"`
+}
+
+/**
+ * Який міст застосувати до shell-команд цієї сесії.
+ *
+ * За замовчуванням `auto`: на Windows · WSL, будь-де інакше · без моста. Коли
+ * OpenCode запущений УСЕРЕДИНІ WSL, платформа вже `linux`, тож міст сам не
+ * вмикається й подвійного `wsl` не буває. `BDO_SHELL_BRIDGE=off` у `.env`
+ * лишає аварійний вихід на випадок іншого Windows-runtime.
+ */
+export function shellBridge(directory: string, platform: string): string {
+  const file = process.env.TRANSLATE_ENV_FILE || join(directory, ".env")
+  let raw: string | undefined
+  try {
+    for (const line of readFileSync(file, "utf8").split("\n")) {
+      const match = /^\s*(?:export\s+)?BDO_SHELL_BRIDGE\s*=\s*(.*)$/.exec(line)
+      if (match) raw = match[1]
+    }
+  } catch {
+    raw = undefined
+  }
+  const value = (raw ?? process.env.BDO_SHELL_BRIDGE ?? "auto")
+    .trim()
+    .replace(/^["']|["']$/g, "")
+    .split("#")[0]
+    .trim()
+    .toLowerCase()
+  if (value === "" || value === "auto") return platform === "win32" ? "wsl" : "off"
+  if (value !== "off" && value !== "wsl") {
+    throw new Error(`BDO_SHELL_BRIDGE="${value}" is not one of auto|wsl|off.`)
+  }
+  return value
+}
+
 const ABORT_AFTER_VIOLATIONS = 3
 const ALLOWED_HINT = [
   "прогін: ./bdo env | ./bdo smoke | ./bdo mode status <mode> [patch]",
@@ -101,6 +160,8 @@ const ALLOWED_HINT = [
 /** Закриває всі shell/API/CLI шляхи, якими можна створити невидимого агента. */
 export const TranslationExecutionGuard: Plugin = async ({ client, directory }) => {
   const bootWorkflowFingerprint = workflowFingerprint(directory)
+  // Один раз на старті: помилкове значення має впасти зараз, а не посеред пачки.
+  const bridge = shellBridge(directory, process.platform)
   let bootState: ReturnType<typeof readRuntimeModelState> | undefined
   let bootError: string | undefined
   try {
@@ -158,6 +219,7 @@ export const TranslationExecutionGuard: Plugin = async ({ client, directory }) =
       // точні ./bdo-команди, тому канонічний cwd не розширює доступ, зате не дає
       // успішній пачці впасти на фінальному кроці через вигаданий шлях.
       output.args.workdir = directory
+      output.args.command = bridgedCommand(command, directory, bridge)
     },
   }
 }
