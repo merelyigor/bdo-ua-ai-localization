@@ -225,10 +225,12 @@ start) sh_run cli/run/run-mode.sh "${3:?…}" "${4:-15}" ;;   # $5 не пере
   експортує `BDO_MEMORY_LAYERS`, `Memory::fromFile` фільтрує. Для improve це
   `manual`: RU-похідний machine-текст не закриває рядки, які режим має
   покращити. Регресія: `tests/drive-memory-layers.sh`.
-- **Ліміт повторів child у drive.** Кожен стан має лічильник у
-  `drive-retries.json` пачки; після `BDO_DRIVE_MAX_CHILD_RETRIES` (типово 3)
-  drive віддає `blocked: child_retry_limit` замість нескінченних сесій
-  (клас інциденту «девʼять порожніх worker sessions»).
+- **Часове retry-вікно child у drive.** Кожен стан має запис у
+  `drive-retries.json` пачки. За типовим `BDO_CHILD_RETRY_WINDOW_SECONDS=600`
+  (10 хвилин) між спробами діє експоненційний backoff до 60 секунд. Тимчасова
+  помилка провайдера не переводить пачку в постійний `blocked`: після вичерпання
+  вікна drive повертає `retry`, зберігає state/payload і наступним викликом
+  відкриває нове вікно для тієї самої пачки.
 - **Промпти примарок.** Frontmatter ховає від слабкої моделі всі інструменти,
   за які execution-guard убив би сесію: поіменні `edit/write/patch/glob/grep/
   list/webfetch/websearch/question/todowrite/todoread/skill: false`. Wildcard
@@ -397,8 +399,9 @@ decoding справді звʼязує відповідь, а `x-preview-f-free`
    створює файл, тому наступний `./bdo run drive` віддає той самий child, а
    плагін додає до payload рядок: спроба N, попередню відповідь відхилено з
    такої причини, поверни лише JSON без огорожі. Успішна відповідь знімає
-   позначку. Кількість повторів обмежує `BDO_DRIVE_MAX_CHILD_RETRIES`, тож
-   зациклитись неможливо · вичерпані спроби дають `blocked`.
+   позначку. Часове вікно `BDO_CHILD_RETRY_WINDOW_SECONDS` (типово 600 секунд)
+   не дає зациклитись: backoff обмежує частоту child, а після вікна повертається
+   `retry`, не постійний `blocked`; наступний виклик відкриває нове вікно.
 3. **Слід для розбору потім.** Кожен дефект іде в `state/flow-incidents.jsonl`
    і читається командою `./bdo incidents` (зведення за ролями й причинами),
    `--list`, `--clear`. «Полагодилось само» не означає «проблеми немає»:

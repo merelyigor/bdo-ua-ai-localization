@@ -51,16 +51,38 @@ release_driver_lock() {
     test -n "${DRIVE_LOCK:-}" || return 0
     test "$(readlink "$DRIVE_LOCK" 2>/dev/null || true)" = "$$" && rm -f "$DRIVE_LOCK"
 }
-# Ліміт повторних викликів child в одному стані: систематично збійна модель
-# інакше плодить сесії нескінченно (інцидент «девʼять порожніх worker sessions»).
-# Повертає 0, коли ліміт вичерпано. Скидання: видалити drive-retries.json у пачці.
+# Повтор child обмежений часом, а не кількістю сесій. Тимчасовий збій
+# провайдера не повинен назавжди блокувати пачку, але й не має плодити child
+# без паузи. Після вікна прогін зупиняється з retry, а наступний виклик
+# автоматично починає нове вікно для тієї самої пачки.
 retry_exceeded() {
-    local n
-    n="$(php -r '$f=$argv[1];$a=is_file($f)?(json_decode((string)file_get_contents($f),true)?:[]):[];$a[$argv[2]]=($a[$argv[2]]??0)+1;file_put_contents($f,json_encode($a));echo $a[$argv[2]];' "$B/drive-retries.json" "$1")"
-    [ "$n" -gt "${BDO_DRIVE_MAX_CHILD_RETRIES:-3}" ]
+    local result
+    result="$(php -r '
+        $f=$argv[1]; $key=$argv[2]; $now=time();
+        $window=max(1,(int)(getenv("BDO_CHILD_RETRY_WINDOW_SECONDS") ?: 600));
+        $a=is_file($f)?(json_decode((string)file_get_contents($f),true)?:[]):[];
+        $e=is_array($a[$key]??null)?$a[$key]:[];
+        $first=(int)($e["first_at"]??0);
+        if($first===0){$first=$now;}
+        $count=(int)($e["count"]??0)+1;
+        $next=$now+min(60,2 ** min(6,$count-1));
+        $a[$key]=["count"=>$count,"first_at"=>$first,"last_at"=>$now,"next_at"=>$next];
+        file_put_contents($f,json_encode($a,JSON_UNESCAPED_SLASHES),LOCK_EX);
+        if($now-$first >= $window){echo "expired"; exit;}
+        if($now < $next && $count > 1){
+            echo "cooldown:".($next-$now); exit;
+        }
+        echo "retry";
+    ' "$B/drive-retries.json" "$1")"
+    case "$result" in
+        expired) return 0 ;;
+        cooldown:*) emit 0 "$(field state)" "{\"kind\":\"retry\",\"reason\":\"child_backoff\",\"retry_after\":${result#cooldown:}}"; exit 75 ;;
+        *) return 1 ;;
+    esac
 }
 give_up() {
-    emit 0 "$1" '{"kind":"blocked","reason":"child_retry_limit"}'
+    rm -f "$B/drive-retries.json"
+    emit 0 "$1" '{"kind":"retry","reason":"child_retry_window_exhausted"}'
     exit 1
 }
 completion() {

@@ -44,8 +44,8 @@ $staged = json_decode((string) file_get_contents($root.'/next-child.json'), true
 check(($staged['role'] ?? null) === 'translation-worker', 'child envelope was not staged for the contract plugin');
 check(($staged['payload_path'] ?? '') === $workspace->path('worker-payload.json'), 'staged envelope has a wrong payload path');
 
-// Ліміт повторів child: систематично збійна модель не має права плодити
-// сесії нескінченно · після BDO_DRIVE_MAX_CHILD_RETRIES прогін блокується.
+// Тимчасовий збій child не блокує пачку назавжди: після вікна driver повертає
+// retry, очищає лише лічильник вікна й дозволяє продовжити ту саму пачку.
 $root2 = sys_get_temp_dir().'/bdo-fault-retry-'.bin2hex(random_bytes(6));
 if (! mkdir($root2, 0o755, true) && ! is_dir($root2)) {
     throw new RuntimeException("Не вдалося створити тимчасовий каталог $root2.");
@@ -54,19 +54,18 @@ $workspace2 = Workspace::create($root2, RowSet::fromFile($rowsPath), '20260823_1
 copy($rowsPath, $workspace2->path('rows.json'));
 $workspace2->transition('prepared');
 $workspace2->transition('awaiting_worker');
-$command2 = sprintf('BDO_PIPELINE_OFFLINE=1 BDO_STATE_DIR=%s bash %s', escapeshellarg($root2), escapeshellarg($repo.'/cli/run/run-drive.sh'));
-for ($attempt = 1; $attempt <= 3; $attempt++) {
-    file_put_contents($workspace2->path('candidate.json'), '{broken');
-    exec($command2, $out, $code);
-    check($code === 0, "retry $attempt was refused before the limit");
-    $out = [];
-}
+$command2 = sprintf('BDO_PIPELINE_OFFLINE=1 BDO_CHILD_RETRY_WINDOW_SECONDS=1 BDO_STATE_DIR=%s bash %s', escapeshellarg($root2), escapeshellarg($repo.'/cli/run/run-drive.sh'));
 file_put_contents($workspace2->path('candidate.json'), '{broken');
 exec($command2, $out2, $code2);
-check($code2 !== 0, 'driver kept re-emitting the child past the retry limit');
+check($code2 === 0, 'first transient child failure was not retryable');
+$out2 = [];
+sleep(2);
+file_put_contents($workspace2->path('candidate.json'), '{broken');
+exec($command2, $out2, $code2);
+check($code2 !== 0, 'retry window exhaustion did not stop the run');
 $blocked = json_decode(implode("\n", $out2), true, 512, JSON_THROW_ON_ERROR);
-check(($blocked['next']['kind'] ?? null) === 'blocked', 'exhausted retries did not block the batch');
-check(($blocked['next']['reason'] ?? null) === 'child_retry_limit', 'blocked envelope carries a wrong reason');
+check(($blocked['next']['kind'] ?? null) === 'retry', 'exhausted retries did not return retry');
+check(($blocked['next']['reason'] ?? null) === 'child_retry_window_exhausted', 'retry envelope carries a wrong reason');
 
 // Single-writer: два driver одночасно не мають права емісити child у той самий
 // response_path. Живий PID у lock дає bounded retry до будь-якої мутації стану.
