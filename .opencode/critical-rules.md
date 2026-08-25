@@ -107,6 +107,9 @@
   не помічала помилку плагіна.
 - **Переклад робиться В OPENCODE** в одному з primary-режимів `патч`, `ручний`,
   `пропозиції`, `покращення`. Іншого входу немає.
+- Канонічний command registry · `cli/command-registry.json`. `./bdo help`,
+  execution guard і `docs/COMMANDS.md` не мають окремих ручних списків; після
+  зміни registry gate перевіряє dispatcher, help, flow і згенерований довідник.
 - Primary виконує цикл `./bdo mode start` -> `./bdo run drive` -> штатний
   OpenCode `task(subagent_type=next.role)` -> `translation_result`. Кожна child
   session мусить бути видимою та відкриватися з батьківської.

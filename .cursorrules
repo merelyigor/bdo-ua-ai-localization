@@ -66,6 +66,10 @@
   мусить окремо прочитати: кожен завантажений primary/child `.md` самодостатній.
   Допустима лише build-time генерація, якщо її результат · повний автономний
   prompt, а gate доводить відповідність канонічному шаблону.
+- `cli/command-registry.json` · єдине джерело дерева команд, описів і guard
+  allowlist. `docs/COMMANDS.md` генерується лише через
+  `php scripts/generate-command-docs.php`; ручні копії команд заборонені, а
+  gate мусить перевіряти актуальність генерації.
 - `translation-judge` вирішує маршрут спірного рядка, а не текст. Механічні
   дефекти вище судді; поріг `BDO_JUDGE_MIN_CONFIDENCE`, журнал `./bdo judge`.
 - Не змінюй identity, `keep`, placeholders, PA markup, manual revisions,

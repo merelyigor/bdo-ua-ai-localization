@@ -11,6 +11,8 @@ registry='cli/command-registry.json'
 test -s "$registry" || fail "немає $registry"
 php -r 'json_decode(file_get_contents($argv[1]), true, 512, JSON_THROW_ON_ERROR);' "$registry" \
     || fail "$registry має невалідний JSON"
+php scripts/generate-command-docs.php --check \
+    || fail 'docs/COMMANDS.md не згенерований з актуального реєстру'
 
 dispatcher="$(mktemp)"
 registered="$(mktemp)"

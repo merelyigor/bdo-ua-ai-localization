@@ -97,6 +97,10 @@
   профіль `shell`, потім ширший gate.
 - §5.6 Коментарі пояснюють причину й invariant. Не видаляти дороге обґрунтування;
   якщо причина змінилась, оновити її разом із кодом.
+- §5.7 `cli/command-registry.json` є єдиним джерелом дерева команд, описів і
+  execution guard. `docs/COMMANDS.md` генерується `php
+  scripts/generate-command-docs.php`, не редагується вручну, а gate перевіряє
+  його актуальність.
 
 ## §6 Translation identity, quality і state
 
