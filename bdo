@@ -70,7 +70,7 @@ dispatcher, execution guard, цим flow і документацією.
   патч          активний патч -> machine
   ручний        ручний шар; складне -> proposal
   пропозиції    усе в модерацію
-  покращення    поліпшення наявного machine layer
+  покращення-ші    поліпшення наявного machine layer
 
 Режим виконує цикл `./bdo mode start <mode>` -> `./bdo run drive` -> видимий
 штатний Task-субагент OpenCode -> `translation_result` -> `./bdo run drive`,

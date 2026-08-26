@@ -142,7 +142,7 @@ for agent in "${AGENTS[@]}"; do
     }
 done
 
-for primary in патч ручний пропозиції покращення; do
+for primary in патч ручний пропозиції покращення-ші; do
     for agent in "${AGENTS[@]}"; do
         permission="$(jq -r --arg primary "$primary" --arg agent "$agent" '.agent[$primary].permission.task[$agent] // empty' "$CONFIG")"
         test "$permission" = 'allow' || {
@@ -169,7 +169,7 @@ declare -A MAX_LINES=(
     # має власний перелік read-only команд розбору. Двічі стискав текст перед
     # підняттям; далі різати означало б викинути алгоритм, який і зробив агента
     # самостійним.
-    [патч]=135 [ручний]=135 [пропозиції]=135 [покращення]=135
+    [патч]=135 [ручний]=135 [пропозиції]=135 [покращення-ші]=135
 )
 for agent in "${!MAX_LINES[@]}"; do
     lines="$(wc -l < "$ROOT/.opencode/agents/$agent.md" | tr -d ' ')"
@@ -223,7 +223,7 @@ if (JudgePolicy::minConfidence(null) !== 65) {
 }
 ' "$ROOT/lib/autoload.php"
 
-for primary in патч ручний пропозиції покращення; do
+for primary in патч ручний пропозиції покращення-ші; do
     grep -Fq 'subagent_type=next.role' "$ROOT/.opencode/agents/$primary.md" || {
         printf 'ERROR: %s must invoke a native visible Task\n' "$primary" >&2
         exit 1
@@ -279,7 +279,7 @@ test "$(jq -r '.default_agent // empty' "$CONFIG")" = 'патч' || {
     printf 'ERROR: default_agent must be "патч"\n' >&2
     exit 1
 }
-for primary in патч ручний пропозиції покращення; do
+for primary in патч ручний пропозиції покращення-ші; do
     test "$(jq -r --arg p "$primary" '.agent[$p].mode // empty' "$CONFIG")" = 'primary' || {
         printf 'ERROR: %s must be mode "primary"\n' "$primary" >&2
         exit 1

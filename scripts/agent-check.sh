@@ -76,7 +76,7 @@ check_rules() {
     fetch_max="$(sed -n 's/.*BATCH > \([0-9]\{1,3\}\).*/\1/p' cli/api/fetch-rows.sh | sed -n '1p')"
     test -n "$fetch_min" && test -n "$fetch_max" \
         || fail 'не вдалося прочитати діапазон розміру пачки з cli/api/fetch-rows.sh'
-    for primary in патч ручний пропозиції покращення; do
+    for primary in патч ручний пропозиції покращення-ші; do
         test -f ".opencode/agents/$primary.md" || fail "немає primary-режиму $primary"
         grep -Fq 'Виконай `./bdo platform` до будь-якого іншого `./bdo`' ".opencode/agents/$primary.md" \
             || fail "$primary не має обовʼязкового platform preflight"

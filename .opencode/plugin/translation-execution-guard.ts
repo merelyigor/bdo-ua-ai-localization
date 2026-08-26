@@ -16,7 +16,7 @@ const WORKFLOW_FILES = [
   ".opencode/agents/патч.md",
   ".opencode/agents/ручний.md",
   ".opencode/agents/пропозиції.md",
-  ".opencode/agents/покращення.md",
+  ".opencode/agents/покращення-ші.md",
 ]
 
 function workflowFingerprint(directory: string): string {

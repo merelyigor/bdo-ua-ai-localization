@@ -7,7 +7,7 @@ OpenCode і не підключається через `opencode.json`.
 
 Власник не запускає bash/CLI-команди проєкту вручну й змінює лише локальний
 `.env`, після чого повідомляє primary людською мовою, що продовжити. Уся робота
-виконується через primary-режими `патч`, `ручний`, `пропозиції`, `покращення`.
+виконується через primary-режими `патч`, `ручний`, `пропозиції`, `покращення-ші`.
 Primary сам виконує `./bdo env`, preflight/smoke, `mode status/start`,
 `./bdo run drive`, аудит, gates і перед завершенням `./bdo gate full && ./bdo api`.
 Команди в цьому довіднику · внутрішні кроки flow або developer/diagnostics
@@ -17,7 +17,7 @@ Primary сам виконує `./bdo env`, preflight/smoke, `mode status/start`,
 
 | Роль | Канонічне джерело | Що передається моделі |
 |---|---|---|
-| OpenCode primary | `.opencode/agents/патч.md`, `ручний.md`, `пропозиції.md`, `покращення.md` | поточний режим, порядок `./bdo`, рішення диригента |
+| OpenCode primary | `.opencode/agents/патч.md`, `ручний.md`, `пропозиції.md`, `покращення-ші.md` | поточний режим, порядок `./bdo`, рішення диригента |
 | `translation-*` child | tracked `.opencode/agent-templates/translation-*.md` + generated/ignored `.opencode/agents/translation-*.md` + staged schema | вузька роль і її JSON-відповідь |
 
 ## Документи за потребою
