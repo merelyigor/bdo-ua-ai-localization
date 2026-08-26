@@ -121,6 +121,57 @@ check(($blocked['next']['windows'] ?? 0) >= 1, 'terminal retry envelope hides ho
 check(($blocked['next']['attempts'] ?? 0) >= 1, 'terminal retry envelope hides the attempt count');
 check(($blocked['next']['unavailable_seconds'] ?? -1) >= 10, 'terminal retry envelope hides how long the provider was down');
 
+// Child, який не повертає НІЧОГО, зупиняє прогін із названою причиною.
+//
+// Найдорожчий клас помилки проєкту, спостережений двічі: 2026-08-20 порожні
+// дочірні сесії без помилки в UI, 2026-08-27 відмова провайдера через несумісну
+// схему. Обидва рази retry чесно чекав добовий бюджет, а виглядало це як
+// «падає модель». Відрізняє їх факт: зіпсована відповідь лишає інцидент у
+// `child-incidents.json`, а мертвий Task не лишає нічого.
+$root3 = sys_get_temp_dir().'/bdo-fault-silent-'.bin2hex(random_bytes(6));
+if (! mkdir($root3, 0o755, true) && ! is_dir($root3)) {
+    throw new RuntimeException("Не вдалося створити тимчасовий каталог $root3.");
+}
+$workspace3 = Workspace::create($root3, RowSet::fromFile($rowsPath), '20260827_020000');
+copy($rowsPath, $workspace3->path('rows.json'));
+$workspace3->transition('prepared');
+$workspace3->transition('awaiting_worker');
+$command3 = sprintf('BDO_PIPELINE_OFFLINE=1 BDO_CHILD_SILENT_LIMIT=2 BDO_STATE_DIR=%s bash %s', escapeshellarg($root3), escapeshellarg($repo.'/cli/run/run-drive.sh'));
+
+// Лічильник рухає `retry_exceeded` вже ПІСЛЯ перевірки мовчання, тому за
+// порогом 2 зупинка припадає на третій виклик. Перші два мусять повторити
+// child: одна тиша ще не доводить, що запит не доходить до моделі.
+foreach ([1, 2] as $attempt) {
+    $out3 = []; exec($command3, $out3, $code3);
+    $step = json_decode(implode("\n", $out3), true, 512, JSON_THROW_ON_ERROR);
+    check(($step['next']['role'] ?? null) === 'translation-worker', "мовчання #$attempt мусить дати повтор, а не зупинку");
+    check($code3 === 0, "мовчання #$attempt зупинило прогін зарано");
+}
+
+// Третя: поріг досягнуто, і причина названа замість добового очікування.
+$out3 = []; exec($command3, $out3, $code3);
+$silent = json_decode(implode("\n", $out3), true, 512, JSON_THROW_ON_ERROR);
+check($code3 !== 0, 'мовчазний child не зупинив прогін');
+check(($silent['next']['reason'] ?? null) === 'child_no_response', 'причина мовчання не названа: '.json_encode($silent['next'] ?? null, JSON_UNESCAPED_UNICODE));
+check(str_contains((string) ($silent['next']['hint'] ?? ''), '.env'), 'підказка не веде власника до моделі субагентів');
+
+// А ось зіпсована відповідь мовчанням НЕ є: там інцидент, і лікує його повтор.
+$root4 = sys_get_temp_dir().'/bdo-fault-noisy-'.bin2hex(random_bytes(6));
+if (! mkdir($root4, 0o755, true) && ! is_dir($root4)) {
+    throw new RuntimeException("Не вдалося створити тимчасовий каталог $root4.");
+}
+$workspace4 = Workspace::create($root4, RowSet::fromFile($rowsPath), '20260827_021000');
+copy($rowsPath, $workspace4->path('rows.json'));
+$workspace4->transition('prepared');
+$workspace4->transition('awaiting_worker');
+file_put_contents($root4.'/child-incidents.json', json_encode([
+    $workspace4->path('candidate.json') => ['attempt' => 9, 'reason' => 'відповідь не є валідним JSON'],
+], JSON_THROW_ON_ERROR));
+$command4 = sprintf('BDO_PIPELINE_OFFLINE=1 BDO_CHILD_SILENT_LIMIT=1 BDO_STATE_DIR=%s bash %s', escapeshellarg($root4), escapeshellarg($repo.'/cli/run/run-drive.sh'));
+$out4 = []; exec($command4, $out4, $code4);
+$noisy = json_decode(implode("\n", $out4), true, 512, JSON_THROW_ON_ERROR);
+check(($noisy['next']['role'] ?? null) === 'translation-worker', 'зіпсовану відповідь сплутано з мовчанням: '.json_encode($noisy['next'] ?? null, JSON_UNESCAPED_UNICODE));
+
 // Single-writer: два driver одночасно не мають права емісити child у той самий
 // response_path. Живий PID у lock дає bounded retry до будь-якої мутації стану.
 symlink((string) getmypid(), $workspace2->path('drive.lock'));

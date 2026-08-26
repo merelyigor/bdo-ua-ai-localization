@@ -123,6 +123,47 @@ give_up() {
     emit 0 "$1" "$detail"
     exit 1
 }
+# Child, який не повертає НІЧОГО, це не тимчасовий збій, а конфігурація.
+#
+# Найдорожчий клас помилки цього проєкту, спостережений двічі. 2026-08-20 ·
+# дочірні сесії створювались порожніми, нуль токенів і жодної помилки в UI.
+# 2026-08-27 · те саме: провайдер відхиляв запит через несумісну схему, і воркер
+# мовчки падав пʼять разів поспіль. Обидва рази це виглядало як «падає модель» і
+# коштувало годин розбору, бо retry чесно чекав свій добовий бюджет.
+#
+# Відрізнити одне від одного можна механічно. Коли child ВІДПОВІВ, але зіпсовано,
+# after-hook плагіна пише інцидент у `state/child-incidents.json`. Коли Task
+# помер до відповіді, інциденту немає взагалі. Тобто «файла відповіді немає І
+# інциденту немає» = запит не дійшов до моделі.
+#
+# Кілька таких поспіль зупиняють прогін із названою причиною замість добового
+# мовчазного очікування. Поріг у `.env`: BDO_CHILD_SILENT_LIMIT (типово 3).
+silent_child() {
+    local state="$1" response="$2" limit="${BDO_CHILD_SILENT_LIMIT:-3}"
+    php -r '
+        [$retries, $incidents, $key, $response, $limit] =
+            [$argv[1], $argv[2], $argv[3], $argv[4], max(1, (int) $argv[5])];
+        $r = is_file($retries) ? (json_decode((string) file_get_contents($retries), true) ?: []) : [];
+        $attempts = (int) ($r[$key]["count"] ?? 0);
+        $i = is_file($incidents) ? (json_decode((string) file_get_contents($incidents), true) ?: []) : [];
+        // Інцидент на цей самий response_path означає, що child ВІДПОВІВ ·
+        // зіпсовано, але відповів. Таке лікується повтором, і мовчанням не є.
+        if (isset($i[$response])) exit(1);
+        exit($attempts >= $limit ? 0 : 1);
+    ' "$B/drive-retries.json" "$STATE_DIR/child-incidents.json" "$state" "$response" "$limit"
+}
+give_up_silent() {
+    local state="$1" attempts
+    attempts="$(php -r '$a=is_file($argv[1])?(json_decode((string)file_get_contents($argv[1]),true)?:[]):[];echo (int)($a[$argv[2]]["count"]??0);' "$B/drive-retries.json" "$state")"
+    rm -f "$B/drive-retries.json"
+    php -r 'echo json_encode(["kind"=>"retry","reason"=>"child_no_response","attempts"=>(int)$argv[1],
+        "hint"=>"Субагент не повернув НІЧОГО (нуль токенів, без інциденту формату). Це не тимчасовий збій моделі, а відмова провайдера або несумісна конфігурація. Скажи власнику перевірити модель субагентів у .env і виконати smoke.",
+    ], JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES);' "$attempts" > "$B/silent.json"
+    emit 0 "$state" "$(cat "$B/silent.json")"
+    rm -f "$B/silent.json"
+    exit 1
+}
+
 completion() {
     php -r '
     $summaryFile=$argv[1];$reportFile=$argv[2];$manifestFile=$argv[3];$runFile=$argv[4];$batch=$argv[5];
@@ -367,6 +408,7 @@ awaiting_worker)
         cp "$B/memory-candidate.json" "$B/candidate.json"
     fi
     if [ ! -s "$B/candidate.json" ]; then
+        if silent_child awaiting_worker "$B/candidate.json"; then give_up_silent awaiting_worker; fi
         if retry_exceeded awaiting_worker; then give_up awaiting_worker; fi
         ensure_schema rows; child awaiting_worker translation-worker "$B/worker-payload.json" "$B/candidate.json"; exit 0
     fi
@@ -394,6 +436,7 @@ deterministic_valid)
     ;;
 awaiting_qa)
     if [ ! -s "$B/verdicts.json" ]; then
+        if silent_child awaiting_qa "$B/verdicts.json"; then give_up_silent awaiting_qa; fi
         if retry_exceeded awaiting_qa; then give_up awaiting_qa; fi
         ensure_schema qa; child awaiting_qa translation-qa "$B/qa-payload.json" "$B/verdicts.json"; exit 0
     fi
