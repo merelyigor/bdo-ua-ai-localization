@@ -143,6 +143,16 @@ check_rules() {
         || fail 'AGENTS.md не вимагає самодостатніх runtime prompts'
     grep -Fq 'Runtime prompt самодостатній' .opencode/critical-rules.md \
         || fail 'critical-rules дозволяє ненадійну runtime-композицію prompts'
+    # Клас відмови «тихий збій і фіктивна перевірка» коштував двох діб розбору
+    # 2026-08-25…27. Норма не має права зникнути при наступному переписуванні.
+    grep -Fq 'Тихий збій заборонений' .opencode/critical-rules.md \
+        || fail 'critical-rules не забороняє тихий збій'
+    grep -Fq 'Перевірка мусить іти тим самим шляхом, що й робота' .opencode/critical-rules.md \
+        || fail 'critical-rules не вимагає, щоб перевірка йшла шляхом роботи'
+    grep -Fq '§12 Клас відмови' docs/AI_AGENT_RULES_REFERENCE.md \
+        || fail 'норматив не описує клас тихого збою'
+    grep -Fq '§12 довідника' AGENTS.md \
+        || fail 'карта правил не веде до §12'
     grep -Fq '§8.9 Кожен runtime primary/child prompt' docs/AI_AGENT_RULES_REFERENCE.md \
         || fail 'норматив не забороняє runtime include prompts'
     local forbidden_server_command
