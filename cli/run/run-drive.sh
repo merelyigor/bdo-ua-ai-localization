@@ -64,33 +64,38 @@ release_driver_lock() {
 # Повтор child обмежений часом, а не кількістю сесій. Тимчасовий збій
 # провайдера не повинен назавжди блокувати пачку, а primary не повинен просити
 # власника вручну переживати backoff. Тому drive сам чекає bounded паузу перед
-# повторною емісією того самого child. Після вікна прогін зупиняється з retry,
-# а наступний виклик автоматично починає нове вікно для тієї самої пачки.
+# повторною емісією того самого child. Коротке вікно лише оновлює backoff;
+# остаточно зупинити ту саму пачку може тільки загальний бюджет повторів.
 retry_exceeded() {
     local result
     result="$(php -r '
         $f=$argv[1]; $key=$argv[2]; $now=time();
         $window=max(1,(int)(getenv("BDO_CHILD_RETRY_WINDOW_SECONDS") ?: 600));
+        $budget=max($window,(int)(getenv("BDO_CHILD_RETRY_TOTAL_SECONDS") ?: 86400));
         $a=is_file($f)?(json_decode((string)file_get_contents($f),true)?:[]):[];
         $e=is_array($a[$key]??null)?$a[$key]:[];
+        $overall=(int)($e["overall_first_at"]??0);
+        if($overall===0){$overall=$now;}
+        if($now-$overall >= $budget){echo "exhausted"; exit;}
         $first=(int)($e["first_at"]??0);
+        $rollovers=(int)($e["window_rollovers"]??0);
         if($first===0){$first=$now;}
-        if($now-$first >= $window){echo "expired"; exit;}
+        if($now-$first >= $window){$first=$now;$rollovers++;}
         $count=(int)($e["count"]??0)+1;
         $delay=min(60,2 ** min(6,$count-1));
-        $a[$key]=["count"=>$count,"first_at"=>$first,"last_at"=>$now,"delay"=>$delay];
+        $a[$key]=["count"=>$count,"first_at"=>$first,"overall_first_at"=>$overall,"window_rollovers"=>$rollovers,"last_at"=>$now,"delay"=>$delay];
         file_put_contents($f,json_encode($a,JSON_UNESCAPED_SLASHES),LOCK_EX);
         echo "wait:".$delay;
     ' "$B/drive-retries.json" "$1")"
     case "$result" in
-        expired) return 0 ;;
+        exhausted) return 0 ;;
         wait:*) sleep "${result#wait:}"; return 1 ;;
         *) return 1 ;;
     esac
 }
 give_up() {
     rm -f "$B/drive-retries.json"
-    emit 0 "$1" '{"kind":"retry","reason":"child_retry_window_exhausted"}'
+    emit 0 "$1" '{"kind":"retry","reason":"child_retry_budget_exhausted"}'
     exit 1
 }
 completion() {

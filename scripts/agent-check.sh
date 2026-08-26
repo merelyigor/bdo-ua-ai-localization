@@ -105,19 +105,14 @@ check_rules() {
             || fail "$primary не має простого маршрутизатора запитів"
         grep -Fq '«Перевір патчі», «переклади в ШІ-шар» або «скільки рядків без ШІ-перекладу» -> `./bdo patches all machine`' ".opencode/agents/$primary.md" \
             || fail "$primary не маршрутизує запит про доступні рядки через API"
-        if [ "$primary" = __never__ ]; then
-            grep -Fq 'Improve завжди працює по ВСІЙ грі' ".opencode/agents/$primary.md" \
-                || fail 'покращення не має глобального scope'
-            grep -Fq 'API-фільтр = `missing=machine`' ".opencode/agents/$primary.md" \
-                || fail 'покращення може зачепити наявний ШІ-шар'
-            grep -Fq 'Явне «покращуй/перекладай всю гру»' ".opencode/agents/$primary.md" \
-                || fail 'покращення повторно просить уже надане підтвердження'
-        else
-            grep -Fq 'Друга колонка · номер у грі; не передавай її як snapshot.' ".opencode/agents/$primary.md" \
-                || fail "$primary плутає номер патча у грі зі snapshot_id"
-            grep -Fq 'Явне «перекладай патч N» уже є підтвердженням; не перепитуй.' ".opencode/agents/$primary.md" \
-                || fail "$primary повторно просить уже надане підтвердження"
-        fi
+        grep -Fq 'Друга колонка · номер у грі; не передавай її як snapshot.' ".opencode/agents/$primary.md" \
+            || fail "$primary плутає номер патча у грі зі snapshot_id"
+        grep -Fq 'Явне «перекладай патч N» уже є підтвердженням; не перепитуй.' ".opencode/agents/$primary.md" \
+            || fail "$primary повторно просить уже надане підтвердження"
+        grep -Fq 'reason=child_retry_budget_exhausted' ".opencode/agents/$primary.md" \
+            || fail "$primary не знає terminal retry budget"
+        grep -Fq 'власника не питай' ".opencode/agents/$primary.md" \
+            || fail "$primary перекладає provider retry на власника"
         grep -Fq 'МЕЖА ПРОЄКТУ' ".opencode/agents/$primary.md" \
             || fail "$primary не обмежує доступ до серверного проєкту"
         grep -Fq 'docs/API_CHANGE_HANDOFF.md' ".opencode/agents/$primary.md" \

@@ -67,8 +67,8 @@ check($resumeCode === 0, 'candidate_valid resume stopped the driver');
 $resumeEnvelope = json_decode(implode("\n", $resumeOut), true, 512, JSON_THROW_ON_ERROR);
 check(($resumeEnvelope['next']['role'] ?? null) === 'translation-qa', 'candidate_valid resume did not schedule QA');
 
-// Тимчасовий збій child не блокує пачку назавжди: після вікна driver повертає
-// retry, очищає лише лічильник вікна й дозволяє продовжити ту саму пачку.
+// Тимчасовий збій child сам переживає коротке retry-вікно; terminal retry
+// з'являється лише після окремого загального бюджету.
 $root2 = sys_get_temp_dir().'/bdo-fault-retry-'.bin2hex(random_bytes(6));
 if (! mkdir($root2, 0o755, true) && ! is_dir($root2)) {
     throw new RuntimeException("Не вдалося створити тимчасовий каталог $root2.");
@@ -77,7 +77,7 @@ $workspace2 = Workspace::create($root2, RowSet::fromFile($rowsPath), '20260823_1
 copy($rowsPath, $workspace2->path('rows.json'));
 $workspace2->transition('prepared');
 $workspace2->transition('awaiting_worker');
-$command2 = sprintf('BDO_PIPELINE_OFFLINE=1 BDO_CHILD_RETRY_WINDOW_SECONDS=1 BDO_STATE_DIR=%s bash %s', escapeshellarg($root2), escapeshellarg($repo.'/cli/run/run-drive.sh'));
+$command2 = sprintf('BDO_PIPELINE_OFFLINE=1 BDO_CHILD_RETRY_WINDOW_SECONDS=1 BDO_CHILD_RETRY_TOTAL_SECONDS=10 BDO_STATE_DIR=%s bash %s', escapeshellarg($root2), escapeshellarg($repo.'/cli/run/run-drive.sh'));
 file_put_contents($workspace2->path('candidate.json'), '{broken');
 exec($command2, $out2, $code2);
 check($code2 === 0, 'first transient child failure was not retryable');
@@ -85,13 +85,25 @@ $firstRetry = json_decode(implode("\n", $out2), true, 512, JSON_THROW_ON_ERROR);
 check(($firstRetry['next']['role'] ?? null) === 'translation-worker', 'driver did not re-emit child after internal backoff');
 check(($firstRetry['next']['reason'] ?? null) !== 'child_backoff', 'driver leaked a recoverable backoff decision to primary');
 $out2 = [];
-sleep(2);
+file_put_contents($workspace2->path('drive-retries.json'), json_encode([
+    'awaiting_worker' => ['count' => 0, 'first_at' => time() - 2, 'overall_first_at' => time()],
+], JSON_THROW_ON_ERROR));
 file_put_contents($workspace2->path('candidate.json'), '{broken');
 exec($command2, $out2, $code2);
-check($code2 !== 0, 'retry window exhaustion did not stop the run');
+check($code2 === 0, 'retry window rollover did not continue the same batch');
+$rollover = json_decode(implode("\n", $out2), true, 512, JSON_THROW_ON_ERROR);
+check(($rollover['next']['role'] ?? null) === 'translation-worker', 'retry window rollover did not re-emit worker');
+
+$out2 = [];
+file_put_contents($workspace2->path('drive-retries.json'), json_encode([
+    'awaiting_worker' => ['count' => 0, 'first_at' => time(), 'overall_first_at' => time() - 11],
+], JSON_THROW_ON_ERROR));
+file_put_contents($workspace2->path('candidate.json'), '{broken');
+exec($command2, $out2, $code2);
+check($code2 !== 0, 'retry budget exhaustion did not stop the run');
 $blocked = json_decode(implode("\n", $out2), true, 512, JSON_THROW_ON_ERROR);
 check(($blocked['next']['kind'] ?? null) === 'retry', 'exhausted retries did not return retry');
-check(($blocked['next']['reason'] ?? null) === 'child_retry_window_exhausted', 'retry envelope carries a wrong reason');
+check(($blocked['next']['reason'] ?? null) === 'child_retry_budget_exhausted', 'retry envelope carries a wrong reason');
 
 // Single-writer: два driver одночасно не мають права емісити child у той самий
 // response_path. Живий PID у lock дає bounded retry до будь-якої мутації стану.

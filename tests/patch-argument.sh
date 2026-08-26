@@ -42,6 +42,6 @@ foreach (["3; drop", "active&admin=1", "../1", ""] as $bad) {
 if (RunSpec::filterFor("patch", "2") !== "patch=2&missing=machine") {
     fwrite(STDERR, "FAIL: фільтр патча 2 неправильний\n"); exit(1);
 }
-}'
+'
 
 echo 'patch argument: OK'
