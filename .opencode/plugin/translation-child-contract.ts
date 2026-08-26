@@ -23,6 +23,30 @@ const ROLES = new Set([
 
 type ChildEnvelope = { kind?: string; role?: string; payload_path?: string; response_path?: string }
 
+/**
+ * Стиснути записаний `prompt` назад до посилання `payload:<path>`.
+ *
+ * Викликається ПІСЛЯ виконання Task, тому child уже отримав повний payload і
+ * нічого не втрачає. Мутуються обидві копії аргументів (`input.args` і
+ * `output.args`), бо різні версії OpenCode серіалізують у частину повідомлення
+ * то одну, то іншу; зайва мутація нешкідлива.
+ *
+ * @param payloadPath шлях зі staged envelope · саме він і був у диригента
+ */
+export function restorePromptReference(
+  input: { args?: Record<string, unknown> },
+  output: { args?: Record<string, unknown> },
+  payloadPath: string | undefined,
+): void {
+  if (payloadPath === undefined || payloadPath === "") return
+  const reference = `payload:${payloadPath}`
+  for (const args of [input.args, output.args]) {
+    if (args && typeof args.prompt === "string" && args.prompt !== reference) {
+      args.prompt = reference
+    }
+  }
+}
+
 function envelope(directory: string): ChildEnvelope | undefined {
   try {
     return JSON.parse(readFileSync(resolve(directory, "state/next-child.json"), "utf8")) as ChildEnvelope
@@ -82,6 +106,22 @@ export const TranslationChildContract: Plugin = async ({ directory }) => ({
     if (!ROLES.has(role)) return
     const next = envelope(directory)
     if (!next || next.kind !== "child" || next.role !== role || !next.response_path) return
+    // Payload не має лишатись у транскрипті диригента.
+    //
+    // Before-hook підставляє в `prompt` увесь staged payload · інакше child його
+    // не отримає. Але OpenCode зберігає підставлене значення в частині
+    // повідомлення, і воно ЗАЛИШАЄТЬСЯ у вхідному контексті платної моделі до
+    // кінця сесії, хоча диригент не має права ні читати його, ні змінювати.
+    //
+    // Виміряно 2026-08-26 по базі OpenCode: у сесії ses_fc8fcd1e один
+    // `tool:task` важив 52 647 символів, із них 49 639 · payload QA. На 32
+    // виклики це 465 358 із 761 405 символів транскрипту, тобто 61% усього
+    // контексту диригента. Витрата росте квадратично: кожен наступний запит
+    // пересилає всі попередні payload знову.
+    //
+    // Child уже відпрацював, тому тут значення можна повернути до короткого
+    // посилання · рівно того, яке писав сам диригент.
+    restorePromptReference(input, output, next.payload_path)
     const text = typeof output.output === "string" ? output.output : ""
     // TaskTool загортає відповідь child у <task_result>…</task_result>; зняття
     // обгортки детерміноване. Далі відповідь ділиться на JSON і примітку.

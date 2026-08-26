@@ -24,6 +24,25 @@ const args = { subagent_type: "translation-worker", description: "d", prompt: `p
 await before({ tool: "task", sessionID: "s", callID: "c" }, { args })
 if (args.prompt !== payload) throw new Error("prompt was not replaced with the staged payload")
 
+// ...і ПІСЛЯ виклику payload прибирається з аргументів назад у посилання.
+//
+// Інакше він лишається у транскрипті платної моделі до кінця сесії. Виміряно
+// 2026-08-26 по базі OpenCode: 465 358 із 761 405 символів контексту диригента
+// (61%) були саме такими підставленими payload, а витрата росте квадратично ·
+// кожен наступний запит пересилає всі попередні заново.
+{
+  const args2 = { subagent_type: "translation-worker", description: "d", prompt: `payload:${envelope.payload_path}` }
+  await before({ tool: "task", sessionID: "s", callID: "c" }, { args: args2 })
+  if (args2.prompt !== payload) throw new Error("before hook must still deliver the payload to the child")
+  await after(
+    { tool: "task", sessionID: "s", callID: "c", args: args2 },
+    { output: "<task_result>\n[{\"identity_hash\":\"aaaa\",\"text\":\"Меч\"}]\n</task_result>", args: args2 },
+  )
+  if (args2.prompt !== `payload:${envelope.payload_path}`) {
+    throw new Error(`staged payload stayed in the conductor transcript: ${args2.prompt.slice(0, 60)}`)
+  }
+}
+
 // Порожній або відсутній payload зупиняє виклик зрозуміло, а не віддає child
 // порожній prompt: диригент більше не носить payload сам, підмінити нікому.
 writeFileSync(join(directory, "state/batch/payload.json"), "\n")

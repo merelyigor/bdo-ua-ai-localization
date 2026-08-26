@@ -155,6 +155,10 @@ check_rules() {
         || fail 'critical-rules не забороняє native Windows flow'
     grep -Fq 'wsl.exe --cd' .opencode/plugin/translation-execution-guard.ts \
         || fail 'execution-guard втратив WSL-міст, описаний у critical-rules'
+    # Staged payload не має лишатись у транскрипті платної моделі: виміряно
+    # 2026-08-26, це було 61% контексту диригента, і витрата росла квадратично.
+    grep -Fq 'restorePromptReference(input, output, next.payload_path)' .opencode/plugin/translation-child-contract.ts \
+        || fail 'child-contract лишає staged payload у контексті диригента'
     grep -Fq '[WINDOWS_WSL2.md](WINDOWS_WSL2.md)' docs/README.md \
         || fail 'docs/README.md не посилається на Windows/WSL2 інструкцію'
     grep -Fq 'Переклад робиться В OPENCODE' AGENTS.md \
