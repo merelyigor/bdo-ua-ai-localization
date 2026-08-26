@@ -33,9 +33,10 @@ payload, API response, state directory або session dump.
 - `.env` · credentials і environment-specific values.
 - `output/` · API responses, benchmarks та діагностичні результати.
 - `state/` · batches, cursors, receipts, quarantine й audit trail.
-- Ротація пропускає активні, пошкоджені та незавершені batches: manifest без
-  `state=verified` не видаляється. Автоматичний режим вмикається лише локальним
-  `BDO_AUTO_CLEAN=1`; `quarantine.jsonl` і `write-log.jsonl` залишаються
+- Ротація не чіпає лише ПОТОЧНУ пачку (`state/current-batch`): будь-яка інша
+  тека недосяжна для флоу, тож її похідні файли прибираються, а квитанція
+  лишається. Прибирання увімкнене за замовчуванням; `BDO_AUTO_CLEAN=0` ·
+  аварійний вимикач. `quarantine.jsonl` і `write-log.jsonl` залишаються
   append-only.
 - OpenCode database/session dumps і model/runtime logs.
 
