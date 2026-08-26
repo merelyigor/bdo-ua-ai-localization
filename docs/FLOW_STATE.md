@@ -234,10 +234,11 @@ start) sh_run cli/run/run-mode.sh "${3:?…}" "${4:-15}" ;;   # $5 не пере
   покращити. Регресія: `tests/drive-memory-layers.sh`.
 - **Часове retry-вікно child у drive.** Кожен стан має запис у
   `drive-retries.json` пачки. За типовим `BDO_CHILD_RETRY_WINDOW_SECONDS=600`
-  (10 хвилин) між спробами діє експоненційний backoff до 60 секунд. Тимчасова
-  помилка провайдера не переводить пачку в постійний `blocked`: після вичерпання
-  вікна drive повертає `retry`, зберігає state/payload і наступним викликом
-  відкриває нове вікно для тієї самої пачки.
+  (10 хвилин) `run drive` сам витримує експоненційний backoff до 60 секунд і
+  повторно емітить того самого child. Primary після transient native Task error
+  повертається до drive без участі власника. Після вичерпання вікна drive
+  повертає `child_retry_window_exhausted`, зберігає state/payload і наступним
+  викликом відкриває нове вікно для тієї самої пачки.
 - **Промпти примарок.** Frontmatter ховає від слабкої моделі всі інструменти,
   за які execution-guard убив би сесію: поіменні `edit/write/patch/glob/grep/
   list/webfetch/websearch/question/todowrite/todoread/skill: false`. Wildcard

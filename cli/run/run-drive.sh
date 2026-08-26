@@ -62,9 +62,10 @@ release_driver_lock() {
     test "$(readlink "$DRIVE_LOCK" 2>/dev/null || true)" = "$$" && rm -f "$DRIVE_LOCK"
 }
 # Повтор child обмежений часом, а не кількістю сесій. Тимчасовий збій
-# провайдера не повинен назавжди блокувати пачку, але й не має плодити child
-# без паузи. Після вікна прогін зупиняється з retry, а наступний виклик
-# автоматично починає нове вікно для тієї самої пачки.
+# провайдера не повинен назавжди блокувати пачку, а primary не повинен просити
+# власника вручну переживати backoff. Тому drive сам чекає bounded паузу перед
+# повторною емісією того самого child. Після вікна прогін зупиняється з retry,
+# а наступний виклик автоматично починає нове вікно для тієї самої пачки.
 retry_exceeded() {
     local result
     result="$(php -r '
@@ -74,19 +75,16 @@ retry_exceeded() {
         $e=is_array($a[$key]??null)?$a[$key]:[];
         $first=(int)($e["first_at"]??0);
         if($first===0){$first=$now;}
-        $count=(int)($e["count"]??0)+1;
-        $next=$now+min(60,2 ** min(6,$count-1));
-        $a[$key]=["count"=>$count,"first_at"=>$first,"last_at"=>$now,"next_at"=>$next];
-        file_put_contents($f,json_encode($a,JSON_UNESCAPED_SLASHES),LOCK_EX);
         if($now-$first >= $window){echo "expired"; exit;}
-        if($now < $next && $count > 1){
-            echo "cooldown:".($next-$now); exit;
-        }
-        echo "retry";
+        $count=(int)($e["count"]??0)+1;
+        $delay=min(60,2 ** min(6,$count-1));
+        $a[$key]=["count"=>$count,"first_at"=>$first,"last_at"=>$now,"delay"=>$delay];
+        file_put_contents($f,json_encode($a,JSON_UNESCAPED_SLASHES),LOCK_EX);
+        echo "wait:".$delay;
     ' "$B/drive-retries.json" "$1")"
     case "$result" in
         expired) return 0 ;;
-        cooldown:*) emit 0 "$(field state)" "{\"kind\":\"retry\",\"reason\":\"child_backoff\",\"retry_after\":${result#cooldown:}}"; exit 75 ;;
+        wait:*) sleep "${result#wait:}"; return 1 ;;
         *) return 1 ;;
     esac
 }

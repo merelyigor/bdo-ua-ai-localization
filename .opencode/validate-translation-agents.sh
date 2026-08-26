@@ -263,6 +263,10 @@ for primary in патч ручний пропозиції покращення; 
         printf 'ERROR: %s must loop back to run drive after the child contract, not to mode start\n' "$primary" >&2
         exit 1
     }
+    grep -Fq 'transient помилка native `task`' "$ROOT/.opencode/agents/$primary.md" || {
+        printf 'ERROR: %s must recover transient native Task provider failures autonomously\n' "$primary" >&2
+        exit 1
+    }
 done
 
 test "$(jq -r '.subagent_depth' "$CONFIG")" = '1' || {

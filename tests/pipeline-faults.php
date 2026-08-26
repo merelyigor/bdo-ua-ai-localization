@@ -81,6 +81,9 @@ $command2 = sprintf('BDO_PIPELINE_OFFLINE=1 BDO_CHILD_RETRY_WINDOW_SECONDS=1 BDO
 file_put_contents($workspace2->path('candidate.json'), '{broken');
 exec($command2, $out2, $code2);
 check($code2 === 0, 'first transient child failure was not retryable');
+$firstRetry = json_decode(implode("\n", $out2), true, 512, JSON_THROW_ON_ERROR);
+check(($firstRetry['next']['role'] ?? null) === 'translation-worker', 'driver did not re-emit child after internal backoff');
+check(($firstRetry['next']['reason'] ?? null) !== 'child_backoff', 'driver leaked a recoverable backoff decision to primary');
 $out2 = [];
 sleep(2);
 file_put_contents($workspace2->path('candidate.json'), '{broken');

@@ -24,7 +24,7 @@ echo "$out" | grep -q '"patch":"active"' || { echo "FAIL: без аргумен�
 
 # 2. Диспетчер `mode start` мусить передавати третій аргумент далі. Викликати
 # його тут не можна · це похід в API і створення пачки, тому перевіряємо рядок.
-grep -Fq 'cli/run/run-mode.sh "${3:?mode start потребує режим}" "${4:-15}" "${5:-active}"' bdo \
+grep -Fq 'cli/run/run-mode.sh "${3:?mode start потребує режим}" "${4:-50}" "${5:-active}"' bdo \
     || { echo 'FAIL: `./bdo mode start` не передає номер патча в run-mode.sh' >&2; exit 1; }
 
 # 3. Значення патча йде в query string, тому чуже сюди не проходить.
@@ -41,6 +41,7 @@ foreach (["3; drop", "active&admin=1", "../1", ""] as $bad) {
 }
 if (RunSpec::filterFor("patch", "2") !== "patch=2&missing=machine") {
     fwrite(STDERR, "FAIL: фільтр патча 2 неправильний\n"); exit(1);
+}
 }'
 
 echo 'patch argument: OK'
