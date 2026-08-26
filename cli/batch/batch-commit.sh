@@ -216,9 +216,22 @@ if ($missing !== []) {
         } elseif ($route === Bdo\Translate\Pipeline\ChannelRouter::PROPOSAL) {
             // Лише для ручних каналів: недосконалий переклад видно в адмінці, де
             // його можна прийняти або виправити.
-            $moderation[] = ["identity_hash" => $hash,
-                             "source_hash" => $rowByHash[$hash]["source_hash"] ?? "",
-                             "text" => $text];
+            $item = ["identity_hash" => $hash,
+                     "source_hash" => $rowByHash[$hash]["source_hash"] ?? "",
+                     "text" => $text];
+            // На шляху до ЛЮДИНИ прапорець «переклад = джерело» не потребує
+            // вироку судді, бо перевіркою тут і є людина.
+            //
+            // Без нього сервер відхиляв пропозицію кодом `source_equivalent`, і
+            // рядок падав у карантин, звідки його ніхто не діставав: 21 із 27
+            // втрачених рядків 2026-08-25 були саме такі. Пропозиція, яку
+            // модератор бачить із позначкою, у сто разів корисніша за рядок у
+            // файлі, який не читає жодна команда.
+            if ($text === ($rowByHash[$hash]["source_text"] ?? null)) {
+                $item["same_as_source"] = true;
+                $sameAsSource++;
+            }
+            $moderation[] = $item;
         } else {
             // Порожній текст пропозицією бути не може - це справді збій.
             $held[] = ["identity_hash" => $hash, "reason" => "empty_text",
@@ -261,7 +274,7 @@ file_put_contents($argv[11], json_encode($moderation, JSON_UNESCAPED_UNICODE | J
 printf("Пачка: %d рядків | PASS %d, REVIEW %d, REJECT %d\n",
     count($rowByHash), $counts["PASS"], $counts["REVIEW"], $counts["REJECT"]);
 if ($sameAsSource > 0) {
-    printf("Переклад = джерело, підтверджено суддею: %d рядків (same_as_source)\n", $sameAsSource);
+    printf("Переклад = джерело: %d рядків із прапорцем same_as_source (у ШІ-шар лише за вироком судді, у модерацію завжди)\n", $sameAsSource);
 }
 if ($judgeCounts !== []) {
     printf("Суддя: у ШІ-шар %d | до людини %d (поріг %d%%)\n",

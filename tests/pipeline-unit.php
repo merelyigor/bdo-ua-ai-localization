@@ -129,7 +129,13 @@ try {
 
     // Постійні відмови API не йдуть у repair: модель їх не виправить, а коло
     // коштує повного циклу worker -> QA -> repair за платні токени.
-    expect(ErrorCodes::isPermanent('API: source_equivalent Це англійський оригінал, а не переклад'), 'source_equivalent must be permanent');
+    //
+    // `source_equivalent` більше НЕ входить у цей перелік. Він означає лише
+    // «твій текст дорівнює джерелу», а причин у цього дві, і частіша · воркер
+    // просто не переклав. Заміри 2026-08-25: усі 27 записів карантину мали цей
+    // код, серед кандидатів `[50% Off] Family Name Change Coupon`. Один прохід
+    // repair відрізняє провал перекладу від справді неперекладної назви.
+    expect(! ErrorCodes::isPermanent('API: source_equivalent Це англійський оригінал, а не переклад'), 'source_equivalent must stay repairable');
     expect(ErrorCodes::isPermanent('API: non_translatable рядок не перекладається'), 'non_translatable must be permanent');
     expect(! ErrorCodes::isPermanent('API: length_too_long завеликий рядок'), 'length defect must stay repairable');
     expect(! ErrorCodes::isPermanent('QA: REVIEW неточний відповідник'), 'QA verdict must stay repairable');

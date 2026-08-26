@@ -30,6 +30,7 @@
 
 | Статус | Задача | Де деталі |
 |---|---|---|
+| `чекає` | Розбір напрямку проєкту за вимірами 2026-08-26: ШІ-шар закритий на 97,9% (лишилось 29 936 рядків), 18% рядків пачки гинуть у `state/quarantine.jsonl` з `api_source_equivalent` і цим же спричиняють `no_progress`, диригент витрачає ~10 700 вхідних токенів платної моделі на рядок проти ~110 у воркера, а `improve` не має сигналу якості. | [backlog/2026-08-26_PROJECT_DIRECTION.md](backlog/2026-08-26_PROJECT_DIRECTION.md) |
 | `перевірити` | Кросплатформенність через WSL-міст: native Windows OpenCode виконує вже дозволену команду як `wsl.exe --cd <root> bash -lc "<команда>"`. Реалізовано 2026-08-25 разом із `.gitattributes`, резолвером даних OpenCode за межею WSL і `sqlite3` у preflight. Лишилось підтвердити на живій Windows-машині · з macOS цю частину перевірити неможливо. | [active/2026-08-25_CROSS_PLATFORM_WINDOWS_BRIDGE.md](active/2026-08-25_CROSS_PLATFORM_WINDOWS_BRIDGE.md) |
 | `відкладено` | Порт оркестрації в `php bdo.php` (єдина залежність PHP 8.3, native Windows без WSL). Заміряно 2026-08-25: 44 з 49 `cli/**/*.sh` уже делегують у PHP. Не починати, доки WSL-міст покриває потребу. | той самий план, шлях 3 |
 | `готово` | Windows/WSL2 та provider-neutral маршрути субагентів: policy за ролями, явна вартість, fallback і фактичний route у receipt. | [done/2026-08-22_WSL2_AND_MODEL_ROUTING.md](done/2026-08-22_WSL2_AND_MODEL_ROUTING.md) |

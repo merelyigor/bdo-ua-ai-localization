@@ -407,6 +407,7 @@ check_shell() {
     run bash tests/http-retry.sh
     run bash tests/rotation.sh
     run bash tests/no-silent-failures.sh
+    run bash tests/quarantine-recovery.sh
 }
 
 check_agents() {
