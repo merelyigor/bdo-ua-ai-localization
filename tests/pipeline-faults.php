@@ -78,11 +78,22 @@ copy($rowsPath, $workspace2->path('rows.json'));
 $workspace2->transition('prepared');
 $workspace2->transition('awaiting_worker');
 $command2 = sprintf('BDO_PIPELINE_OFFLINE=1 BDO_CHILD_RETRY_WINDOW_SECONDS=1 BDO_CHILD_RETRY_TOTAL_SECONDS=10 BDO_STATE_DIR=%s bash %s', escapeshellarg($root2), escapeshellarg($repo.'/cli/run/run-drive.sh'));
+// Застаріла схема на диску мусить перебудуватись на КОЖНІЙ емісії child.
+//
+// 2026-08-27: пачка висіла в `awaiting_worker`, а схема була від попереднього
+// дня у СТАРОМУ форматі з кореневим масивом. Провайдер відхиляв запит мовчки ·
+// нуль вхідних токенів. Виправлення формату не доходило до такої пачки, бо
+// схема будувалась один раз на переході `prepared`.
+$staleSchema = $root2.'/current-response-schema.json';
+file_put_contents($staleSchema, json_encode(['type' => 'array', 'minItems' => 99], JSON_THROW_ON_ERROR));
 file_put_contents($workspace2->path('candidate.json'), '{broken');
 exec($command2, $out2, $code2);
 check($code2 === 0, 'first transient child failure was not retryable');
 $firstRetry = json_decode(implode("\n", $out2), true, 512, JSON_THROW_ON_ERROR);
 check(($firstRetry['next']['role'] ?? null) === 'translation-worker', 'driver did not re-emit child after internal backoff');
+$rebuilt = json_decode((string) file_get_contents($staleSchema), true, 512, JSON_THROW_ON_ERROR);
+check(($rebuilt['type'] ?? null) === 'object', 'driver re-emitted a child with a stale schema on disk');
+check(isset($rebuilt['properties']['items']), 'rebuilt schema lost the provider-compatible wrapper');
 check(($firstRetry['next']['reason'] ?? null) !== 'child_backoff', 'driver leaked a recoverable backoff decision to primary');
 $out2 = [];
 file_put_contents($workspace2->path('drive-retries.json'), json_encode([

@@ -186,6 +186,33 @@ prepare_worker() {
     child awaiting_worker translation-worker "$B/worker-payload.json" "$B/candidate.json"
 }
 
+# Staged-схема мусить відповідати ПОТОЧНІЙ пачці на КОЖНІЙ емісії child.
+#
+# Досі вона будувалась один раз на переході `prepared` і більше не чіпалась.
+# Дві дірки з цього, обидві спостережені 2026-08-27 на живому прогоні:
+#
+# 1. Виправлення ФОРМАТУ схеми не доходило до пачки, яка вже висіла в
+#    `awaiting_worker`. Власник перезапустив OpenCode, smoke позеленів на новій
+#    формі, а воркер падав далі: на диску з 26 серпня лежала стара схема з
+#    кореневим масивом, і провайдер відхиляв запит. Child-сесія мала нуль
+#    вхідних токенів і жодного тексту помилки.
+# 2. Та сама дірка пропустить і розбіжність із пачкою. Коментар у
+#    `build-schema.sh` обіцяв, що застаріла схема «себе виявляє одразу» ·
+#    насправді вона виявляє себе мовчазною відмовою провайдера.
+#
+# Перебудова локальна й дешева: ні API, ні моделі. Тому вона робиться перед
+# кожним викликом, а не один раз.
+ensure_schema() {
+    local kind="$1" rows="$B/rows.json"
+    if [ "$kind" = rows ]; then
+        test -s "$B/to-translate.json" && test "$(row_count "$B/to-translate.json")" -gt 0 \
+            && rows="$B/to-translate.json"
+        "$SCRIPT_DIR/cli/prepare/build-schema.sh" "$rows" >/dev/null
+    else
+        "$SCRIPT_DIR/cli/prepare/build-schema.sh" --qa "$B/rows.json" >/dev/null
+    fi
+}
+
 # Resume-safe continuation after a valid worker candidate. A crash can happen
 # between `candidate_valid` and `deterministic_valid`; that state is not a
 # failure and must continue the same batch instead of falling into the generic
@@ -341,13 +368,14 @@ awaiting_worker)
     fi
     if [ ! -s "$B/candidate.json" ]; then
         if retry_exceeded awaiting_worker; then give_up awaiting_worker; fi
-        child awaiting_worker translation-worker "$B/worker-payload.json" "$B/candidate.json"; exit 0
+        ensure_schema rows; child awaiting_worker translation-worker "$B/worker-payload.json" "$B/candidate.json"; exit 0
     fi
     model_rows="$B/rows.json"
     test -s "$B/to-translate.json" && test "$(row_count "$B/to-translate.json")" -gt 0 && model_rows="$B/to-translate.json"
     if ! "$SCRIPT_DIR/cli/quality/build-items.sh" "$model_rows" "$B/candidate.json" "$B/model-items.json" "" --require-all >/dev/null 2>&1; then
         mv "$B/candidate.json" "$B/candidate.invalid.$(date +%s).json"
         if retry_exceeded awaiting_worker; then give_up awaiting_worker; fi
+        ensure_schema rows
         child awaiting_worker translation-worker "$B/worker-payload.json" "$B/candidate.json"
         exit 0
     fi
@@ -367,11 +395,12 @@ deterministic_valid)
 awaiting_qa)
     if [ ! -s "$B/verdicts.json" ]; then
         if retry_exceeded awaiting_qa; then give_up awaiting_qa; fi
-        child awaiting_qa translation-qa "$B/qa-payload.json" "$B/verdicts.json"; exit 0
+        ensure_schema qa; child awaiting_qa translation-qa "$B/qa-payload.json" "$B/verdicts.json"; exit 0
     fi
     if ! valid_qa "$B/verdicts.json" "$B/rows.json"; then
         mv "$B/verdicts.json" "$B/verdicts.invalid.$(date +%s).json"
         if retry_exceeded awaiting_qa; then give_up awaiting_qa; fi
+        ensure_schema qa
         child awaiting_qa translation-qa "$B/qa-payload.json" "$B/verdicts.json"
         exit 0
     fi
