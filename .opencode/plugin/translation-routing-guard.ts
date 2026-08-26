@@ -117,23 +117,38 @@ const SMOKE_SCHEMA = {
   required: ["ok", "text"],
   additionalProperties: false,
 }
+// Обгортка `{ items: [...] }` замість кореневого масиву · вимога structured
+// outputs: корінь мусить бути обʼєктом, інакше OpenAI-сумісний провайдер
+// відповідає `[400]` ще до моделі. `minimum`/`maximum` теж прибрані: strict-
+// режим їх не знає, а діапазон впевненості й так перевіряє `JudgePolicy`.
+// Плагін розгортає `items` назад у масив, тому решта флоу не змінилась.
 const JUDGE_SCHEMA = {
-  type: "array",
-  items: {
-    type: "object",
-    properties: {
-      identity_hash: { type: "string" },
-      destination: { type: "string", enum: ["ai_layer", "moderation"] },
-      confidence: { type: "integer", minimum: 0, maximum: 100 },
-      reason: { type: "string" },
+  type: "object",
+  properties: {
+    items: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          identity_hash: { type: "string" },
+          destination: { type: "string", enum: ["ai_layer", "moderation"] },
+          confidence: { type: "integer" },
+          reason: { type: "string" },
+        },
+        required: ["identity_hash", "destination", "confidence", "reason"],
+        additionalProperties: false,
+      },
     },
-    required: ["identity_hash", "destination", "confidence", "reason"],
-    additionalProperties: false,
   },
+  required: ["items"],
+  additionalProperties: false,
 }
 const TERMINOLOGY_SCHEMA = {
-  type: "array",
-  items: {
+  type: "object",
+  properties: {
+    items: {
+      type: "array",
+      items: {
     type: "object",
     properties: {
       canonical_source: { type: "string" },
@@ -146,7 +161,11 @@ const TERMINOLOGY_SCHEMA = {
     },
     required: ["canonical_source", "status", "term_id", "entity_type", "source_identity", "ukrainian_proposal", "next_action"],
     additionalProperties: false,
+      },
+    },
   },
+  required: ["items"],
+  additionalProperties: false,
 }
 
 

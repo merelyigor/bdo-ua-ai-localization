@@ -90,27 +90,41 @@ if ($argv[3] === "qa") {
 } else {
     $properties = [
         "identity_hash" => ["type" => "string", "enum" => $hashes],
-        "text" => ["type" => "string", "minLength" => 1],
+        "text" => ["type" => "string"],
     ];
     $required = ["identity_hash", "text"];
 }
-// ПОЗИЦІЙНЕ прибивання identity, а не спільний enum.
+// ПОЗИЦІЙНЕ прибивання identity, у формі, яку приймають ВСІ провайдери.
 //
-// Раніше тут стояла одна схема на всі елементи, а `identity_hash` мав
-// `enum` з УСІМА хешами пачки. Формально це обмеження, практично · дірка:
-// масив із 13 обʼєктів, у кожного той самий хеш, повністю валідний. Саме це
-// сталось 2026-08-22 тричі підряд: воркер повернув 13 обʼєктів з одним
-// `identity_hash`, constrained decoding при цьому "тримався", а пачка
-// зупинилась на `bdo items`.
+// Раніше тут стояла одна схема на всі елементи, а `identity_hash` мав `enum` з
+// УСІМА хешами пачки. Формально це обмеження, практично · дірка: масив із 13
+// обʼєктів, у кожного той самий хеш, повністю валідний. Саме це сталось
+// 2026-08-22 тричі підряд: воркер повернув 13 обʼєктів з одним `identity_hash`,
+// constrained decoding при цьому «тримався», а пачка зупинилась на `bdo items`.
 //
-// Тепер кожна позиція масиву прибита до СВОГО хеша через `const`. Модель
-// фізично не може ні повторити, ні переставити, ні пропустити рядок:
-// позиція i приймає рівно hashes[i].
-$positional = [];
+// Далі це вирішувалось tuple-формою: корінь `array`, `items` списком схем,
+// `minItems`/`maxItems`. Виміряно 2026-08-27, чому це було помилкою: жоден
+// OpenAI-сумісний провайдер такої схеми не приймає. Structured outputs у
+// strict-режимі вимагають корінь `object` і знають лише вузький набір ключів ·
+// `minItems`, `maxItems`, `minLength` і tuple-`items` у нього не входять.
+// Провайдер відповідав `[400]` ДО моделі, тож child-сесія мала нуль вхідних
+// токенів. За базою OpenCode: `opencode-go` · 0 успішних дитячих сесій із 3,
+// `ollama-local` · 130 із 137. Тобто хмарний шлях не працював ЖОДНОГО разу, а
+// локальний працював лише тому, що Ollama-runner до схеми поблажливий.
+//
+// Нова форма тримає ту саму гарантію СИЛЬНІШЕ й лишається strict-сумісною:
+// корінь · обʼєкт із рівно N іменованими полями `row_1..row_N`, кожне прибите
+// до свого хеша через одноелементний `enum`. Модель не може ні повторити, ні
+// пропустити, ні переставити рядок: кожен ключ обовʼязковий і рівно один.
+// `additionalProperties: false` не дає дописати зайве.
+$rowProps = [];
+$rowRequired = [];
 foreach ($hashes as $i => $hash) {
     $props = $properties;
-    $props["identity_hash"] = ["type" => "string", "const" => $hash];
-    $positional[] = [
+    $props["identity_hash"] = ["type" => "string", "enum" => [$hash]];
+    $key = "row_" . ($i + 1);
+    $rowRequired[] = $key;
+    $rowProps[$key] = [
         "type" => "object",
         "properties" => $props,
         "required" => $required,
@@ -118,11 +132,10 @@ foreach ($hashes as $i => $hash) {
     ];
 }
 $schema = [
-    "type" => "array",
-    "minItems" => $count,
-    "maxItems" => $count,
-    // Tuple-форма draft-07: масив схем означає "позиція i за схемою i".
-    "items" => $positional,
+    "type" => "object",
+    "properties" => $rowProps,
+    "required" => $rowRequired,
+    "additionalProperties" => false,
 ];
 file_put_contents($argv[2], json_encode($schema, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT | JSON_THROW_ON_ERROR));
 echo "Схему поставлено на $count рядків.\n";

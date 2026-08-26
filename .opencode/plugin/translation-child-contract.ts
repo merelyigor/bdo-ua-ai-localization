@@ -9,6 +9,7 @@ import {
   recordNote,
   retryNote,
   splitAnswer,
+  unwrapChildJson,
   stateFile,
 } from "../lib/child-response.ts"
 
@@ -147,7 +148,10 @@ export const TranslationChildContract: Plugin = async ({ directory }) => ({
 
       return
     }
-    atomicWrite(stateFile(directory, next.response_path), split.json)
+    // Обгортка strict-схеми знімається ТУТ: на диск лягає той самий масив,
+    // який чекають усі скрипти нижче за течією.
+    const payloadJson = unwrapChildJson(split.json)
+    atomicWrite(stateFile(directory, next.response_path), payloadJson)
     clearIncident(directory, next.response_path)
     recordNote(directory, next.response_path, role, split.note, at)
     // Головна економія платного контексту: відповідь child уже збережена
@@ -157,7 +161,7 @@ export const TranslationChildContract: Plugin = async ({ directory }) => ({
     // контексті основної моделі без жодної для неї потреби.
     const items = (() => {
       try {
-        const parsed = JSON.parse(split.json)
+        const parsed = JSON.parse(payloadJson)
 
         return Array.isArray(parsed) ? `${parsed.length}` : "1"
       } catch {

@@ -18,6 +18,7 @@ writeFileSync(join(directory, ".opencode", "translation-models.json"), JSON.stri
       "translation-smoke": ["free/model", "paid/model", "ollama-local/model", "free/knows-none", "free/plain"],
       "translation-worker": ["free/model"],
       "translation-terminology": ["free/model"],
+      "translation-judge": ["free/model"],
     },
   } },
 }))
@@ -104,7 +105,25 @@ delete process.env.OPENCODE_MODELS_CACHE
 const terminologyOutput = { options: {} }
 await hooks["chat.params"]({ agent: "translation-terminology", model: { providerID: "free", id: "model" } }, terminologyOutput)
 assert.equal(terminologyOutput.options.response_format.json_schema.name, "terminology")
-assert.equal(terminologyOutput.options.response_format.json_schema.schema.items.additionalProperties, false)
+// Корінь схеми мусить бути ОБʼЄКТОМ: OpenAI-сумісні провайдери відповідають
+// `[400]` на кореневий масив ще до моделі, і child-сесія має нуль токенів.
+// Виміряно 2026-08-27: `opencode-go` мав 0 успішних дитячих сесій із 3.
+for (const [agent, name] of [["translation-terminology", "terminology"], ["translation-judge", "judge"]]) {
+  const out = { options: {} }
+  await hooks["chat.params"]({ agent, model: { providerID: "free", id: "model" } }, out)
+  const schema = out.options.response_format.json_schema.schema
+  assert.equal(out.options.response_format.json_schema.name, name)
+  assert.equal(schema.type, "object", `${agent}: корінь схеми мусить бути object`)
+  assert.equal(schema.additionalProperties, false, `${agent}: корінь без additionalProperties:false`)
+  assert.deepEqual(schema.required, ["items"], `${agent}: обгортка мусить вимагати items`)
+  assert.equal(schema.properties.items.type, "array", `${agent}: items мусить бути масивом`)
+  assert.equal(schema.properties.items.items.additionalProperties, false)
+  // Ключі, яких strict-режим не знає, ламають запит так само, як кореневий масив.
+  const flat = JSON.stringify(schema)
+  for (const banned of ["minItems", "maxItems", "minLength", "minimum", "maximum"]) {
+    assert.ok(!flat.includes(banned), `${agent}: схема містить несумісний ключ ${banned}`)
+  }
+}
 
 await assert.rejects(
   hooks["chat.params"]({ agent: "translation-smoke", model: { providerID: "other", id: "model" } }, { options: {} }),

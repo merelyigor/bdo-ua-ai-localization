@@ -178,8 +178,15 @@ for agent in "${!MAX_LINES[@]}"; do
         exit 1
     }
 done
+# Корінь відповіді мусить бути ОБʼЄКТОМ, а не масивом.
+#
+# Structured outputs в OpenAI-сумісних провайдерів приймають лише обʼєктний
+# корінь: за кореневий масив приходить `[400]` ще до моделі. Виміряно
+# 2026-08-27 по базі OpenCode · `opencode-go` мав 0 успішних дитячих сесій із 3,
+# тоді як `ollama-local` 130 із 137, бо Ollama-runner до схеми поблажливий.
+# Плагін розгортає обгортку назад у масив, тому решта флоу її не бачить.
 for agent in translation-worker translation-qa translation-repair translation-terminology translation-judge; do
-    grep -Fq 'Поверни тільки JSON-масив' "$ROOT/.opencode/agents/$agent.md" || {
+    grep -Fq 'Поверни ОДИН JSON-обʼєкт' "$ROOT/.opencode/agents/$agent.md" || {
         printf 'ERROR: %s lacks an exact JSON-only output rule\n' "$agent" >&2
         exit 1
     }

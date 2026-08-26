@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs"
 import { tool, type Plugin } from "@opencode-ai/plugin"
-import { atomicWrite, clearIncident, recordIncident, recordNote, splitAnswer, stateFile } from "../lib/child-response.ts"
+import { atomicWrite, clearIncident, recordIncident, recordNote, splitAnswer, stateFile, unwrapChildJson } from "../lib/child-response.ts"
 
 /** Зберігає JSON, повернутий видимим native Task-дитям OpenCode. */
 export const TranslationResultWriter: Plugin = async ({ directory }) => ({
@@ -44,7 +44,8 @@ export const TranslationResultWriter: Plugin = async ({ directory }) => ({
             `Відповідь не є JSON (спроба ${attempt}). Не виправляй її сам: виконай ./bdo run drive · він перезапустить того самого child з уточненням.`,
           )
         }
-        atomicWrite(target, split.json)
+        // Та сама обгортка strict-схеми, що й у child-contract: на диск лягає масив.
+        atomicWrite(target, unwrapChildJson(split.json))
         clearIncident(directory, args.response_path)
         recordNote(directory, args.response_path, "primary-copy", split.note, new Date().toISOString())
 

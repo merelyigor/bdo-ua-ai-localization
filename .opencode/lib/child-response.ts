@@ -76,6 +76,46 @@ function firstJsonValue(text: string): { json: string; note: string } | undefine
 }
 
 /**
+ * Розгорнути strict-обгортку назад у масив, який чекає решта флоу.
+ *
+ * Structured outputs в OpenAI-сумісних провайдерів вимагають корінь `object`.
+ * Через це схеми віддають або `{ items: [...] }` (суддя, термінологія), або
+ * `{ row_1: {...}, row_2: {...} }` (worker/repair/qa, де кожен ключ прибитий до
+ * свого `identity_hash`). Розгортання робиться ТУТ, одразу після відповіді, щоб
+ * жоден скрипт нижче не знав про обгортку й нічого не переписувати.
+ *
+ * Толерантність навмисна: чистий масив приймається як є. Ollama-runner до схеми
+ * поблажливий і за старим промптом може віддати саме масив, а `smoke` взагалі
+ * повертає `{ok,text}` · його чіпати не можна.
+ *
+ * Ключі `row_N` впорядковуються ЧИСЛОМ, а не рядком: інакше `row_10` стало б
+ * перед `row_2`, і позиційна гарантія перетворилась би на свою протилежність.
+ */
+export function unwrapChildJson(json: string): string {
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(json)
+  } catch {
+    return json
+  }
+  if (Array.isArray(parsed)) return json
+  if (parsed === null || typeof parsed !== "object") return json
+  const record = parsed as Record<string, unknown>
+  if (Array.isArray(record.items)) return JSON.stringify(record.items)
+  const keys = Object.keys(record)
+  if (keys.length > 0 && keys.every((key) => /^row_[0-9]+$/.test(key))) {
+    const ordered = keys
+      .slice()
+      .sort((a, b) => Number(a.slice(4)) - Number(b.slice(4)))
+      .map((key) => record[key])
+
+    return JSON.stringify(ordered)
+  }
+
+  return json
+}
+
+/**
  * Розділяє відповідь child на JSON і примітку.
  *
  * Дитина · це модель, а не скрипт: разом із коректним JSON вона законно

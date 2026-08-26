@@ -417,6 +417,7 @@ check_shell() {
     run bash tests/no-silent-failures.sh
     run bash tests/quarantine-recovery.sh
     run bash tests/worker-reference.sh
+    run bash tests/schema-provider-compat.sh
 }
 
 check_agents() {
