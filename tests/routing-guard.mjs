@@ -1,5 +1,5 @@
 import assert from "node:assert/strict"
-import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs"
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import plugin, { TranslationRoutingGuard } from "../.opencode/plugin/translation-routing-guard.ts"
@@ -105,6 +105,27 @@ delete process.env.OPENCODE_MODELS_CACHE
 const terminologyOutput = { options: {} }
 await hooks["chat.params"]({ agent: "translation-terminology", model: { providerID: "free", id: "model" } }, terminologyOutput)
 assert.equal(terminologyOutput.options.response_format.json_schema.name, "terminology")
+// Smoke мусить перевіряти ТУ САМУ схему, що й робочі ролі.
+//
+// Поки в нього була власна крихітна схема, він показував «маршрут здоровий» на
+// конфігурації, де жоден реальний child не працював. Тепер staged-схема smoke
+// перебиває вбудовану, і провайдер, який не приймає робочу форму, валить саме
+// smoke · тобто найдешевшу перевірку, а не пачку на 50 рядків.
+{
+  const staged = { type: "object", properties: { items: { type: "array", items: { type: "object", properties: { identity_hash: { type: "string", enum: ["x"] }, text: { type: "string" } }, required: ["identity_hash", "text"], additionalProperties: false } } }, required: ["items"], additionalProperties: false }
+  mkdirSync(join(directory, "state"), { recursive: true })
+  const stagedFile = join(directory, "state/current-smoke-schema.json")
+  const fallback = { options: {} }
+  await hooks["chat.params"]({ agent: "translation-smoke", model: { providerID: "free", id: "model" } }, fallback)
+  assert.equal(fallback.options.response_format.json_schema.name, "translation_capability", "без staged діє вбудована схема")
+  writeFileSync(stagedFile, JSON.stringify(staged))
+  const real = { options: {} }
+  await hooks["chat.params"]({ agent: "translation-smoke", model: { providerID: "free", id: "model" } }, real)
+  assert.equal(real.options.response_format.json_schema.name, "translations", "staged схема smoke не підхопилась")
+  assert.deepEqual(real.options.response_format.json_schema.schema, staged)
+  rmSync(stagedFile)
+}
+
 // Корінь схеми мусить бути ОБʼЄКТОМ: OpenAI-сумісні провайдери відповідають
 // `[400]` на кореневий масив ще до моделі, і child-сесія має нуль токенів.
 // Виміряно 2026-08-27: `opencode-go` мав 0 успішних дитячих сесій із 3.

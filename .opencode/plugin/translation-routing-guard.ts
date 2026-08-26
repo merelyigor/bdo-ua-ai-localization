@@ -107,6 +107,7 @@ const AGENTS = new Set([
 // відповідь не може нести викликів інструментів, тому кожен агент із цього
 // переліку мусить уміти працювати з самого лише свого промпта.
 const STRUCTURED_AGENTS = new Map([
+  ["translation-smoke", "state/current-smoke-schema.json"],
   ["translation-worker", "state/current-response-schema.json"],
   ["translation-repair", "state/current-response-schema.json"],
   ["translation-qa", "state/current-qa-schema.json"],
@@ -231,7 +232,20 @@ export const TranslationRoutingGuard: Plugin = async ({ directory }) => ({
     // enum і фіксує довжину масиву, тож модель не може пропустити, продублювати
     // чи вигадати identity. Відсутня схема падає САМЕ ТУТ, до витрати токенів ·
     // інакше дефект спливе аж у ./bdo items після повного прогону пачки.
-    if (input.agent === "translation-smoke") {
+    // Smoke перевіряє провайдера ТІЄЮ САМОЮ схемою, що й робочі ролі.
+    //
+    // Раніше він мав власний `SMOKE_SCHEMA` · обʼєкт із двома `const`, який
+    // приймає будь-хто. Через це півтора місяця він показував «маршрут
+    // здоровий» на конфігурації, де жоден реальний child не працював: робоча
+    // схема мала корінь `array`, і OpenAI-сумісні провайдери відхиляли її
+    // кодом `[400]` ще до моделі. Виміряно 2026-08-27: `opencode-go` мав нуль
+    // успішних дитячих сесій із трьох, а smoke був зелений.
+    //
+    // Тепер `prepare-smoke.sh` будує staged-схему тим самим `build-schema.sh`,
+    // і вона підхоплюється нижче через STRUCTURED_AGENTS. Вбудований
+    // `SMOKE_SCHEMA` лишається запасним варіантом для ручного
+    // `@translation-smoke` без staged envelope · там перевіряти нічого.
+    if (input.agent === "translation-smoke" && stagedSchema(directory, "state/current-smoke-schema.json") === undefined) {
       output.options.response_format = {
         type: "json_schema",
         json_schema: { name: "translation_capability", strict: true, schema: SMOKE_SCHEMA },

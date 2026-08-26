@@ -7,16 +7,37 @@ import { readRuntimeModelState } from "../lib/runtime-model-state.ts"
 // OpenCode завантажує prompt і plugin один раз на старті. Після git pull стара
 // сесія інакше продовжує виконувати вже видалені команди/прапорці: саме так
 // primary просив `--end`, хоча run-start уже автоматично закривав terminal lock.
+// Перелік навмисно ширший за «promptи диригента».
+//
+// 2026-08-27 сюди не входили ні `build-schema.sh`, ні плагіни, ні дитячі
+// промпти · і власник півгодини ганяв пачку на ВИПРАВЛЕНОМУ коді, який стара
+// сесія не бачила: OpenCode вантажить це один раз на старті. Пʼять порожніх
+// child поспіль, і жодного натяку, що треба перезапустити OpenCode.
+// Правило просте: якщо файл впливає на те, ЩО отримає child, він тут.
 const WORKFLOW_FILES = [
   "bdo",
   "cli/run/run-start.sh",
   "cli/run/run-mode.sh",
+  "cli/run/run-drive.sh",
   "cli/command-registry.json",
+  "cli/prepare/build-schema.sh",
+  "cli/prepare/worker-payload.sh",
+  "cli/runtime/prepare-smoke.sh",
   ".opencode/plugin/translation-execution-guard.ts",
+  ".opencode/plugin/translation-routing-guard.ts",
+  ".opencode/plugin/translation-child-contract.ts",
+  ".opencode/plugin/translation-result-writer.ts",
+  ".opencode/lib/child-response.ts",
   ".opencode/agents/патч.md",
   ".opencode/agents/ручний.md",
   ".opencode/agents/пропозиції.md",
   ".opencode/agents/покращення-ші.md",
+  ".opencode/agents/translation-worker.md",
+  ".opencode/agents/translation-qa.md",
+  ".opencode/agents/translation-repair.md",
+  ".opencode/agents/translation-terminology.md",
+  ".opencode/agents/translation-judge.md",
+  ".opencode/agents/translation-smoke.md",
 ]
 
 function workflowFingerprint(directory: string): string {
