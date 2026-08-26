@@ -69,6 +69,6 @@
 | `./bdo profile` | моделі за ролями: status&#124;use&#124;set&#124;fallback&#124;paid |
 | `./bdo models` | звірка локальних Ollama-моделей із OpenCode |
 | `./bdo bench` | вимір локальної моделі на реальній пачці |
-| `./bdo clean` | ротація тек пачок і output/ |
+| `./bdo clean` | прибрати недосяжні теки пачок і старі дампи output |
 | `./bdo paths` | що куди вирішилось із розкладкою |
 | `./bdo api` | read-only smoke Agent API |

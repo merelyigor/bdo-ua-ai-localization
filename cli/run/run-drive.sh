@@ -203,6 +203,22 @@ candidate_to_qa() {
     transition awaiting_qa; child awaiting_qa translation-qa "$B/qa-payload.json" "$B/verdicts.json"
 }
 
+# Прибирання після кожної завершеної пачки · за замовчуванням УВІМКНЕНЕ.
+#
+# Раніше воно вмикалось лише за `BDO_AUTO_CLEAN=1`, тобто за замовчуванням
+# набір накопичував теки, доки власник про це не згадає. Правильний дефолт
+# протилежний: флоу сам прибирає за собою, а `BDO_AUTO_CLEAN=0` лишається
+# аварійним вимикачем для розбору збою, коли похідні файли ще потрібні.
+#
+# `prune_verified_batch` займається ПОТОЧНОЮ пачкою, яку clean навмисно не
+# чіпає; clean · усіма іншими, недосяжними для флоу. Разом вони покривають усе.
+auto_clean() {
+    test "${BDO_AUTO_CLEAN:-1}" = 0 && return 0
+    "$SCRIPT_DIR/cli/batch/batch-clean.sh" --apply --quiet \
+        --days "${BDO_KEEP_DAYS:-7}" --keep "${BDO_KEEP_RECEIPTS:-50}" >/dev/null 2>&1 || true
+    return 0
+}
+
 # Прибрати похідні файли пачки одразу після `verified`.
 #
 # Правда про переклад живе на сервері: рядок або записаний у шар, або лежить у
@@ -235,7 +251,9 @@ prune_verified_batch() {
     done
     # Дампи API, з яких зроблено цю теку. Пачка щойно завершилась, а одночасно
     # живою може бути лише одна, тому все не новіше за її manifest вже мертве.
-    find "$SCRIPT_DIR/output" -maxdepth 1 -type f \( -name 'rows_*.json' -o -name 'validate_*.json' \) \
+    local output_dir="$SCRIPT_DIR/output"
+    test -n "${BDO_STATE_DIR:-}" && output_dir="$(dirname "$BDO_STATE_DIR")/output"
+    find "$output_dir" -maxdepth 1 -type f \( -name 'rows_*.json' -o -name 'validate_*.json' \) \
         ! -newer "$B/manifest.json" -delete 2>/dev/null || true
     return 0
 }
@@ -421,15 +439,12 @@ ready_to_commit|committing)
         complete commit "$B/commit-report.txt"; transition committed; transition verified; "$SCRIPT_DIR/cli/prepare/build-schema.sh" --clear >/dev/null
         # Конверт рахується ДО прибирання: `completion` читає commit-report.txt
         # і batch-summary.json із теки, яку prune зараз видалить.
-        envelope="$(completion)"; prune_verified_batch
+        envelope="$(completion)"; prune_verified_batch; auto_clean
         emit 1 verified "$envelope"
     else emit 0 committing '{"kind":"retry","reason":"api_write_failed"}'; exit 1; fi
     ;;
 verified)
-    envelope="$(completion)"; prune_verified_batch
-    if [ "${BDO_AUTO_CLEAN:-0}" = 1 ]; then
-        "$SCRIPT_DIR/cli/batch/batch-clean.sh" --apply --days "${BDO_KEEP_DAYS:-14}" >/dev/null
-    fi
+    envelope="$(completion)"; prune_verified_batch; auto_clean
     emit 1 verified "$envelope"
     ;;
 *) emit 0 "$state" "$(php -r 'echo json_encode(["kind"=>"blocked","reason"=>$argv[1]]);' "$state")"; exit 1 ;;

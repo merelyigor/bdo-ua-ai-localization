@@ -1,94 +1,148 @@
 #!/usr/bin/env bash
-# Прибрати робочі файли завершених пачок і старі відповіді API.
+# Прибрати все, що флоу вже не може використати.
 #
-#   ./batch-clean.sh              # показати, що буде прибрано, і нічого не робити
-#   ./batch-clean.sh --apply      # прибрати
+#   ./batch-clean.sh                 # показати, що буде прибрано, і нічого не робити
+#   ./batch-clean.sh --apply         # прибрати
 #   ./batch-clean.sh --days 3 --apply
+#   ./batch-clean.sh --keep 20 --apply   # скільки квитанцій лишити
 #
-# Що прибирається: лише теки пачок зі станом `verified` і файли в output/,
-# старші за BDO_KEEP_DAYS (типово 7). Поточна пачка не чіпається ніколи.
+# ОДНЕ ПРАВИЛО, і воно доказове: тека пачки, на яку НЕ вказує
+# `state/current-batch`, недосяжна для флоу. `Workspace::current()` читає рівно
+# цей вказівник, `mode start` відновлює рівно цю пачку, `run drive` працює рівно
+# з нею. Тому стан у manifest не має значення · важлива досяжність.
+#
+# Звідси розкладка:
+#   поточна пачка      · не чіпається ніколи, у жодному режимі;
+#   будь-яка інша      · похідні файли (дампи API, payload, кандидати) зникають,
+#                        бо їх уже нікому подати;
+#   квитанція          · `manifest.json`, `journal.jsonl`, `batch-summary.json`
+#                        лишаються, доки не перевищено ліміт `--keep`;
+#   найстаріші понад ліміт · видаляються цілком;
+#   `output/`          · дампи API старші за `--days`.
+#
+# Навіщо змінено попереднє правило. Воно прибирало ЛИШЕ теки зі станом
+# `verified`, старші за `BDO_KEEP_DAYS`. Заміряно 2026-08-26: із 38 тек 37 були
+# недосяжні для флоу і займали 5 770 КБ, але під старе правило підпадали тільки
+# 23 (3 801 КБ). Решта 14 · покинуті на півдорозі пачки (`awaiting_qa`,
+# `selected`, пошкоджений manifest) · не прибиралися НІКОЛИ й росли назавжди.
 #
 # Що НЕ прибирається за жодних умов:
-#   - state/quarantine.jsonl - це перелік рядків, які не доїхали; його розбирає
-#     власник, і втратити його означає втратити роботу;
-#   - state/write-log.jsonl - незнищенний слід того, що і куди записано;
-#   - state/run-target і state/current-batch - живий стан;
-#   - будь-що поза цими двома теками.
+#   - `state/quarantine.jsonl` · перелік рядків, які не доїхали в жоден шар;
+#   - `state/write-log.jsonl` · незнищенний слід того, що і куди записано;
+#   - `state/run-target`, `state/current-batch` · живий стан прогону;
+#   - будь-що поза `state/batches` і `output/`.
 #
-# Режим за замовчуванням - показ. Видалення робочих файлів необоротне, а різниця
-# між «показати» і «зробити» має бути в явному прапорці, а не в уважності.
+# Режим за замовчуванням · показ. Видалення необоротне, тому різниця між
+# «показати» і «зробити» лишається в явному прапорці, а не в уважності.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")/../.." && pwd)"
 STATE_DIR="${BDO_STATE_DIR:-$SCRIPT_DIR/state}"
-OUTPUT_DIR="$SCRIPT_DIR/output"
+# `output/` живе поруч зі `state/`. Коли `BDO_STATE_DIR` перевизначено (тести,
+# другий клон), дампи теж лежать поруч із НИМ, а не в теці репозиторію ·
+# інакше прогін тесту видаляв би робочі дампи справжнього проєкту.
+if [ -n "${BDO_STATE_DIR:-}" ]; then
+    OUTPUT_DIR="$(dirname "$BDO_STATE_DIR")/output"
+else
+    OUTPUT_DIR="$SCRIPT_DIR/output"
+fi
 DAYS="${BDO_KEEP_DAYS:-7}"
+# Скільки квитанцій лишати. 50 пачок по ~2,5 КБ це ~125 КБ сталого стану ·
+# достатньо, щоб відповісти «що сталося з пачкою X» за кілька останніх прогонів.
+KEEP="${BDO_KEEP_RECEIPTS:-50}"
 APPLY=0
+QUIET=0
 
 while [ $# -gt 0 ]; do
     case "$1" in
         --apply) APPLY=1; shift ;;
+        --quiet) QUIET=1; shift ;;
         --days) DAYS="${2:?--days потребує число}"; shift 2 ;;
+        --keep) KEEP="${2:?--keep потребує число}"; shift 2 ;;
         *) echo "Невідомий аргумент: $1" >&2; exit 1 ;;
     esac
 done
 
-case "$DAYS" in
-    ''|*[!0-9]*) echo "--days має бути цілим числом, отримано '$DAYS'." >&2; exit 1 ;;
-esac
+for value in "$DAYS" "$KEEP"; do
+    case "$value" in
+        ''|*[!0-9]*) echo "--days і --keep мають бути цілими числами, отримано '$value'." >&2; exit 1 ;;
+    esac
+done
+
+say() { test "$QUIET" = 1 || printf '%s\n' "$1"; }
 
 CURRENT_ID=""
 test -f "$STATE_DIR/current-batch" && CURRENT_ID="$(head -1 "$STATE_DIR/current-batch" | tr -d '[:space:]')"
 
-echo "Зберігаємо все, молодше за $DAYS дн. Поточна пачка: ${CURRENT_ID:-немає}"
-echo
+say "Поточна пачка (недоторкана): ${CURRENT_ID:-немає}"
+say "Квитанцій лишаємо: $KEEP | дампи output старші за $DAYS дн."
+say ""
 
-removed=0
+# Квитанція · це три файли. Усе інше в теці пачки є похідним від API або від
+# відповіді моделі й після завершення не потрібне нікому.
+is_receipt() {
+    case "$1" in
+        manifest.json|journal.jsonl|batch-summary.json) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
+pruned=0; dropped=0; files=0; freed=0
 if [ -d "$STATE_DIR/batches" ]; then
+    # Найновіші зверху: ліміт `--keep` рахується від свіжих, а не від старих.
+    index=0
     while IFS= read -r dir; do
         name="$(basename "$dir")"
         if [ -n "$CURRENT_ID" ] && [ "$name" = "$CURRENT_ID" ]; then
-            echo "  ПРОПУСК (поточна): $name"
+            say "  ПОТОЧНА, пропуск: $name"
             continue
         fi
-        batch_state="$(php -r '
-            $m = is_file($argv[1]) ? json_decode((string) file_get_contents($argv[1]), true) : null;
-            echo is_array($m) ? (string) ($m["state"] ?? "") : "";
-        ' "$dir/manifest.json")"
-        if [ "$batch_state" != verified ]; then
-            echo "  ПРОПУСК (не завершена: ${batch_state:-пошкоджена}): $name"
+        index=$((index + 1))
+        size_kb="$(du -sk "$dir" 2>/dev/null | cut -f1)"
+        if [ "$index" -gt "$KEEP" ]; then
+            if [ "$APPLY" = 1 ]; then rm -rf "$dir"; fi
+            say "  понад ліміт квитанцій, тека цілком: $name (${size_kb} КБ)"
+            dropped=$((dropped + 1)); freed=$((freed + size_kb))
             continue
         fi
-        size="$(du -sh "$dir" 2>/dev/null | cut -f1)"
-        if [ "$APPLY" = 1 ]; then
-            rm -rf "$dir"
-            echo "  прибрано: $name ($size)"
-        else
-            echo "  буде прибрано: $name ($size)"
+        derived=0
+        for file in "$dir"/*; do
+            test -e "$file" || continue
+            base="$(basename "$file")"
+            # Живий замок driver знімає trap процесу, а не прибирання: видалити
+            # його тут означає зламати `release_driver_lock` чужого прогону.
+            if is_receipt "$base" || [ "$base" = drive.lock ]; then continue; fi
+            derived=$((derived + 1))
+            if [ "$APPLY" = 1 ]; then rm -rf "$file"; fi
+        done
+        if [ "$derived" -gt 0 ]; then
+            say "  похідні файли ($derived) -> лишаємо квитанцію: $name (${size_kb} КБ)"
+            pruned=$((pruned + 1)); freed=$((freed + size_kb))
         fi
-        removed=$((removed + 1))
-    done < <(find "$STATE_DIR/batches" -mindepth 1 -maxdepth 1 -type d -mtime "+$DAYS" | sort)
+    done < <(find "$STATE_DIR/batches" -mindepth 1 -maxdepth 1 -type d | sort -r)
 fi
 
-files=0
 if [ -d "$OUTPUT_DIR" ]; then
     while IFS= read -r file; do
-        if [ "$APPLY" = 1 ]; then
-            rm -f "$file"
-            echo "  прибрано: output/$(basename "$file")"
-        else
-            echo "  буде прибрано: output/$(basename "$file")"
-        fi
+        if [ "$APPLY" = 1 ]; then rm -f "$file"; fi
+        say "  дамп output: $(basename "$file")"
         files=$((files + 1))
     done < <(find "$OUTPUT_DIR" -mindepth 1 -maxdepth 2 -type f -mtime "+$DAYS" | sort)
+    # Порожні теки зрізів аудиту після видалення їхніх файлів.
+    if [ "$APPLY" = 1 ]; then
+        find "$OUTPUT_DIR" -mindepth 1 -maxdepth 1 -type d -empty -delete 2>/dev/null || true
+    fi
 fi
 
-echo
-printf "Тек пачок: %d | файлів у output: %d\n" "$removed" "$files"
-if [ "$APPLY" = 1 ]; then
-    echo "ВИРОК: прибрано. Карантин і поточна пачка недоторкані."
-elif [ $((removed + files)) -eq 0 ]; then
-    echo "ВИРОК: прибирати нічого."
-else
-    echo "ВИРОК: це лише показ. Прибрати: ./bdo clean --days $DAYS --apply"
+say ""
+if [ "$QUIET" != 1 ]; then
+    printf 'Пачок стиснуто до квитанції: %d | тек видалено цілком: %d | дампів output: %d | звільниться ~%d КБ\n' \
+        "$pruned" "$dropped" "$files" "$freed"
+    if [ "$APPLY" = 1 ]; then
+        echo 'ВИРОК: прибрано. Поточна пачка, карантин і write-log недоторкані.'
+    elif [ $((pruned + dropped + files)) -eq 0 ]; then
+        echo 'ВИРОК: прибирати нічого.'
+    else
+        echo "ВИРОК: це лише показ. Прибрати: ./bdo clean --days $DAYS --apply"
+    fi
 fi

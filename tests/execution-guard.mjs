@@ -83,6 +83,8 @@ const refuse = async (before, input, args, what) => {
     "./bdo clean",
     "./bdo clean --days 14",
     "./bdo clean --days 14 --apply",
+    "./bdo clean --keep 20 --apply",
+    "./bdo clean --days 7 --keep 50 --apply",
     "./bdo incidents --clear",
     "./bdo judge --clear",
     // Довідкові, тільки читання: без них диригент не міг відповісти навіть на

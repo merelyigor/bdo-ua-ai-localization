@@ -179,7 +179,7 @@
         ],
         [
           "clean",
-          "ротація тек пачок і output/"
+          "прибрати недосяжні теки пачок і старі дампи output"
         ],
         [
           "paths",
@@ -202,8 +202,8 @@
     "^\\.\\/bdo run end$",
     "^\\.\\/bdo batch end$",
     "^\\.\\/bdo schema clear$",
-    "^\\.\\/bdo clean( --days [0-9]{1,3})?$",
-    "^\\.\\/bdo clean( --days [0-9]{1,3})? --apply$",
+    "^\\.\\/bdo clean( --days [0-9]{1,3})?( --keep [0-9]{1,4})?$",
+    "^\\.\\/bdo clean( --days [0-9]{1,3})?( --keep [0-9]{1,4})? --apply$",
     "^\\.\\/bdo incidents --clear$",
     "^\\.\\/bdo judge --clear$",
     "^\\.\\/bdo gate (preflight|docs|shell|agents|runtime|api|full)$",
