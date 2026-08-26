@@ -76,15 +76,19 @@ retry_exceeded() {
         $e=is_array($a[$key]??null)?$a[$key]:[];
         $overall=(int)($e["overall_first_at"]??0);
         if($overall===0){$overall=$now;}
-        if($now-$overall >= $budget){echo "exhausted"; exit;}
         $first=(int)($e["first_at"]??0);
-        $rollovers=(int)($e["window_rollovers"]??0);
         if($first===0){$first=$now;}
-        if($now-$first >= $window){$first=$now;$rollovers++;}
+        $rollovers=(int)($e["window_rollovers"]??0);
+        // Спроба, що вичерпала бюджет, теж є спробою. Раніше вихід стояв ДО
+        // запису, тому термінальний конверт звітував про нуль спроб і нульовий
+        // простій · рівно та інформація, заради якої власника й зупиняють.
+        $exhausted = ($now-$overall >= $budget);
+        if(!$exhausted && $now-$first >= $window){$first=$now;$rollovers++;}
         $count=(int)($e["count"]??0)+1;
         $delay=min(60,2 ** min(6,$count-1));
         $a[$key]=["count"=>$count,"first_at"=>$first,"overall_first_at"=>$overall,"window_rollovers"=>$rollovers,"last_at"=>$now,"delay"=>$delay];
         file_put_contents($f,json_encode($a,JSON_UNESCAPED_SLASHES),LOCK_EX);
+        if($exhausted){echo "exhausted"; exit;}
         echo "wait:".$delay;
     ' "$B/drive-retries.json" "$1")"
     case "$result" in
@@ -93,9 +97,26 @@ retry_exceeded() {
         *) return 1 ;;
     esac
 }
+# Скільки коротких вікон роль пережила до остаточної зупинки.
+#
+# `window_rollovers` писався в `drive-retries.json` і ніде не читався, тобто
+# лічильник накопичувався мертвим. А саме він відрізняє одиничний збій
+# провайдера від багатогодинної недоступності · без цього числа власник бачить
+# лише «повтори вичерпано» і не знає, чи це прикрий випадок, чи провайдер лежить
+# півдня. Тому воно виходить назовні саме там, де flow чесно зупиняється.
 give_up() {
+    local detail
+    detail="$(php -r '
+        $a=is_file($argv[1])?(json_decode((string)file_get_contents($argv[1]),true)?:[]):[];
+        $e=is_array($a[$argv[2]]??null)?$a[$argv[2]]:[];
+        echo json_encode(["kind"=>"retry","reason"=>"child_retry_budget_exhausted",
+            "attempts"=>(int)($e["count"]??0),
+            "windows"=>(int)($e["window_rollovers"]??0) + 1,
+            "unavailable_seconds"=>max(0,time()-(int)($e["overall_first_at"]??time()))],
+            JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES);
+    ' "$B/drive-retries.json" "$1")"
     rm -f "$B/drive-retries.json"
-    emit 0 "$1" '{"kind":"retry","reason":"child_retry_budget_exhausted"}'
+    emit 0 "$1" "$detail"
     exit 1
 }
 completion() {

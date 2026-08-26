@@ -104,6 +104,11 @@ check($code2 !== 0, 'retry budget exhaustion did not stop the run');
 $blocked = json_decode(implode("\n", $out2), true, 512, JSON_THROW_ON_ERROR);
 check(($blocked['next']['kind'] ?? null) === 'retry', 'exhausted retries did not return retry');
 check(($blocked['next']['reason'] ?? null) === 'child_retry_budget_exhausted', 'retry envelope carries a wrong reason');
+// Термінальний конверт мусить нести МАСШТАБ недоступності, інакше власник не
+// відрізнить одиничний збій провайдера від багатогодинного простою.
+check(($blocked['next']['windows'] ?? 0) >= 1, 'terminal retry envelope hides how many windows the role survived');
+check(($blocked['next']['attempts'] ?? 0) >= 1, 'terminal retry envelope hides the attempt count');
+check(($blocked['next']['unavailable_seconds'] ?? -1) >= 10, 'terminal retry envelope hides how long the provider was down');
 
 // Single-writer: два driver одночасно не мають права емісити child у той самий
 // response_path. Живий PID у lock дає bounded retry до будь-якої мутації стану.
