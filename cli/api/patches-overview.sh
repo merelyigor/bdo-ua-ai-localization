@@ -54,11 +54,12 @@ PATCHES_JSON="$(api_get patches 90)"
 LIST="$(printf '%s' "$PATCHES_JSON" | php -r '
 $d = json_decode((string) file_get_contents("php://stdin"), true);
 foreach ($d["data"]["patches"] ?? [] as $p) {
-    printf("%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
+    printf("%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
         $p["snapshot_id"] ?? "?",
         $p["patch_number"] ?? "-",
         substr((string) ($p["published_at"] ?? ""), 0, 10) ?: "-",
         $p["rows"]["total"] ?? "-",
+        $p["rows"]["untranslated"] ?? "-",
         implode(", ", array_map(
             static fn ($k, $v): string => "$k $v",
             array_keys($p["rows"]["states"] ?? []),
@@ -75,7 +76,7 @@ if [ -z "$LIST" ]; then
         | php -r '$d=json_decode((string)file_get_contents("php://stdin"),true);echo (int)($d["meta"]["snapshot_id"]??0);')"
     test "$ACTIVE" -gt 0 || { echo "Не вдалося визначити активний патч (перевір ключ і мережу)." >&2; exit 1; }
     for ((n = ACTIVE; n >= 1; n--)); do
-        LIST="${LIST}${n}\t-\t-\t-\t-\t-\t$([ "$n" = "$ACTIVE" ] && echo активний)\n"
+        LIST="${LIST}${n}\t-\t-\t-\t-\t-\t-\t$([ "$n" = "$ACTIVE" ] && echo активний)\n"
     done
     LIST="$(printf '%b' "$LIST")"
 fi
@@ -83,12 +84,12 @@ fi
 test "$LIMIT" -gt 0 && LIST="$(printf '%s\n' "$LIST" | head -n "$LIMIT")"
 
 ROWS_TSV=""
-while IFS=$'\t' read -r snapshot number published total states changes mark; do
+while IFS=$'\t' read -r snapshot number published total untranslated states changes mark; do
     test -n "$snapshot" || continue
     machine="-"; manual="-"
     test "$LAYER" != manual && machine="$(missing_count "$snapshot" machine)"
     test "$LAYER" != machine && manual="$(missing_count "$snapshot" manual)"
-    ROWS_TSV="${ROWS_TSV}${snapshot}\t${number}\t${published}\t${total}\t${machine}\t${manual}\t${states}\t${changes}\t${mark}\n"
+    ROWS_TSV="${ROWS_TSV}${snapshot}\t${number}\t${published}\t${total}\t${untranslated}\t${machine}\t${manual}\t${states}\t${changes}\t${mark}\n"
 done <<< "$LIST"
 
 # Друкує PHP: `printf` у bash рахує БАЙТИ, і кириличні заголовки зсували колонки.
@@ -96,9 +97,9 @@ printf '%b' "$ROWS_TSV" | php -r '
 $layer = $argv[1];
 $full = $argv[2] === "1";
 
-$head = ["патч", "№ у грі", "опубліковано", "рядків"];
-if ($layer !== "manual") $head[] = "у ШІ-шар";
-if ($layer !== "machine") $head[] = "у ручний";
+$head = ["патч", "№ у грі", "опубліковано", "рядків", "без перекладу"];
+if ($layer !== "manual") $head[] = "без ШІ-шару";
+if ($layer !== "machine") $head[] = "без ручного";
 if ($full) { $head[] = "стани"; $head[] = "дод/змін/вид"; }
 $head[] = "";
 
@@ -107,8 +108,8 @@ $sumMachine = 0; $sumManual = 0;
 while (($line = fgets(STDIN)) !== false) {
     $line = rtrim($line, "\n");
     if ($line === "") continue;
-    [$snapshot, $number, $published, $total, $machine, $manual, $states, $changes, $mark] = array_pad(explode("\t", $line), 9, "");
-    $row = [$snapshot, $number, $published, $total];
+    [$snapshot, $number, $published, $total, $untranslated, $machine, $manual, $states, $changes, $mark] = array_pad(explode("\t", $line), 10, "");
+    $row = [$snapshot, $number, $published, $total, $untranslated];
     if ($layer !== "manual") { $row[] = $machine; if (ctype_digit($machine)) $sumMachine += (int) $machine; }
     if ($layer !== "machine") { $row[] = $manual; if (ctype_digit($manual)) $sumManual += (int) $manual; }
     if ($full) { $row[] = $states; $row[] = $changes; }
@@ -134,8 +135,13 @@ $line = str_repeat("-", max(20, array_sum($width) + 2 * (count($width) - 1)));
 echo $render($table[0]), "\n", $line, "\n";
 foreach (array_slice($table, 1) as $row) echo $render($row), "\n";
 echo $line, "\n";
-if ($layer !== "manual") printf("Разом у ШІ-шар: %d рядків\n", $sumMachine);
-if ($layer !== "machine") printf("Разом у ручний: %d рядків\n", $sumManual);
-echo "Узяти патч у роботу: ./bdo mode start patch 15 <патч>\n";
+if ($layer !== "manual") printf("Разом без ШІ-шару: %d рядків\n", $sumMachine);
+if ($layer !== "machine") printf("Разом без ручного: %d рядків\n", $sumManual);
+echo "\n";
+echo "Як читати. «без перекладу» · рядки, де немає ЖОДНОГО перекладу: це\n";
+echo "первинна робота. «без ШІ-шару» · рядки, де ШІ-перекладу немає, але\n";
+echo "людський може бути; вони більші за перше число саме на такі рядки.\n";
+echo "Статус superseded НЕ означає «неактуальний»: робота живе саме там.\n";
+echo "Узяти патч у роботу: ./bdo mode start patch 50 <патч>\n";
 if (! $full) echo "Стани перекладу і зміни патча: ./bdo patches ... --full\n";
 ' "$LAYER" "$FULL"
