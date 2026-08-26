@@ -94,43 +94,55 @@
             "allow_paid": false,
             "routes": {
                 "translation-terminology": [
-                    "opencode/x-preview-f-free"
+                    "opencode/big-pickle",
+                    "opencode/muse-spark-1.2-contributor-free"
                 ],
                 "translation-worker": [
-                    "opencode/x-preview-f-free"
+                    "opencode/big-pickle",
+                    "opencode/muse-spark-1.2-contributor-free"
                 ],
                 "translation-qa": [
-                    "opencode/x-preview-f-free"
+                    "opencode/big-pickle",
+                    "opencode/muse-spark-1.2-contributor-free"
                 ],
                 "translation-repair": [
-                    "opencode/x-preview-f-free"
+                    "opencode/big-pickle",
+                    "opencode/muse-spark-1.2-contributor-free"
                 ],
                 "translation-smoke": [
-                    "opencode/x-preview-f-free"
+                    "opencode/big-pickle",
+                    "opencode/muse-spark-1.2-contributor-free"
                 ],
                 "translation-judge": [
-                    "opencode/x-preview-f-free"
+                    "opencode/big-pickle",
+                    "opencode/muse-spark-1.2-contributor-free"
                 ]
             },
             "paid_routes": [],
             "default_routes": {
                 "translation-terminology": [
-                    "opencode/x-preview-f-free"
+                    "opencode/big-pickle",
+                    "opencode/muse-spark-1.2-contributor-free"
                 ],
                 "translation-worker": [
-                    "opencode/x-preview-f-free"
+                    "opencode/big-pickle",
+                    "opencode/muse-spark-1.2-contributor-free"
                 ],
                 "translation-qa": [
-                    "opencode/x-preview-f-free"
+                    "opencode/big-pickle",
+                    "opencode/muse-spark-1.2-contributor-free"
                 ],
                 "translation-repair": [
-                    "opencode/x-preview-f-free"
+                    "opencode/big-pickle",
+                    "opencode/muse-spark-1.2-contributor-free"
                 ],
                 "translation-smoke": [
-                    "opencode/x-preview-f-free"
+                    "opencode/big-pickle",
+                    "opencode/muse-spark-1.2-contributor-free"
                 ],
                 "translation-judge": [
-                    "opencode/x-preview-f-free"
+                    "opencode/big-pickle",
+                    "opencode/muse-spark-1.2-contributor-free"
                 ]
             }
         },

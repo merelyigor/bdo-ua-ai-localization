@@ -5,7 +5,7 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 
 const roles = ["translation-terminology", "translation-worker", "translation-qa", "translation-repair", "translation-judge", "translation-smoke"]
-const runtimeState = (active_profile = "session-free", model = "opencode/x-preview-f-free") => {
+const runtimeState = (active_profile = "session-free", model = "opencode/big-pickle") => {
   const routes = Object.fromEntries(roles.map((role) => [role, [model]]))
   const canonical = JSON.stringify({ schema_version: 1, active_profile, routes })
   return {
