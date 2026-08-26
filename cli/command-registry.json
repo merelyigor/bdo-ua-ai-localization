@@ -158,7 +158,7 @@
           "дефекти відповідей child, які флоу вилікував сам"
         ],
         [
-          "quarantine [--list|--requeue|--clear]",
+          "quarantine [--list|--clear]",
           "рядки, які не доїхали в жоден шар"
         ],
         [
@@ -221,10 +221,8 @@
     "^\\.\\/bdo memory find (?!.*\\.\\.)(output|state)/[A-Za-z0-9._/-]+$",
     "^\\.\\/bdo glossary gaps (?!.*\\.\\.)(output|state)/[A-Za-z0-9._/-]+$",
     "^\\.\\/bdo subset (?!.*\\.\\.)(output|state)/[A-Za-z0-9._/-]+( (?!.*\\.\\.)(output|state)/[A-Za-z0-9._/-]+)*$",
-    "^\\.\\/bdo (audit|audit-dump)$",
     "^\\.\\/bdo (incidents|judge)( --list)?$",
     "^\\.\\/bdo quarantine( --list( [1-9][0-9]{0,3})?)?$",
-    "^\\.\\/bdo quarantine --requeue$",
     "^\\.\\/bdo moderation( --limit [1-9][0-9]*)?$",
     "^\\.\\/bdo moderation --row [0-9a-f]{64}$",
     "^\\.\\/bdo moderation --approve [1-9][0-9]*(,[1-9][0-9]*)*$"
@@ -250,6 +248,8 @@
     "write": "прямий запис у канал повз перевірки пачки",
     "bench": "витрачає токени моделі; запускає власник свідомо",
     "sync": "матеріалізує runtime; виконується всередині ./bdo env",
-    "quarantine --clear": "знищує слід втрачених рядків; чистить власник свідомо"
+    "quarantine --clear": "знищує слід втрачених рядків; чистить власник свідомо",
+    "audit": "інструмент РОЗРОБКИ: читає базу сесій OpenCode, а не дані перекладу; диригент флоу його не запускає",
+    "audit-dump": "те саме, повний зріз сесій OpenCode для розробника"
   }
 }

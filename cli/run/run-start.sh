@@ -28,10 +28,9 @@ case "${1:-}" in
         exit 0
         ;;
     --end)
-        # Разом із фіксацією знімається реєстр уже взятих рядків: він захищає від
-        # нескінченного кола ВСЕРЕДИНІ прогону, а новий прогін має право взяти ті
-        # самі рядки знову (наприклад, після виправлення причини).
-        rm -f "$TARGET_FILE" "$STATE_DIR/run-started-at" "$STATE_DIR/run-seen.json"
+        # Разом із фіксацією знімається лічильник пачок прогону: стеля
+        # BDO_RUN_MAX_BATCHES рахується на ОДИН прогін, а не назавжди.
+        rm -f "$TARGET_FILE" "$STATE_DIR/run-started-at" "$STATE_DIR/run-batches.json" "$STATE_DIR/run-seen.json"
         echo "Прогін завершено, фіксацію знято."
         exit 0
         ;;
@@ -71,7 +70,7 @@ echo (string)($w->manifest()["state"]??"unknown");
 ' "$SCRIPT_DIR/lib/autoload.php" "$STATE_DIR")"
         case "$BATCH_STATE" in
             none|verified|failed_terminal)
-                rm -f "$TARGET_FILE" "$STATE_DIR/run-started-at" "$STATE_DIR/run-seen.json"
+                rm -f "$TARGET_FILE" "$STATE_DIR/run-started-at" "$STATE_DIR/run-batches.json" "$STATE_DIR/run-seen.json"
                 echo "Застарілу ціль '$CURRENT' автоматично замінено на '$TARGET': незавершеної пачки немає." >&2
                 ;;
             *)

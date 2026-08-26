@@ -2,7 +2,10 @@ import assert from "node:assert/strict"
 import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { TranslationRoutingGuard } from "../.opencode/plugin/translation-routing-guard.ts"
+import plugin, { TranslationRoutingGuard } from "../.opencode/plugin/translation-routing-guard.ts"
+
+assert.equal(plugin.id, "translation-routing-guard")
+assert.equal(plugin.server, TranslationRoutingGuard)
 
 const directory = mkdtempSync(join(tmpdir(), "bdo-routing-guard-"))
 mkdirSync(join(directory, ".opencode"), { recursive: true })

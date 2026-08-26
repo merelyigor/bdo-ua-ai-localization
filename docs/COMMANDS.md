@@ -64,7 +64,7 @@
 | `./bdo audit` | аудит сесій субагентів за базою OpenCode |
 | `./bdo audit-dump` | повний зріз сесій OpenCode |
 | `./bdo incidents` | дефекти відповідей child, які флоу вилікував сам |
-| `./bdo quarantine [--list&#124;--requeue&#124;--clear]` | рядки, які не доїхали в жоден шар |
+| `./bdo quarantine [--list&#124;--clear]` | рядки, які не доїхали в жоден шар |
 | `./bdo judge` | вироки судді: розподіл, виродження, калібрування |
 | `./bdo profile` | моделі за ролями: status&#124;use&#124;set&#124;fallback&#124;paid |
 | `./bdo models` | звірка локальних Ollama-моделей із OpenCode |

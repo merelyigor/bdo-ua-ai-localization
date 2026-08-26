@@ -69,57 +69,44 @@ if [ "$count" -eq 0 ]; then
     exit 0
 fi
 
-# ЗАПОБІЖНИК ПРОТИ НЕСКІНЧЕННОГО КОЛА.
+# ЗАПОБІЖНИК ПРОТИ НЕСКІНЧЕННОГО КОЛА · тепер на боці сервера.
 #
-# Виміряно 2026-08-23: рядок `AMD FidelityFX Super Resolution 3.1` пройшов увесь
-# флоу, записався (`ЗАПИСАНО: 1 рядків, канал machine`) · і наступний fetch за
-# тим самим `missing=machine` віддав його знову з `UA: -`. Диригент чесно почав
-# нову пачку, і так по колу: чотири пачки за чотири хвилини на одному рядку,
-# кожна за платні токени основної моделі.
+# Тут стояв локальний реєстр `state/run-seen.json`: він памʼятав identity, які
+# цей прогін уже брав, і відмовляв у новій пачці станом `no_progress`. Реєстр
+# зʼявився 2026-08-23, коли рядок проходив увесь флоу, не записувався і
+# повертався у вибірку знову · чотири пачки за чотири хвилини на одному рядку.
 #
-# Тому прогрес перевіряється механічно, а не мається на увазі: якщо вибірка не
-# принесла ЖОДНОГО нового identity, нова пачка не створюється. Плюс стеля пачок
-# на прогін як пасок безпеки. Реєстр скидає `./bdo run end` або зміна
-# режиму/цілі · свідома дія власника, а не випадковість.
-guard="$(php -r '
-require $argv[1];
-use Bdo\Translate\Batch\RowSet;
-
-$hashes = RowSet::fromFile($argv[2])->identityHashes();
-$file = $argv[3];
-$scope = $argv[4] . ":" . $argv[5];
-$max = max(1, (int) $argv[6]);
-
-$ledger = is_file($file) ? (json_decode((string) file_get_contents($file), true) ?: []) : [];
-if (($ledger["scope"] ?? null) !== $scope) $ledger = ["scope" => $scope, "batches" => 0, "hashes" => []];
-
-$fresh = array_values(array_diff($hashes, array_keys($ledger["hashes"])));
-if ($fresh === []) {
-    echo json_encode(["ok" => false, "state" => "no_progress", "rows" => count($hashes),
-        "reason" => "fetch повернув лише рядки, які цей прогін уже брав; вони не виходять із фільтра",
-    ], JSON_UNESCAPED_UNICODE), "\n";
-    exit(3);
-}
-if (($ledger["batches"] ?? 0) >= $max) {
-    echo json_encode(["ok" => false, "state" => "budget_exhausted", "batches" => $ledger["batches"],
-        "reason" => "стеля BDO_RUN_MAX_BATCHES на цей прогін вичерпана",
+# Прибрано 2026-08-26 після прямої перевірки на бойовому API. Патч 2 мав 92
+# рядки без machine-перекладу; після запису 86 із них сервер віддає рівно 6, і
+# всі шість · саме ті, що лежать у `state/quarantine.jsonl`. Тобто фільтр
+# `missing=machine&exclude_proposed=1` є точним і НЕГАЙНИМ: усе, що записалось
+# або стало пропозицією, з вибірки зникає само.
+#
+# Реєстр компенсував рівно одну річ · рядки, які не доїжджали в жоден шар. Її
+# закрито окремо: `source_equivalent` більше не вважається невиправним, а
+# пропозиція, що дорівнює джерелу, їде з прапорцем `same_as_source`. Тому
+# реєстр лишився механізмом без задачі, який натомість САМ зупиняв прогін
+# станом `no_progress` · двічі за два дні.
+#
+# Стеля `BDO_RUN_MAX_BATCHES` лишається як пасок безпеки на випадок, якщо
+# сервер колись почне віддавати рядки, які неможливо закрити.
+batches="$(php -r '
+$f=$argv[1]; $scope=$argv[2].":".$argv[3]; $max=max(1,(int)$argv[4]);
+$run=is_file($f)?(json_decode((string)file_get_contents($f),true)?:[]):[];
+$count=(($run["scope"]??null)===$scope)?(int)($run["batches"]??0):0;
+if($count>=$max){
+    echo json_encode(["ok"=>false,"state"=>"budget_exhausted","batches"=>$count,
+        "reason"=>"стеля BDO_RUN_MAX_BATCHES на цей прогін вичерпана; підніми її в .env або заверши прогін",
     ], JSON_UNESCAPED_UNICODE), "\n";
     exit(4);
 }
-' "$SCRIPT_DIR/lib/autoload.php" "$rows" "$STATE_DIR/run-seen.json" "$BDO_API_ENV" "$MODE:$PATCH" "${BDO_RUN_MAX_BATCHES:-25}")" || {
-    printf '%s\n' "$guard"
+$run=["scope"=>$scope,"batches"=>$count+1];
+file_put_contents($f,json_encode($run,JSON_UNESCAPED_UNICODE|JSON_THROW_ON_ERROR),LOCK_EX);
+' "$STATE_DIR/run-batches.json" "$BDO_API_ENV" "$MODE:$PATCH" "${BDO_RUN_MAX_BATCHES:-25}")" || {
+    printf '%s\n' "$batches"
     exit 1
 }
 "$SCRIPT_DIR/cli/batch/batch-new.sh" "$rows" >/dev/null
 B="$($SCRIPT_DIR/cli/batch/batch-dir.sh)"
 php -r 'require $argv[1];$w=Bdo\Translate\Batch\Workspace::requireCurrent($argv[2]);$w->updateManifest(function($m)use($argv){$m["mode"]=$argv[3];$m["channel"]=$argv[4];$m["query"]=$argv[5];$m["memory_layers"]=$argv[6];$m["patch"]=$argv[7];return $m;},"run_spec");' "$SCRIPT_DIR/lib/autoload.php" "${BDO_STATE_DIR:-$SCRIPT_DIR/state}" "$MODE" "$channel" "$query" "$memory_layers" "$PATCH"
-php -r '
-require $argv[1];
-$hashes=Bdo\Translate\Batch\RowSet::fromFile($argv[2])->identityHashes();$file=$argv[3];$scope=$argv[4].":".$argv[5];
-$ledger=is_file($file)?(json_decode((string)file_get_contents($file),true)?:[]):[];
-if(($ledger["scope"]??null)!==$scope)$ledger=["scope"=>$scope,"batches"=>0,"hashes"=>[]];
-foreach($hashes as $hash)$ledger["hashes"][$hash]=1;
-$ledger["batches"]=(int)($ledger["batches"]??0)+1;
-file_put_contents($file,json_encode($ledger,JSON_UNESCAPED_UNICODE|JSON_THROW_ON_ERROR),LOCK_EX);
-' "$SCRIPT_DIR/lib/autoload.php" "$B/rows.json" "$STATE_DIR/run-seen.json" "$BDO_API_ENV" "$MODE:$PATCH"
 printf '{"ok":true,"mode":"%s","patch":"%s","state":"selected","rows":%d,"batch_dir":"%s"}\n' "$MODE" "$PATCH" "$count" "$B"

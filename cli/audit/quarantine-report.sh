@@ -1,10 +1,9 @@
 #!/usr/bin/env bash
-# Показати рядки, які не доїхали до жодного шару, і повернути їх у чергу.
+# Показати рядки, які не доїхали до жодного шару.
 #
 #   ./quarantine-report.sh              зведення за причинами
 #   ./quarantine-report.sh --list       останні 20 рядків із кандидатом
 #   ./quarantine-report.sh --list 100   останні 100
-#   ./quarantine-report.sh --requeue    забути реєстр прогону для цих рядків
 #   ./quarantine-report.sh --clear      очистити карантин після розбору
 #
 # Навіщо команда взагалі зʼявилась. `state/quarantine.jsonl` писався з першого
@@ -13,29 +12,30 @@
 # `api_source_equivalent`. На залишку в 30 тисяч рядків це близько 5 400 рядків
 # у файлі, куди ніхто не дивиться.
 #
-# Гірше за саму втрату був наслідок. Рядок у карантині лишається `missing=`,
-# наступний fetch віддає його знову, реєстр `state/run-seen.json` каже «цей
-# прогін уже брав» · і `mode start` повертає `no_progress`. Тобто 18% браку не
-# просто губились, вони ЗУПИНЯЛИ прогін.
+# Гірше за саму втрату був наслідок: рядок лишався `missing=`, повертався у
+# вибірку й займав місце в наступній пачці. Тепер причину закрито в самому
+# записі (`same_as_source` для пропозицій, лікування для `source_equivalent`),
+# тому карантин мусить лишатись ПОРОЖНІМ. Непорожній карантин · сигнал дефекту,
+# а не робочий стан.
 #
-# `--requeue` знімає рівно цю блокаду: викидає identity карантинних рядків із
-# реєстру прогону, щоб наступна пачка мала право взяти їх ще раз. Він НЕ пише в
-# API, не чіпає шари й не видаляє карантин · це локальна операція над реєстром.
+# Прапорця `--requeue` тут навмисно немає. Він мав сенс, доки локальний реєстр
+# `state/run-seen.json` блокував повторне взяття рядка; реєстр прибрано
+# 2026-08-26, бо серверний фільтр `missing=` виявився точним. Повторне взяття
+# тепер не потребує жодної локальної дії: наступний `mode start` бере ці рядки
+# сам, бо сервер їх і далі віддає.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")/../.." && pwd)"
 STATE_DIR="${BDO_STATE_DIR:-$SCRIPT_DIR/state}"
 QUARANTINE="$STATE_DIR/quarantine.jsonl"
-SEEN="$STATE_DIR/run-seen.json"
 
 MODE=summary
 LIMIT=20
 case "${1:-}" in
     '') ;;
     --list) MODE=list; LIMIT="${2:-20}" ;;
-    --requeue) MODE=requeue ;;
     --clear) MODE=clear ;;
-    *) echo "Дозволено: --list [N], --requeue, --clear. Отримано '$1'." >&2; exit 2 ;;
+    *) echo "Дозволено: --list [N] або --clear. Отримано '$1'." >&2; exit 2 ;;
 esac
 case "$LIMIT" in ''|*[!0-9]*) echo "--list потребує ціле число." >&2; exit 2 ;; esac
 
@@ -51,26 +51,13 @@ if [ "$MODE" = clear ]; then
 fi
 
 php -r '
-[$file, $mode, $limit, $seenFile] = [$argv[1], $argv[2], (int) $argv[3], $argv[4]];
+[$file, $mode, $limit] = [$argv[1], $argv[2], (int) $argv[3]];
 $entries = [];
 foreach (file($file, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) as $line) {
     $row = json_decode($line, true);
     if (is_array($row)) $entries[] = $row;
 }
 if ($entries === []) { echo "Карантин порожній: жоден рядок не загубився.\n"; exit; }
-
-if ($mode === "requeue") {
-    // Реєстр прогону, а не шари: сюди пишеться лише те, що цей прогін уже брав.
-    if (! is_file($seenFile)) { echo "Реєстру прогону немає · нічого розблоковувати.\n"; exit; }
-    $ledger = json_decode((string) file_get_contents($seenFile), true) ?: [];
-    $before = count($ledger["hashes"] ?? []);
-    foreach ($entries as $row) unset($ledger["hashes"][$row["identity_hash"] ?? ""]);
-    $after = count($ledger["hashes"] ?? []);
-    file_put_contents($seenFile, json_encode($ledger, JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR), LOCK_EX);
-    printf("Розблоковано %d рядків у реєстрі прогону (%d -> %d).\n", $before - $after, $before, $after);
-    echo "Наступний `./bdo mode start` має право взяти їх знову.\n";
-    exit;
-}
 
 $byReason = [];
 $byChannel = [];
@@ -94,6 +81,6 @@ if ($mode === "list") {
         if (isset($row["candidate"])) printf("    UA: %s\n", mb_substr((string) $row["candidate"], 0, 90));
     }
 }
-echo "\nПовернути в чергу прогону: ./bdo quarantine --requeue\n";
-echo "Очистити після розбору:    ./bdo quarantine --clear\n";
-' "$QUARANTINE" "$MODE" "$LIMIT" "$SEEN"
+echo "\nЦі рядки сервер і далі віддає у вибірку · наступний `mode start` візьме їх сам.\n";
+echo "Очистити слід після розбору: ./bdo quarantine --clear\n";
+' "$QUARANTINE" "$MODE" "$LIMIT"

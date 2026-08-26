@@ -171,3 +171,10 @@ export const TranslationChildContract: Plugin = async ({ directory }) => ({
     ].filter(Boolean).join(" ")
   },
 })
+
+// Keep helper exports available to tests, but make the runtime entry explicit
+// so OpenCode does not invoke helpers as legacy plugins.
+export default {
+  id: "translation-child-contract",
+  server: TranslationChildContract,
+}

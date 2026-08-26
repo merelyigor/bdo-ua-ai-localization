@@ -59,7 +59,11 @@ acquire_driver_lock() {
 }
 release_driver_lock() {
     test -n "${DRIVE_LOCK:-}" || return 0
-    test "$(readlink "$DRIVE_LOCK" 2>/dev/null || true)" = "$$" && rm -f "$DRIVE_LOCK"
+    if [ "$(readlink "$DRIVE_LOCK" 2>/dev/null || true)" = "$$" ]; then
+        rm -f "$DRIVE_LOCK"
+    fi
+    # Явний нуль: це остання команда trap, і її код стає кодом усього driver.
+    return 0
 }
 # Повтор child обмежений часом, а не кількістю сесій. Тимчасовий збій
 # провайдера не повинен назавжди блокувати пачку, а primary не повинен просити
@@ -197,6 +201,43 @@ candidate_to_qa() {
     "$SCRIPT_DIR/cli/prepare/build-schema.sh" --qa "$B/rows.json" >/dev/null
     "$SCRIPT_DIR/cli/prepare/qa-payload.sh" "$B/rows.json" "$B/clean.json" > "$B/qa-payload.json"
     transition awaiting_qa; child awaiting_qa translation-qa "$B/qa-payload.json" "$B/verdicts.json"
+}
+
+# Прибрати похідні файли пачки одразу після `verified`.
+#
+# Правда про переклад живе на сервері: рядок або записаний у шар, або лежить у
+# черзі модерації. Усе, що тека пачки тримає крім квитанції · це дампи API й
+# проміжні артефакти, які після запису не потрібні НІКОМУ.
+#
+# Заміряно 2026-08-26: 23 з 38 тек мали стан `verified` і займали 3 801 КБ, з
+# них 3 697 КБ (97%) · саме такі похідні файли. Вони жили далі, бо ротація
+# `./bdo clean` тримає теку `BDO_KEEP_DAYS` (типово 14) днів. Для власника, якому
+# після запису потрібен лише переклад на проді, це два тижні непотрібного шуму.
+#
+# Лишаємо квитанцію на 2-3 КБ: `manifest.json` (що це була за пачка),
+# `journal.jsonl` (хронологія станів) і `batch-summary.json` (скільки куди
+# записано). Останній обовʼязковий не лише для звіту: `completion` читає його,
+# тому повторний `run drive` на завершеній пачці лишається ідемпотентним і не
+# обнуляє підсумки прогону. Разом із текою зникає й дамп `output/`.
+prune_verified_batch() {
+    local file name
+    test -d "$B" || return 0
+    for file in "$B"/*; do
+        name="$(basename "$file")"
+        case "$name" in
+            manifest.json|journal.jsonl|batch-summary.json) continue ;;
+            # Замок ще ЖИВИЙ: його зніме trap на виході. Видалити його тут
+            # означає, що `release_driver_lock` завершиться хибним `test`, і
+            # весь driver поверне ненульовий код на цілком успішній пачці.
+            drive.lock) continue ;;
+        esac
+        rm -rf "$file"
+    done
+    # Дампи API, з яких зроблено цю теку. Пачка щойно завершилась, а одночасно
+    # живою може бути лише одна, тому все не новіше за її manifest вже мертве.
+    find "$SCRIPT_DIR/output" -maxdepth 1 -type f \( -name 'rows_*.json' -o -name 'validate_*.json' \) \
+        ! -newer "$B/manifest.json" -delete 2>/dev/null || true
+    return 0
 }
 
 # Застарілий envelope не має пережити цей виклик: він потрібен лише між
@@ -378,14 +419,18 @@ ready_to_commit|committing)
     judge_args=(); test -s "$B/judge-verdicts.json" && judge_args=(--judge "$B/judge-verdicts.json")
     if "$SCRIPT_DIR/cli/batch/batch-commit.sh" "$B/rows.json" "$B/final-candidate.json" "$B/final-verdicts.json" --channel "$(field channel)" --idempotency-key-prefix "$key" "${judge_args[@]}" --write > "$B/commit-report.txt" 2>&1; then
         complete commit "$B/commit-report.txt"; transition committed; transition verified; "$SCRIPT_DIR/cli/prepare/build-schema.sh" --clear >/dev/null
-        emit 1 verified "$(completion)"
+        # Конверт рахується ДО прибирання: `completion` читає commit-report.txt
+        # і batch-summary.json із теки, яку prune зараз видалить.
+        envelope="$(completion)"; prune_verified_batch
+        emit 1 verified "$envelope"
     else emit 0 committing '{"kind":"retry","reason":"api_write_failed"}'; exit 1; fi
     ;;
 verified)
+    envelope="$(completion)"; prune_verified_batch
     if [ "${BDO_AUTO_CLEAN:-0}" = 1 ]; then
         "$SCRIPT_DIR/cli/batch/batch-clean.sh" --apply --days "${BDO_KEEP_DAYS:-14}" >/dev/null
     fi
-    emit 1 verified "$(completion)"
+    emit 1 verified "$envelope"
     ;;
 *) emit 0 "$state" "$(php -r 'echo json_encode(["kind"=>"blocked","reason"=>$argv[1]]);' "$state")"; exit 1 ;;
 esac

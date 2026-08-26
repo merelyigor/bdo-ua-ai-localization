@@ -249,3 +249,10 @@ export const TranslationRoutingGuard: Plugin = async ({ directory }) => ({
     }
   },
 })
+
+// OpenCode 1.18.x treats every named export as a legacy plugin when the module
+// has no V1 default entry. Keep the runtime entry explicit and unambiguous.
+export default {
+  id: "translation-routing-guard",
+  server: TranslationRoutingGuard,
+}

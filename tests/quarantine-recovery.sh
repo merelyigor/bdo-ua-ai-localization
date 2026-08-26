@@ -44,7 +44,12 @@ if (! ErrorCodes::isPermanent("API: non_translatable")) {
 }
 ' "$ROOT/lib/autoload.php" || fail 'класифікація кодів API поїхала'
 
-# 3. Карантин читається і розблоковує реєстр прогону.
+# 3. Карантин читається однією командою.
+#
+# Реєстру `run-seen.json` більше немає (перевірено на бойовому API 2026-08-26:
+# фільтр `missing=` точний), тому повертати рядки в чергу не треба · сервер і
+# далі їх віддає. Лишається одне: карантин мусить бути ЧИТАБЕЛЬНИМ, інакше він
+# знову стане файлом, у який ніхто не дивиться.
 mkdir -p "$TMP/state"
 HASH_A="$(printf a | shasum -a 256 | awk '{print $1}')"
 HASH_B="$(printf b | shasum -a 256 | awk '{print $1}')"
@@ -52,19 +57,19 @@ printf '%s\n' \
     "{\"identity_hash\":\"$HASH_A\",\"reason\":\"api_source_equivalent\",\"channel\":\"proposal\",\"candidate\":\"Elion\"}" \
     "{\"identity_hash\":\"$HASH_B\",\"reason\":\"api_source_equivalent\",\"channel\":\"machine\",\"candidate\":\"Kamasylvia\"}" \
     > "$TMP/state/quarantine.jsonl"
-php -r 'file_put_contents($argv[1], json_encode(["scope"=>"prod:patch:2","batches"=>1,
-    "hashes"=>[$argv[2]=>1,$argv[3]=>1,str_repeat("d",64)=>1]], JSON_THROW_ON_ERROR));' \
-    "$TMP/state/run-seen.json" "$HASH_A" "$HASH_B"
 
 report="$(BDO_STATE_DIR="$TMP/state" bash "$ROOT/cli/audit/quarantine-report.sh")"
 printf '%s' "$report" | grep -q 'api_source_equivalent        2' || fail "зведення не порахувало причини: $report"
+printf '%s' "$report" | grep -q 'machine  *1' || fail "зведення не розділило канали: $report"
 
-BDO_STATE_DIR="$TMP/state" bash "$ROOT/cli/audit/quarantine-report.sh" --requeue >/dev/null
-left="$(php -r 'echo count(json_decode(file_get_contents($argv[1]),true)["hashes"]);' "$TMP/state/run-seen.json")"
-test "$left" = 1 || fail "requeue мусив лишити 1 чужий hash, лишилось $left"
+listing="$(BDO_STATE_DIR="$TMP/state" bash "$ROOT/cli/audit/quarantine-report.sh" --list 1)"
+printf '%s' "$listing" | grep -q 'Kamasylvia' || fail "--list не показав кандидата: $listing"
 
-# Некарантинний рядок чіпати не можна: інакше прогін узяв би заново все підряд.
-php -r 'exit(isset(json_decode(file_get_contents($argv[1]),true)["hashes"][str_repeat("d",64)]) ? 0 : 1);' \
-    "$TMP/state/run-seen.json" || fail 'requeue викинув із реєстру чужий рядок'
+BDO_STATE_DIR="$TMP/state" bash "$ROOT/cli/audit/quarantine-report.sh" --clear >/dev/null
+test ! -s "$TMP/state/quarantine.jsonl" || fail '--clear не очистив карантин'
+
+# Прапорця `--requeue` більше немає: реєстр, який він розблоковував, прибрано.
+BDO_STATE_DIR="$TMP/state" bash "$ROOT/cli/audit/quarantine-report.sh" --requeue >/dev/null 2>&1 \
+    && fail 'знятий прапорець --requeue досі приймається'
 
 echo 'quarantine recovery: OK'

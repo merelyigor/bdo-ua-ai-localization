@@ -53,3 +53,8 @@ export const TranslationResultWriter: Plugin = async ({ directory }) => ({
     }),
   },
 })
+
+export default {
+  id: "translation-result-writer",
+  server: TranslationResultWriter,
+}

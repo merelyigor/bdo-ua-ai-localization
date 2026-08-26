@@ -1,4 +1,4 @@
-import { TranslationExecutionGuard, bridgedCommand, shellBridge } from "../.opencode/plugin/translation-execution-guard.ts"
+import plugin, { TranslationExecutionGuard, bridgedCommand, shellBridge } from "../.opencode/plugin/translation-execution-guard.ts"
 import { mkdtempSync, mkdirSync, readFileSync, writeFileSync } from "node:fs"
 import { createHash } from "node:crypto"
 import { tmpdir } from "node:os"
@@ -41,6 +41,10 @@ const makeGuard = async (directory = mkdtempSync(join(tmpdir(), "bdo-execution-g
     client: { session: { abort: async ({ path }) => { aborted.push(path.id) } } },
   })
   return { before: hooks["tool.execute.before"], aborted, directory }
+}
+
+if (plugin.id !== "translation-execution-guard" || plugin.server !== TranslationExecutionGuard) {
+  throw new Error("translation-execution-guard must expose the explicit OpenCode V1 default plugin shape")
 }
 const refuse = async (before, input, args, what) => {
   await before(input, { args }).then(
@@ -89,7 +93,6 @@ const refuse = async (before, input, args, what) => {
     "./bdo patches 5 manual --full",
     "./bdo patch 3",
     "./bdo profile status",
-    "./bdo audit",
     "./bdo incidents --list",
     "./bdo judge",
     "./bdo moderation --limit 100",
@@ -222,6 +225,10 @@ const refuse = async (before, input, args, what) => {
     "./bdo patches 0",
     "./bdo patches 5 machine --apply",
     "./bdo gate nonsense",
+    // `audit` і `audit-dump` · інструменти РОЗРОБКИ: вони читають базу сесій
+    // OpenCode, а не дані перекладу, і диригент флоу їх не запускає.
+    "./bdo audit",
+    "./bdo audit-dump",
     "./bdo platform --install",
     "./bdo run start",
     // Власний префікс запуску: перехід у WSL робить guard, не модель.

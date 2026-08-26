@@ -141,7 +141,7 @@ const ALLOWED_HINT = [
   "перевірка: ./bdo gate preflight|docs|shell|agents|runtime|api|full && ./bdo api",
   "довідка (тільки читання): ./bdo patches [N|all] [machine|manual|both] [--full]",
   "./bdo patch [N] | ./bdo profile status",
-  "./bdo audit | ./bdo incidents [--list] | ./bdo judge [--list] | ./bdo moderation [--limit N]",
+  "./bdo incidents [--list] | ./bdo judge [--list] | ./bdo quarantine [--list] | ./bdo moderation [--limit N]",
   "./bdo paths | ./bdo platform | ./bdo models | ./bdo api | ./bdo runtime | ./bdo help",
   "кілька команд можна поєднати через &&",
 ].join(" · ")
@@ -212,4 +212,11 @@ export const TranslationExecutionGuard: Plugin = async ({ client, directory }) =
       output.args.command = bridgedCommand(command, directory, bridge)
     },
   }
+}
+
+// OpenCode 1.18.x: path plugins must use the V1 module shape. Without this
+// default export every named function is treated as a legacy plugin entry.
+export default {
+  id: "translation-execution-guard",
+  server: TranslationExecutionGuard,
 }
