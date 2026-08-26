@@ -4,6 +4,7 @@
 #   ./worker-payload.sh rows.json                 # з прикладами (за замовчуванням)
 #   ./worker-payload.sh rows.json --no-context     # без прикладів, без звернень до API
 #   ./worker-payload.sh rows.json --with-current   # + поточний machine-переклад (для retranslate)
+#   ./worker-payload.sh rows.json --with-reference # + російський довідковий текст
 #
 # ПРИКЛАДИ ВВІМКНЕНІ ЗА ЗАМОВЧУВАННЯМ. Промпт воркера сам називає їх найсильнішим
 # сигналом («тримайся їхнього стилю й термінології, навіть якщо маєш свою думку»),
@@ -46,12 +47,14 @@ SCRIPT_DIR="$(cd "$(dirname "$0")/../.." && pwd)"
 ROWS_FILE="${1:?Потрібен rows.json з API}"
 WANT_CONTEXT=1
 WITH_CURRENT=""
+WITH_REFERENCE=""
 shift
 while [ $# -gt 0 ]; do
     case "$1" in
         --no-context)   WANT_CONTEXT=0 ;;
         --with-context) WANT_CONTEXT=1 ;;   # дефолт; лишається для сумісності
         --with-current) WITH_CURRENT="--with-current" ;;
+        --with-reference) WITH_REFERENCE="--with-reference" ;;
         *) echo "Невідомий прапорець: $1" >&2; exit 1 ;;
     esac
     shift
@@ -178,6 +181,24 @@ foreach ($rows as $row) {
         $current = $row->raw()["layers"]["machine"]["text"] ?? "";
         if ($current !== "") $item["current"] = $current;
     }
+    // Російський довідковий текст · ЛИШЕ підказка про сенс, ніколи не джерело.
+    //
+    // API віддає його в кожному рядку (`fields=...,reference,...`), але до
+    // моделі він не доходив жодного разу: `worker-payload` про поле просто не
+    // знав. Через це головна задача режиму покращення · перекласти наново те,
+    // що бот Bosia зробив саме з цього російського тексту · виконувалась
+    // наосліп, без доступу до єдиного джерела, яке пояснює, ЩО автор мав на
+    // увазі в неоднозначному англійському рядку.
+    //
+    // Поле вмикається лише там, де воно потрібне за задачею (`improve`).
+    // Ризик названий прямо: російський текст поруч підвищує шанс русизму, тому
+    // промпт воркера забороняє перекладати з нього, а детектор русизмів і QA
+    // лишаються механічною перевіркою. `exportable: false` у самому API
+    // означає, що в гру цей текст не потрапляє ніколи.
+    if ($argv[5] === "--with-reference") {
+        $reference = $row->raw()["reference"]["ru"]["text"] ?? "";
+        if (is_string($reference) && $reference !== "") $item["reference_ru"] = $reference;
+    }
     if (!empty($examplesByHash[$hash])) { $item["examples"] = $examplesByHash[$hash]; $stats["examples"]++; }
     $payload[] = $item;
 }
@@ -187,4 +208,4 @@ echo json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR), "\n";
 fwrite(STDERR, sprintf(
     "payload воркера: %d рядків | глосарій %d | без відповідника %d | нерозпізнані назви %d | приклади %d | межі довжини %d\n",
     count($payload), $stats["glossary"], $stats["pending"], $stats["unresolved"], $stats["examples"], $stats["limits"]));
-' "$ROWS_FILE" "$CONTEXT_FILE" "$WITH_CURRENT" "$SCRIPT_DIR/lib/autoload.php"
+' "$ROWS_FILE" "$CONTEXT_FILE" "$WITH_CURRENT" "$SCRIPT_DIR/lib/autoload.php" "$WITH_REFERENCE"

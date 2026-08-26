@@ -140,6 +140,24 @@ try {
     expect(! ErrorCodes::isPermanent('API: length_too_long завеликий рядок'), 'length defect must stay repairable');
     expect(! ErrorCodes::isPermanent('QA: REVIEW неточний відповідник'), 'QA verdict must stay repairable');
 
+    // Режим покращення ШІ наведений саме на спадщину Bosia, а не на весь патч.
+    //
+    // Заміряно на проді 2026-08-26: у патчі 1 всього 964 608 рядків, із них
+    // 934 662 мають `machine_provenance=legacy`. Без цього фільтра режим
+    // перебирав би підряд і вже добрі переклади нового пайплайна.
+    expect(str_contains(RunSpec::filterFor('improve', '1'), 'machine_provenance=legacy'),
+        'improve must target Bosia legacy rows');
+    expect(str_contains(RunSpec::filterFor('improve', '1'), 'patch=1'),
+        'improve must honour the requested patch');
+    // Російський довідковий текст іде ЛИШЕ в цей режим: в інших рядок
+    // перекладається з чистого англійського, і зайвий RU лише додає ризик.
+    expect(RunSpec::preset('improve')['include_reference'] === true, 'improve lost the RU reference');
+    foreach (['patch', 'manual', 'proposal'] as $other) {
+        expect(RunSpec::preset($other)['include_reference'] === false, "$other must not receive the RU reference");
+        expect(! str_contains(RunSpec::filterFor($other, '1'), 'machine_provenance'),
+            "$other must not filter by provenance");
+    }
+
     $spec = RunSpec::create('proposal', 'PROD', 'ses_parent', 50)->toArray();
     expect(($spec['channel'] ?? null) === 'proposal', 'proposal preset selected a wrong channel');
     expect(($spec['filter'] ?? null) === 'patch=active&missing=manual&exclude_proposed=1', 'proposal preset selected a wrong filter');

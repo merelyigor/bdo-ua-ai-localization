@@ -166,7 +166,12 @@ prepare_worker() {
     fi
     if [ "$count" -gt 0 ]; then
         "$SCRIPT_DIR/cli/prepare/build-schema.sh" "$rows" >/dev/null
-        local args=(); test "$(field mode)" = improve && args+=(--with-current)
+        # Режим покращення ШІ бачить і поточний український текст, і російський
+        # довідковий: перший · те, що треба перевершити, другий · підказка про
+        # сенс, з якої колись перекладав бот Bosia. Інші режими не отримують ні
+        # того, ні того: там рядок перекладається з чистого англійського.
+        local args=()
+        if [ "$(field mode)" = improve ]; then args+=(--with-current --with-reference); fi
         test "${BDO_PIPELINE_OFFLINE:-0}" = 1 && args+=(--no-context)
         "$SCRIPT_DIR/cli/prepare/worker-payload.sh" "$rows" "${args[@]}" > "$B/worker-payload.json"
     else

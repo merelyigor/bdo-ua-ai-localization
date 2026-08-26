@@ -15,24 +15,38 @@ final class RunSpec
             'filter' => 'patch=active&missing=machine',
             'memory_layers' => ['manual', 'machine'],
             'include_current' => false,
+            'include_reference' => false,
         ],
         'manual' => [
             'channel' => 'manual',
             'filter' => 'patch=active&missing=manual&exclude_proposed=1',
             'memory_layers' => ['manual', 'machine'],
             'include_current' => false,
+            'include_reference' => false,
         ],
         'proposal' => [
             'channel' => 'proposal',
             'filter' => 'patch=active&missing=manual&exclude_proposed=1',
             'memory_layers' => ['manual', 'machine'],
             'include_current' => false,
+            'include_reference' => false,
         ],
+        // Головна задача режиму · переклад НАНОВО тих рядків ШІ-шару, які
+        // зробив бот Bosia з російського reference. Заміряно на проді
+        // 2026-08-26: у патчі 1 всього 964 608 рядків, із них 934 662 мають
+        // `machine_provenance=legacy`, тобто саме це спадщина Bosia. Без цього
+        // фільтра режим перебирав би підряд і вже добрі переклади нового
+        // пайплайна, витрачаючи модель намарно.
+        //
+        // `include_current` дає моделі поточний український текст, а
+        // `memory_layers = manual` навмисно виключає machine-шар з памʼяті:
+        // RU-похідний текст не має права бути зразком для власного покращення.
         'improve' => [
             'channel' => 'machine',
-            'filter' => 'patch=active&exclude_proposed=1',
+            'filter' => 'patch=active&machine_provenance=legacy&exclude_proposed=1',
             'memory_layers' => ['manual'],
             'include_current' => true,
+            'include_reference' => true,
         ],
     ];
 
@@ -63,6 +77,7 @@ final class RunSpec
             'batch_size' => $batchSize,
             'memory_layers' => self::PRESETS[$mode]['memory_layers'],
             'include_current' => self::PRESETS[$mode]['include_current'],
+            'include_reference' => self::PRESETS[$mode]['include_reference'],
             'created_by_session' => $parentSession,
             'state' => 'planned',
         ]);
@@ -74,7 +89,7 @@ final class RunSpec
         return $this->data;
     }
 
-    /** @return array{channel:string,filter:string,memory_layers:list<string>,include_current:bool} */
+    /** @return array{channel:string,filter:string,memory_layers:list<string>,include_current:bool,include_reference:bool} */
     public static function preset(string $mode): array
     {
         if (! isset(self::PRESETS[$mode])) {

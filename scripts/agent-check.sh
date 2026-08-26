@@ -412,6 +412,7 @@ check_shell() {
     run bash tests/rotation.sh
     run bash tests/no-silent-failures.sh
     run bash tests/quarantine-recovery.sh
+    run bash tests/worker-reference.sh
 }
 
 check_agents() {
