@@ -410,6 +410,7 @@ check_shell() {
     run bash tests/judge-flow.sh
     run bash tests/patch-argument.sh
     run bash tests/pre-push-attribution.sh
+    run bash tests/commit-version-guard.sh
     run bash tests/run-resume.sh
     run bash tests/run-target-env.sh
     run bash tests/http-retry.sh
