@@ -216,7 +216,21 @@ completion() {
     $tmp=$runFile.".tmp.".bin2hex(random_bytes(5));
     file_put_contents($tmp,json_encode($run,JSON_UNESCAPED_UNICODE|JSON_PRETTY_PRINT|JSON_THROW_ON_ERROR)."\n",LOCK_EX);
     rename($tmp,$runFile);
-    echo json_encode(["kind"=>"complete","batch"=>$summary,"run"=>$run["totals"]],JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES);
+    // Нагадування про свіжу сесію.
+    //
+    // Транскрипт диригента росте квадратично: підставлений payload лишається в
+    // сесії назавжди, і кожен наступний крок пересилає його заново. Заміряно
+    // 2026-08-28: у сесії на девʼять пачок 24 частини по 50+ КБ важили
+    // 2 160 245 байтів · 69% усього транскрипту, а рахунок дійшов до $1,22.
+    // Нова сесія режиму обнуляє цей борг, стан пачки лежить на диску й нічого
+    // не втрачається. Поріг · `BDO_SESSION_HINT_BATCHES`, 0 вимикає.
+    $done=count($run["batches"]);
+    $every=(int)(getenv("BDO_SESSION_HINT_BATCHES")?:5);
+    $out=["kind"=>"complete","batch"=>$summary,"run"=>$run["totals"]];
+    if($every>0&&$done>0&&$done%$every===0){
+        $out["hint"]="Пачок у цій сесії: $done. Почни НОВУ сесію режиму перед наступною пачкою: транскрипт диригента росте квадратично, а стан пачки лежить на диску й не втрачається.";
+    }
+    echo json_encode($out,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES);
     ' "$B/batch-summary.json" "$B/commit-report.txt" "$B/manifest.json" "$STATE_DIR/run-summary.json" "$(basename "$B")"
 }
 prepare_worker() {

@@ -20,7 +20,9 @@ cat > "$TMP/rows.json" <<'JSON'
 JSON
 
 build() { BDO_STATE_DIR="$TMP/state" bash "$ROOT/cli/prepare/worker-payload.sh" "$TMP/rows.json" --no-context "$@" 2>/dev/null; }
-has() { php -r '$p=json_decode(stream_get_contents(STDIN),true);exit(array_key_exists($argv[1],$p[0]??[])?0:1);' "$1"; }
+# Payload воркера · обʼєкт `{examples, items}` від 2026-08-28: приклади винесені
+# у спільний блок, бо 77% із них були дослівними повторами між рядками пачки.
+has() { php -r '$p=json_decode(stream_get_contents(STDIN),true);$rows=$p["items"]??$p;exit(array_key_exists($argv[1],$rows[0]??[])?0:1);' "$1"; }
 
 # Без прапорця російського тексту в payload немає: інші режими його не бачать.
 build | has reference_ru && fail 'RU-довідка потрапила в payload без прапорця'

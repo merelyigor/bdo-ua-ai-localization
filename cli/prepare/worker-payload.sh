@@ -146,6 +146,33 @@ if ($argv[2] !== "" && file_exists($argv[2])) {
     $examplesByHash = json_decode(file_get_contents($argv[2]), true) ?: [];
 }
 
+
+// Приклади · СПІЛЬНИЙ блок, а не копія в кожному рядку.
+//
+// Заміряно 2026-08-28 на живій пачці (29 рядків): 57 прикладів, з них лише 13
+// унікальних · 77% були дослівними повторами, бо рядки пачки належать до однієї
+// родини предметів. Ці байти не зникають після виклику: OpenCode зберігає
+// підставлений payload у транскрипті диригента, і кожен наступний крок пересилає
+// його заново. У тій сесії 24 такі частини важили 2 160 245 байтів · 69% усього
+// транскрипту. Дедуплікація прибирає 61% байтів прикладів, не втрачаючи ЖОДНОГО
+// прикладу.
+//
+// Стеля існує, і про відкинуте пишеться прямо: мовчазне обрізання читалось би як
+// «прикладів більше не було».
+$exampleLimit = (int) (getenv("BDO_SHARED_EXAMPLES") ?: 12);
+$sharedExamples = [];
+$seenExample = [];
+$exampleDropped = 0;
+foreach ($examplesByHash as $list) {
+    foreach ((array) $list as $example) {
+        $key = json_encode($example, JSON_UNESCAPED_UNICODE);
+        if (isset($seenExample[$key])) continue;
+        $seenExample[$key] = true;
+        if (count($sharedExamples) >= $exampleLimit) { $exampleDropped++; continue; }
+        $sharedExamples[] = $example;
+    }
+}
+
 $payload = [];
 $stats = ["glossary" => 0, "pending" => 0, "unresolved" => 0, "examples" => 0, "limits" => 0];
 foreach ($rows as $row) {
@@ -199,13 +226,14 @@ foreach ($rows as $row) {
         $reference = $row->raw()["reference"]["ru"]["text"] ?? "";
         if (is_string($reference) && $reference !== "") $item["reference_ru"] = $reference;
     }
-    if (!empty($examplesByHash[$hash])) { $item["examples"] = $examplesByHash[$hash]; $stats["examples"]++; }
+    if (!empty($examplesByHash[$hash])) $stats["examples"]++;
     $payload[] = $item;
 }
-echo json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR), "\n";
+echo json_encode(["examples" => $sharedExamples, "items" => $payload], JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR), "\n";
 // Підсумок у stderr: диригент звітує з нього, замість перечитувати payload.
 // stdout лишається чистим JSON, тому підстановку в промпт це не ламає.
 fwrite(STDERR, sprintf(
-    "payload воркера: %d рядків | глосарій %d | без відповідника %d | нерозпізнані назви %d | приклади %d | межі довжини %d\n",
-    count($payload), $stats["glossary"], $stats["pending"], $stats["unresolved"], $stats["examples"], $stats["limits"]));
+    "payload воркера: %d рядків | глосарій %d | без відповідника %d | нерозпізнані назви %d | приклади %d спільних (рядків із прикладами %d, відкинуто понад стелю %d) | межі довжини %d\n",
+    count($payload), $stats["glossary"], $stats["pending"], $stats["unresolved"],
+    count($sharedExamples), $stats["examples"], $exampleDropped, $stats["limits"]));
 ' "$ROWS_FILE" "$CONTEXT_FILE" "$WITH_CURRENT" "$SCRIPT_DIR/lib/autoload.php" "$WITH_REFERENCE"

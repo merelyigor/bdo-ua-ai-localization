@@ -99,6 +99,13 @@ check_rules() {
         test -n "$prompt_size" || fail "$primary не називає розміру пачки в mode start"
         test "$prompt_size" -ge "$fetch_min" && test "$prompt_size" -le "$fetch_max" \
             || fail "$primary радить пачку $prompt_size поза діапазоном fetch $fetch_min-$fetch_max"
+        # Розмір пачки зафіксовано на 50 (рішення власника 2026-08-28).
+        # Менша пачка НЕ економить: диригент коштує ~фіксовано за пачку
+        # ($1,218 за девʼять пачок ≈ $0,135 незалежно від рядків), тому 20
+        # рядків замість 50 множать саме платну частину в 2,5 раза. 50 · це
+        # також стеля запису API (`/me` -> `max_items`).
+        test "$prompt_size" -eq 50 \
+            || fail "$primary радить пачку $prompt_size; зафіксовано рівно 50"
         grep -Fq 'Власник змінює лише `.env`; CLI виконуй сам' ".opencode/agents/$primary.md" \
             || fail "$primary не містить UX-контракт власника"
         grep -Fq 'СПОЧАТКУ ВИЗНАЧ ТИП ЗАПИТУ' ".opencode/agents/$primary.md" \
@@ -450,6 +457,7 @@ check_shell() {
     run bash tests/local-model-routes.sh
     run bash tests/primary-prompt-drift.sh
     run bash tests/mechanical-before-qa.sh
+    run bash tests/payload-shared-examples.sh
 }
 
 check_agents() {

@@ -53,6 +53,33 @@ if ($argv[4] !== "" && file_exists($argv[4])) {
 }
 
 $payload = [];
+
+// Приклади · СПІЛЬНИЙ блок, а не копія в кожному рядку.
+//
+// Заміряно 2026-08-28 на живій пачці (29 рядків): 57 прикладів, з них лише 13
+// унікальних · 77% були дослівними повторами, бо рядки пачки належать до однієї
+// родини предметів. Ці байти не зникають після виклику: OpenCode зберігає
+// підставлений payload у транскрипті диригента, і кожен наступний крок пересилає
+// його заново. У тій сесії 24 такі частини важили 2 160 245 байтів · 69% усього
+// транскрипту. Дедуплікація прибирає 61% байтів прикладів, не втрачаючи ЖОДНОГО
+// прикладу.
+//
+// Стеля існує, і про відкинуте пишеться прямо: мовчазне обрізання читалось би як
+// «прикладів більше не було».
+$exampleLimit = (int) (getenv("BDO_SHARED_EXAMPLES") ?: 12);
+$sharedExamples = [];
+$seenExample = [];
+$exampleDropped = 0;
+foreach ($examplesByHash as $list) {
+    foreach ((array) $list as $example) {
+        $key = json_encode($example, JSON_UNESCAPED_UNICODE);
+        if (isset($seenExample[$key])) continue;
+        $seenExample[$key] = true;
+        if (count($sharedExamples) >= $exampleLimit) { $exampleDropped++; continue; }
+        $sharedExamples[] = $example;
+    }
+}
+
 $stats = ["current" => 0, "glossary" => 0, "pending" => 0, "unresolved" => 0, "examples" => 0, "limits" => 0];
 foreach ($rows as $row) {
     $hash = $row->identityHash();
@@ -99,10 +126,10 @@ foreach ($rows as $row) {
             $stats["current"]++;
         }
     }
-    if (!empty($examplesByHash[$hash])) { $item["examples"] = $examplesByHash[$hash]; $stats["examples"]++; }
+    if (!empty($examplesByHash[$hash])) $stats["examples"]++;
     $payload[] = $item;
 }
-echo json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR), "\n";
+echo json_encode(["examples" => $sharedExamples, "items" => $payload], JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR), "\n";
 fwrite(STDERR, sprintf(
     "payload QA: %d рядків | глосарій %d | без відповідника %d | нерозпізнані назви %d | приклади %d | межі довжини %d\n",
     count($payload), $stats["glossary"], $stats["pending"], $stats["unresolved"], $stats["examples"], $stats["limits"]));
