@@ -46,6 +46,7 @@
 
 | План | Створено | Відомі зовнішні gates |
 |---|---|---|
+| [2026-08-27_FLOW_AND_SUBAGENT_ECONOMY.md](active/2026-08-27_FLOW_AND_SUBAGENT_ECONOMY.md) · пʼять змін флоу: механіка перед QA, канарка, QA завжди повертає текст, контрольний QA злитий із суддею, журнал бачить кожен дитячий виклик | 2026-08-27 | Усі пʼять зачіпають `cli/run/run-drive.sh` і промпти · це WORKFLOW_FILES, отже потрібен перезапуск OpenCode; робити між пачками. |
 | [2026-08-27_LOCAL_MODEL_PROMPT_HARDENING.md](active/2026-08-27_LOCAL_MODEL_PROMPT_HARDENING.md) · локальні моделі як основний маршрут: механічна перевірка кожного правила промпта, вимір child окремо для `ollama-local`, генерація спільного блоку | 2026-08-27 | Етап 2 потребує живої пачки на локальній моделі поруч із хмарною · без виміру посилення child-промптів буде здогадом. |
 | [2026-08-25_CROSS_PLATFORM_WINDOWS_BRIDGE.md](active/2026-08-25_CROSS_PLATFORM_WINDOWS_BRIDGE.md) · WSL-міст для native Windows OpenCode; порт у `php bdo.php` лишається запасним шляхом | 2026-08-25 | Переписану команду `wsl.exe --cd … bash -lc …` неможливо перевірити з macOS: потрібен один прогін у native Windows OpenCode. |
 
