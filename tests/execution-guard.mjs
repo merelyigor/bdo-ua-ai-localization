@@ -68,6 +68,11 @@ const refuse = async (before, input, args, what) => {
     "./bdo mode start improve 20 && ./bdo run drive",
     "./bdo mode start patch 15 3",
     "./bdo mode status patch 3",
+    // Категорія четвертим аргументом: у патчі 1 `premium_shop` це 18 036 рядків
+    // без ШІ-шару з 29 820, тобто 60% роботи в одній категорії.
+    "./bdo mode status patch 1 premium_shop",
+    "./bdo mode start patch 50 1 premium_shop",
+    "./bdo mode start improve 50 1 quest",
     "./bdo gate full",
     // Усі профілі gate, а не лише full: `gate preflight` є документованим
     // першим кроком нової сесії, і guard колись блокував саме його.
@@ -227,6 +232,8 @@ const refuse = async (before, input, args, what) => {
     "./bdo patches 0",
     "./bdo patches 5 machine --apply",
     "./bdo gate nonsense",
+    "./bdo mode start patch 50 1 вигадана-категорія",
+    "./bdo mode start patch 50 premium_shop",
     // `audit` і `audit-dump` · інструменти РОЗРОБКИ: вони читають базу сесій
     // OpenCode, а не дані перекладу, і диригент флоу їх не запускає.
     "./bdo audit",

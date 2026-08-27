@@ -272,7 +272,8 @@ candidate_to_qa() {
     test -f "$validate_file" && printf '%s\n' "$validate_file" > "$B/validate-path" || true
     complete deterministic "$B/clean.json"; transition deterministic_valid
     "$SCRIPT_DIR/cli/prepare/build-schema.sh" --qa "$B/rows.json" >/dev/null
-    "$SCRIPT_DIR/cli/prepare/qa-payload.sh" "$B/rows.json" "$B/clean.json" > "$B/qa-payload.json"
+    qa_args=(); test "$(field mode)" = improve && qa_args+=(--with-current)
+    "$SCRIPT_DIR/cli/prepare/qa-payload.sh" "$B/rows.json" "$B/clean.json" "${qa_args[@]}" > "$B/qa-payload.json"
     transition awaiting_qa; child awaiting_qa translation-qa "$B/qa-payload.json" "$B/verdicts.json"
 }
 
@@ -431,7 +432,8 @@ candidate_valid)
 deterministic_valid)
     test -s "$B/clean.json" || { emit 0 deterministic_valid '{"kind":"blocked","reason":"clean_candidate_missing"}'; exit 1; }
     "$SCRIPT_DIR/cli/prepare/build-schema.sh" --qa "$B/rows.json" >/dev/null
-    "$SCRIPT_DIR/cli/prepare/qa-payload.sh" "$B/rows.json" "$B/clean.json" > "$B/qa-payload.json"
+    qa_args=(); test "$(field mode)" = improve && qa_args+=(--with-current)
+    "$SCRIPT_DIR/cli/prepare/qa-payload.sh" "$B/rows.json" "$B/clean.json" "${qa_args[@]}" > "$B/qa-payload.json"
     transition awaiting_qa; child awaiting_qa translation-qa "$B/qa-payload.json" "$B/verdicts.json"
     ;;
 awaiting_qa)

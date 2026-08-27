@@ -16,6 +16,8 @@ ACTION="${1:?Потрібно status або plan}"
 MODE="${2:?Потрібен режим patch|manual|proposal|improve}"
 # Третій аргумент status · патч, який планується взяти (`active` або snapshot_id).
 PATCH="${3:-active}"
+# Четвертий аргумент · категорія (`classification.domain`). Порожня = всі.
+DOMAIN="${4:-}"
 
 case "$ACTION" in
     status)
@@ -23,9 +25,11 @@ case "$ACTION" in
         require $argv[1];
         use Bdo\Translate\Pipeline\RunSpec;
         $preset = RunSpec::preset($argv[2]);
-        $preset["filter"] = RunSpec::filterFor($argv[2], $argv[3]);
-        echo json_encode(["ok" => true, "mode" => $argv[2], "patch" => $argv[3], "preset" => $preset], JSON_UNESCAPED_UNICODE), "\n";
-        ' "$SCRIPT_DIR/lib/autoload.php" "$MODE" "$PATCH"
+        $preset["filter"] = RunSpec::filterFor($argv[2], $argv[3], $argv[4]);
+        echo json_encode(["ok" => true, "mode" => $argv[2], "patch" => $argv[3],
+            "domain" => $argv[4] !== "" ? $argv[4] : null,
+            "domains" => RunSpec::domains(), "preset" => $preset], JSON_UNESCAPED_UNICODE), "\n";
+        ' "$SCRIPT_DIR/lib/autoload.php" "$MODE" "$PATCH" "$DOMAIN"
         ;;
     plan)
         PARENT="${3:?plan потребує OpenCode parent session ID}"

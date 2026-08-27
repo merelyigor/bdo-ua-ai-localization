@@ -14,7 +14,7 @@
 | `./bdo platform` | macOS, Linux або Windows/WSL2 preflight |
 | `./bdo run start&#124;show&#124;end&#124;drive` | зафіксувати / показати / зняти ціль; JSON-крок рушія |
 | `./bdo patches [N&#124;all] [machine&#124;manual&#124;both] [--full]` | де ще є робота за патчами |
-| `./bdo mode status&#124;start <mode> [N] [patch]` | preset або наступна пачка |
+| `./bdo mode status&#124;start <mode> [N] [patch] [категорія]` | preset або наступна пачка; категорія звужує вибірку |
 | `./bdo gate [профіль]` | quality gate: preflight docs shell agents runtime api full |
 
 ## ВИБІРКА Й ПАЧКА

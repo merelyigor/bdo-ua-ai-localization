@@ -33,8 +33,8 @@
           "де ще є робота за патчами"
         ],
         [
-          "mode status|start <mode> [N] [patch]",
-          "preset або наступна пачка"
+          "mode status|start <mode> [N] [patch] [категорія]",
+          "preset або наступна пачка; категорія звужує вибірку"
         ],
         [
           "gate [профіль]",
@@ -195,8 +195,8 @@
   "guard_patterns": [
     "^\\.\\/bdo env$",
     "^\\.\\/bdo smoke$",
-    "^\\.\\/bdo mode status (patch|manual|proposal|improve)( (active|[0-9]{1,6}))?$",
-    "^\\.\\/bdo mode start (patch|manual|proposal|improve)( [1-9][0-9]*( (active|[0-9]{1,6}))?)?$",
+    "^\\.\\/bdo mode status (patch|manual|proposal|improve)( (active|[0-9]{1,6})( (item|quest|knowledge|entity|skill_effect|premium_shop|dialogue|ui|title|world|mission|unknown))?)?$",
+    "^\\.\\/bdo mode start (patch|manual|proposal|improve)( [1-9][0-9]*( (active|[0-9]{1,6})( (item|quest|knowledge|entity|skill_effect|premium_shop|dialogue|ui|title|world|mission|unknown))?)?)?$",
     "^\\.\\/bdo run drive$",
     "^\\.\\/bdo run show$",
     "^\\.\\/bdo run end$",

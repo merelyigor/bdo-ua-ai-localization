@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Побудувати компактний payload для translation-qa.
 #
-#   ./qa-payload.sh rows.json candidate.json
-#   ./qa-payload.sh rows.json candidate.json --context FILE   # приклади з іншого файла
+#   ./qa-payload.sh rows.json candidate.json [--with-current]  # + поточний ШІ-текст
+#   ./qa-payload.sh rows.json candidate.json [--with-current]  # + поточний ШІ-текст --context FILE   # приклади з іншого файла
 #
 # Друкує JSON-масив: identity_hash, source_text, candidate, glossary, keep.
 # QA працює під constrained decoding, а обмежена відповідь не може містити
@@ -26,9 +26,11 @@ CANDIDATE_FILE="${2:?Потрібен candidate.json від translation-worker}"
 shift 2
 
 CONTEXT_FILE=""
+WITH_CURRENT=""
 while [ $# -gt 0 ]; do
     case "$1" in
         --context) CONTEXT_FILE="${2:?--context потребує шлях до файла}"; shift 2 ;;
+        --with-current) WITH_CURRENT="--with-current"; shift ;;
         *) echo "Невідомий прапорець: $1" >&2; exit 1 ;;
     esac
 done
@@ -51,7 +53,7 @@ if ($argv[4] !== "" && file_exists($argv[4])) {
 }
 
 $payload = [];
-$stats = ["glossary" => 0, "pending" => 0, "unresolved" => 0, "examples" => 0, "limits" => 0];
+$stats = ["current" => 0, "glossary" => 0, "pending" => 0, "unresolved" => 0, "examples" => 0, "limits" => 0];
 foreach ($rows as $row) {
     $hash = $row->identityHash();
     if (!$candidate->has($hash)) throw new RuntimeException("Немає перекладу для $hash");
@@ -79,6 +81,24 @@ foreach ($rows as $row) {
     $limits = $row->limits();
     if ($limits !== null) { $item["limits"] = $limits; $stats["limits"]++; }
     if ($row->isNonTranslatable()) $item["non_translatable"] = true;
+    // Поточний ШІ-переклад · лише в режимі покращення.
+    //
+    // Питання цього режиму звучить «чи новий текст кращий за наявний», а QA
+    // фізично не міг на нього відповісти: у payload не було чим міряти
+    // «краще». Аудит 2026-08-27 показав, що слово `current` не траплялось у
+    // цьому файлі жодного разу, тож QA судив новий текст проти англійського в
+    // ізоляції й повертав PASS на переклад, не кращий за той, який замінює.
+    //
+    // Іншим режимам поле не дається: там рядок перекладається з чистого
+    // англійського, і зайвий контекст лише підвищує шанс, що QA почне
+    // порівнювати з ним замість джерела.
+    if ($argv[5] === "--with-current") {
+        $current = $row->raw()["layers"]["machine"]["text"] ?? "";
+        if (is_string($current) && $current !== "" && $current !== $item["candidate"]) {
+            $item["current"] = $current;
+            $stats["current"]++;
+        }
+    }
     if (!empty($examplesByHash[$hash])) { $item["examples"] = $examplesByHash[$hash]; $stats["examples"]++; }
     $payload[] = $item;
 }
@@ -86,4 +106,4 @@ echo json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR), "\n";
 fwrite(STDERR, sprintf(
     "payload QA: %d рядків | глосарій %d | без відповідника %d | нерозпізнані назви %d | приклади %d | межі довжини %d\n",
     count($payload), $stats["glossary"], $stats["pending"], $stats["unresolved"], $stats["examples"], $stats["limits"]));
-' "$ROWS_FILE" "$CANDIDATE_FILE" "$SCRIPT_DIR/lib/autoload.php" "$CONTEXT_FILE"
+' "$ROWS_FILE" "$CANDIDATE_FILE" "$SCRIPT_DIR/lib/autoload.php" "$CONTEXT_FILE" "$WITH_CURRENT"

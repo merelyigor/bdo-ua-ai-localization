@@ -38,12 +38,21 @@ echo "\n  Стани:\n";
 foreach ($s["states"] as $state => $count) {
     echo "    $state: $count\n";
 }
-echo "\n  По доменах:\n";
-foreach ($s["domains"] as $d2) {
-    $un = $d2["untranslated"];
-    $mark = $un > 0 ? " ← є що перекладати" : "";
-    echo "    {$d2["domain"]}: {$d2["total"]}$mark\n";
+// ДВІ колонки, а не одна.
+//
+// Раніше друкувалось лише `total` із позначкою «← є що перекладати», і число
+// читалось як обсяг роботи. Заміряно 2026-08-27: у патчі 1 домен `item` мав
+// `total` 285 561 при 513 рядках без перекладу, тобто помилка в 500 разів.
+// Той самий клас, що й колонка «у ШІ-шар» у `./bdo patches`.
+echo "\n  По категоріях (усього / без перекладу):\n";
+$domains = $s["domains"];
+usort($domains, static fn (array $a, array $b): int => ($b["untranslated"] ?? 0) <=> ($a["untranslated"] ?? 0));
+foreach ($domains as $d2) {
+    $un = (int) ($d2["untranslated"] ?? 0);
+    $mark = $un > 0 ? "  ← є що перекладати" : "";
+    printf("    %-14s %9s / %-9s%s\n", $d2["domain"], $d2["total"], $un, $mark);
 }
+echo "\n  Узяти одну категорію: ./bdo mode start patch 50 <патч> <категорія>\n";
 ' "$TMP_DIR/patch_summary.json" "$SCRIPT_DIR/lib/autoload.php"
 
 # --- 2. Без машинного ---

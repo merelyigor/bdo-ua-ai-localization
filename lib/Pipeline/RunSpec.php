@@ -50,6 +50,21 @@ final class RunSpec
         ],
     ];
 
+    /**
+     * Категорії рядків, які розрізняє API (`classification.domain`).
+     *
+     * Перелік тут, а не в скрипті: значення йде в query string, тому мусить
+     * перевірятись до мережі. Заміряно на проді 2026-08-27, патч 1: робота
+     * розподілена вкрай нерівно · `premium_shop` 18 036 рядків без ШІ-шару
+     * проти `dialogue` з одним, тож брати категорію окремо має практичний сенс.
+     *
+     * @var list<string>
+     */
+    private const DOMAINS = [
+        'item', 'quest', 'knowledge', 'entity', 'skill_effect', 'premium_shop',
+        'dialogue', 'ui', 'title', 'world', 'mission', 'unknown',
+    ];
+
     /** @param array<string,mixed> $data */
     private function __construct(private readonly array $data) {}
 
@@ -110,7 +125,7 @@ final class RunSpec
      * Значення перевіряється тут, а не в скрипті: воно потрапляє у query
      * string, тому дозволені лише `active` і числовий `snapshot_id`.
      */
-    public static function filterFor(string $mode, string $patch = 'active'): string
+    public static function filterFor(string $mode, string $patch = 'active', string $domain = ''): string
     {
         if (! isset(self::PRESETS[$mode])) {
             throw new InvalidArgumentException("Невідомий режим: $mode");
@@ -118,8 +133,23 @@ final class RunSpec
         if (preg_match('/^(active|[0-9]{1,6})$/', $patch) !== 1) {
             throw new InvalidArgumentException("Патч має бути `active` або числовим snapshot_id, отримано: $patch");
         }
+        $filter = str_replace('patch=active', 'patch='.$patch, self::PRESETS[$mode]['filter']);
+        if ($domain === '') {
+            return $filter;
+        }
+        if (! in_array($domain, self::DOMAINS, true)) {
+            throw new InvalidArgumentException(
+                "Невідома категорія: $domain. Дозволені: ".implode(', ', self::DOMAINS),
+            );
+        }
 
-        return str_replace('patch=active', 'patch='.$patch, self::PRESETS[$mode]['filter']);
+        return $filter.'&domain='.$domain;
+    }
+
+    /** @return list<string> */
+    public static function domains(): array
+    {
+        return self::DOMAINS;
     }
 
     /** @return list<string> */

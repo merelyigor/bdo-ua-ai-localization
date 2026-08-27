@@ -430,6 +430,7 @@ check_shell() {
     run bash tests/worker-reference.sh
     run bash tests/schema-provider-compat.sh
     run bash tests/mechanical-final-check.sh
+    run bash tests/domain-filter.sh
 }
 
 check_agents() {

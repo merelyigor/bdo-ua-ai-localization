@@ -9,10 +9,15 @@ SIZE="${2:-50}"
 # лишався 1 рядок без machine-перекладу, а в патчі 1 їх 29927. Значення
 # перевіряє RunSpec::filterFor · воно йде в query string.
 PATCH="${3:-active}"
+# Четвертий аргумент · КАТЕГОРІЯ рядків (`classification.domain`). Порожня
+# означає всі. Заміряно на проді 2026-08-27, патч 1: `premium_shop` це 18 036
+# рядків без ШІ-шару з 29 820, тобто 60% усієї роботи в одній категорії. Без
+# цього аргументу власник не міг узяти її окремо, хоча API фільтр підтримує.
+DOMAIN="${4:-}"
 source "$SCRIPT_DIR/cli/system/select-env.sh"
 STATE_DIR="${BDO_STATE_DIR:-$SCRIPT_DIR/state}"
 preset="$($SCRIPT_DIR/cli/run/run-spec.sh status "$MODE")"
-query="$(php -r 'require $argv[1]; echo Bdo\Translate\Pipeline\RunSpec::filterFor($argv[2], $argv[3]);' "$SCRIPT_DIR/lib/autoload.php" "$MODE" "$PATCH")"
+query="$(php -r 'require $argv[1]; echo Bdo\Translate\Pipeline\RunSpec::filterFor($argv[2], $argv[3], $argv[4]);' "$SCRIPT_DIR/lib/autoload.php" "$MODE" "$PATCH" "$DOMAIN")"
 channel="$(php -r '$x=json_decode($argv[1],true);echo $x["preset"]["channel"]??"";' "$preset")"
 # Скаляр для Memory::fromFile: у improve памʼяттю є лише manual-шар, інакше
 # RU-похідний machine-текст закриває рядки, які цей режим має покращити.
@@ -32,12 +37,12 @@ $m=$w->manifest();$state=(string)($m["state"]??"");
 if(in_array($state,["verified","failed_terminal"],true))exit;
 if(($m["mode"]??"")===""){
     $m=$w->updateManifest(function($m)use($argv){$m["mode"]=$argv[3];$m["channel"]=$argv[4];
-        $m["query"]=$argv[5];$m["memory_layers"]=$argv[6];$m["patch"]=$argv[7];return $m;},"run_spec_recovered");
+        $m["query"]=$argv[5];$m["memory_layers"]=$argv[6];$m["patch"]=$argv[7];$m["domain"]=$argv[8];return $m;},"run_spec_recovered");
 }
 echo json_encode(["ok"=>true,"resume"=>true,"mode"=>$m["mode"]??null,
     "patch"=>$m["patch"]??null,"state"=>$state,"rows"=>$m["rows"]??null,
     "batch_dir"=>$w->dir()],JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES),"\n";
-' "$SCRIPT_DIR/lib/autoload.php" "$STATE_DIR" "$MODE" "$channel" "$query" "$memory_layers" "$PATCH")"
+' "$SCRIPT_DIR/lib/autoload.php" "$STATE_DIR" "$MODE" "$channel" "$query" "$memory_layers" "$PATCH" "$DOMAIN")"
 if [ -n "$current" ]; then
     printf '%s' "$current"
     exit 0
@@ -102,11 +107,11 @@ if($count>=$max){
 }
 $run=["scope"=>$scope,"batches"=>$count+1];
 file_put_contents($f,json_encode($run,JSON_UNESCAPED_UNICODE|JSON_THROW_ON_ERROR),LOCK_EX);
-' "$STATE_DIR/run-batches.json" "$BDO_API_ENV" "$MODE:$PATCH" "${BDO_RUN_MAX_BATCHES:-25}")" || {
+' "$STATE_DIR/run-batches.json" "$BDO_API_ENV" "$MODE:$PATCH:$DOMAIN" "${BDO_RUN_MAX_BATCHES:-25}")" || {
     printf '%s\n' "$batches"
     exit 1
 }
 "$SCRIPT_DIR/cli/batch/batch-new.sh" "$rows" >/dev/null
 B="$($SCRIPT_DIR/cli/batch/batch-dir.sh)"
-php -r 'require $argv[1];$w=Bdo\Translate\Batch\Workspace::requireCurrent($argv[2]);$w->updateManifest(function($m)use($argv){$m["mode"]=$argv[3];$m["channel"]=$argv[4];$m["query"]=$argv[5];$m["memory_layers"]=$argv[6];$m["patch"]=$argv[7];return $m;},"run_spec");' "$SCRIPT_DIR/lib/autoload.php" "${BDO_STATE_DIR:-$SCRIPT_DIR/state}" "$MODE" "$channel" "$query" "$memory_layers" "$PATCH"
-printf '{"ok":true,"mode":"%s","patch":"%s","state":"selected","rows":%d,"batch_dir":"%s"}\n' "$MODE" "$PATCH" "$count" "$B"
+php -r 'require $argv[1];$w=Bdo\Translate\Batch\Workspace::requireCurrent($argv[2]);$w->updateManifest(function($m)use($argv){$m["mode"]=$argv[3];$m["channel"]=$argv[4];$m["query"]=$argv[5];$m["memory_layers"]=$argv[6];$m["patch"]=$argv[7];$m["domain"]=$argv[8];return $m;},"run_spec");' "$SCRIPT_DIR/lib/autoload.php" "${BDO_STATE_DIR:-$SCRIPT_DIR/state}" "$MODE" "$channel" "$query" "$memory_layers" "$PATCH" "$DOMAIN"
+printf '{"ok":true,"mode":"%s","patch":"%s","domain":"%s","state":"selected","rows":%d,"batch_dir":"%s"}\n' "$MODE" "$PATCH" "$DOMAIN" "$count" "$B"
