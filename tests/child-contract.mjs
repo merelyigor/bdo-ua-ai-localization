@@ -1,7 +1,7 @@
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, existsSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { TranslationChildContract } from "../.opencode/plugin/translation-child-contract.ts"
+import { TranslationChildContract, referencesStagedPayload } from "../.opencode/plugin/translation-child-contract.ts"
 
 const directory = mkdtempSync(join(tmpdir(), "bdo-child-contract-"))
 mkdirSync(join(directory, "state", "batch"), { recursive: true })
@@ -40,6 +40,34 @@ if (args.prompt !== payload) throw new Error("prompt was not replaced with the s
   )
   if (args2.prompt !== `payload:${envelope.payload_path}`) {
     throw new Error(`staged payload stayed in the conductor transcript: ${args2.prompt.slice(0, 60)}`)
+  }
+}
+
+// Переписаний payload у аргументі відхиляється. 2026-08-27 диригент носив
+// payload сам, і на пачці 50 рядків виклик ламався на розборі JSON (позиція
+// 76134). Правило було в промпті всіх чотирьох режимів і не втрималось.
+{
+  const huge = { subagent_type: "translation-worker", description: "d", prompt: payload }
+  await before({ tool: "task", sessionID: "s", callID: "c" }, { args: huge }).then(
+    () => { throw new Error("transcribed payload was accepted") },
+    (error) => {
+      if (!/РІВНО посилання/.test(error.message)) throw new Error(`wrong transcription error: ${error.message}`)
+      if (!error.message.includes(envelope.payload_path)) throw new Error("error must name the exact reference to pass")
+    },
+  )
+  // Порожній prompt і довільний текст · та сама відмова.
+  for (const bad of ["", "QA batch 7", "payload", "Ось payload: [{...}]"]) {
+    await before({ tool: "task", sessionID: "s", callID: "c" }, { args: { subagent_type: "translation-worker", prompt: bad } }).then(
+      () => { throw new Error(`prompt «${bad}» was accepted`) },
+      (error) => { if (!/РІВНО посилання/.test(error.message)) throw new Error(`wrong error for «${bad}»: ${error.message}`) },
+    )
+  }
+  // Написання шляху не має значення: важливо, що це ТОЙ САМИЙ payload.
+  for (const good of [`payload:${envelope.payload_path}`, "payload:payload.json", "payload: state/batch/payload.json"]) {
+    if (!referencesStagedPayload(good, envelope.payload_path)) throw new Error(`legal reference rejected: ${good}`)
+  }
+  if (referencesStagedPayload("payload:other.json", envelope.payload_path)) {
+    throw new Error("reference to a foreign payload was accepted")
   }
 }
 
@@ -148,7 +176,7 @@ await after(
   { tool: "task", sessionID: "s", callID: "c", args: { subagent_type: "translation-worker" } },
   { title: "d", output: wrapped('[{"identity_hash":"aaaa","text":"Готово"}]'), metadata: {} },
 )
-const cleanArgs = { subagent_type: "translation-worker", description: "d", prompt: "payload:x" }
+const cleanArgs = { subagent_type: "translation-worker", description: "d", prompt: `payload:${envelope.payload_path}` }
 await before({ tool: "task", sessionID: "s", callID: "c" }, { args: cleanArgs })
 if (cleanArgs.prompt !== payload) throw new Error("incident note survived a successful answer")
 

@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs"
-import { resolve } from "node:path"
+import { basename, resolve } from "node:path"
 import type { Plugin } from "@opencode-ai/plugin"
 import {
   atomicWrite,
@@ -23,6 +23,30 @@ const ROLES = new Set([
 ])
 
 type ChildEnvelope = { kind?: string; role?: string; payload_path?: string; response_path?: string }
+
+/**
+ * Чи є переданий `prompt` посиланням на ТОЙ САМИЙ staged payload.
+ *
+ * Навіщо. 2026-08-27 диригент замість посилання переписував увесь payload у
+ * аргумент `task`. На пачці 50 рядків QA-payload має десятки тисяч символів, і
+ * виклик розвалювався на розборі JSON. Правило було в промпті всіх чотирьох
+ * режимів, і диригент сам визнав, що його порушує · отже правило потребує
+ * перевірки, а не ще одного речення.
+ *
+ * Переписування не давало НІЧОГО: `tool.execute.before` однаково підставляє
+ * вміст staged файла. Тобто це чиста втрата виклику.
+ *
+ * Приймаємо будь-яке написання шляху (абсолютний, відносний, лише імʼя файла) ·
+ * значення має тільки те, що диригент вказав саме цей payload, а не приніс
+ * власну копію байтів.
+ */
+export function referencesStagedPayload(prompt: unknown, payloadPath: string): boolean {
+  if (typeof prompt !== "string") return false
+  const match = /^payload:\s*(\S.*)$/.exec(prompt.trim())
+  if (!match) return false
+  const given = match[1].trim().replace(/^["']|["']$/g, "")
+  return given === payloadPath || basename(given) === basename(payloadPath)
+}
 
 /**
  * Стиснути записаний `prompt` назад до посилання `payload:<path>`.
@@ -97,6 +121,17 @@ export const TranslationChildContract: Plugin = async ({ directory }) => ({
     }
     if (payload === "") {
       throw new Error(`Staged payload ${next.payload_path} порожній; повтори ./bdo run drive.`)
+    }
+    // Перевірка ПІСЛЯ перевірок payload: якщо зламаний наш власний staged файл,
+    // диригент має побачити саме це, а не претензію до форми свого виклику.
+    if (!referencesStagedPayload(output.args.prompt, next.payload_path)) {
+      throw new Error(
+        `Виклик ${role} відхилено: у prompt має бути РІВНО посилання `
+        + `payload:${next.payload_path} і більше нічого. `
+        + 'Не переписуй payload у виклик · його вміст підставляє цей плагін, '
+        + 'а копія байтів лише ламає розбір JSON на великій пачці. '
+        + 'Виправ аргументи й повтори Task один раз.',
+      )
     }
     const previous = pendingIncident(directory, next.response_path)
     output.args.prompt = previous === undefined ? payload : `${payload}${retryNote(previous)}`
