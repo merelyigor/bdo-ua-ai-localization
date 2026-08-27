@@ -208,6 +208,35 @@ final class Workspace
         }, 'step_completed:'.$name);
     }
 
+    /**
+     * Зафіксувати ДИСПЕТЧЕР дитячого виклику: роль, скільки рядків і котрий раз.
+     *
+     * Навіщо. `journal.jsonl` писав лише стани, тому `translation-repair` у
+     * ньому не було видно взагалі: він живе всередині стану `healing`. Через це
+     * 2026-08-27 підрахунок «скільки коштує пачка» за журналом дав нуль
+     * repair-викликів, хоча насправді туди пішло 37 рядків із 50. Вартість, яку
+     * ніхто не може порахувати, не можна ні скоротити, ні захистити від
+     * зростання.
+     *
+     * Лічильник у manifest ведеться поруч із подією: журнал відповідає на
+     * питання «коли», manifest · на «скільки всього» без перечитування журналу.
+     */
+    public function recordChild(string $role, int $items): array
+    {
+        return $this->updateManifest(static function (array $manifest) use ($role, $items): array {
+            $children = is_array($manifest['children'] ?? null) ? $manifest['children'] : [];
+            $entry = is_array($children[$role] ?? null) ? $children[$role] : ['calls' => 0, 'items' => 0];
+            $children[$role] = [
+                'calls' => (int) ($entry['calls'] ?? 0) + 1,
+                'items' => (int) ($entry['items'] ?? 0) + max(0, $items),
+                'last_at' => gmdate('c'),
+            ];
+            $manifest['children'] = $children;
+
+            return $manifest;
+        }, 'child_dispatch:'.$role.':'.max(0, $items));
+    }
+
     /** Збільшити лічильник спроб ролі без втрати попереднього стану. */
     public function incrementAttempt(string $role): array
     {

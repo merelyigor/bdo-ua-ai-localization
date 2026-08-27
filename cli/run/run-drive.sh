@@ -45,6 +45,17 @@ emit() {
 # крок, на якому модель помиляється, замість ще одного речення в промпті.
 child() {
     php -r 'echo json_encode(["kind"=>"child","role"=>$argv[1],"payload_path"=>$argv[2],"response_path"=>$argv[3],"prompt"=>"payload:".$argv[2]],JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES);' "$2" "$3" "$4" > "$STATE_DIR/next-child.json"
+    # Кожен диспетчер видно в журналі й у лічильнику manifest. Без цього
+    # `translation-repair` не потрапляв у журнал узагалі (він живе всередині
+    # стану `healing`), і вартість пачки за журналом рахувалась неповною.
+    php -r 'require $argv[1];
+        $items = 0;
+        if (is_file($argv[4])) {
+            $data = json_decode((string) file_get_contents($argv[4]), true);
+            $items = is_array($data) ? count($data["items"] ?? $data) : 0;
+        }
+        Bdo\Translate\Batch\Workspace::requireCurrent($argv[2])->recordChild($argv[3], $items);' \
+        "$SCRIPT_DIR/lib/autoload.php" "$STATE_DIR" "$2" "$3" 2>/dev/null || true
     emit 1 "$1" "$(cat "$STATE_DIR/next-child.json")"
 }
 acquire_driver_lock() {

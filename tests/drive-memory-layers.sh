@@ -65,6 +65,13 @@ jq -e '.prompt == ("payload:" + .payload_path)' "$TMP_IMPROVE/state/next-child.j
     || { echo 'FAIL: envelope не містить готового prompt для Task'; exit 1; }
 jq -e '.next.prompt == ("payload:" + .next.payload_path)' "$TMP_IMPROVE/state/drive.json" >/dev/null \
     || { echo 'FAIL: run drive не показує готовий prompt диригенту'; exit 1; }
+# Кожен диспетчер видно в журналі й у лічильнику manifest. До 2026-08-28 журнал
+# писав лише стани, тому `translation-repair` у ньому не було взагалі, і
+# вартість пачки за журналом виходила неповною.
+grep -q '"child_dispatch:translation-worker' "$BATCH/journal.jsonl" \
+    || { echo 'FAIL: журнал не бачить диспетчера дитячого виклику'; exit 1; }
+jq -e '.children["translation-worker"].calls == 1 and .children["translation-worker"].items == 1' "$BATCH/manifest.json" >/dev/null \
+    || { echo 'FAIL: manifest не рахує дитячі виклики й рядки'; exit 1; }
 
 # patch + memory_layers=all: та сама памʼять закриває рядок без моделі.
 BATCH="$(make_batch "$TMP_PATCH/state" patch all)"
