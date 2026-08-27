@@ -81,9 +81,26 @@ printf("  чекають на людину:     %d (уже в модерації
 printf("  разом без ШІ-шару:     %d\n", $all);
 ' "$TMP_DIR/patch_no_machine" "$TMP_DIR/patch_available" "$SCRIPT_DIR/lib/autoload.php"
 
-# --- 3. Без ручного ---
+# --- 3. На покращення ШІ (legacy) ---
 echo ""
-echo "== 3. Без ручного перекладу =="
+echo "== 3. Доступно на покращення ШІ =="
+# Режим `покращення-ші` не мав ЖОДНОЇ команди, яка показує його власний обсяг.
+# 2026-08-27 диригент на питання «що є на покращення?» пішов читати
+# `docs/plans/BACKLOG.md` · тобто відповів про плани проєкту замість рядків,
+# бо іншого джерела просто не існувало. Число тут рахується тим самим фільтром,
+# що й прогін (`RunSpec::filterFor("improve", ...)`), тому «показав» і
+# «візьме в роботу» не можуть розійтись.
+"$SCRIPT_DIR/cli/api/http-request.sh" -fsS -H "X-API-Key: $KEY" "$API/rows?patch=$SNAPSHOT&machine_provenance=legacy&exclude_proposed=1&limit=1&include_total=1&fields=core" > "$TMP_DIR/patch_legacy"
+php -r '
+require $argv[2];
+$d = Bdo\Translate\Api\Response::fromFile($argv[1], "rows")->raw();
+printf("  рядків Bosia (legacy): %d\n", $d["meta"]["total_matching"] ?? 0);
+echo "  Це переклад НАНОВО з англійського джерела: ./bdo mode start improve 50 <патч>\n";
+' "$TMP_DIR/patch_legacy" "$SCRIPT_DIR/lib/autoload.php"
+
+# --- 4. Без ручного ---
+echo ""
+echo "== 4. Без ручного перекладу =="
 "$SCRIPT_DIR/cli/api/http-request.sh" -fsS -H "X-API-Key: $KEY" "$API/rows?patch=$SNAPSHOT&missing=manual&limit=1&include_total=1&fields=core" > "$TMP_DIR/patch_no_manual"
 php -r '
 require $argv[2];
@@ -91,9 +108,9 @@ $d = Bdo\Translate\Api\Response::fromFile($argv[1], "rows")->raw();
 echo "  рядків: {$d["meta"]["total_matching"]}\n";
 ' "$TMP_DIR/patch_no_manual" "$SCRIPT_DIR/lib/autoload.php"
 
-# --- 4. Застарілі ---
+# --- 5. Застарілі ---
 echo ""
-echo "== 4. Застарілі (джерело змінилось) =="
+echo "== 5. Застарілі (джерело змінилось) =="
 "$SCRIPT_DIR/cli/api/http-request.sh" -fsS -H "X-API-Key: $KEY" "$API/rows?patch=$SNAPSHOT&state=stale&limit=1&include_total=1&fields=core" > "$TMP_DIR/patch_stale"
 php -r '
 require $argv[2];
