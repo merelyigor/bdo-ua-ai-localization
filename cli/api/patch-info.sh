@@ -52,18 +52,34 @@ foreach ($domains as $d2) {
     $mark = $un > 0 ? "  ← є що перекладати" : "";
     printf("    %-14s %9s / %-9s%s\n", $d2["domain"], $d2["total"], $un, $mark);
 }
-echo "\n  Узяти одну категорію: ./bdo mode start patch 50 <патч> <категорія>\n";
+echo "\n  «без перекладу» включає рядки, що вже чекають на людину в модерації.\n";
+echo "  Скільки з них доступно ПРОГОНУ · розділ 2 нижче.\n";
+echo "  Узяти одну категорію: ./bdo mode start patch 50 <патч> <категорія>\n";
 ' "$TMP_DIR/patch_summary.json" "$SCRIPT_DIR/lib/autoload.php"
 
 # --- 2. Без машинного ---
 echo ""
 echo "== 2. Без машинного перекладу =="
+# ДВА різні числа, і плутати їх дорого.
+#
+# `missing=machine` рахує всі рядки без ШІ-перекладу, зокрема ті, що вже пішли
+# в модерацію й чекають на людину. Прогін бере ІНШУ вибірку · із
+# `exclude_proposed=1`, бо запропоноване вдруге не перекладають.
+#
+# Заміряно 2026-08-27 одразу після пачки `title`: перше число 15, друге 0.
+# Власник бачив «title 15 · є що перекладати», просив перекласти, а `mode start`
+# чесно відповідав «усе перекладено». Обидві відповіді правдиві, і саме тому
+# розбіжність треба показувати, а не ховати за одним числом.
 "$SCRIPT_DIR/cli/api/http-request.sh" -fsS -H "X-API-Key: $KEY" "$API/rows?patch=$SNAPSHOT&missing=machine&limit=1&include_total=1&fields=core" > "$TMP_DIR/patch_no_machine"
+"$SCRIPT_DIR/cli/api/http-request.sh" -fsS -H "X-API-Key: $KEY" "$API/rows?patch=$SNAPSHOT&missing=machine&exclude_proposed=1&limit=1&include_total=1&fields=core" > "$TMP_DIR/patch_available"
 php -r '
-require $argv[2];
-$d = Bdo\Translate\Api\Response::fromFile($argv[1], "rows")->raw();
-echo "  рядків: {$d["meta"]["total_matching"]}\n";
-' "$TMP_DIR/patch_no_machine" "$SCRIPT_DIR/lib/autoload.php"
+require $argv[3];
+$all = Bdo\Translate\Api\Response::fromFile($argv[1], "rows")->raw()["meta"]["total_matching"] ?? 0;
+$free = Bdo\Translate\Api\Response::fromFile($argv[2], "rows")->raw()["meta"]["total_matching"] ?? 0;
+printf("  доступно прогону:      %d\n", $free);
+printf("  чекають на людину:     %d (уже в модерації)\n", max(0, $all - $free));
+printf("  разом без ШІ-шару:     %d\n", $all);
+' "$TMP_DIR/patch_no_machine" "$TMP_DIR/patch_available" "$SCRIPT_DIR/lib/autoload.php"
 
 # --- 3. Без ручного ---
 echo ""
