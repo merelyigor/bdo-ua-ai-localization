@@ -429,6 +429,7 @@ check_shell() {
     run bash tests/quarantine-recovery.sh
     run bash tests/worker-reference.sh
     run bash tests/schema-provider-compat.sh
+    run bash tests/mechanical-final-check.sh
 }
 
 check_agents() {

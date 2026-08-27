@@ -32,6 +32,27 @@ final class Homoglyphs
     ];
 
     /**
+     * Цифри, візуально невідрізнні від кириличних літер у слові.
+     *
+     * Окремо від латиниці, бо цифра в тексті НОРМАЛЬНА: `50%`, `3 рівень`,
+     * `Тир 4`. Двійником вона стає лише там, де стоїть НА МІСЦІ літери:
+     * `3броя`, `0бладунки`, `4ерепаха`.
+     *
+     * Умова навмисно вужча за «цифра поруч із кирилицею». Перша версія ловила
+     * `Рівень1`, `Скриня3` і `Тир4`, тобто нумерацію без пробілу · цілком
+     * законний текст. Тому цифра рахується двійником, лише коли вона стоїть на
+     * ПОЧАТКУ слова перед кирилицею або МІЖ двома кириличними літерами; цифра в
+     * кінці слова не рахується ніколи.
+     *
+     * `1` у переліку немає свідомо: він однаково схожий на `І` та `l`, а
+     * найчастіше є просто номером.
+     *
+     * Додано 2026-08-27 після аудиту семи механічних перевірок: `3броя`
+     * проходило як чисте, бо цифра не є латинською літерою.
+     */
+    private const DIGITS = ['3' => 'З', '0' => 'О', '6' => 'б', '4' => 'ч'];
+
+    /**
      * Слова зі змішаними абетками.
      *
      * @return list<array{word:string,fixed:string}>
@@ -65,19 +86,46 @@ final class Homoglyphs
     /** @return list<string> */
     private static function words(string $text): array
     {
-        preg_match_all('/[\p{L}]+/u', $text, $m);
+        // Цифри входять у «слово»: `3броя` мусить бути одним словом, інакше
+        // цифровий двійник не має кириличного сусіда й не помічається.
+        preg_match_all('/[\p{L}0-9]+/u', $text, $m);
 
         return $m[0] ?? [];
     }
 
     private static function isMixed(string $word): bool
     {
-        return preg_match('/\p{Cyrillic}/u', $word) === 1
-            && preg_match('/[A-Za-z]/', $word) === 1;
+        if (preg_match('/\p{Cyrillic}/u', $word) !== 1) {
+            return false;
+        }
+        if (preg_match('/[A-Za-z]/', $word) === 1) {
+            return true;
+        }
+
+        // Цифра рахується двійником лише СЕРЕД кирилиці: `3броя` є дефектом,
+        // `Тир 4` і `50%` · ні. Слово тут уже виділене як послідовність літер і
+        // цифр, тому достатньо перевірити, що цифра має кириличного сусіда.
+        return preg_match(self::digitPattern(), $word) === 1;
+    }
+
+    /** Цифра на початку слова перед кирилицею або між двома кириличними. */
+    private static function digitPattern(): string
+    {
+        $digits = implode('', array_keys(self::DIGITS));
+
+        return '/^['.$digits.'](?=\p{Cyrillic})|(?<=\p{Cyrillic})['.$digits.'](?=\p{Cyrillic})/u';
     }
 
     private static function fixWord(string $word): string
     {
-        return strtr($word, self::MAP);
+        $fixed = strtr($word, self::MAP);
+
+        // Замінюємо лише ті цифри, що стоять поруч із кирилицею: інакше
+        // `Тир 4` перетворилось би на `Тир ч`.
+        return (string) preg_replace_callback(
+            self::digitPattern(),
+            static fn (array $m): string => self::DIGITS[$m[0]] ?? $m[0],
+            $fixed,
+        );
     }
 }

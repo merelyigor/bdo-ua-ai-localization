@@ -124,7 +124,7 @@ $pass = []; $held = []; $moderation = []; $unresolvedCount = 0; $counts = ["PASS
 // набір, тобто повністю стару поведінку. Суддя є доповненням, а не умовою.
 $judge = Bdo\Translate\Pipeline\JudgeDecisions::fromFile((string) ($argv[14] ?? ""));
 $minConfidence = Bdo\Translate\Pipeline\JudgePolicy::minConfidence($argv[15] ?? null);
-$judgeLog = []; $judgeCounts = []; $sameAsSource = 0;
+$judgeLog = []; $judgeCounts = []; $sameAsSource = 0; $mechanicalHeld = 0; $mechanicalLog = [];
 if ($missing !== []) {
     foreach ($rowByHash as $hash => $row) {
         $held[] = ["identity_hash" => $hash, "reason" => "qa_incomplete",
@@ -171,14 +171,30 @@ if ($missing !== []) {
         // бо ручний шар І Є людська правда.
         $severity = strtolower((string) ($v["severity"] ?? ""));
         $hasText = is_string($text) && trim($text) !== "";
-        $route = Bdo\Translate\Pipeline\ChannelRouter::route($argv[13], $status, $severity, $hasText);
+        $mechanical = $hasText ? Bdo\Translate\Quality\Defects::inTranslation($row, (string) $text) : [];
+        $route = Bdo\Translate\Pipeline\ChannelRouter::route($argv[13], $status, $severity, $hasText, $mechanical !== []);
+        if ($mechanical !== [] && $route === Bdo\Translate\Pipeline\ChannelRouter::PROPOSAL) {
+            $mechanicalHeld++;
+            $mechanicalLog[] = ["identity_hash" => $hash, "defects" => $mechanical];
+        }
         // ВИРОК СУДДІ. Він не скасовує механіку: зламаний токен, довжина,
         // гомогліф чи русизм · факт, і такий рядок бачить людина попри будь-який
         // відсоток. Суддя вирішує лише там, де рішення справді є судженням, і
         // може як пустити спірний рядок у шар, так і зняти з шару той, який
         // канал `machine` інакше записав би мовчки.
+        // МЕХАНІЧНА ПЕРЕВІРКА ФІНАЛЬНОГО ТЕКСТУ · на КОЖЕН рядок.
+        //
+        // Заміряно 2026-08-27: детектор працював у `heal-plan` (тобто ДО
+        // ремонту) і тут · лише для рядків, які дивився суддя. Після ремонту
+        // текст бачив тільки контрольний QA, тобто модель, а власний коментар
+        // `Defects` каже прямо: «QA саме механічне і пропускає». Тому рядок,
+        // у який repair вніс русизм чи гомогліф, ішов у ШІ-шар без жодної
+        // механічної перевірки · і саме там вона найпотрібніша, бо це останній
+        // момент перед записом у бойову базу.
+        //
+        // Вирок той самий, що й у судді: механіка сильніша за будь-який
+        // відсоток. Рядок із дефектом бачить людина.
         if ($hasText && $judge->has($hash)) {
-            $mechanical = Bdo\Translate\Quality\Defects::inTranslation($row, (string) $text);
             $decision = $judge->get($hash);
             $destination = $judge->destination($hash, $mechanical, $minConfidence);
             $judgeLog[] = [
@@ -275,6 +291,12 @@ printf("Пачка: %d рядків | PASS %d, REVIEW %d, REJECT %d\n",
     count($rowByHash), $counts["PASS"], $counts["REVIEW"], $counts["REJECT"]);
 if ($sameAsSource > 0) {
     printf("Переклад = джерело: %d рядків із прапорцем same_as_source (у ШІ-шар лише за вироком судді, у модерацію завжди)\n", $sameAsSource);
+}
+if ($mechanicalHeld > 0) {
+    printf("Механічні дефекти у фінальному тексті: %d рядків знято з ШІ-шару до людини\n", $mechanicalHeld);
+    foreach (array_slice($mechanicalLog, 0, 5) as $entry) {
+        printf("  %s  %s\n", substr($entry["identity_hash"], 0, 12), implode("; ", array_slice($entry["defects"], 0, 2)));
+    }
 }
 if ($judgeCounts !== []) {
     printf("Суддя: у ШІ-шар %d | до людини %d (поріг %d%%)\n",
