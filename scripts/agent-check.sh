@@ -109,6 +109,10 @@ check_rules() {
         # `№ у грі` та `опубліковано` · саме ті, за якими власник упізнає патч.
         grep -Fq 'віддай її вивід ДОСЛІВНО в блоці коду' ".opencode/agents/$primary.md" \
             || fail "$primary дозволяє перемальовувати вивід ./bdo своїми словами"
+        # 2026-08-27 диригент написав «29 805 (було 29 822)», тоді як команда
+        # надрукувала 29 803 і 29 820. Обидва числа вигадані, обидва у звіті.
+        grep -Fq 'ЖОДНОГО числа від себе' ".opencode/agents/$primary.md" \
+            || fail "$primary дозволяє називати числа по памʼяті замість виводу"
         grep -Fq 'Друга колонка · номер у грі; не передавай її як snapshot.' ".opencode/agents/$primary.md" \
             || fail "$primary плутає номер патча у грі зі snapshot_id"
         grep -Fq 'Явне «перекладай патч N» уже є підтвердженням; не перепитуй.' ".opencode/agents/$primary.md" \
@@ -447,7 +451,28 @@ check_agents() {
 check_runtime() { run ./bdo runtime; }
 # Ціль НЕ підставляється: її задає BDO_ENV у `.env`, і нав'язати тут `local`
 # означало б показати результат не того середовища, у якому працює прогін.
-check_api() { run ./bdo api; }
+check_api() {
+    run ./bdo api
+    # Перелік категорій зашитий у RunSpec, а джерелом правди є API. `market`
+    # забули з першого дня, і `mode start ... market` падав би «Невідома
+    # категорія» на реальному домені. Дрейф має падати тут, а не на прогоні.
+    step 'Категорії: код проти живого API'
+    # Джерело правди · `/taxonomy`, а не один патч: у `patch/summary` видно лише
+    # ті домени, які трапились у ЦЬОМУ патчі. Перша версія перевірки брала
+    # активний патч і не помітила відсутнього `market`, бо в патчі 6 його немає.
+    local missing
+    missing="$(bash -c '
+        source cli/system/select-env.sh >/dev/null 2>&1
+        curl -sS -H "X-API-Key: $BDO_API_KEY" "$BDO_API_BASE/taxonomy" \
+            | php -r "
+                require \"lib/autoload.php\";
+                \$d = json_decode((string) file_get_contents(\"php://stdin\"), true);
+                \$api = array_values(\$d[\"data\"][\"domains\"] ?? []);
+                echo implode(\" \", array_diff(\$api, Bdo\\Translate\\Pipeline\\RunSpec::domains()));
+            "')"
+    test -z "$missing" || fail "API знає категорії, яких немає в RunSpec::DOMAINS: $missing"
+    note "перелік категорій збігається з API"
+}
 
 report_preflight() {
     step 'Стан робочого дерева'

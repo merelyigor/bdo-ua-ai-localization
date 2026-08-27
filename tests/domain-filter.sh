@@ -33,10 +33,13 @@ try {
 }
 // Перелік мусить збігатися з тим, що знає промпт диригента.
 $domains = RunSpec::domains();
+// Тринадцять, а не дванадцять: `market` забули з першого дня, і команда падала
+// б «Невідома категорія» на реальному домені. Живу звірку робить `gate api`.
 foreach (["item", "quest", "knowledge", "entity", "skill_effect", "premium_shop",
-          "dialogue", "ui", "title", "world", "mission", "unknown"] as $expected) {
+          "dialogue", "ui", "title", "world", "mission", "market", "unknown"] as $expected) {
     if (! in_array($expected, $domains, true)) $fail("у переліку немає категорії $expected");
 }
+if (count($domains) !== 13) $fail("очікували 13 категорій, маємо ".count($domains));
 ' "$ROOT/lib/autoload.php" || fail 'фільтр категорії зламаний'
 
 # 2. Категорія доходить через dispatcher, а не губиться в аргументах.
@@ -48,11 +51,15 @@ printf '%s' "$out" | grep -q 'domain=premium_shop' || fail "категорія �
 out="$(BDO_STATE_DIR="$(mktemp -d)" "$ROOT/bdo" mode status patch 1 2>/dev/null | tail -1)"
 printf '%s' "$out" | grep -q '"domain":null' || fail "без категорії домен мусить бути null: $out"
 
-# 3. Промпти мусять знати ту саму дванадцятку українською.
+# 3. Промпти мусять знати ту саму тринадцятку українською.
 for primary in патч ручний пропозиції покращення-ші; do
     file="$ROOT/.opencode/agents/$primary.md"
     grep -Fq 'магазин перлів `premium_shop`' "$file" || fail "$primary не знає відповідності категорій"
+    # `market` бракувало і в коді, і в промпті: обидва місця мусить тримати тест.
+    grep -Fq '`market`' "$file" || fail "$primary не знає категорії market"
     grep -Fq 'Питання ПРО КАТЕГОРІЇ' "$file" || fail "$primary не розпізнає запит про категорії"
+    # Диригент 2026-08-27 написав у звіті два вигаданих числа поспіль.
+    grep -Fq 'ЖОДНОГО числа від себе' "$file" || fail "$primary дозволяє числа по памʼяті"
 done
 
 # 4. QA в режимі покращення бачить поточний переклад · без нього він не має чим

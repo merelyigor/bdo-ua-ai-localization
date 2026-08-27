@@ -58,11 +58,16 @@ final class RunSpec
      * розподілена вкрай нерівно · `premium_shop` 18 036 рядків без ШІ-шару
      * проти `dialogue` з одним, тож брати категорію окремо має практичний сенс.
      *
+     * Список зашитий, і це його слабке місце: `market` тут забули з першого дня,
+     * тому `mode start ... market` падав би «Невідома категорія» на цілком
+     * реальному домені. Тому `./bdo gate api` звіряє цей перелік із живим
+     * `patch/summary`: дрейф має падати в gate, а не на прогоні власника.
+     *
      * @var list<string>
      */
     private const DOMAINS = [
         'item', 'quest', 'knowledge', 'entity', 'skill_effect', 'premium_shop',
-        'dialogue', 'ui', 'title', 'world', 'mission', 'unknown',
+        'dialogue', 'ui', 'title', 'world', 'mission', 'market', 'unknown',
     ];
 
     /** @param array<string,mixed> $data */

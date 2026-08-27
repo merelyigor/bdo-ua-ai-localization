@@ -51,10 +51,14 @@ require $argv[2];
 $d = Bdo\Translate\Api\Response::fromJson((string) file_get_contents($argv[1]), "/taxonomy")->raw();
 if (($d["success"] ?? false) === true) { echo "OK\n"; }
 else { echo "FAIL\n"; exit(1); }
-$domains = array_column($d["data"]["domains"] ?? [], "value");
-echo "  домени: " . implode(", ", $domains) . "\n";
-$types = array_column($d["data"]["semantic_types"] ?? [], "value");
-echo "  типи: " . implode(", ", $types) . "\n";
+// `/taxonomy` віддає плоскі рядки, а не обʼєкти зі `value`. Через
+// `array_column` перевірка друкувала «домени: » порожнім і виглядала
+// справною · знайдено 2026-08-27, коли зʼясувалось, що в переліку категорій
+// коду бракує `market`, а API його має.
+$domains = array_values($d["data"]["domains"] ?? []);
+echo "  домени (" . count($domains) . "): " . implode(", ", $domains) . "\n";
+$types = array_values($d["data"]["semantic_types"] ?? []);
+echo "  типи (" . count($types) . "): " . implode(", ", $types) . "\n";
 echo "  кодів помилок: " . count($d["data"]["error_codes"] ?? []) . "\n";
 ' "$TAX_FILE" "$SCRIPT_DIR/lib/autoload.php"
 rm -f "$TAX_FILE"
