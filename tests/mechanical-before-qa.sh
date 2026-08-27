@@ -65,6 +65,16 @@ awk '/^healing\)/,/^awaiting_control_qa\)/' "$ROOT/cli/run/run-drive.sh" > "$TMP
 grep -Fq 'judge_or_commit' "$TMP/healing.txt" || fail 'після лікування пачка не йде до судді'
 grep -Fq 'child awaiting_control_qa' "$TMP/healing.txt" && fail 'лікування досі диспетчерить контрольний QA'
 grep -Fq 'awaiting_control_qa' "$ROOT/lib/Pipeline/StateMachine.php" || fail 'стан прибрано з машини · старі пачки застрягнуть'
+# ГОЛОВНА перевірка цього блоку, і саме її бракувало 2026-08-28: код почав робити
+# перехід `healing -> awaiting_judge`, а машина станів його не дозволяла. Пачка
+# власника стала намертво, хоча grep-перевірки вище були зелені · вони питали про
+# ТЕКСТ, а не про дозволений перехід. Питати треба машину.
+php -r 'require $argv[1];
+    use Bdo\Translate\Pipeline\StateMachine;
+    StateMachine::assertTransition("healing", "awaiting_judge");
+    StateMachine::assertTransition("healing", "ready_to_commit");
+    StateMachine::assertTransition("awaiting_control_qa", "awaiting_judge");' "$ROOT/lib/autoload.php" \
+    || fail 'машина станів не дозволяє переходів, які робить рушій після лікування'
 
 # 5. QA мусить повертати готовий текст, інакше злиття з repair не має сенсу.
 grep -Fq 'обовʼязковий для КОЖНОГО рядка зі статусом' "$ROOT/.opencode/agent-templates/translation-qa.md" \

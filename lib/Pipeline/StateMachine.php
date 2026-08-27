@@ -18,7 +18,10 @@ final class StateMachine
         'deterministic_valid' => ['awaiting_qa', 'waiting_dependency', 'failed_terminal'],
         'awaiting_qa' => ['qa_valid', 'retry_scheduled', 'waiting_dependency', 'paused', 'failed_terminal'],
         'qa_valid' => ['healing', 'awaiting_judge', 'ready_to_commit', 'failed_terminal'],
-        'healing' => ['awaiting_control_qa', 'ready_to_commit', 'retry_scheduled', 'waiting_dependency', 'failed_terminal'],
+        // `awaiting_judge` додано 2026-08-28 разом зі злиттям контрольного QA із
+        // суддею: після ремонту пачка йде одразу до маршрутизатора.
+        // `awaiting_control_qa` лишається для пачок, що вже в ньому.
+        'healing' => ['awaiting_control_qa', 'awaiting_judge', 'ready_to_commit', 'retry_scheduled', 'waiting_dependency', 'failed_terminal'],
         'awaiting_control_qa' => ['awaiting_judge', 'ready_to_commit', 'retry_scheduled', 'waiting_dependency', 'failed_terminal'],
         'awaiting_judge' => ['ready_to_commit', 'retry_scheduled', 'waiting_dependency', 'paused', 'failed_terminal'],
         'ready_to_commit' => ['committing', 'waiting_dependency', 'failed_terminal'],
