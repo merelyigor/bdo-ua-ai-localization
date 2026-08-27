@@ -167,6 +167,38 @@ const ALLOWED_HINT = [
   "кілька команд можна поєднати через &&",
 ].join(" · ")
 
+/**
+ * Підказка для випадку, коли виклик `task` навіть не розібрався як JSON.
+ *
+ * 2026-08-27, сесія власника: диригент утретє вклав увесь worker-payload у
+ * аргумент `prompt`, рядок не закрився, і OpenCode подав це синтетичним
+ * інструментом `invalid` з текстом «JSON parsing failed». Guard відповідав
+ * загальним «Tool invalid is unavailable», тобто диригент чув «не той
+ * інструмент», хоча інструмент був той · зламані були аргументи. Він повторював
+ * ту саму помилку, доки прогін не став.
+ *
+ * Перевірка форми `prompt` у `translation-child-contract` цього не ловить: до
+ * hook справа не доходить, бо аргументи не розібрались. Єдине місце, де випадок
+ * ще видно, · саме тут, тому тут і має бути точна причина з готовим рядком.
+ */
+export function unparsableTaskHint(directory: string): string {
+  let reference = "payload:<шлях із state/next-child.json>"
+  try {
+    const next = JSON.parse(readFileSync(join(directory, "state/next-child.json"), "utf8")) as { payload_path?: string }
+    if (typeof next.payload_path === "string" && next.payload_path !== "") {
+      reference = `payload:${next.payload_path}`
+    }
+  } catch {
+    // Немає envelope · лишається загальна форма: вона однаково правильна.
+  }
+
+  return (
+    "Виклик task не розібрався як JSON: у `prompt` потрапив увесь payload. "
+    + `Передай РІВНО \`${reference}\` і більше нічого · вміст підставить плагін. `
+    + "Повтори Task один раз із цим рядком."
+  )
+}
+
 /** Закриває всі shell/API/CLI шляхи, якими можна створити невидимого агента. */
 export const TranslationExecutionGuard: Plugin = async ({ client, directory }) => {
   const safeBdoCommands = registryPatterns(directory)
@@ -194,6 +226,14 @@ export const TranslationExecutionGuard: Plugin = async ({ client, directory }) =
   return {
     "tool.execute.before": async (input, output) => {
       if (!SAFE_TOOLS.has(input.tool)) {
+        // `invalid` не є спробою взяти чужий інструмент: так OpenCode подає
+        // виклик, аргументи якого не розібрались. Загальна відмова тут читалась
+        // як «не той інструмент» і заганяла диригента в цикл.
+        const attempted = String((output.args as Record<string, unknown> | undefined)?.tool ?? "")
+        const detail = String((output.args as Record<string, unknown> | undefined)?.error ?? "")
+        if (input.tool === "invalid" && (attempted === "task" || /tool task/.test(detail))) {
+          await refuse(input.sessionID, unparsableTaskHint(directory))
+        }
         await refuse(
           input.sessionID,
           `Tool ${input.tool} is unavailable in translation primary. Use native OpenCode task for subagents.`,

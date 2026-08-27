@@ -1,4 +1,4 @@
-import plugin, { TranslationExecutionGuard, bridgedCommand, shellBridge } from "../.opencode/plugin/translation-execution-guard.ts"
+import plugin, { TranslationExecutionGuard, bridgedCommand, shellBridge, unparsableTaskHint } from "../.opencode/plugin/translation-execution-guard.ts"
 import { mkdtempSync, mkdirSync, readFileSync, writeFileSync } from "node:fs"
 import { createHash } from "node:crypto"
 import { tmpdir } from "node:os"
@@ -127,6 +127,36 @@ const refuse = async (before, input, args, what) => {
   }
   await before({ tool: "translation_result", sessionID: "ok", callID: "c" }, { args: { response_path: "smoke/response.json", content: "[]" } })
   if (aborted.length !== 0) throw new Error("guard aborted a legal session")
+}
+
+// Виклик `task`, аргументи якого не розібрались, OpenCode подає інструментом
+// `invalid`. 2026-08-27 диригент утретє вклав увесь payload у `prompt`, рядок не
+// закрився, і у відповідь він чув «Tool invalid is unavailable» · тобто «не той
+// інструмент», хоча інструмент був той. Прогін став на циклі з двох спроб.
+{
+  const { before, directory } = await makeGuard()
+  mkdirSync(join(directory, "state"), { recursive: true })
+  writeFileSync(join(directory, "state/next-child.json"), JSON.stringify({
+    kind: "child", role: "translation-worker",
+    payload_path: `${directory}/state/batch/worker-payload.json`,
+    response_path: `${directory}/state/batch/candidate.json`,
+  }))
+  let message = ""
+  await before(
+    { tool: "invalid", sessionID: "unparsable", callID: "c" },
+    { args: { tool: "task", error: "Invalid input for tool task: JSON parsing failed: Text: {\"prompt\": \"[{..." } },
+  ).catch((error) => { message = String(error) })
+  if (!message.includes("не розібрався як JSON")) throw new Error(`generic refusal instead of the real cause: ${message}`)
+  if (!message.includes("worker-payload.json")) throw new Error("hint must name the exact staged payload reference")
+  // Без envelope підказка лишається правильною, лише загальною.
+  if (!unparsableTaskHint("/tmp/no-such-project").includes("state/next-child.json")) {
+    throw new Error("hint without envelope must still name where the reference comes from")
+  }
+  // Чужий інструмент і далі відхиляється загальним текстом.
+  let other = ""
+  await before({ tool: "webfetch", sessionID: "other", callID: "c" }, { args: {} })
+    .catch((error) => { other = String(error) })
+  if (!other.includes("unavailable in translation primary")) throw new Error(`wrong refusal for a foreign tool: ${other}`)
 }
 
 // Model runtime restart-gate: Task дозволений лише з fingerprint, який OpenCode
