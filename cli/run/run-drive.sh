@@ -292,10 +292,44 @@ candidate_to_qa() {
     validate_file="$(printf '%s\n' "$validate" | grep -oE '/[^ ]*/output/validate_[0-9_]+\.json' | tail -1 || true)"
     test -f "$validate_file" && printf '%s\n' "$validate_file" > "$B/validate-path" || true
     complete deterministic "$B/clean.json"; transition deterministic_valid
-    "$SCRIPT_DIR/cli/prepare/build-schema.sh" --qa "$B/rows.json" >/dev/null
+    dispatch_qa
+}
+# Механіка ПЕРЕД QA: модель бачить лише те, чого код не вміє засудити сам.
+#
+# Дефектні рядки отримують готовий вердикт `REJECT/critical` і йдуть у лікування
+# тим самим шляхом, що й думка QA. Усі рядки дефектні · виклику QA не буде
+# взагалі: платити повним проходом за вирок, який уже винесено, немає за що.
+dispatch_qa() {
+    local clean_rows
+    "$SCRIPT_DIR/cli/quality/mechanical-split.sh" "$B/rows.json" "$B/clean.json" \
+        "$B/pre-verdicts.json" "$B/qa-subset.json" > "$B/mechanical-split.txt" 2>&1 || {
+        # Розділювач не є ворітьми: його збій не має зупиняти пачку, лише
+        # повертає стару поведінку · QA дивиться всі рядки.
+        cp "$B/rows.json" "$B/qa-subset.json"; echo '[]' > "$B/pre-verdicts.json"
+    }
+    clean_rows="$(row_count "$B/qa-subset.json")"
+    if [ "${clean_rows:-0}" -eq 0 ]; then
+        cp "$B/pre-verdicts.json" "$B/verdicts.json"
+        transition awaiting_qa
+        emit 1 awaiting_qa '{"kind":"continue","reason":"mechanical_only"}'
+        return 0
+    fi
+    "$SCRIPT_DIR/cli/prepare/build-schema.sh" --qa "$B/qa-subset.json" >/dev/null
     qa_args=(); test "$(field mode)" = improve && qa_args+=(--with-current)
-    "$SCRIPT_DIR/cli/prepare/qa-payload.sh" "$B/rows.json" "$B/clean.json" "${qa_args[@]}" > "$B/qa-payload.json"
+    "$SCRIPT_DIR/cli/prepare/qa-payload.sh" "$B/qa-subset.json" "$B/clean.json" "${qa_args[@]}" > "$B/qa-payload.json"
     transition awaiting_qa; child awaiting_qa translation-qa "$B/qa-payload.json" "$B/verdicts.json"
+}
+# Злити механічні вердикти з відповіддю QA. Порядок важливий: доведений кодом
+# дефект сильніший за думку моделі про той самий рядок.
+merge_pre_verdicts() {
+    test -s "$B/pre-verdicts.json" || return 0
+    php -r '$qa=json_decode((string)file_get_contents($argv[1]),true)?:[];
+        $pre=json_decode((string)file_get_contents($argv[2]),true)?:[];
+        $x=[];
+        foreach ($qa as $v) if (isset($v["identity_hash"])) $x[$v["identity_hash"]]=$v;
+        foreach ($pre as $v) $x[$v["identity_hash"]]=$v;
+        file_put_contents($argv[1], json_encode(array_values($x), JSON_UNESCAPED_UNICODE|JSON_THROW_ON_ERROR));' \
+        "$B/verdicts.json" "$B/pre-verdicts.json"
 }
 
 # Прибирання після кожної завершеної пачки · за замовчуванням УВІМКНЕНЕ.
@@ -452,10 +486,7 @@ candidate_valid)
     ;;
 deterministic_valid)
     test -s "$B/clean.json" || { emit 0 deterministic_valid '{"kind":"blocked","reason":"clean_candidate_missing"}'; exit 1; }
-    "$SCRIPT_DIR/cli/prepare/build-schema.sh" --qa "$B/rows.json" >/dev/null
-    qa_args=(); test "$(field mode)" = improve && qa_args+=(--with-current)
-    "$SCRIPT_DIR/cli/prepare/qa-payload.sh" "$B/rows.json" "$B/clean.json" "${qa_args[@]}" > "$B/qa-payload.json"
-    transition awaiting_qa; child awaiting_qa translation-qa "$B/qa-payload.json" "$B/verdicts.json"
+    dispatch_qa
     ;;
 awaiting_qa)
     if [ ! -s "$B/verdicts.json" ]; then
@@ -463,13 +494,15 @@ awaiting_qa)
         if retry_exceeded awaiting_qa; then give_up awaiting_qa; fi
         ensure_schema qa; child awaiting_qa translation-qa "$B/qa-payload.json" "$B/verdicts.json"; exit 0
     fi
-    if ! valid_qa "$B/verdicts.json" "$B/rows.json"; then
+    qa_scope="$B/rows.json"; test -s "$B/qa-subset.json" && qa_scope="$B/qa-subset.json"
+    if ! valid_qa "$B/verdicts.json" "$qa_scope"; then
         mv "$B/verdicts.json" "$B/verdicts.invalid.$(date +%s).json"
         if retry_exceeded awaiting_qa; then give_up awaiting_qa; fi
         ensure_schema qa
         child awaiting_qa translation-qa "$B/qa-payload.json" "$B/verdicts.json"
         exit 0
     fi
+    merge_pre_verdicts
     complete qa "$B/verdicts.json"; transition qa_valid
     vf=""; test -f "$B/validate-path" && vf="$(cat "$B/validate-path")"
     BDO_HEAL_MAX_ATTEMPTS="${BDO_HEAL_MAX_ATTEMPTS:-1}" "$SCRIPT_DIR/cli/heal/heal-plan.sh" "$B/rows.json" "$B/clean.json" "$B/verdicts.json" "$vf" > "$B/heal-report.txt" 2>&1 || true
@@ -491,9 +524,22 @@ healing)
         child healing translation-repair "$B/heal-repair-payload.json" "$B/fixes.json"
         exit 0
     fi
-    "$SCRIPT_DIR/cli/prepare/qa-payload.sh" "$B/heal-repair-subset.json" "$B/fixes.json" > "$B/control-qa-payload.json"
-    transition awaiting_control_qa; child awaiting_control_qa translation-qa "$B/control-qa-payload.json" "$B/verdicts-control.json"
+    # Контрольний QA злитий із суддею (рішення власника 2026-08-27).
+    #
+    # Раніше вилікуваний рядок читали ДВІЧІ: контрольний QA давав вердикт, і за
+    # цим вердиктом суддя обирав маршрут. Заміряно: контрольний QA диспетчерився
+    # у 25 пачках із 38, тобто це був окремий виклик майже щоразу. Суддя й так
+    # читає текст, механічні дефекти рахуються на ФІНАЛЬНОМУ тексті в
+    # `judge-payload`, а незалежність від ПЕРШОГО QA (саме вона дає 30%
+    # скасувань `REVIEW -> ai_layer`) зберігається: вердикт писала одна роль,
+    # текст переписала друга, маршрут обирає третя.
+    cp "$B/healed.json" "$B/final-candidate.json"
+    cp "$B/verdicts.json" "$B/final-verdicts.json"
+    vf=""; test -f "$B/validate-path" && vf="$(cat "$B/validate-path")"
+    judge_or_commit "$B/rows.json" "$B/final-candidate.json" "$B/final-verdicts.json" "$vf"
     ;;
+# Стан лишається легальним для пачок, які ввійшли в нього до 2026-08-28: нова
+# пачка сюди більше не потрапляє, а стара мусить дійти своїм шляхом.
 awaiting_control_qa)
     if [ ! -s "$B/verdicts-control.json" ]; then
         if retry_exceeded awaiting_control_qa; then give_up awaiting_control_qa; fi

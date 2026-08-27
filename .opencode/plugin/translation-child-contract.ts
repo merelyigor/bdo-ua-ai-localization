@@ -125,6 +125,14 @@ export const TranslationChildContract: Plugin = async ({ directory }) => ({
     // Перевірка ПІСЛЯ перевірок payload: якщо зламаний наш власний staged файл,
     // диригент має побачити саме це, а не претензію до форми свого виклику.
     if (!referencesStagedPayload(output.args.prompt, next.payload_path)) {
+      // Стиснути аргумент ДО кидка помилки.
+      //
+      // Заміряно на сесії 2026-08-27: шість кроків із переписаним payload дали
+      // 1 162 696 вхідних токенів · 48% усієї витрати сесії. Відхилений виклик
+      // інакше лишає свої 140 КБ у транскрипті назавжди, і кожен наступний крок
+      // пересилає їх заново. Відмова має зупиняти помилку, а не консервувати її
+      // ціну.
+      restorePromptReference(input, output, next.payload_path)
       throw new Error(
         `Виклик ${role} відхилено: у prompt має бути РІВНО посилання `
         + `payload:${next.payload_path} і більше нічого. `

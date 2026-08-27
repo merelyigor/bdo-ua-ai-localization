@@ -56,6 +56,32 @@ foreach ($verdicts as $v) {
 
 fprintf(STDERR, "PASS: %d | fix прийнято: %d | fix відхилено: %d (з них порожніх: %d)\n",
     $pass, count($accepted), count($rejected), $noFix);
+
+// Причини відмов · у журнал, а не лише в stderr пачки.
+//
+// FixPolicy вирішує, скільки рядків піде в окремий прохід translation-repair:
+// 2026-08-27 вона пропустила 13 fix із 50, решта 37 стали повним додатковим
+// проходом моделі. Налаштовувати поріг можна лише на даних, а stderr пачки
+// зникає разом із пачкою при автоочистці.
+$stateDir = getenv("BDO_STATE_DIR") ?: dirname(__DIR__, 2)."/state";
+if (is_dir($stateDir)) {
+    $histogram = [];
+    foreach ($rejected as [$hash, $why]) {
+        foreach (explode("; ", $why) as $reason) {
+            $reason = trim($reason);
+            if ($reason !== "") $histogram[$reason] = ($histogram[$reason] ?? 0) + 1;
+        }
+    }
+    arsort($histogram);
+    @file_put_contents($stateDir."/fix-policy.jsonl", json_encode([
+        "at" => gmdate("c"),
+        "pass" => $pass,
+        "accepted" => count($accepted),
+        "rejected" => count($rejected),
+        "empty_fix" => $noFix,
+        "reasons" => $histogram,
+    ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)."\n", FILE_APPEND);
+}
 foreach ($rejected as [$hash, $why]) fprintf(STDERR, "  %s  %s\n", substr($hash, 0, 12), $why);
 if ($accepted === []) {
     fwrite(STDERR, "\nВИРОК: безпечних виправлень немає. Відхилені рядки - у translation-repair.\n");

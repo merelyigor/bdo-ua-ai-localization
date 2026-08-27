@@ -449,6 +449,7 @@ check_shell() {
     run bash tests/domain-filter.sh
     run bash tests/local-model-routes.sh
     run bash tests/primary-prompt-drift.sh
+    run bash tests/mechanical-before-qa.sh
 }
 
 check_agents() {
