@@ -145,6 +145,14 @@ check_rules() {
         || fail 'норматив не визначає prompt design для слабких моделей'
     grep -Fq 'Не винось спільні правила prompt-ів у runtime include' AGENTS.md \
         || fail 'AGENTS.md не вимагає самодостатніх runtime prompts'
+    # 2026-08-27: власник зафіксував курс на локальні моделі. Еталон мусить бути
+    # НАЗВАНИЙ, інакше «найслабша модель» щоразу означає ту, яка зараз під рукою.
+    grep -Fq 'ollama-local`, типова `qwen3.6:35b-a3b-mtp-q4_K_M`' AGENTS.md \
+        || fail 'AGENTS.md не називає еталонну локальну модель для промптів'
+    grep -Fq '§8.12 Еталонна «найслабша модель» названа' docs/AI_AGENT_RULES_REFERENCE.md \
+        || fail 'норматив не фіксує еталонну модель промптів'
+    grep -Fq 'мусить збігатися до символу' AGENTS.md \
+        || fail 'AGENTS.md не вимагає однакового спільного блоку primary-промптів'
     grep -Fq 'Runtime prompt самодостатній' .opencode/critical-rules.md \
         || fail 'critical-rules дозволяє ненадійну runtime-композицію prompts'
     # Клас відмови «тихий збій і фіктивна перевірка» коштував двох діб розбору
@@ -436,6 +444,7 @@ check_shell() {
     run bash tests/mechanical-final-check.sh
     run bash tests/domain-filter.sh
     run bash tests/local-model-routes.sh
+    run bash tests/primary-prompt-drift.sh
 }
 
 check_agents() {

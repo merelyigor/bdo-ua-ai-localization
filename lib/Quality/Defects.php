@@ -28,6 +28,12 @@ final class Defects
         foreach (Russianisms::findInRow($row, $text) as $found) {
             $defects[] = 'русизм: '.$found['word'].' -> '.$found['suggest'];
         }
+        // Локальні квантизовані моделі зриваються в мову тренувального корпусу:
+        // 2026-08-27 одна зі збірок вставляла китайські ієрогліфи в український
+        // текст, і жоден інший детектор цього не бачив.
+        foreach (ForeignScript::find($text, $row->sourceText()) as $found) {
+            $defects[] = 'чужа писемність ('.$found['script'].'): '.$found['word'];
+        }
         foreach ($row->glossaryCaseViolations($text) as $violation) {
             $defects[] = $violation;
         }

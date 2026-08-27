@@ -18,6 +18,7 @@ php -r '
 require $argv[1];
 use Bdo\Translate\Batch\RowSet;
 use Bdo\Translate\Quality\Defects;
+use Bdo\Translate\Quality\ForeignScript;
 use Bdo\Translate\Quality\Homoglyphs;
 use Bdo\Translate\Quality\Russianisms;
 
@@ -52,7 +53,24 @@ foreach (["Рівень1", "Скриня3", "Тир4", "Тир 4", "50% зниж
     if (Homoglyphs::find($ok) !== []) $fail("хибне спрацювання цифри на «$ok»");
 }
 
-// 3. Той самий детектор бачить дефект у фінальному тексті рядка.
+// 3. Чужа писемність. 2026-08-27 локальна збірка вставляла в український текст
+//    китайські ієрогліфи, і жоден детектор цього не бачив: Homoglyphs шукає
+//    латинські двійники, Russianisms · російські слова. Курс на локальні моделі
+//    робить цей клас регулярним, а не разовим.
+foreach (["Скриня 光明 воїна" => "китайські", "アイテム скриня" => "кана",
+          "Скриня 아이템" => "хангиль"] as $bad => $what) {
+    if (ForeignScript::find($bad) === []) $fail("чужа писемність пропущена ($what): $bad");
+}
+// Символ, який є у ДЖЕРЕЛІ, дефектом не є: гра корейська, і назву треба зберегти.
+if (ForeignScript::find("Скриня 光明 воїна", "Chest of 光明") !== []) {
+    $fail("символ із джерела визнано дефектом");
+}
+// Латиниця, теґи й типографіка законні.
+foreach (["Black Desert [Title] · 50% +15", "Обладунки «Жарів» — 1 шт."] as $ok) {
+    if (ForeignScript::find($ok) !== []) $fail("хибне спрацювання на «$ok»");
+}
+
+// 4. Той самий детектор бачить дефект у фінальному тексті рядка.
 $file = tempnam(sys_get_temp_dir(), "rows");
 file_put_contents($file, json_encode(["data" => ["rows" => [[
     "identity_hash" => str_repeat("a", 64), "source_hash" => "x", "source_text" => "Armor Set",
@@ -60,12 +78,12 @@ file_put_contents($file, json_encode(["data" => ["rows" => [[
 $row = RowSet::fromFile($file)->getOrEmpty(str_repeat("a", 64));
 unlink($file);
 if (Defects::inTranslation($row, "Комплект обладунків") !== []) $fail("чистий текст позначено дефектним");
-foreach (["Комплект доспехів", "Комплект 0бладунків", "Видається на протязі дня"] as $bad) {
+foreach (["Комплект доспехів", "Комплект 0бладунків", "Видається на протязі дня", "Комплект 光明"] as $bad) {
     if (Defects::inTranslation($row, $bad) === []) $fail("дефект у фінальному тексті пропущено: $bad");
 }
 ' "$ROOT/lib/autoload.php" || fail 'детектори не тримають контракт'
 
-# 4. Вирок маршруту · поведінкою, а не пошуком тексту в скрипті.
+# 5. Вирок маршруту · поведінкою, а не пошуком тексту в скрипті.
 php -r '
 require $argv[1];
 use Bdo\Translate\Pipeline\ChannelRouter;
