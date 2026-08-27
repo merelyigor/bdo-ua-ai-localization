@@ -58,6 +58,13 @@ test "$(rows_left "$BATCH/to-translate.json")" = 1 \
     || { echo 'FAIL: improve не лишив рядок моделі'; exit 1; }
 jq -e '.next.kind == "child" and .next.role == "translation-worker"' "$TMP_IMPROVE/state/drive.json" >/dev/null
 jq -e '.role == "translation-worker"' "$TMP_IMPROVE/state/next-child.json" >/dev/null
+# Готовий рядок для Task лежить в envelope. Складання `payload:` + шлях було
+# кроком висновку, і саме на ньому модель зривалась двічі: переписувала весь
+# payload у аргумент (151 139 байтів) або оголошувала, що посилання «не працює».
+jq -e '.prompt == ("payload:" + .payload_path)' "$TMP_IMPROVE/state/next-child.json" >/dev/null \
+    || { echo 'FAIL: envelope не містить готового prompt для Task'; exit 1; }
+jq -e '.next.prompt == ("payload:" + .next.payload_path)' "$TMP_IMPROVE/state/drive.json" >/dev/null \
+    || { echo 'FAIL: run drive не показує готовий prompt диригенту'; exit 1; }
 
 # patch + memory_layers=all: та сама памʼять закриває рядок без моделі.
 BATCH="$(make_batch "$TMP_PATCH/state" patch all)"

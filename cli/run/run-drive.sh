@@ -33,8 +33,18 @@ emit() {
 # Envelope дублюється у state/next-child.json: плагін translation-child-contract
 # читає його звідти, підставляє точний вміст payload у Task prompt і зберігає
 # результат Task у response_path механічно, без копіювання диригентом.
+#
+# Поле `prompt` · готовий рядок, який диригент КОПІЮЄ в аргумент Task.
+#
+# Навіщо окреме поле, коли є `payload_path`. Складання рядка `payload:` + шлях
+# є кроком висновку, і саме на ньому модель стабільно зривалась: 2026-08-27
+# вона тричі переписала весь payload у аргумент (151 139 байтів на 47 рядків),
+# виклик розвалився на розборі JSON, а 2026-08-28 дійшла висновку, що
+# «payload:<шлях> не працює», і запропонувала власнику зменшити пачку. Розмір
+# файла до виклику стосунку не має · його читає плагін. Готове значення прибирає
+# крок, на якому модель помиляється, замість ще одного речення в промпті.
 child() {
-    php -r 'echo json_encode(["kind"=>"child","role"=>$argv[1],"payload_path"=>$argv[2],"response_path"=>$argv[3]],JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES);' "$2" "$3" "$4" > "$STATE_DIR/next-child.json"
+    php -r 'echo json_encode(["kind"=>"child","role"=>$argv[1],"payload_path"=>$argv[2],"response_path"=>$argv[3],"prompt"=>"payload:".$argv[2]],JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES);' "$2" "$3" "$4" > "$STATE_DIR/next-child.json"
     emit 1 "$1" "$(cat "$STATE_DIR/next-child.json")"
 }
 acquire_driver_lock() {

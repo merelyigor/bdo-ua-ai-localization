@@ -321,7 +321,10 @@ for primary in патч ручний пропозиції покращення-�
     # Диригент передає лише посилання на staged payload; точний вміст підставляє
     # translation-child-contract. Перенесення payload руками вже ламало виклик:
     # 2.2 КБ екранованого JSON · і модель загубила обовʼязковий subagent_type.
-    grep -Fq 'payload:<next.payload_path>' "$ROOT/.opencode/agents/$primary.md" || {
+    #
+    # 2026-08-28: рядок більше не складається в промпті · його готовим віддає
+    # `run drive` у полі `next.prompt`, бо саме на складанні модель зривалась.
+    grep -Fq 'значення `next.prompt`, скопійоване ДОСЛІВНО' "$ROOT/.opencode/agents/$primary.md" || {
         printf 'ERROR: %s primary must pass the staged payload by reference, not by value\n' "$primary" >&2
         exit 1
     }

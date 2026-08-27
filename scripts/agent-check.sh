@@ -117,6 +117,10 @@ check_rules() {
             || fail "$primary плутає номер патча у грі зі snapshot_id"
         grep -Fq 'Явне «перекладай патч N» уже є підтвердженням; не перепитуй.' ".opencode/agents/$primary.md" \
             || fail "$primary повторно просить уже надане підтвердження"
+        # Диригент мусить КОПІЮВАТИ готовий рядок, а не складати його сам:
+        # на складанні він зривався двічі за дві доби.
+        grep -Fq 'значення `next.prompt`, скопійоване ДОСЛІВНО' ".opencode/agents/$primary.md" \
+            || fail "$primary складає рядок prompt сам замість копіювання next.prompt"
         grep -Fq 'reason=child_retry_budget_exhausted' ".opencode/agents/$primary.md" \
             || fail "$primary не знає terminal retry budget"
         grep -Fq 'власника не питай' ".opencode/agents/$primary.md" \
