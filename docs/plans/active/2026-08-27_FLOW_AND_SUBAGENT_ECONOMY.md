@@ -60,6 +60,61 @@
    неможливо. Реалізація: `Workspace::recordChild()` на кожному диспетчері,
    лічильник у manifest.
 
+## Шоста зміна: глосарій як вікі, один запит на пачку
+
+Перевірено читанням серверного проєкту (`www/bdo_ua_translate/public`,
+read-only). Кістяк вікі вже існує, бракує трьох речей.
+
+**Що вже є.** `glossary_terms` (canonical_source, entity_type, посилання на
+`localization_entries`), `glossary_term_revisions` (target_phrase, policy,
+status, severity, case_sensitive, whole_word, **notes**),
+`glossary_term_scopes` (domain, semantic_type), `glossary_term_forms`
+(аліаси й словоформи), `translation_term_occurrences` (де саме термін
+зустрічається). Ендпоїнти: `GET /glossary/terms` (пачка назв за раз),
+`GET /glossary/rows/{hash}`, `POST /glossary/terms/resolve`,
+`GET /rows/{hash}/context` (терміни рядка + `related_rows` із готовими
+перекладами).
+
+**Чого бракує.**
+
+1. **Контекст береться ПО ОДНОМУ РЯДКУ.** `cli/prepare/worker-payload.sh:12`
+   робить `GET /rows/{hash}/context` на кожен рядок · 50 HTTP-запитів на пачку.
+   Серверний `GetRowGlossaryTerms::forEntries()` уже приймає масив entry id,
+   тобто пачковий ендпоїнт `POST /rows/context` є надбудовою над наявним
+   сервісом, а не новою логікою.
+2. **Набір викидає половину контексту.** З відповіді береться лише до трьох
+   прикладів `en/ua`; блок `terms` (canonical, ukrainian, policy, severity,
+   `ambiguous`, `entity_type`, зміщення) не доходить ні до воркера, ні до QA.
+   Це виправляється в НАШОМУ репозиторії, без сервера.
+3. **Опису терміна не існує як поля.** `notes` є в БД, але приймається лише
+   на вході пропозиції й не повертається жодним ендпоїнтом; окремого
+   `definition` («що це за предмет, де зустрічається») і посилання на вікі
+   немає. Саме цього бракує моделі, коли вона «не знає, про що йдеться».
+
+**Порядок робіт.** Пункт 2 робиться в наборі одразу після пʼяти змін вище й
+нічого не коштує на сервері. Пункт 1 і 3 · серверна зміна, для неї власнику
+дається окремий copy-ready промпт за `docs/API_CHANGE_HANDOFF.md`:
+
+> Працюй у серверному проєкті BDO UA Translate API.
+> Мета: дати агентові контекст пачкою і зробити глосарій джерелом визначень.
+> 1. `POST /agent/v1/rows/context` · приймає `identity_hashes[]` (ліміт як у
+>    `max_glossary_lookup_terms`), повертає ту саму структуру, що
+>    `GET /rows/{hash}/context`, ключем за identity_hash. Реалізувати поверх
+>    наявних `GetApiRowContext` і `GetRowGlossaryTerms::forEntries()`, здатність
+>    `rows:read`.
+> 2. Додати в ревізію терміна поля `definition` (text, nullable) і `wiki_url`
+>    (string, nullable) з міграцією; віддавати їх у `GET /glossary/terms`,
+>    `GET /glossary/rows/{hash}` і в блоці `terms` контексту рядка. `notes`
+>    лишити внутрішнім полем адмінки й НЕ віддавати агентові.
+> 3. У `GET /glossary/terms` додати в `shape()` scopes (`domain`,
+>    `semantic_type`) · агент має бачити, для якої категорії термін чинний.
+> Перевірки: серверні regression-тести на success, validation, auth і ліміт
+> пачки. Документація: оновити канонічний серверний API contract.
+> Не змінюй bdo-ua-ai-localization із серверної сесії.
+
+**Метрика цієї зміни:** HTTP-запитів на пачку 50 → 1; частка рядків, у payload
+яких є хоч один термін із визначенням (зараз 0%).
+
 ## Definition of Done
 
 - Проходів моделі по рядках у типовій пачці · не більше двох повних (worker,
@@ -68,6 +123,8 @@
 - Частка `REVIEW → ai_layer` лишається біля 30% (падіння = зростання ручної
   роботи), частка змінених суддею маршрутів · біля 43%.
 - Мовний зрив моделі зупиняє пачку до повного проходу.
+- Контекст пачки береться одним запитом, і блок `terms` доходить до воркера й
+  QA, а не викидається.
 
 ## Ризик і порядок робіт
 
