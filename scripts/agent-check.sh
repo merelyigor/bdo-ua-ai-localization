@@ -128,6 +128,13 @@ check_rules() {
         # на складанні він зривався двічі за дві доби.
         grep -Fq 'значення `next.prompt`, скопійоване ДОСЛІВНО' ".opencode/agents/$primary.md" \
             || fail "$primary складає рядок prompt сам замість копіювання next.prompt"
+        # Власник не має випрошувати звіт: 2026-08-28 він тричі писав «напиши
+        # текстом», щоб дізнатись, чому пачка стала.
+        grep -Fq 'ЗВІТ ПРО ПРОБЛЕМУ пиши САМ' ".opencode/agents/$primary.md" \
+            || fail "$primary не зобовʼязаний сам звітувати про відмову"
+        # Диригент двічі намагався пропатчити StateMachine.php через `php -r`.
+        grep -Fq 'Код набору НЕ лагодь' ".opencode/agents/$primary.md" \
+            || fail "$primary не має заборони лагодити код набору"
         grep -Fq 'reason=child_retry_budget_exhausted' ".opencode/agents/$primary.md" \
             || fail "$primary не знає terminal retry budget"
         grep -Fq 'власника не питай' ".opencode/agents/$primary.md" \

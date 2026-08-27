@@ -87,6 +87,7 @@ dispatcher, execution guard, цим flow і документацією.
   ./bdo heal rows.json clean.json verdicts.json [validate.json]
   ./bdo commit rows.json clean.json verdicts.json --write
   ./bdo audit                                       правда про сесії
+  ./bdo session [N] [--errors]                      кроки й відмови диригента
 
 Повна послідовність із причинами · UI_SUBAGENT_WORKFLOW.md
 TXT
@@ -197,6 +198,7 @@ case "$group" in
 
     # --- обслуговування ------------------------------------------------------
     audit)      sh_run cli/audit/verify-run.sh "${@:2}" ;;
+    session)    sh_run cli/audit/session-tail.sh "${@:2}" ;;
     incidents)  sh_run cli/audit/flow-incidents.sh "${@:2}" ;;
     quarantine) sh_run cli/audit/quarantine-report.sh "${@:2}" ;;
     judge)      sh_run cli/audit/judge-report.sh "${@:2}" ;;

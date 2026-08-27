@@ -82,4 +82,13 @@ grep -Fq 'обовʼязковий для КОЖНОГО рядка зі ста�
 # Причини відмов FixPolicy мусить бачити не лише stderr пачки, яку зітре автоочистка.
 grep -Fq 'fix-policy.jsonl' "$ROOT/cli/quality/qa-fixes.sh" || fail 'відмови FixPolicy ніде не журналюються'
 
+# 6. Дебаг сесії мусить існувати як команда, а не як разовий SQL у голові.
+#    2026-08-28 я дивився на стан пачки й лічильники токенів, побачив «нічого не
+#    рухається» і сказав «сесія мовчить». Насправді сесія двічі отримала відмову
+#    guard на спробі пропатчити код · ні стан, ні токени цього не показують.
+test -x "$ROOT/cli/audit/session-tail.sh" || fail 'немає інструмента для дебагу сесії'
+grep -Fq '"session ' "$ROOT/cli/command-registry.json" || fail 'команда session не в реєстрі'
+grep -Fq 'session)    sh_run cli/audit/session-tail.sh' "$ROOT/bdo" || fail 'dispatcher не знає команди session'
+grep -Fq 'state.error' "$ROOT/cli/audit/session-tail.sh" || fail 'дебаг сесії не показує причин відмов'
+
 echo 'mechanical before qa: OK'
