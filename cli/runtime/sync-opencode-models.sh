@@ -44,6 +44,16 @@ REQUIRED="$(grep -h '^model: ' "$TRANSLATE_AGENTS_DIR"/translation*.md \
     | sed 's/^model: //' | sort -u)"
 test -n "$REQUIRED" || { echo "У $TRANSLATE_AGENTS_DIR немає жодного 'model:'." >&2; exit 1; }
 
+# Плюс УСІ локальні маршрути профілю: фронтматер тримає лише ту модель, що
+# активна зараз, а власник перемикає модель одним рядком `TRANSLATE_MODEL` у
+# `.env`. Якщо оголошувати тільки активну, кожне таке перемикання давало б ту
+# саму порожню дочірню сесію, заради якої цей скрипт і написаний.
+POLICY="$SCRIPT_DIR/.opencode/translation-models.json"
+test -f "$POLICY" || POLICY="$SCRIPT_DIR/.opencode/templates/translation-models.json"
+REQUIRED="$(printf '%s\n%s\n' "$REQUIRED" "$(jq -r '
+    [.profiles[] | (.routes, (.default_routes // {}))[][] ]
+    | unique[] | select(startswith("ollama"))' "$POLICY")" | sed '/^$/d' | sort -u)"
+
 INSTALLED="$(ollama list | awk 'NR>1 {print $1}')"
 
 php -r '
@@ -101,16 +111,27 @@ if ($prune !== "") {
 
 $missing = [];
 $problems = 0;
+// printf("%-22s") рахує байти, а стани тут кириличні: без mb-вирівнювання
+// колонка зʼїжджала й звіт читався як каша.
+$pad = static fn (string $state): string => $state . str_repeat(" ", max(1, 22 - mb_strlen($state)));
 foreach ($required as $route) {
     [$provider, $model] = array_pad(explode("/", $route, 2), 2, null);
     if ($model === null) continue;
+    // Хмарний provider не має бути в `ollama list`, і його відсутність там не є
+    // дефектом: OpenCode бере такі моделі зі своєї auth, а перевіряє їх child
+    // smoke. Без цієї гілки звіт під session-free показував три вигаданих
+    // проблеми поспіль і привчав власника ігнорувати власний же звіт.
+    if (!str_contains($provider, "ollama")) {
+        printf("%s %s/%s\n", $pad("ЗОВНІШНІЙ"), $provider, $model);
+        continue;
+    }
     $declared = isset($parsed["provider"][$provider]["models"][$model]);
     $present = in_array($model, $installed, true);
 
     $state = "OK";
     if (!$present) { $state = "НЕМАЄ В OLLAMA"; $problems++; }
     elseif (!$declared) { $state = "НЕ ОГОЛОШЕНА В КОНФІЗІ"; $problems++; $missing[$provider][] = $model; }
-    printf("%-22s %s/%s\n", $state, $provider, $model);
+    printf("%s %s/%s\n", $pad($state), $provider, $model);
     if (!$present) {
         printf("  %s\n", "спочатку: ollama pull $model");
     }
@@ -121,7 +142,7 @@ foreach ($parsed["provider"] ?? [] as $provider => $conf) {
     if (!str_contains($provider, "ollama")) continue;
     foreach (array_keys($conf["models"] ?? []) as $model) {
         if (!in_array($model, $installed, true)) {
-            printf("ЗАСТАРІЛА            %s/%s (немає в Ollama; видалення - рішення власника)\n", $provider, $model);
+            printf("%s%s/%s (немає в Ollama; видалення - рішення власника)\n", $pad("ЗАСТАРІЛА"), $provider, $model);
         }
     }
 }

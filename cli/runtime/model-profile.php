@@ -75,6 +75,19 @@ if ($command === 'env') {
     if ($model !== '') {
         if (!preg_match('~^[^/\s]+/[^\s]+$~', $model)) throw new RuntimeException('TRANSLATE_MODEL має формат provider/model-id.');
         if ($cost === 'paid' && $profile['allow_paid'] !== true) throw new RuntimeException("Платна модель заборонена профілем $name.");
+        // Локальні моделі перелічувані, тому для них `.env` не є вільним полем:
+        // модель, якої немає в маршрутах профілю, або не оголошена в OpenCode
+        // (порожня дочірня сесія), або її вже відхилили на прогоні · і вона
+        // тихо повертається наступним редагуванням `.env`. Хмарних провайдерів
+        // це не стосується: їхній каталог змінюється поза цим репозиторієм.
+        $localRoutes = array_values(array_unique(array_merge(...array_values($profile['routes']))));
+        if (str_starts_with($model, 'ollama') && !in_array($model, $localRoutes, true)) {
+            throw new RuntimeException(
+                "Локальна модель $model не є маршрутом профілю $name.\n"
+                ."Дозволені: ".implode(', ', array_filter($localRoutes, static fn (string $r): bool => str_starts_with($r, 'ollama')))."\n"
+                .'Щоб додати нову · спочатку внеси її в .opencode/templates/translation-models.json, потім у .env.'
+            );
+        }
         foreach (ModelPolicy::ROLES as $role) $profile['routes'][$role] = [$model];
         if ($cost === 'paid' && !in_array($model, $profile['paid_routes'], true)) $profile['paid_routes'][] = $model;
     }

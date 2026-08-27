@@ -13,8 +13,8 @@ execution guard і gate читають цей реєстр; нову dispatcher-
 `templates/opencode.json`, а тексти child — у tracked
 `.opencode/agent-templates/translation-*.md`. `./bdo env` атомарно матеріалізує
 ignored `.opencode/translation-models.json`, `opencode.json` і child-frontmatter окремо
-для локального користувача. Вбудовані профілі `local-quality` і `local-fast` працюють через
-Ollama, `session-free` · через безплатний маршрут OpenCode Zen, а
+для локального користувача. Вбудований профіль `ollama-local` працює через
+Ollama (модель у ньому вибирає `TRANSLATE_MODEL`), `session-free` · через безплатний маршрут OpenCode Zen, а
 `session-luna` · через платний `openai/gpt-5.6-luna` (він оголошує
 `none|low|…`, тому обидва потрібні рівні reasoning працюють). Власні профілі
 можуть використовувати будь-якого провайдера, підключеного в OpenCode. Платний

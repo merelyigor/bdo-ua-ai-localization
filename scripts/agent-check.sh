@@ -435,6 +435,7 @@ check_shell() {
     run bash tests/schema-provider-compat.sh
     run bash tests/mechanical-final-check.sh
     run bash tests/domain-filter.sh
+    run bash tests/local-model-routes.sh
 }
 
 check_agents() {

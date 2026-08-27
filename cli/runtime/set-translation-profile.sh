@@ -2,7 +2,7 @@
 # Керувати єдиною policy моделей і синхронізувати OpenCode agents.
 #
 #   ./bdo profile status
-#   ./bdo profile quality|fast
+#   ./bdo profile use ollama-local            # локальний Ollama-профіль
 #   ./bdo profile set NAME all|translation-ROLE provider/model-id free|paid
 #   ./bdo profile fallback NAME translation-ROLE provider/model-id free|paid
 #   ./bdo profile paid NAME allow|deny
@@ -22,9 +22,12 @@ if [ "${1:-status}" = env ]; then
     fi
     set -- env "$TRANSLATE_MODEL_PROFILE" "${TRANSLATE_MODEL:-}" "${TRANSLATE_MODEL_COST:-free}"
 fi
+# Скорочення `quality` і `fast` лишились від двох окремих локальних профілів.
+# 2026-08-27 їх обʼєднано в один `ollama-local`, бо різниця між ними була лише
+# в моделі, а модель і так задає `TRANSLATE_MODEL`. Два профілі означали два
+# місця, де та сама модель мусила збігатися, і одне з них завжди відставало.
 case "${1:-status}" in
-quality) set -- use local-quality ;;
-fast) set -- use local-fast ;;
+quality|fast|local) set -- use ollama-local ;;
 esac
 php "$ROOT/cli/runtime/model-profile.php" "$@"
 bash "$ROOT/.opencode/validate-translation-agents.sh"

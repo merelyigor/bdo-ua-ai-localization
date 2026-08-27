@@ -188,7 +188,7 @@ try {
     expect(is_string($expectedWorkerRoute) && $expectedWorkerRoute !== '', 'active worker route is absent');
     expect(ModelPolicy::routes($policy, 'translation-worker')[0] === $expectedWorkerRoute, 'active worker route is wrong');
     $broken = $policy;
-    $broken['profiles']['local-quality']['routes']['translation-worker'] = ['ollama-local/model-mlx'];
+    $broken['profiles']['ollama-local']['routes']['translation-worker'] = ['ollama-local/model-mlx'];
     try {
         ModelPolicy::validate($broken);
         throw new RuntimeException('MLX route was accepted');

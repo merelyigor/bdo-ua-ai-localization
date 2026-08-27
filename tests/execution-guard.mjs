@@ -138,12 +138,12 @@ const refuse = async (before, input, args, what) => {
   const same = JSON.parse(readFileSync(stateFile, "utf8"))
   writeRuntime(directory, { ...same, generated_at: "later" })
   await before({ tool: "task", sessionID: "same-metadata", callID: "c" }, { args: { subagent_type: "translation-qa" } })
-  const changed = runtimeState("local-quality", "ollama-local/qwen3.6:35b-a3b-mtp-q4_K_M")
+  const changed = runtimeState("ollama-local", "ollama-local/qwen3.6:35b-a3b-mtp-q4_K_M")
   writeRuntime(directory, changed)
   let restart = ""
   await before({ tool: "task", sessionID: "changed", callID: "c" }, { args: { subagent_type: "translation-worker" } })
     .catch((error) => { restart = String(error) })
-  if (!restart.includes("OPENCODE_RESTART_REQUIRED") || !restart.includes("session-free -> local-quality")) {
+  if (!restart.includes("OPENCODE_RESTART_REQUIRED") || !restart.includes("session-free -> ollama-local")) {
     throw new Error(`changed model runtime was not blocked clearly: ${restart}`)
   }
   const restarted = await makeGuard(directory, false)

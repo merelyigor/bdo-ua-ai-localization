@@ -120,10 +120,11 @@ Windows, PowerShell або пропонує `winget install PHP`, відкрит
 curl -fsS http://127.0.0.1:11434/v1/models | jq '.data[].id'
 ```
 
-Якщо в списку є лише `qwen3.5:9b`, не завантажуйте 35B заради перевірки:
+Якщо в списку є лише `qwen3.5:9b`, не завантажуйте 35B заради перевірки: додайте
+в `.env` рядок `TRANSLATE_MODEL=ollama-local/qwen3.5:9b`.
 
 Можна також задати профіль child-моделей у локальному `.env` через
-`TRANSLATE_MODEL_PROFILE=local-fast`, `local-quality`, `session-free` або
+`TRANSLATE_MODEL_PROFILE=ollama-local`, `session-free` або
 `session-go`. Профіль Go потребує платної підписки OpenCode Go і дозволяє
 `opencode-go/ox-alpha-free`, `opencode-go/mimo-v2.5`,
 `opencode-go/mimo-v2.5-pro`, `opencode-go/muse-spark-1.2-contributor` та
@@ -135,7 +136,7 @@ curl -fsS http://127.0.0.1:11434/v1/models | jq '.data[].id'
 платних маршрутів у профілі.
 
 ```bash
-./bdo profile fast
+./bdo profile use ollama-local
 ./bdo profile status
 ./bdo runtime
 ```
@@ -175,7 +176,7 @@ route із receipt. Він не має запускати `mode status patch`, �
 | Симптом | Причина | Дія |
 |---|---|---|
 | `PHP не знайдено` і пропонується `winget` | OpenCode працює не в WSL | Відкрити WSL-копію; встановити `php-cli` через `apt` |
-| Очікується 35B, але є `qwen3.5:9b` | Активний `local-quality` | `./bdo profile fast` |
+| Очікується 35B, але є `qwen3.5:9b` | Профіль указує іншу модель | `TRANSLATE_MODEL=ollama-local/qwen3.5:9b` у `.env` |
 | Ollama працює у Windows, але WSL не бачить порт | Різні network namespaces | Налаштувати WSL networking або запустити Ollama у WSL |
 | Smoke показує patch status | Старі prompts/OpenCode не перезапущено | Оновити repo, перезапустити OpenCode, повторити smoke |
-| Route не `ollama-local/qwen3.5:9b` | Інший активний профіль | `./bdo profile use\|fast` після `./bdo profile status` |
+| Route не той, що очікували | Інший активний профіль або `TRANSLATE_MODEL` | `./bdo profile status`, далі `.env` |

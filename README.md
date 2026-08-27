@@ -54,8 +54,7 @@ ignored runtime-policy, `opencode.json` і шість child-frontmatter відп
 
 ```bash
 ./bdo profile status
-./bdo profile quality                         # локальний quality
-./bdo profile fast                            # локальний fast
+./bdo profile use ollama-local                # єдиний локальний профіль (Ollama)
 ./bdo profile set zen-free all opencode/MODEL free
 ./bdo profile use zen-free
 ./bdo profile fallback zen-free translation-worker PROVIDER/MODEL free
@@ -66,7 +65,7 @@ ignored runtime-policy, `opencode.json` і шість child-frontmatter відп
 `paid`; прихований платний fallback policy не пропускає. Після зміни профілю
 перезапустіть OpenCode і попросіть: `Запусти smoke та покажи фактичний
 provider/model`. Зручний варіант для власника — задати в локальному `.env`
-`TRANSLATE_MODEL_PROFILE=session-free|session-go|local-fast|local-quality`: кожен виклик
+`TRANSLATE_MODEL_PROFILE=session-free|session-go|session-luna|ollama-local`: кожен виклик
 `./bdo env` матеріалізує цей профіль у локальний child-конфіг, а основну модель не змінює.
 За потреби конкретну модель активного профілю можна зафіксувати через
 `TRANSLATE_MODEL=provider/model-id`; порожнє значення повертає штатну модель
@@ -98,8 +97,9 @@ session, яку можна відкрити з батьківської. Її JS
 
 У Windows OpenCode та репозиторій мають бути відкриті через WSL2. Залежності
 ставляться всередині WSL (`sudo apt install php-cli jq curl git shellcheck`), а
-не через `winget`. Якщо вже встановлено лише `qwen3.5:9b`, після PHP виконайте
-`./bdo profile fast`; завантажувати 35B модель для smoke не обовʼязково.
+не через `winget`. Якщо вже встановлено лише `qwen3.5:9b`, після PHP додайте в `.env`
+`TRANSLATE_MODEL_PROFILE=ollama-local` і `TRANSLATE_MODEL=ollama-local/qwen3.5:9b`;
+завантажувати 35B модель заради smoke не обовʼязково.
 
 ## Пов'язані проєкти
 
