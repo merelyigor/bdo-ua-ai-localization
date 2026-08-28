@@ -137,6 +137,28 @@ foreach ($required as $route) {
     }
 }
 
+// Стеля ВИХОДУ застаріває мовчки, і це коштувало пачки.
+//
+// Запис у конфізі живе довше за наші уявлення: моделі, дописані до
+// 2026-08-28, мають `"output": 16384`, і на пачці з 61 рядка QA впиралась
+// рівно в цю цифру · відповідь обривалась на півслові, JSON ставав невалідним,
+// і крок повторювався тричі. Тому розбіжність між оголошеною стелею й
+// виведеною з вікна моделі ми ПОКАЗУЄМО, а `--apply` її виправляє.
+$staleLimits = [];
+foreach ($parsed["provider"] ?? [] as $provider => $conf) {
+    if (!str_contains($provider, "ollama")) continue;
+    foreach ($conf["models"] ?? [] as $model => $entry) {
+        $context = (int) ($entry["limit"]["context"] ?? 0);
+        $output = (int) ($entry["limit"]["output"] ?? 0);
+        if ($context <= 0 || $output <= 0) continue;
+        $want = min(65536, max(16384, intdiv($context, 4)));
+        if ($output < $want) {
+            $staleLimits[] = [$provider, $model, $output, $want];
+            printf("%s%s/%s: стеля виходу %d, а вікно дозволяє %d\n", $pad("СТЕЛЯ"), $provider, $model, $output, $want);
+        }
+    }
+}
+
 // Застарілі записи показуємо, але не видаляємо.
 foreach ($parsed["provider"] ?? [] as $provider => $conf) {
     if (!str_contains($provider, "ollama")) continue;
@@ -147,7 +169,47 @@ foreach ($parsed["provider"] ?? [] as $provider => $conf) {
     }
 }
 
+// Підняти застарілу стелю виходу · рівно для названих моделей, точковою
+// заміною за іменем ключа. Глобальна заміна тут заборонена: у тому ж файлі
+// живуть ХМАРНІ моделі зі своїми справжніми лімітами, і піднімати їх наосліп
+// означало б обіцяти провайдеру те, чого він не вміє.
+$bumpLimits = static function (string $raw, array $stale): array {
+    $done = [];
+    foreach ($stale as [$provider, $model, $was, $want]) {
+        $pattern = "~(\"".preg_quote($model, "~")."\"\s*:\s*\{.*?\"limit\"\s*:\s*\{[^}]*?\"output\"\s*:\s*)\d+~s";
+        // `${1}` у ФІГУРНИХ дужках: без них `$1` зливається з першою цифрою
+        // числа й backreference зникає · перша версія так зжерла ключ моделі й
+        // залишила по собі невалідний JSON у конфізі власника.
+        // Backreference пишеться як \${1} у ПОДВІЙНИХ лапках: одинарні тут
+        // неможливі (весь PHP лежить усередині `php -r '...'`), а без фігурних
+        // дужок `$1` зливається з першою цифрою числа й посилання зникає ·
+        // саме так перша версія зжерла ключ моделі й лишила невалідний JSON.
+        $updated = preg_replace($pattern, "\${1}".$want, $raw, 1, $count);
+        if ($count === 1 && $updated !== null) { $raw = $updated; $done[] = "$provider/$model $was -> $want"; }
+    }
+
+    return [$raw, $done];
+};
+
+if ($missing === [] && $staleLimits !== [] && $apply) {
+    [$raw, $done] = $bumpLimits($raw, $staleLimits);
+    if ($done !== []) {
+        $backup = $config . ".bak-" . date("Ymd-His");
+        copy($config, $backup) || exit(1);
+        file_put_contents($config, $raw);
+        foreach ($done as $line) printf("Стелю піднято: %s\n", $line);
+        printf("Копія попереднього конфігу: %s\n", $backup);
+        echo "ВИРОК: стелі оновлено. Перезапусти OpenCode · конфіг читається на старті.\n";
+        exit(0);
+    }
+}
+
 if ($missing === []) {
+    if ($staleLimits !== [] && !$apply) {
+        echo "\nВИРОК: стеля виходу застаріла. Полагодити: ./bdo models --apply\n";
+        echo "Обірвана на стелі відповідь виглядає як зіпсований JSON, а не як помилка.\n";
+        exit(1);
+    }
     echo "\n", $problems === 0
         ? "ВИРОК: конфіг OpenCode знає всі моделі агентів проєкту.\n"
         : "ВИРОК: є проблеми вище, але дописувати нічого - спочатку постав моделі в Ollama.\n";

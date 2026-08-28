@@ -490,6 +490,7 @@ check_shell() {
     run bash tests/payload-shared-examples.sh
     run bash tests/registry-hygiene.sh
     run bash tests/glossary-listing.sh
+    run bash tests/opencode-output-limit.sh
 }
 
 check_agents() {
