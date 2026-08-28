@@ -92,4 +92,34 @@ grep -Fq 'machine_provenance=legacy&exclude_proposed=1' "$ROOT/cli/api/patch-inf
 grep -Fq -- '--with-current' "$ROOT/cli/prepare/qa-payload.sh" || fail 'qa-payload не приймає поточний переклад'
 grep -Fq 'qa_args+=(--with-current)' "$ROOT/cli/run/run-drive.sh" || fail 'рушій не дає QA поточний переклад у improve'
 
+# Категорія, дозволена набором, мусить бути дозволена й guard-ом.
+#
+# Клас той самий, що вбив прогін у D20: ДВА списки того самого. `market` жив у
+# `RunSpec::DOMAINS` і в живому API, але не в regex реєстру команд · будь-який
+# диригент отримав би відмову на цілком законній категорії, і побачити це можна
+# було лише спробувавши.
+php -r '
+require $argv[1];
+$registry = json_decode((string) file_get_contents($argv[2]), true, 512, JSON_THROW_ON_ERROR);
+$patterns = $registry["guard_patterns"] ?? [];
+$reflection = new ReflectionClass(Bdo\Translate\Pipeline\RunSpec::class);
+$domains = $reflection->getConstant("DOMAINS");
+$fail = static function (string $m): void { fwrite(STDERR, "FAIL: $m\n"); exit(1); };
+foreach ($domains as $domain) {
+    foreach (["./bdo mode start patch 50 7 $domain", "./bdo mode status patch 7 $domain"] as $command) {
+        $ok = false;
+        foreach ($patterns as $pattern) {
+            if (preg_match("~".$pattern."~", $command) === 1) { $ok = true; break; }
+        }
+        if (! $ok) $fail("guard блокує законну категорію: $command");
+    }
+}
+// І навпаки: вигадана категорія лишається забороненою.
+foreach ($patterns as $pattern) {
+    if (preg_match("~".$pattern."~", "./bdo mode start patch 50 7 вигадана") === 1) {
+        $fail("guard пропускає неіснуючу категорію");
+    }
+}
+' "$ROOT/lib/autoload.php" "$ROOT/cli/command-registry.json" || fail "перелік категорій розійшовся з guard"
+
 echo 'domain filter: OK'
