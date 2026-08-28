@@ -13,14 +13,43 @@ export type RuntimeModelState = {
 }
 
 const TOOLKIT_DIR = process.env.TRANSLATE_TOOLKIT_DIR ?? "."
-const ROLES = [
-  "translation-terminology",
-  "translation-worker",
-  "translation-qa",
-  "translation-repair",
-  "translation-judge",
-  "translation-smoke",
-]
+
+/**
+ * Ролі НЕ перелічені тут навмисно.
+ *
+ * 2026-08-28 сьома роль `translation-glossary` зʼявилась у `ModelPolicy::ROLES`
+ * (PHP), а цей файл лишився з шістьма. Materializer рахував відбиток по семи
+ * маршрутах, читач · по шести, і кожен child падав із
+ * `OPENCODE_RUNTIME_INVALID: fingerprint does not match the effective model
+ * policy`. Два списки того самого завжди розходяться, тому перелік ролей тут
+ * береться з ЕФЕКТИВНОЇ політики, а відбиток рахується по відсортованих
+ * ключах · так порядок ключів у JSON не впливає на результат.
+ */
+function policyRoutes(profile: unknown): Record<string, string[]> {
+  const raw = (profile as { routes?: Record<string, unknown> } | null | undefined)?.routes
+  if (typeof raw !== "object" || raw === null) {
+    throw new Error("OPENCODE_RUNTIME_INVALID: effective profile has no routes.")
+  }
+  const routes: Record<string, string[]> = {}
+  for (const role of Object.keys(raw).sort()) {
+    const route = raw[role]
+    if (!Array.isArray(route) || route.length === 0 || route.some((item: unknown) => typeof item !== "string")) {
+      throw new Error(`OPENCODE_RUNTIME_INVALID: effective route ${role} is missing or malformed.`)
+    }
+    routes[role] = route as string[]
+  }
+  if (Object.keys(routes).length === 0) {
+    throw new Error("OPENCODE_RUNTIME_INVALID: effective profile has no routes.")
+  }
+  return routes
+}
+
+/** Відсортовані ключі · відбиток не має залежати від порядку в файлі. */
+function sortedRoutes(routes: Record<string, string[]>): Record<string, string[]> {
+  const sorted: Record<string, string[]> = {}
+  for (const role of Object.keys(routes).sort()) sorted[role] = routes[role]
+  return sorted
+}
 
 export function runtimeModelStatePath(directory: string): string {
   return resolve(directory, TOOLKIT_DIR, ".opencode/runtime-model-state.json")
@@ -61,17 +90,11 @@ export function readRuntimeModelState(directory: string): RuntimeModelState {
   }
   const active = policy?.active_profile
   const profile = policy?.profiles?.[active]
-  const routes: Record<string, string[]> = {}
-  for (const role of ROLES) {
-    const route = profile?.routes?.[role]
-    if (!Array.isArray(route) || route.length === 0 || route.some((item: unknown) => typeof item !== "string")) {
-      throw new Error(`OPENCODE_RUNTIME_INVALID: effective route ${role} is missing or malformed.`)
-    }
-    routes[role] = route
-  }
+  const routes = policyRoutes(profile)
   const canonical = JSON.stringify({ schema_version: RUNTIME_MODEL_SCHEMA, active_profile: active, routes })
   const actual = createHash("sha256").update(canonical).digest("hex")
-  if (actual !== state.fingerprint || active !== state.active_profile || JSON.stringify(routes) !== JSON.stringify(state.routes)) {
+  const stateRoutes = JSON.stringify(sortedRoutes(state.routes as Record<string, string[]>))
+  if (actual !== state.fingerprint || active !== state.active_profile || JSON.stringify(routes) !== stateRoutes) {
     throw new Error("OPENCODE_RUNTIME_INVALID: fingerprint does not match the effective model policy.")
   }
   return state as RuntimeModelState

@@ -498,6 +498,7 @@ check_agents() {
     jq -e . opencode.json >/dev/null || fail 'opencode.json невалідний JSON'
     run node --experimental-strip-types tests/routing-guard.mjs
     run node --experimental-strip-types tests/execution-guard.mjs
+    run node --experimental-strip-types tests/runtime-state-reader.mjs
     run node --experimental-strip-types tests/result-writer.mjs
     run node --experimental-strip-types tests/child-contract.mjs
 }

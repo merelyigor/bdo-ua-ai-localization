@@ -153,6 +153,9 @@ rename($temp, $configFile);
 
 $routes = [];
 foreach (ModelPolicy::ROLES as $role) $routes[$role] = ModelPolicy::routes($policy, $role);
+// Відбиток рахується по ВІДСОРТОВАНИХ ключах: читач на боці плагіна бере
+// перелік ролей із самої політики й не може знати порядок ModelPolicy::ROLES.
+ksort($routes);
 $fingerprintInput = [
     'schema_version' => 1,
     'active_profile' => $policy['active_profile'],

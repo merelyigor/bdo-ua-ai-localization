@@ -4,7 +4,11 @@ import { createHash } from "node:crypto"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 
-const roles = ["translation-terminology", "translation-worker", "translation-qa", "translation-repair", "translation-judge", "translation-smoke"]
+// Ролі беруться з чинного шаблону політики, а не переписуються сюди: власний
+// список у тесті рівно так само розійшовся з ModelPolicy::ROLES і зробив
+// зелений gate при заблокованому прогоні (D20).
+const policyTemplate = JSON.parse(readFileSync(join(process.cwd(), ".opencode/templates/translation-models.json"), "utf8"))
+const roles = Object.keys(policyTemplate.profiles[policyTemplate.active_profile].routes).sort()
 const runtimeState = (active_profile = "session-free", model = "opencode/big-pickle") => {
   const routes = Object.fromEntries(roles.map((role) => [role, [model]]))
   const canonical = JSON.stringify({ schema_version: 1, active_profile, routes })
