@@ -188,6 +188,7 @@ case "$group" in
     normalize)   sh_run cli/quality/normalize-candidate.sh "${@:2}" ;;
     items)       sh_run cli/quality/build-items.sh "${@:2}" ;;
     russianisms) sh_run cli/quality/check-russianisms.sh "${@:2}" ;;
+    suspects)    sh_run cli/audit/glossary-suspects.sh "${@:2}" ;;
     validate)    sh_run cli/api/validate.sh "${@:2}" ;;
     heal)        sh_run cli/heal/heal-plan.sh "${@:2}" ;;
     qa-fixes)    sh_run cli/quality/qa-fixes.sh "${@:2}" ;;

@@ -44,6 +44,7 @@
 | `./bdo normalize` | детерміновані виправлення (латинські гомогліфи) |
 | `./bdo items` | гейт identity: збірка items із перевіркою source_hash |
 | `./bdo russianisms` | словниковий детектор русизмів |
+| `./bdo suspects [--list]` | звіт про підозрілі записи глосарію (глосарій не змінює) |
 | `./bdo validate` | валідація на боці API |
 | `./bdo heal` | сходинки лікування й payload для repair |
 | `./bdo qa-fixes` | фільтр виправлень від QA |

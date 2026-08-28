@@ -189,6 +189,47 @@ grep -Fq 'GlossaryExamples::filter' "$ROOT/cli/prepare/worker-payload.sh" \
 grep -Fq 'відкинуто %d, що суперечать затвердженим термінам' "$ROOT/cli/prepare/worker-payload.sh" \
     || fail 'відкидання прикладів мовчазне'
 
+# Підозрілий запис глосарію не подається моделі як закон.
+#
+# Помилковий запис коштує дорожче за відсутній: він псує КОЖЕН рядок, де
+# трапився термін. 2026-08-28 у робочій вибірці знайшлись `Week -> Місяць`,
+# `GO -> ВПЕ` і `Her -> Вона`; глосарій ми не змінюємо, тому позначені записи
+# просто не їдуть у payload, поки їх не перевірить людина.
+php -r '
+require $argv[1];
+use Bdo\Translate\Quality\GlossarySuspects;
+$fail = static function (string $m): void { fwrite(STDERR, "FAIL: $m\n"); exit(1); };
+$found = GlossarySuspects::find([
+    ["canonical_source" => "Week", "ukrainian" => "Місяць", "seen" => 2],
+    ["canonical_source" => "Day", "ukrainian" => "День", "seen" => 1],
+    ["canonical_source" => "Her", "ukrainian" => "Вона", "seen" => 1],
+    ["canonical_source" => "GO", "ukrainian" => "ВПЕ", "seen" => 4],
+    ["canonical_source" => "Cheongsa Island", "ukrainian" => "Острів Ліхтарів", "seen" => 6],
+    ["canonical_source" => "Sunset Coral Essence", "ukrainian" => "Есенція корала заходу сонця", "seen" => 1],
+]);
+$byName = [];
+foreach ($found as $s) $byName[$s["canonical_source"]] = $s["reason"];
+foreach (["Week" => "time_unit_mismatch", "Her" => "function_word", "GO" => "acronym"] as $name => $reason) {
+    if (($byName[$name] ?? null) !== $reason) $fail("$name не позначено як $reason");
+}
+// Здорові записи не чіпаємо: хибне звинувачення затвердженого терміна гірше
+// за пропущене, бо забирає в моделі правильний закон.
+foreach (["Day", "Cheongsa Island", "Sunset Coral Essence"] as $name) {
+    if (isset($byName[$name])) $fail("здоровий термін $name потрапив у підозрілі");
+}
+// Один відповідник на два різні терміни зробить їх нерозрізненними в тексті.
+$dup = GlossarySuspects::find([
+    ["canonical_source" => "Ocean Draught", "ukrainian" => "Океанічний напій"],
+    ["canonical_source" => "Vast Ocean Draught", "ukrainian" => "Океанічний напій"],
+]);
+if (count($dup) !== 2 || $dup[0]["reason"] !== "duplicate_ukrainian") $fail("однаковий відповідник не помічено");
+' "$ROOT/lib/autoload.php" || fail 'детектор підозрілих термінів не тримає контракт'
+
+grep -Fq 'Терміни під підозрою пропущено' "$ROOT/cli/prepare/worker-payload.sh" \
+    || fail 'payload мовчки подає підозрілі терміни як закон'
+grep -Fq 'glossary-suspects.json' "$ROOT/cli/prepare/worker-payload.sh" \
+    || fail 'payload не читає позначки підозрілих термінів'
+
 # Один пачковий запит замість запиту на кожен рядок.
 grep -Fq '/rows/context' "$ROOT/cli/prepare/worker-payload.sh" || fail 'контекст береться не пачковим запитом'
 grep -Fq 'max_context_rows' "$ROOT/cli/prepare/worker-payload.sh" || fail 'ліміт пачки контексту зашитий у клієнт замість /me'

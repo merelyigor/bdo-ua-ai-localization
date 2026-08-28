@@ -103,6 +103,15 @@ if [ "$WANT_CONTEXT" = 1 ]; then
         // (`data.batch.max_context_rows`); зашивати 50 у клієнт не можна ·
         // власник міняє його змінною оточення без зміни коду.
         require $argv[7];
+        // Помилковий запис глосарію коштує дорожче за відсутній: він псує
+        // КОЖЕН рядок, де трапився термін (`Week -> Місяць`, `GO -> ВПЕ`,
+        // `Her -> Вона` · знайдено 2026-08-28). Змінювати глосарій ми не маємо
+        // права, тому позначені `./bdo suspects` записи просто не подаються
+        // моделі як закон, поки людина не вирішить.
+        $suspects = [];
+        if (is_file($argv[8])) {
+            $suspects = array_keys(json_decode((string) file_get_contents($argv[8]), true)["terms"] ?? []);
+        }
         $rows = json_decode(file_get_contents($argv[1]), true, 512, JSON_THROW_ON_ERROR)["data"]["rows"] ?? [];
         $hashes = [];
         foreach ($rows as $row) {
@@ -167,6 +176,7 @@ if [ "$WANT_CONTEXT" = 1 ]; then
         // споживача не можна.
         $examples = [];
         $terms = [];
+        $skippedSuspects = [];
         foreach ($contexts as $hash => $context) {
             $rowExamples = [];
             foreach (array_slice($context["related_rows"] ?? [], 0, 3) as $related) {
@@ -186,6 +196,7 @@ if [ "$WANT_CONTEXT" = 1 ]; then
             foreach ($context["terms"] ?? [] as $term) {
                 $canonical = (string) ($term["canonical_source"] ?? "");
                 if ($canonical === "" || isset($terms[$canonical])) continue;
+                if (in_array($canonical, $suspects, true)) { $skippedSuspects[$canonical] = true; continue; }
                 $entry = ["canonical_source" => $canonical];
                 foreach (["ukrainian", "policy", "severity", "entity_type", "definition", "wiki_url"] as $field) {
                     $value = $term[$field] ?? null;
@@ -229,6 +240,10 @@ if [ "$WANT_CONTEXT" = 1 ]; then
         if ($argv[6] !== "") {
             file_put_contents($argv[6], json_encode(array_values($terms), JSON_UNESCAPED_UNICODE));
         }
+        if ($skippedSuspects !== []) {
+            fwrite(STDERR, sprintf("Терміни під підозрою пропущено (%s) · див. ./bdo suspects\n",
+                implode(", ", array_keys($skippedSuspects))));
+        }
         $withWiki = count(array_filter($terms, static fn (array $t): bool => isset($t["definition"])));
         fwrite(STDERR, sprintf(
             "Контекст пачки: %d рядків одним запитом%s | приклади для %d рядків | термінів %d (з описом %d)\n",
@@ -240,7 +255,7 @@ if [ "$WANT_CONTEXT" = 1 ]; then
             fwrite(STDERR, sprintf("УВАГА: контексту немає для %d рядків із %d.\n", $missing, count($hashes)));
         }
         ' "$ROWS_FILE" "$BDO_API_BASE" "$BDO_API_KEY" "$CONTEXT_FILE" "$SCRIPT_DIR/cli/api/http-request.sh" "$TERMS_FILE" \
-          "$SCRIPT_DIR/lib/autoload.php"
+          "$SCRIPT_DIR/lib/autoload.php" "${BDO_STATE_DIR:-$SCRIPT_DIR/state}/glossary-suspects.json"
     fi
 fi
 
