@@ -269,6 +269,45 @@ if ($budget > 0) {
     $sharedExamples = $kept;
 }
 
+
+// Поняття гри · лише ті, що реально є в тексті ЦІЄЇ пачки.
+//
+// Перелік має 83 записи; класти всі в кожен payload означало б додавати ту саму
+// вагу в транскрипт диригента назавжди (D10). Тому зіставлення робиться тут, у
+// коді: ціле слово, з урахуванням регістру для скорочень (`MAP` це Monster AP,
+// а `map` · звичайна карта з власною карткою глосарія).
+//
+// У payload іде лише `term`, `ua` і короткий `gist` (до 200 символів).
+// `definition` НЕ кладеться свідомо: він написаний для людини й важить до 4000
+// символів. Обрізати його теж не можна · модель прочитає обрізане як повне.
+$conceptsFile = getenv("BDO_STATE_DIR") ?: dirname(__DIR__, 2)."/state";
+$conceptsFile .= "/game-concepts.json";
+$sharedConcepts = [];
+if (is_file($conceptsFile)) {
+    $all = json_decode((string) file_get_contents($conceptsFile), true)["concepts"] ?? [];
+    $haystack = "";
+    foreach ($rows as $row) $haystack .= $row->sourceText()."\n";
+    $limit = (int) (getenv("BDO_CONCEPTS_MAX") ?: 25);
+    $skipped = 0;
+    foreach ($all as $concept) {
+        $term = (string) ($concept["term"] ?? "");
+        if ($term === "") continue;
+        $flags = "u".(empty($concept["case_sensitive"]) ? "i" : "");
+        if (preg_match("/(?<![\p{L}\p{N}])".preg_quote($term, "/")."(?![\p{L}\p{N}])/".$flags, $haystack) !== 1) {
+            continue;
+        }
+        if (count($sharedConcepts) >= $limit) { $skipped++; continue; }
+        $entry = ["term" => $term];
+        foreach (["ua", "gist"] as $field) {
+            if (isset($concept[$field]) && $concept[$field] !== "") $entry[$field] = $concept[$field];
+        }
+        $sharedConcepts[] = $entry;
+    }
+    if ($skipped > 0) {
+        fwrite(STDERR, sprintf("Поняття: у тексті знайдено на %d більше за стелю %d (BDO_CONCEPTS_MAX)\n", $skipped, $limit));
+    }
+}
+
 $payload = [];
 $stats = ["glossary" => 0, "pending" => 0, "unresolved" => 0, "examples" => 0, "limits" => 0];
 foreach ($rows as $row) {
@@ -340,6 +379,7 @@ if ($argv[6] !== "" && is_file($argv[6])) {
 }
 $out = ["examples" => $sharedExamples, "items" => $payload];
 if ($sharedTerms !== []) $out = ["terms" => $sharedTerms] + $out;
+if ($sharedConcepts !== []) $out = ["concepts" => $sharedConcepts] + $out;
 echo json_encode($out, JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR), "\n";
 // Підсумок у stderr: диригент звітує з нього, замість перечитувати payload.
 // stdout лишається чистим JSON, тому підстановку в промпт це не ламає.

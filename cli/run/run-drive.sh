@@ -265,6 +265,10 @@ prepare_worker() {
         local args=()
         if [ "$(field mode)" = improve ]; then args+=(--with-current --with-reference); fi
         test "${BDO_PIPELINE_OFFLINE:-0}" = 1 && args+=(--no-context)
+        # Поняття гри · один запит на прогін, далі з кешу. Без них payload
+        # робочий, лише слабший, тому збій тут не валить пачку.
+        test "${BDO_PIPELINE_OFFLINE:-0}" = 1 || \
+            "$SCRIPT_DIR/cli/api/glossary-concepts.sh" >/dev/null 2>&1 || true
         "$SCRIPT_DIR/cli/prepare/worker-payload.sh" "$rows" "${args[@]}" > "$B/worker-payload.json"
     else
         echo '[]' > "$B/worker-payload.json"

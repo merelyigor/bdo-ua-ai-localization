@@ -120,6 +120,47 @@ for role in worker qa; do
         || fail "child $role не знає блоку terms"
 done
 
+# Поняття гри: у payload ідуть ЛИШЕ ті, що є в тексті пачки, і лише короткий
+# `gist`. Повний `definition` (до 4000 символів) свідомо не кладеться · він для
+# людини, а обрізати його не можна: модель прочитає обрізане як повне.
+cat > "$TMP/state/game-concepts.json" <<'JSON'
+{"fetched_at":"2026-08-28T00:00:00+00:00","concepts":[
+ {"term":"AP","ua":"AP","gist":"Сила атаки.","case_sensitive":true},
+ {"term":"MAP","ua":"Monster AP","gist":"Сила атаки по монстрах.","case_sensitive":true},
+ {"term":"Set Effect","ua":"Ефект комплекту","gist":"Бонус за повний набір."},
+ {"term":"Node","ua":"Вузол","gist":"Точка на карті світу."}
+]}
+JSON
+cat > "$TMP/concept-rows.json" <<JSON
+{"data":{"rows":[
+ {"identity_hash":"$H1","source_hash":"a","source_text":"Increases AP and Set Effect applies."},
+ {"identity_hash":"$H2","source_hash":"b","source_text":"Open the map and walk."}
+]}}
+JSON
+out="$(BDO_STATE_DIR="$TMP/state" bash "$ROOT/cli/prepare/worker-payload.sh" "$TMP/concept-rows.json" --no-context 2>/dev/null)" \
+    || fail 'payload із поняттями не зібрався'
+printf '%s' "$out" | jq -e '[.concepts[].term] | sort == ["AP","Set Effect"]' >/dev/null \
+    || fail "у payload не ті поняття: $(printf '%s' "$out" | jq -c '[.concepts[].term]')"
+# Регістр вирішує: `map` з малої НЕ є поняттям `MAP` (Monster AP).
+printf '%s' "$out" | jq -e '[.concepts[].term] | index("MAP") == null' >/dev/null \
+    || fail 'поняття MAP зіставлено зі словом map з малої літери'
+# Поняття, якого в тексті немає, у payload не потрапляє.
+printf '%s' "$out" | jq -e '[.concepts[].term] | index("Node") == null' >/dev/null \
+    || fail 'у payload потрапило поняття, якого немає в тексті пачки'
+# Довгий опис для людини в payload не їде.
+printf '%s' "$out" | jq -e '[.concepts[] | has("definition")] | any | not' >/dev/null \
+    || fail 'повний definition потрапив у payload'
+# Обидва промпти мусять пояснювати блок і його СИЛУ: підказка, не закон.
+for role in worker qa; do
+    grep -Fq '`concepts` · поняття гри' "$ROOT/.opencode/agent-templates/translation-$role.md" \
+        || fail "child $role не знає блоку concepts"
+    grep -Fq 'СИЛЬНОЮ ПІДКАЗКОЮ, а не затвердженим відповідником' "$ROOT/.opencode/agent-templates/translation-$role.md" \
+        || fail "child $role вважає поняття затвердженим відповідником"
+done
+# Перелік тягнеться ОДИН раз на прогін, а не на кожну пачку.
+grep -Fq 'glossary-concepts.sh' "$ROOT/cli/run/run-drive.sh" || fail 'рушій не оновлює перелік понять'
+grep -Fq 'BDO_CONCEPTS_TTL_HOURS' "$ROOT/cli/api/glossary-concepts.sh" || fail 'перелік понять не кешується'
+
 # Нагадування про свіжу сесію · єдине, що прибирає вже накопичений транскрипт.
 grep -Fq 'BDO_SESSION_HINT_BATCHES' "$ROOT/cli/run/run-drive.sh" \
     || fail 'рушій не нагадує почати нову сесію після N пачок'
