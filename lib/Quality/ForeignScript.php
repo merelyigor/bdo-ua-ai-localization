@@ -56,7 +56,7 @@ final class ForeignScript
                 continue;
             }
             foreach ($matches[0] as $chunk) {
-                if ($source !== '' && mb_strpos($source, $chunk) !== false) {
+                if ($source !== '' && str_contains($source, $chunk)) {
                     continue;
                 }
                 $found[] = ['word' => $chunk, 'script' => $script];

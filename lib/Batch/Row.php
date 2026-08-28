@@ -172,7 +172,7 @@ final class Row
             if ($approved === '' || mb_strtolower($approved) === $approved) {
                 continue;
             }
-            $pattern = '/(?<![\p{L}])'.preg_quote($approved, '/').'(?![\p{L}])/iu';
+            $pattern = '/(?<!\p{L})'.preg_quote($approved, '/').'(?!\p{L})/iu';
             $text = preg_replace($pattern, $approved, $text) ?? $text;
         }
 
@@ -186,7 +186,7 @@ final class Row
             if ($approved === '' || mb_strtolower($approved) === $approved) {
                 continue;
             }
-            $pattern = '/(?<![\p{L}])'.preg_quote($approved, '/').'(?![\p{L}])/iu';
+            $pattern = '/(?<!\p{L})'.preg_quote($approved, '/').'(?!\p{L})/iu';
             if (preg_match($pattern, $text, $m) !== 1) {
                 continue;
             }

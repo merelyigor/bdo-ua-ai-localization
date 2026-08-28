@@ -56,16 +56,23 @@ export function referencesStagedPayload(prompt: unknown, payloadPath: string): b
  * `output.args`), бо різні версії OpenCode серіалізують у частину повідомлення
  * то одну, то іншу; зайва мутація нешкідлива.
  *
+ * @param input hook-обʼєкт виклику; `args` у типі SDK не оголошені, але є
+ * @param output hook-обʼєкт результату; та сама історія з `args`
  * @param payloadPath шлях зі staged envelope · саме він і був у диригента
  */
 export function restorePromptReference(
-  input: { args?: Record<string, unknown> },
-  output: { args?: Record<string, unknown> },
+  input: unknown,
+  output: unknown,
   payloadPath: string | undefined,
 ): void {
   if (payloadPath === undefined || payloadPath === "") return
   const reference = `payload:${payloadPath}`
-  for (const args of [input.args, output.args]) {
+  // Тип hook-обʼєктів у SDK не оголошує `args`, хоча вони там є в обох. Саме
+  // тому параметри тут `unknown`, а не структурний тип: інакше кожен виклик дає
+  // TS2559 «no properties in common», і червоне в IDE привчає ігнорувати
+  // справжні помилки типів.
+  for (const carrier of [input, output]) {
+    const args = (carrier as { args?: Record<string, unknown> } | null | undefined)?.args
     if (args && typeof args.prompt === "string" && args.prompt !== reference) {
       args.prompt = reference
     }
