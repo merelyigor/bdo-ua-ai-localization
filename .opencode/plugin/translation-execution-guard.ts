@@ -3,6 +3,7 @@ import { createHash } from "node:crypto"
 import { readFileSync } from "node:fs"
 import { join } from "node:path"
 import { readRuntimeModelState } from "../lib/runtime-model-state.ts"
+import { recordBlocked } from "../lib/child-response.ts"
 
 // OpenCode завантажує prompt і plugin один раз на старті. Після git pull стара
 // сесія інакше продовжує виконувати вже видалені команди/прапорці: саме так
@@ -99,6 +100,24 @@ const CHILD_ROLES = new Set([
 ])
 
 /** Роль зі staged envelope · щоб відмова називала, чого саме чекає рушій. */
+/**
+ * Позначити спробу, зупинену НАМИ, а не моделлю.
+ *
+ * Без цього `run drive` рахує наші власні відмови як мовчання провайдера й
+ * зупиняє пачку з діагнозом «перевір модель у .env», хоча модель до справи
+ * навіть не дійшла (D21).
+ */
+function blockDispatch(directory: string, role: string, reason: string): void {
+  try {
+    const next = JSON.parse(readFileSync(join(directory, "state/next-child.json"), "utf8")) as { response_path?: string }
+    if (typeof next.response_path !== "string" || next.response_path === "") return
+    recordBlocked(directory, next.response_path, role, reason, new Date().toISOString())
+  } catch {
+    // Немає staged envelope · нема чого віднімати: лічильник мовчання рахує
+    // саме спроби по конкретному response_path.
+  }
+}
+
 function stagedRole(directory: string): string | undefined {
   try {
     const next = JSON.parse(readFileSync(join(directory, "state/next-child.json"), "utf8")) as { role?: string }
@@ -302,11 +321,20 @@ export const TranslationExecutionGuard: Plugin = async ({ client, directory }) =
         }
       }
       if (input.tool === "task" && /^translation-/.test(String(output.args?.subagent_type ?? ""))) {
+        const role = String(output.args?.subagent_type ?? "")
         if (!bootState) {
+          blockDispatch(directory, role, "runtime_invalid")
           throw new Error(bootError ?? "OPENCODE_RUNTIME_INVALID: OpenCode started without a valid model runtime.")
         }
-        const current = readRuntimeModelState(directory)
+        let current
+        try {
+          current = readRuntimeModelState(directory)
+        } catch (error) {
+          blockDispatch(directory, role, "runtime_invalid")
+          throw error
+        }
         if (current.fingerprint !== bootState.fingerprint) {
+          blockDispatch(directory, role, "restart_required")
           throw new Error(
             `OPENCODE_RESTART_REQUIRED: child profile changed ${bootState.active_profile} -> ${current.active_profile}. `
             + "Перезапустіть OpenCode і напишіть «продовжуй»; незавершену пачку збережено.",

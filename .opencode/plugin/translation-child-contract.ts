@@ -3,8 +3,10 @@ import { basename, join, resolve } from "node:path"
 import type { Plugin } from "@opencode-ai/plugin"
 import {
   atomicWrite,
+  clearBlocked,
   clearIncident,
   pendingIncident,
+  recordBlocked,
   recordIncident,
   recordNote,
   retryNote,
@@ -125,9 +127,12 @@ export const TranslationChildContract: Plugin = async ({ directory }) => ({
     try {
       payload = readFileSync(stateFile(directory, next.payload_path), "utf8").trim()
     } catch (cause) {
+      // Спроба зупинена нами, а не моделлю · лічильник мовчання її не рахує.
+      recordBlocked(directory, next.response_path, role, "payload_unreadable", new Date().toISOString())
       throw new Error(`Staged payload ${next.payload_path} недоступний; повтори ./bdo run drive.`, { cause })
     }
     if (payload === "") {
+      recordBlocked(directory, next.response_path, role, "payload_empty", new Date().toISOString())
       throw new Error(`Staged payload ${next.payload_path} порожній; повтори ./bdo run drive.`)
     }
     // Перевірка ПІСЛЯ перевірок payload: якщо зламаний наш власний staged файл,
@@ -231,6 +236,7 @@ export const TranslationChildContract: Plugin = async ({ directory }) => ({
     const payloadJson = unwrapChildJson(split.json)
     atomicWrite(stateFile(directory, next.response_path), payloadJson)
     clearIncident(directory, next.response_path)
+    clearBlocked(directory, next.response_path)
     recordNote(directory, next.response_path, role, split.note, at)
     // Головна економія платного контексту: відповідь child уже збережена
     // механічно, тому диригенту вертається підтвердження, а не її текст.

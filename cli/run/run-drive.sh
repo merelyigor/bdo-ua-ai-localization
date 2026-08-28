@@ -159,27 +159,53 @@ give_up() {
 #
 # Кілька таких поспіль зупиняють прогін із названою причиною замість добового
 # мовчазного очікування. Поріг у `.env`: BDO_CHILD_SILENT_LIMIT (типово 3).
+# Спроби, зупинені НАМИ, мовчанням не є.
+#
+# 2026-08-28 три dispatch-и підряд заблокував наш власний
+# `OPENCODE_RUNTIME_INVALID` (розбіжність переліку ролей, D20). Для лічильника це
+# виглядало як мовчання провайдера: ні файла відповіді, ні інциденту формату. Тож
+# одразу після СПРАВЖНЬОГО виправлення власник отримав діагноз «перевір модель
+# субагентів у .env» · тобто вказівку шукати там, де все було справно. Плагіни
+# тепер пишуть такі спроби в `state/child-blocked.json`, і тут вони віднімаються.
+blocked_attempts() {
+    php -r '$b=is_file($argv[1])?(json_decode((string)file_get_contents($argv[1]),true)?:[]):[];echo (int)($b[$argv[2]]["count"]??0);' \
+        "$STATE_DIR/child-blocked.json" "$1"
+}
+blocked_reason() {
+    php -r '$b=is_file($argv[1])?(json_decode((string)file_get_contents($argv[1]),true)?:[]):[];echo (string)($b[$argv[2]]["reason"]??"");' \
+        "$STATE_DIR/child-blocked.json" "$1"
+}
 silent_child() {
     local state="$1" response="$2" limit="${BDO_CHILD_SILENT_LIMIT:-3}"
     php -r '
-        [$retries, $incidents, $key, $response, $limit] =
-            [$argv[1], $argv[2], $argv[3], $argv[4], max(1, (int) $argv[5])];
+        [$retries, $incidents, $key, $response, $limit, $blockedFile] =
+            [$argv[1], $argv[2], $argv[3], $argv[4], max(1, (int) $argv[5]), $argv[6]];
         $r = is_file($retries) ? (json_decode((string) file_get_contents($retries), true) ?: []) : [];
         $attempts = (int) ($r[$key]["count"] ?? 0);
         $i = is_file($incidents) ? (json_decode((string) file_get_contents($incidents), true) ?: []) : [];
         // Інцидент на цей самий response_path означає, що child ВІДПОВІВ ·
         // зіпсовано, але відповів. Таке лікується повтором, і мовчанням не є.
         if (isset($i[$response])) exit(1);
+        $b = is_file($blockedFile) ? (json_decode((string) file_get_contents($blockedFile), true) ?: []) : [];
+        $attempts -= (int) ($b[$response]["count"] ?? 0);
         exit($attempts >= $limit ? 0 : 1);
-    ' "$B/drive-retries.json" "$STATE_DIR/child-incidents.json" "$state" "$response" "$limit"
+    ' "$B/drive-retries.json" "$STATE_DIR/child-incidents.json" "$state" "$response" "$limit" \
+      "$STATE_DIR/child-blocked.json"
 }
 give_up_silent() {
-    local state="$1" attempts
+    local state="$1" response="$2" attempts blocked reason
     attempts="$(php -r '$a=is_file($argv[1])?(json_decode((string)file_get_contents($argv[1]),true)?:[]):[];echo (int)($a[$argv[2]]["count"]??0);' "$B/drive-retries.json" "$state")"
+    blocked="$(blocked_attempts "$response")"
+    reason="$(blocked_reason "$response")"
     rm -f "$B/drive-retries.json"
+    # Заблоковані спроби названі окремо: вони кажуть шукати в наборі, а не в
+    # моделі, і саме цю різницю власник не мав змоги побачити 2026-08-28.
     php -r 'echo json_encode(["kind"=>"retry","reason"=>"child_no_response","attempts"=>(int)$argv[1],
-        "hint"=>"Субагент не повернув НІЧОГО (нуль токенів, без інциденту формату). Це не тимчасовий збій моделі, а відмова провайдера або несумісна конфігурація. Скажи власнику перевірити модель субагентів у .env і виконати smoke.",
-    ], JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES);' "$attempts" > "$B/silent.json"
+        "blocked_attempts"=>(int)$argv[2], "blocked_reason"=>$argv[3],
+        "hint"=>((int)$argv[2] > 0
+            ? "Ще ".$argv[2]." спроб зупинив сам набір (".$argv[3]."), і вони до моделі не дійшли · спочатку прибери цю причину."
+            : "Субагент не повернув НІЧОГО (нуль токенів, без інциденту формату). Це не тимчасовий збій моделі, а відмова провайдера або несумісна конфігурація. Скажи власнику перевірити модель субагентів у .env і виконати smoke."),
+    ], JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES);' "$attempts" "$blocked" "$reason" > "$B/silent.json"
     emit 0 "$state" "$(cat "$B/silent.json")"
     rm -f "$B/silent.json"
     exit 1
@@ -546,7 +572,7 @@ awaiting_worker)
         cp "$B/memory-candidate.json" "$B/candidate.json"
     fi
     if [ ! -s "$B/candidate.json" ]; then
-        if silent_child awaiting_worker "$B/candidate.json"; then give_up_silent awaiting_worker; fi
+        if silent_child awaiting_worker "$B/candidate.json"; then give_up_silent awaiting_worker "$B/candidate.json"; fi
         if retry_exceeded awaiting_worker; then give_up awaiting_worker; fi
         ensure_schema rows; child awaiting_worker translation-worker "$B/worker-payload.json" "$B/candidate.json"; exit 0
     fi
@@ -572,7 +598,7 @@ deterministic_valid)
     ;;
 awaiting_qa)
     if [ ! -s "$B/verdicts.json" ]; then
-        if silent_child awaiting_qa "$B/verdicts.json"; then give_up_silent awaiting_qa; fi
+        if silent_child awaiting_qa "$B/verdicts.json"; then give_up_silent awaiting_qa "$B/verdicts.json"; fi
         if retry_exceeded awaiting_qa; then give_up awaiting_qa; fi
         ensure_schema qa; child awaiting_qa translation-qa "$B/qa-payload.json" "$B/verdicts.json"; exit 0
     fi

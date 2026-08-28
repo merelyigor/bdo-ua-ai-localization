@@ -201,6 +201,54 @@ export function clearIncident(directory: string, responsePath: string): void {
   atomicWrite(incidentsFile(directory), JSON.stringify(incidents))
 }
 
+type Blocked = Record<string, { count: number; reason: string }>
+
+function blockedFile(directory: string): string {
+  return resolve(directory, "state", "child-blocked.json")
+}
+
+export function readBlocked(directory: string): Blocked {
+  try {
+    return JSON.parse(readFileSync(blockedFile(directory), "utf8")) as Blocked
+  } catch {
+    return {}
+  }
+}
+
+/**
+ * Фіксує спробу, яку зупинили МИ САМІ, ще до моделі.
+ *
+ * Навіщо окремий облік. `run drive` рахує мовчазні спроби, щоб не чекати добу на
+ * модель, яка нічого не повертає. Але для лічильника відмова плагіна виглядала
+ * так само, як мовчання провайдера: файла відповіді немає, інциденту формату
+ * немає. 2026-08-28 три дispatch-и, заблокованих нашим же
+ * `OPENCODE_RUNTIME_INVALID`, вичерпали ліміт, і після справжнього виправлення
+ * власник отримав діагноз «провайдер відмовив, перевір модель у .env» ·
+ * помилковий і рівно в бік, протилежний причині.
+ *
+ * Тому кожна відмова до старту child лягає сюди, і drive віднімає її з
+ * лічильника мовчання. Життєвий цикл той самий, що в `child-incidents.json`:
+ * успішна відповідь очищає запис.
+ */
+export function recordBlocked(directory: string, responsePath: string, role: string, reason: string, at: string): void {
+  const blocked = readBlocked(directory)
+  const count = (blocked[responsePath]?.count ?? 0) + 1
+  blocked[responsePath] = { count, reason }
+  mkdirSync(resolve(directory, "state"), { recursive: true })
+  atomicWrite(blockedFile(directory), JSON.stringify(blocked))
+  appendFileSync(
+    resolve(directory, "state", "flow-incidents.jsonl"),
+    `${JSON.stringify({ at, role, response_path: responsePath, attempt: count, reason: `blocked: ${reason}` })}\n`,
+  )
+}
+
+export function clearBlocked(directory: string, responsePath: string): void {
+  const blocked = readBlocked(directory)
+  if (blocked[responsePath] === undefined) return
+  delete blocked[responsePath]
+  atomicWrite(blockedFile(directory), JSON.stringify(blocked))
+}
+
 /**
  * Зберігає примітку child окремо від даних.
  *

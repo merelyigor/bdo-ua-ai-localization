@@ -155,6 +155,41 @@ check($code3 !== 0, 'мовчазний child не зупинив прогін')
 check(($silent['next']['reason'] ?? null) === 'child_no_response', 'причина мовчання не названа: '.json_encode($silent['next'] ?? null, JSON_UNESCAPED_UNICODE));
 check(str_contains((string) ($silent['next']['hint'] ?? ''), '.env'), 'підказка не веде власника до моделі субагентів');
 
+// Спроба, яку зупинив САМ набір, мовчанням не є (D21).
+//
+// 2026-08-28 три dispatch-и підряд відхилив наш власний
+// `OPENCODE_RUNTIME_INVALID`, лічильник порахував їх як мовчання провайдера, і
+// після справжнього виправлення власник отримав діагноз «перевір модель у
+// .env». Тут перевіряється саме різниця: та сама кількість спроб, але з
+// записом у `state/child-blocked.json` зупинки бути не мусить.
+$root3b = sys_get_temp_dir().'/bdo-fault-blocked-'.bin2hex(random_bytes(6));
+if (! mkdir($root3b, 0o755, true) && ! is_dir($root3b)) {
+    throw new RuntimeException("Не вдалося створити тимчасовий каталог $root3b.");
+}
+$workspace3b = Workspace::create($root3b, RowSet::fromFile($rowsPath), '20260827_020500');
+copy($rowsPath, $workspace3b->path('rows.json'));
+$workspace3b->transition('prepared');
+$workspace3b->transition('awaiting_worker');
+$command3b = sprintf('BDO_PIPELINE_OFFLINE=1 BDO_CHILD_SILENT_LIMIT=2 BDO_STATE_DIR=%s bash %s', escapeshellarg($root3b), escapeshellarg($repo.'/cli/run/run-drive.sh'));
+$candidate3b = $workspace3b->path('candidate.json');
+foreach ([1, 2, 3] as $attempt) {
+    // Плагін фіксує, що ця спроба до моделі не дійшла.
+    file_put_contents(
+        $root3b.'/child-blocked.json',
+        json_encode([$candidate3b => ['count' => $attempt, 'reason' => 'runtime_invalid']], JSON_UNESCAPED_SLASHES),
+    );
+    $outB = []; exec($command3b, $outB, $codeB);
+    $stepB = json_decode(implode("\n", $outB), true, 512, JSON_THROW_ON_ERROR);
+    check($codeB === 0, "заблокована спроба #$attempt зупинила прогін як мовчання");
+    check(($stepB['next']['role'] ?? null) === 'translation-worker', "заблокована спроба #$attempt не дала повтор child");
+}
+// Але коли блок зникає, а тиша лишається · зупинка мусить настати.
+unlink($root3b.'/child-blocked.json');
+$outB = []; exec($command3b, $outB, $codeB);
+$blockedGone = json_decode(implode("\n", $outB), true, 512, JSON_THROW_ON_ERROR);
+check($codeB !== 0, 'справжнє мовчання після зняття блоку не зупинило прогін');
+check(($blockedGone['next']['reason'] ?? null) === 'child_no_response', 'причина не названа після зняття блоку');
+
 // А ось зіпсована відповідь мовчанням НЕ є: там інцидент, і лікує його повтор.
 $root4 = sys_get_temp_dir().'/bdo-fault-noisy-'.bin2hex(random_bytes(6));
 if (! mkdir($root4, 0o755, true) && ! is_dir($root4)) {
