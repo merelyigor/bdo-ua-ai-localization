@@ -142,6 +142,53 @@ grep -Fq 'context_unavailable' "$ROOT/cli/run/run-drive.sh" \
 grep -Fq 'rm -f "$B/worker-payload.json.new"' "$ROOT/cli/run/run-drive.sh" \
     || fail 'недобудований payload лишається на диску'
 
+# Приклад, що суперечить затвердженому терміну, до моделі не їде.
+#
+# Рішення власника 2026-08-28. Приклади · це попередні переклади, серед яких
+# лишились варіанти, зроблені ДО затвердження терміна. Модель бачила два
+# джерела одразу і хоч що вибрала б, одне з двох порушувала: на пачці
+# 20260828_131740 QA на цьому сперечалась із глосарієм у двох рядках.
+php -r '
+require $argv[1];
+use Bdo\Translate\Quality\GlossaryExamples as G;
+$fail = static function (string $m): void { fwrite(STDERR, "FAIL: $m\n"); exit(1); };
+$terms = [
+    ["canonical_source" => "Cheongsa Island", "ukrainian" => "Острів Ліхтарів"],
+    ["canonical_source" => "Her", "ukrainian" => "Вона"],
+];
+// Суперечність: термін є в оригіналі, затвердженого відповідника в перекладі немає.
+if (G::contradicts("A shop on Cheongsa Island", "Крамниця на Острові Чхонса", $terms) !== "Cheongsa Island") {
+    $fail("суперечливий приклад не помічено");
+}
+// Відмінювання суперечністю не є.
+if (G::contradicts("A shop on Cheongsa Island", "Крамниця на Острові Ліхтарів", $terms) !== null) {
+    $fail("відмінок затвердженого терміна визнано суперечністю");
+}
+// Терміна в оригіналі немає · приклад не чіпаємо.
+if (G::contradicts("A simple sword", "Простий меч", $terms) !== null) {
+    $fail("приклад без терміна відкинуто");
+}
+// Однослівні назви поза фільтром: у глосарії поруч живуть Her -> Вона,
+// Week -> Місяць, GO -> ВПЕ, і вимагати їх у кожному прикладі означає стерти
+// здорові дані. Пропустити суперечність дешевше, ніж викинути правильний приклад.
+if (G::contradicts("Her husband waits", "Її чоловік чекає", $terms) !== null) {
+    $fail("однослівний термін почав викидати приклади");
+}
+$filtered = G::filter([
+    "h1" => [["en" => "A shop on Cheongsa Island", "ua" => "Крамниця на Острові Чхонса"]],
+    "h2" => [["en" => "A shop on Cheongsa Island", "ua" => "Крамниця на Острові Ліхтарів"]],
+], $terms);
+if ($filtered["dropped"] !== 1) $fail("відкинуто не один приклад: ".$filtered["dropped"]);
+if (isset($filtered["examples"]["h1"])) $fail("суперечливий приклад лишився в payload");
+if (! isset($filtered["examples"]["h2"])) $fail("здоровий приклад зник із payload");
+if ($filtered["terms"] !== ["Cheongsa Island"]) $fail("причина відкидання не названа");
+' "$ROOT/lib/autoload.php" || fail 'фільтр прикладів за глосарієм не тримає контракт'
+
+grep -Fq 'GlossaryExamples::filter' "$ROOT/cli/prepare/worker-payload.sh" \
+    || fail 'payload воркера не фільтрує приклади за глосарієм'
+grep -Fq 'відкинуто %d, що суперечать затвердженим термінам' "$ROOT/cli/prepare/worker-payload.sh" \
+    || fail 'відкидання прикладів мовчазне'
+
 # Один пачковий запит замість запиту на кожен рядок.
 grep -Fq '/rows/context' "$ROOT/cli/prepare/worker-payload.sh" || fail 'контекст береться не пачковим запитом'
 grep -Fq 'max_context_rows' "$ROOT/cli/prepare/worker-payload.sh" || fail 'ліміт пачки контексту зашитий у клієнт замість /me'

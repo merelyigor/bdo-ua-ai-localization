@@ -102,6 +102,7 @@ if [ "$WANT_CONTEXT" = 1 ]; then
         // Ліміт пачки контексту віддає сам сервер у `GET /me`
         // (`data.batch.max_context_rows`); зашивати 50 у клієнт не можна ·
         // власник міняє його змінною оточення без зміни коду.
+        require $argv[7];
         $rows = json_decode(file_get_contents($argv[1]), true, 512, JSON_THROW_ON_ERROR)["data"]["rows"] ?? [];
         $hashes = [];
         foreach ($rows as $row) {
@@ -208,6 +209,22 @@ if [ "$WANT_CONTEXT" = 1 ]; then
             }
         }
 
+        // Приклад, який суперечить затвердженому терміну, до моделі не їде.
+        //
+        // Рішення власника 2026-08-28. Приклади · це попередні переклади, серед
+        // яких лишились варіанти, зроблені ДО затвердження терміна. Модель
+        // бачила два джерела одразу (`terms` каже «Острів Ліхтарів», приклад
+        // показує «Острів Чхонса») і хоч що вибрала б, одне з двох порушувала:
+        // на пачці 20260828_131740 QA на цьому сперечалась із глосарієм.
+        $filtered = \Bdo\Translate\Quality\GlossaryExamples::filter($examples, array_values($terms));
+        $examples = $filtered["examples"];
+        if ($filtered["dropped"] > 0) {
+            // Мовчазне відкидання читалось би як «прикладів і не було».
+            fwrite(STDERR, sprintf(
+                "Приклади: відкинуто %d, що суперечать затвердженим термінам (%s)\n",
+                $filtered["dropped"], implode(", ", $filtered["terms"]),
+            ));
+        }
         file_put_contents($argv[4], json_encode($examples, JSON_UNESCAPED_UNICODE));
         if ($argv[6] !== "") {
             file_put_contents($argv[6], json_encode(array_values($terms), JSON_UNESCAPED_UNICODE));
@@ -222,7 +239,8 @@ if [ "$WANT_CONTEXT" = 1 ]; then
         if ($missing > 0) {
             fwrite(STDERR, sprintf("УВАГА: контексту немає для %d рядків із %d.\n", $missing, count($hashes)));
         }
-        ' "$ROWS_FILE" "$BDO_API_BASE" "$BDO_API_KEY" "$CONTEXT_FILE" "$SCRIPT_DIR/cli/api/http-request.sh" "$TERMS_FILE"
+        ' "$ROWS_FILE" "$BDO_API_BASE" "$BDO_API_KEY" "$CONTEXT_FILE" "$SCRIPT_DIR/cli/api/http-request.sh" "$TERMS_FILE" \
+          "$SCRIPT_DIR/lib/autoload.php"
     fi
 fi
 
