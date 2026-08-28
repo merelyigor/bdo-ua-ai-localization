@@ -7,104 +7,62 @@
             "routes": {
                 "translation-terminology": [
                     "ollama-local/qwen3.6:35b-a3b-mtp-q4_K_M",
-                    "ollama-local/qwen3.8:27b",
-                    "ollama-local/gemma4:12b",
-                    "ollama-local/gemma4:e4b",
-                    "ollama-local/qwen3.5:9b"
+                    "ollama-local/gemma4:26b"
                 ],
                 "translation-worker": [
                     "ollama-local/qwen3.6:35b-a3b-mtp-q4_K_M",
-                    "ollama-local/qwen3.8:27b",
-                    "ollama-local/gemma4:12b",
-                    "ollama-local/gemma4:e4b",
-                    "ollama-local/qwen3.5:9b"
+                    "ollama-local/gemma4:26b"
                 ],
                 "translation-qa": [
                     "ollama-local/qwen3.6:35b-a3b-mtp-q4_K_M",
-                    "ollama-local/qwen3.8:27b",
-                    "ollama-local/gemma4:12b",
-                    "ollama-local/gemma4:e4b",
-                    "ollama-local/qwen3.5:9b"
+                    "ollama-local/gemma4:26b"
                 ],
                 "translation-repair": [
                     "ollama-local/qwen3.6:35b-a3b-mtp-q4_K_M",
-                    "ollama-local/qwen3.8:27b",
-                    "ollama-local/gemma4:12b",
-                    "ollama-local/gemma4:e4b",
-                    "ollama-local/qwen3.5:9b"
+                    "ollama-local/gemma4:26b"
                 ],
                 "translation-smoke": [
                     "ollama-local/qwen3.6:35b-a3b-mtp-q4_K_M",
-                    "ollama-local/qwen3.8:27b",
-                    "ollama-local/gemma4:12b",
-                    "ollama-local/gemma4:e4b",
-                    "ollama-local/qwen3.5:9b"
+                    "ollama-local/gemma4:26b"
                 ],
                 "translation-judge": [
                     "ollama-local/qwen3.6:35b-a3b-mtp-q4_K_M",
-                    "ollama-local/qwen3.8:27b",
-                    "ollama-local/gemma4:12b",
-                    "ollama-local/gemma4:e4b",
-                    "ollama-local/qwen3.5:9b"
+                    "ollama-local/gemma4:26b"
                 ],
                 "translation-glossary": [
                     "ollama-local/qwen3.6:35b-a3b-mtp-q4_K_M",
-                    "ollama-local/qwen3.8:27b",
-                    "ollama-local/gemma4:12b",
-                    "ollama-local/gemma4:e4b",
-                    "ollama-local/qwen3.5:9b"
+                    "ollama-local/gemma4:26b"
                 ]
             },
             "paid_routes": [],
             "default_routes": {
                 "translation-terminology": [
                     "ollama-local/qwen3.6:35b-a3b-mtp-q4_K_M",
-                    "ollama-local/qwen3.8:27b",
-                    "ollama-local/gemma4:12b",
-                    "ollama-local/gemma4:e4b",
-                    "ollama-local/qwen3.5:9b"
+                    "ollama-local/gemma4:26b"
                 ],
                 "translation-worker": [
                     "ollama-local/qwen3.6:35b-a3b-mtp-q4_K_M",
-                    "ollama-local/qwen3.8:27b",
-                    "ollama-local/gemma4:12b",
-                    "ollama-local/gemma4:e4b",
-                    "ollama-local/qwen3.5:9b"
+                    "ollama-local/gemma4:26b"
                 ],
                 "translation-qa": [
                     "ollama-local/qwen3.6:35b-a3b-mtp-q4_K_M",
-                    "ollama-local/qwen3.8:27b",
-                    "ollama-local/gemma4:12b",
-                    "ollama-local/gemma4:e4b",
-                    "ollama-local/qwen3.5:9b"
+                    "ollama-local/gemma4:26b"
                 ],
                 "translation-repair": [
                     "ollama-local/qwen3.6:35b-a3b-mtp-q4_K_M",
-                    "ollama-local/qwen3.8:27b",
-                    "ollama-local/gemma4:12b",
-                    "ollama-local/gemma4:e4b",
-                    "ollama-local/qwen3.5:9b"
+                    "ollama-local/gemma4:26b"
                 ],
                 "translation-smoke": [
                     "ollama-local/qwen3.6:35b-a3b-mtp-q4_K_M",
-                    "ollama-local/qwen3.8:27b",
-                    "ollama-local/gemma4:12b",
-                    "ollama-local/gemma4:e4b",
-                    "ollama-local/qwen3.5:9b"
+                    "ollama-local/gemma4:26b"
                 ],
                 "translation-judge": [
                     "ollama-local/qwen3.6:35b-a3b-mtp-q4_K_M",
-                    "ollama-local/qwen3.8:27b",
-                    "ollama-local/gemma4:12b",
-                    "ollama-local/gemma4:e4b",
-                    "ollama-local/qwen3.5:9b"
+                    "ollama-local/gemma4:26b"
                 ],
                 "translation-glossary": [
                     "ollama-local/qwen3.6:35b-a3b-mtp-q4_K_M",
-                    "ollama-local/qwen3.8:27b",
-                    "ollama-local/gemma4:12b",
-                    "ollama-local/gemma4:e4b",
-                    "ollama-local/qwen3.5:9b"
+                    "ollama-local/gemma4:26b"
                 ]
             }
         },

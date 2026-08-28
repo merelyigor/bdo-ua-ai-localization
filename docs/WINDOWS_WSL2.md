@@ -120,8 +120,8 @@ Windows, PowerShell або пропонує `winget install PHP`, відкрит
 curl -fsS http://127.0.0.1:11434/v1/models | jq '.data[].id'
 ```
 
-Якщо в списку є лише `qwen3.5:9b`, не завантажуйте 35B заради перевірки: додайте
-в `.env` рядок `TRANSLATE_MODEL=ollama-local/qwen3.5:9b`.
+Якщо в списку є лише `gemma4:26b`, не завантажуйте 35B заради перевірки: додайте
+в `.env` рядок `TRANSLATE_MODEL=ollama-local/gemma4:26b`.
 
 Можна також задати профіль child-моделей у локальному `.env` через
 `TRANSLATE_MODEL_PROFILE=ollama-local`, `session-free` або
@@ -176,7 +176,7 @@ route із receipt. Він не має запускати `mode status patch`, �
 | Симптом | Причина | Дія |
 |---|---|---|
 | `PHP не знайдено` і пропонується `winget` | OpenCode працює не в WSL | Відкрити WSL-копію; встановити `php-cli` через `apt` |
-| Очікується 35B, але є `qwen3.5:9b` | Профіль указує іншу модель | `TRANSLATE_MODEL=ollama-local/qwen3.5:9b` у `.env` |
+| Очікується 35B, але є `gemma4:26b` | Профіль указує іншу модель | `TRANSLATE_MODEL=ollama-local/gemma4:26b` у `.env` |
 | Ollama працює у Windows, але WSL не бачить порт | Різні network namespaces | Налаштувати WSL networking або запустити Ollama у WSL |
 | Smoke показує patch status | Старі prompts/OpenCode не перезапущено | Оновити repo, перезапустити OpenCode, повторити smoke |
 | Route не той, що очікували | Інший активний профіль або `TRANSLATE_MODEL` | `./bdo profile status`, далі `.env` |

@@ -31,7 +31,7 @@ TRANSLATE_HOME="$TMP" php "$ROOT/cli/runtime/model-profile.php" env session-free
 test "$(jq -r '.fingerprint' "$TMP/.opencode/runtime-model-state.json")" = "$fingerprint"
 
 # Реальна зміна profile/model мусить дати інше покоління для restart-gate.
-TRANSLATE_HOME="$TMP" php "$ROOT/cli/runtime/model-profile.php" env ollama-local ollama-local/qwen3.5:9b free >/dev/null
+TRANSLATE_HOME="$TMP" php "$ROOT/cli/runtime/model-profile.php" env ollama-local ollama-local/gemma4:26b free >/dev/null
 test "$(jq -r '.fingerprint' "$TMP/.opencode/runtime-model-state.json")" != "$fingerprint"
 TRANSLATE_HOME="$TMP" php "$ROOT/cli/runtime/model-profile.php" env session-free opencode/big-pickle free >/dev/null
 

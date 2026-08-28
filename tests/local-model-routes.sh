@@ -43,12 +43,14 @@ php -r '
 $policy = json_decode(file_get_contents($argv[1]), true, 512, JSON_THROW_ON_ERROR);
 $fail = static function (string $m): void { fwrite(STDERR, "FAIL: $m\n"); exit(1); };
 $profile = $policy["profiles"]["ollama-local"];
+// Рішення власника 2026-08-28: локально дозволені рівно дві моделі. `qwen3.5:9b`
+// прибрано (багато помилок на прогоні), а `qwen3.8:27b`, `gemma4:12b` і
+// `gemma4:e4b` у `ollama list` власника взагалі немає · маршрут на незавантажену
+// модель дає порожню дочірню сесію без помилки, тобто рівно ту яму, заради якої
+// цей тест і написаний.
 $expected = [
     "ollama-local/qwen3.6:35b-a3b-mtp-q4_K_M",
-    "ollama-local/qwen3.8:27b",
-    "ollama-local/gemma4:12b",
-    "ollama-local/gemma4:e4b",
-    "ollama-local/qwen3.5:9b",
+    "ollama-local/gemma4:26b",
 ];
 foreach (["routes", "default_routes"] as $key) {
     foreach ($profile[$key] as $role => $routes) {
@@ -74,7 +76,7 @@ out="$(TRANSLATE_HOME="$HOME_DIR" php "$ROOT/cli/runtime/model-profile.php" \
 }
 printf '%s' "$out" | grep -Fq 'не є маршрутом профілю' || fail "незрозуміла причина відмови: $out"
 TRANSLATE_HOME="$HOME_DIR" php "$ROOT/cli/runtime/model-profile.php" \
-    env ollama-local ollama-local/qwen3.8:27b free >/dev/null \
+    env ollama-local ollama-local/gemma4:26b free >/dev/null \
     || fail 'модель зі списку маршрутів має прийматись'
 # Хмарну модель, якої немає в маршрутах, обмеження не стосується.
 TRANSLATE_HOME="$HOME_DIR" php "$ROOT/cli/runtime/model-profile.php" \

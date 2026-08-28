@@ -97,8 +97,8 @@ session, яку можна відкрити з батьківської. Її JS
 
 У Windows OpenCode та репозиторій мають бути відкриті через WSL2. Залежності
 ставляться всередині WSL (`sudo apt install php-cli jq curl git shellcheck`), а
-не через `winget`. Якщо вже встановлено лише `qwen3.5:9b`, після PHP додайте в `.env`
-`TRANSLATE_MODEL_PROFILE=ollama-local` і `TRANSLATE_MODEL=ollama-local/qwen3.5:9b`;
+не через `winget`. Якщо вже встановлено лише `gemma4:26b`, після PHP додайте в `.env`
+`TRANSLATE_MODEL_PROFILE=ollama-local` і `TRANSLATE_MODEL=ollama-local/gemma4:26b`;
 завантажувати 35B модель заради smoke не обовʼязково.
 
 ## Пов'язані проєкти
