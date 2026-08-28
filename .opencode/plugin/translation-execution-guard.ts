@@ -84,6 +84,28 @@ function registryPatterns(directory: string): RegExp[] {
 // будь-який MCP і будь-який спосіб запустити процес поза `./bdo`.
 const SAFE_TOOLS = new Set(["bash", "read", "glob", "grep", "list", "task", "translation_result"])
 
+// Рівно ті ролі, які має дозволяти `templates/opencode.json`. Список тут
+// дублюється навмисно: guard не має покладатись на те, що конфіг дозволів
+// коректний · саме він і є останньою межею.
+const CHILD_ROLES = new Set([
+  "translation-terminology",
+  "translation-worker",
+  "translation-qa",
+  "translation-repair",
+  "translation-judge",
+  "translation-smoke",
+])
+
+/** Роль зі staged envelope · щоб відмова називала, чого саме чекає рушій. */
+function stagedRole(directory: string): string | undefined {
+  try {
+    const next = JSON.parse(readFileSync(join(directory, "state/next-child.json"), "utf8")) as { role?: string }
+    return typeof next.role === "string" && next.role !== "" ? next.role : undefined
+  } catch {
+    return undefined
+  }
+}
+
 // Послідовність дозволених команд через `&&` приймається як одна.
 //
 // Причина не в зручності. Диригент природно обʼєднує два сусідні кроки промпта
@@ -238,6 +260,27 @@ export const TranslationExecutionGuard: Plugin = async ({ client, directory }) =
           input.sessionID,
           `Tool ${input.tool} is unavailable in translation primary. Use native OpenCode task for subagents.`,
         )
+      }
+      // Task БЕЗ ролі створює некерованого агента.
+      //
+      // 2026-08-28, сесія власника: диригент видав `task` без `subagent_type` і
+      // без `prompt`. Обидва плагіни його пропустили · child-contract виходить
+      // раніше, бо роль не translation-*, а цей guard перевіряв лише
+      // translation-ролі. OpenCode створив звичайного агента, він завис у
+      // `pending`, пачка лишилась в `awaiting_worker`, а токени пішли в сесію,
+      // якої ніхто не контролює. Дозволені рівно шість ролей і жодної іншої.
+      if (input.tool === "task") {
+        const role = String(output.args?.subagent_type ?? "").trim()
+        if (!CHILD_ROLES.has(role)) {
+          const next = stagedRole(directory)
+          await refuse(
+            input.sessionID,
+            `Task без дозволеної ролі: subagent_type=${role === "" ? "порожній" : role}. `
+            + `Дозволені лише: ${[...CHILD_ROLES].join(", ")}.`
+            + (next ? ` Staged envelope чекає ${next}.` : "")
+            + " Виправ аргументи й повтори Task один раз.",
+          )
+        }
       }
       if (input.tool === "task" && /^translation-/.test(String(output.args?.subagent_type ?? ""))) {
         if (!bootState) {

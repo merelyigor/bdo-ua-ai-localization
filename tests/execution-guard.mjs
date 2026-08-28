@@ -159,6 +159,36 @@ const refuse = async (before, input, args, what) => {
   if (!other.includes("unavailable in translation primary")) throw new Error(`wrong refusal for a foreign tool: ${other}`)
 }
 
+// Task БЕЗ дозволеної ролі мусить бути відхилений.
+//
+// 2026-08-28: диригент видав `task` без `subagent_type` і без `prompt`. Обидва
+// плагіни його пропустили (child-contract виходить раніше, бо роль не
+// translation-*), OpenCode створив звичайного агента, той завис у `pending`,
+// пачка лишилась в `awaiting_worker`, а токени пішли в неконтрольовану сесію.
+{
+  const { before, directory } = await makeGuard()
+  mkdirSync(join(directory, "state"), { recursive: true })
+  writeFileSync(join(directory, "state/next-child.json"), JSON.stringify({
+    kind: "child", role: "translation-worker",
+    payload_path: `${directory}/state/p.json`, response_path: `${directory}/state/r.json`,
+  }))
+  for (const bad of [undefined, "", "general", "build", "translation-unknown"]) {
+    let message = ""
+    await before(
+      { tool: "task", sessionID: `no-role-${bad ?? "none"}`, callID: "c" },
+      { args: bad === undefined ? { description: "d" } : { subagent_type: bad, description: "d" } },
+    ).catch((error) => { message = String(error) })
+    if (!message.includes("Task без дозволеної ролі")) {
+      throw new Error(`task with subagent_type=${bad} was accepted: ${message}`)
+    }
+    if (!message.includes("translation-worker")) {
+      throw new Error("refusal must name the role the staged envelope expects")
+    }
+  }
+  // Дозволені ролі проходять як раніше.
+  await before({ tool: "task", sessionID: "ok-role", callID: "c" }, { args: { subagent_type: "translation-worker" } })
+}
+
 // Model runtime restart-gate: Task дозволений лише з fingerprint, який OpenCode
 // бачив під час старту plugin instance.
 {
