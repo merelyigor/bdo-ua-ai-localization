@@ -157,6 +157,12 @@ check_rules() {
         || fail 'норматив не визначає handoff серверної API-зміни'
     grep -Fq 'найслабшу дозволену модель' AGENTS.md \
         || fail 'AGENTS.md не вимагає prompt compatibility зі слабкими моделями'
+    # Рішення власника 2026-08-28: знання моделі про гру є ресурсом, але не
+    # джерелом відповідника. Без другої половини правило небезпечне.
+    grep -Fq 'офіційна українська локалізація Black Desert Online' AGENTS.md \
+        || fail 'AGENTS.md не фіксує рамку задачі для child'
+    grep -Fq '§8.13 Child-prompt задає рамку задачі' docs/AI_AGENT_RULES_REFERENCE.md \
+        || fail 'норматив не фіксує рамку задачі child'
     grep -Fq 'Prompts сумісні зі слабкою моделлю' .opencode/critical-rules.md \
         || fail 'critical-rules не має контракту prompt compatibility'
     grep -Fq '§8.8 Primary і child prompts' docs/AI_AGENT_RULES_REFERENCE.md \
