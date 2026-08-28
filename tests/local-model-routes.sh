@@ -50,7 +50,6 @@ $profile = $policy["profiles"]["ollama-local"];
 // цей тест і написаний.
 $expected = [
     "ollama-local/qwen3.6:35b-a3b-mtp-q4_K_M",
-    "ollama-local/gemma4:26b",
     "ollama-local/gemma4:26b-a4b-it-mtp-q4_K_M",
     "ollama-local/gemma4:26b-a4b-it-q4_K_M",
 ];
@@ -78,7 +77,7 @@ out="$(TRANSLATE_HOME="$HOME_DIR" php "$ROOT/cli/runtime/model-profile.php" \
 }
 printf '%s' "$out" | grep -Fq 'не є маршрутом профілю' || fail "незрозуміла причина відмови: $out"
 TRANSLATE_HOME="$HOME_DIR" php "$ROOT/cli/runtime/model-profile.php" \
-    env ollama-local ollama-local/gemma4:26b free >/dev/null \
+    env ollama-local ollama-local/gemma4:26b-a4b-it-mtp-q4_K_M free >/dev/null \
     || fail 'модель зі списку маршрутів має прийматись'
 # Хмарну модель, якої немає в маршрутах, обмеження не стосується.
 TRANSLATE_HOME="$HOME_DIR" php "$ROOT/cli/runtime/model-profile.php" \

@@ -40,8 +40,8 @@ curl -fsS -m 5 "$OLLAMA_URL/v1/models" 2>/dev/null \
     | jq -e --arg m "$MODEL" '.data[] | select(.id == $m)' >/dev/null \
     || {
         echo "FAIL: $OLLAMA_URL не відповідає або моделі $MODEL немає."
-        if curl -fsS -m 5 "$OLLAMA_URL/v1/models" 2>/dev/null | jq -e '.data[] | select(.id == "gemma4:26b")' >/dev/null; then
-            echo 'Наявна друга дозволена модель. Перемкни без завантаження 35B: TRANSLATE_MODEL=ollama-local/gemma4:26b у .env, далі ./bdo env'
+        if curl -fsS -m 5 "$OLLAMA_URL/v1/models" 2>/dev/null | jq -e '.data[] | select(.id == "gemma4:26b-a4b-it-mtp-q4_K_M")' >/dev/null; then
+            echo 'Наявна друга дозволена модель. Перемкни без завантаження 35B: TRANSLATE_MODEL=ollama-local/gemma4:26b-a4b-it-mtp-q4_K_M у .env, далі ./bdo env'
         else
             echo "Завантаж модель: ollama pull $MODEL"
         fi
