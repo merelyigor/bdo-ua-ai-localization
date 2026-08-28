@@ -51,6 +51,8 @@ $profile = $policy["profiles"]["ollama-local"];
 $expected = [
     "ollama-local/qwen3.6:35b-a3b-mtp-q4_K_M",
     "ollama-local/gemma4:26b",
+    "ollama-local/gemma4:26b-a4b-it-mtp-q4_K_M",
+    "ollama-local/gemma4:26b-a4b-it-q4_K_M",
 ];
 foreach (["routes", "default_routes"] as $key) {
     foreach ($profile[$key] as $role => $routes) {
