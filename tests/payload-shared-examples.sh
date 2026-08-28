@@ -101,4 +101,11 @@ done
 grep -Fq 'BDO_SESSION_HINT_BATCHES' "$ROOT/cli/run/run-drive.sh" \
     || fail 'рушій не нагадує почати нову сесію після N пачок'
 
+# Вага payload, що осідає в транскрипті, рахується точно · це не оцінка.
+grep -Fq 'session-load.json' "$ROOT/cli/run/run-drive.sh" || fail 'вага staged payload ніде не рахується'
+grep -Fq 'BDO_SESSION_HINT_BYTES' "$ROOT/cli/run/run-drive.sh" || fail 'поріг нагадування не залежить від ваги payload'
+# Суддя бачить ту саму форму, що воркер і QA: одна форма · одне правило.
+grep -Fq '"examples" => $sharedExamples' "$ROOT/cli/prepare/judge-payload.sh" \
+    || fail 'payload судді лишився з дубльованими прикладами'
+
 echo 'payload shared examples: OK'

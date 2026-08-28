@@ -56,7 +56,11 @@ use Bdo\Translate\Pipeline\JudgePolicy;
 use Bdo\Translate\Quality\Defects;
 use Bdo\Translate\Batch\RowSet;
 
+// Payload судді від 2026-08-28 має ту саму форму, що й у воркера та QA:
+// `{examples?, items}`. Приклади винесені у спільний блок, бо в пачці вони
+// повторюються дослівно, а кожен їхній байт осідає в транскрипті диригента.
 $payload = json_decode((string) file_get_contents($argv[1]), true);
+$payload = $payload["items"] ?? $payload;
 $hashes = array_column($payload, "identity_hash");
 
 // 1. Судити треба РІВНО спірний рядок: clean PASS не стає спірним лише через

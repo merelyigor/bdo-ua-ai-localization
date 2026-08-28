@@ -49,6 +49,8 @@ if ($argv[5] !== "" && file_exists($argv[5])) {
     $examplesByHash = json_decode((string) file_get_contents($argv[5]), true) ?: [];
 }
 
+$sharedExamples = [];
+$sharedSeen = [];
 $payload = [];
 $stats = ["identical" => 0, "unresolved" => 0, "qa" => 0, "mechanical" => 0];
 foreach ($rows as $row) {
@@ -81,7 +83,14 @@ foreach ($rows as $row) {
     if ($pending !== []) $item["canonical_pending"] = $pending;
     $limits = $row->limits();
     if ($limits !== null) $item["limits"] = $limits;
-    if (! empty($examplesByHash[$hash])) $item["examples"] = $examplesByHash[$hash];
+    // Приклади в payload судді теж спільні: у пачці вони повторюються дослівно,
+    // а кожен байт тут осідає в транскрипті диригента назавжди.
+    if (! empty($examplesByHash[$hash])) {
+        foreach ($examplesByHash[$hash] as $example) {
+            $key = json_encode($example, JSON_UNESCAPED_UNICODE);
+            if (! isset($sharedSeen[$key])) { $sharedSeen[$key] = true; $sharedExamples[] = $example; }
+        }
+    }
     if (strtoupper($status) !== "PASS") {
         $item["qa"] = ["status" => $status, "severity" => $severity, "issue" => (string) ($verdict["issue"] ?? "")];
         $stats["qa"]++;
@@ -92,7 +101,8 @@ foreach ($rows as $row) {
     $payload[] = $item;
 }
 
-echo json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR), "\n";
+$out = $sharedExamples === [] ? ["items" => $payload] : ["examples" => $sharedExamples, "items" => $payload];
+echo json_encode($out, JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR), "\n";
 fwrite(STDERR, sprintf(
     "payload судді: %d спірних рядків | переклад=джерело %d | нерозпізнані назви %d | вердикт QA %d | механічні (без судді, у модерацію) %d\n",
     count($payload), $stats["identical"], $stats["unresolved"], $stats["qa"], $stats["mechanical"]));

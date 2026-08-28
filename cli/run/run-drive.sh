@@ -227,8 +227,18 @@ completion() {
     $done=count($run["batches"]);
     $every=(int)(getenv("BDO_SESSION_HINT_BATCHES")?:5);
     $out=["kind"=>"complete","batch"=>$summary,"run"=>$run["totals"]];
-    if($every>0&&$done>0&&$done%$every===0){
-        $out["hint"]="Пачок у цій сесії: $done. Почни НОВУ сесію режиму перед наступною пачкою: транскрипт диригента росте квадратично, а стан пачки лежить на диску й не втрачається.";
+    // Поріг у БАЙТАХ, а не лише в пачках: контекст заповнює саме вага payload,
+    // і вона різна для пачки з 6 і з 50 рядків. Вагу рахує `child()` під час
+    // диспетчера · це не оцінка, а точний розмір staged файла.
+    $ledgerFile=dirname($argv[4])."/session-load.json";
+    $ledger=is_file($ledgerFile)?json_decode((string)file_get_contents($ledgerFile),true):null;
+    $staged=is_array($ledger)?(int)($ledger["staged_bytes"]??0):0;
+    $limitBytes=(int)(getenv("BDO_SESSION_HINT_BYTES")?:600000);
+    if(($every>0&&$done>0&&$done%$every===0)||($limitBytes>0&&$staged>=$limitBytes)){
+        $out["hint"]=sprintf(
+            "Пачок у прогоні: %d, у транскрипт диригента пішло %d КБ payload. Почни НОВУ сесію режиму перед наступною пачкою: прибрати цю вагу з відкритої сесії неможливо, а стан пачки лежить на диску й нічого не втрачається.",
+            $done, (int) round($staged/1024));
+        $out["staged_kb"]=(int) round($staged/1024);
     }
     echo json_encode($out,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES);
     ' "$B/batch-summary.json" "$B/commit-report.txt" "$B/manifest.json" "$STATE_DIR/run-summary.json" "$(basename "$B")"
@@ -417,7 +427,9 @@ judge_or_commit() {
     fi
     "$SCRIPT_DIR/cli/prepare/judge-payload.sh" "$rows" "$candidate" "$verdicts" "$validate" > "$B/judge-payload.json" 2>/dev/null || echo '[]' > "$B/judge-payload.json"
     local disputed
-    disputed="$(php -r '$a=json_decode((string)file_get_contents($argv[1]),true);echo is_array($a)?count($a):0;' "$B/judge-payload.json")"
+    # Payload судді має форму `{examples?, items}` від 2026-08-28; стара форма
+    # (голий масив) лишається читабельною для пачок, що вже в польоті.
+    disputed="$(php -r '$a=json_decode((string)file_get_contents($argv[1]),true);$a=$a["items"]??$a;echo is_array($a)?count($a):0;' "$B/judge-payload.json")"
     if [ "${disputed:-0}" -gt 0 ]; then
         transition awaiting_judge
         child awaiting_judge translation-judge "$B/judge-payload.json" "$B/judge-verdicts.json"
