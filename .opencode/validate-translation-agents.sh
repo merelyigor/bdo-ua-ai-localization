@@ -187,6 +187,25 @@ declare -A MAX_LINES=(
     # пропатчити StateMachine.php через `php -r`).
     [патч]=170 [ручний]=170 [пропозиції]=170 [покращення-ші]=180
 )
+# Кожен child мусить знати, ЩО він перекладає.
+#
+# До 2026-08-28 гра не згадувалась у промптах узагалі, крім правила
+# «`Black Desert` не перекладай». Модель отримувала рядок без жодної рамки й не
+# мала підстав задіяти те, що знає про цю гру з навчання. Рамка додана разом із
+# прямою межею: знання гри · для РОЗУМІННЯ сенсу, відповідник дає лише глосарій,
+# а спогад про російську локалізацію не переноситься (саме звідти русизми).
+for agent in translation-worker translation-qa translation-repair translation-judge translation-terminology; do
+    grep -Fq 'КОНТЕКСТ РОБОТИ: це офіційна українська локалізація гри Black Desert Online' \
+        "$ROOT/.opencode/agent-templates/$agent.md" || {
+        printf 'ERROR: child %s не знає, яку саме гру перекладає\n' "$agent" >&2
+        exit 1
+    }
+    grep -Fq 'Джерелом відповідника' "$ROOT/.opencode/agent-templates/$agent.md" || {
+        printf 'ERROR: child %s не має межі «знання гри не заміняє глосарій»\n' "$agent" >&2
+        exit 1
+    }
+done
+
 for agent in "${!MAX_LINES[@]}"; do
     lines="$(wc -l < "$ROOT/.opencode/agents/$agent.md" | tr -d ' ')"
     test "$lines" -le "${MAX_LINES[$agent]}" || {
