@@ -91,4 +91,35 @@ grep -Fq '"session ' "$ROOT/cli/command-registry.json" || fail 'команда s
 grep -Fq 'session)    sh_run cli/audit/session-tail.sh' "$ROOT/bdo" || fail 'dispatcher не знає команди session'
 grep -Fq 'state.error' "$ROOT/cli/audit/session-tail.sh" || fail 'дебаг сесії не показує причин відмов'
 
+# 7. Регістр затвердженого терміна виправляється КОДОМ, а не людиною.
+#    Заміряно на пачці 2026-08-28 (патч 7, `knowledge`): з 11 рядків у модерації
+#    3 були саме цим · `записи`, `бамбук`, `рік` з малої літери. Різниця лише у
+#    великій літері однозначна, тому людині там нема що вирішувати.
+CASE_H="$(printf '%064d' 7)"
+cat > "$TMP/case-rows.json" <<JSON
+{"data":{"rows":[{"identity_hash":"$CASE_H","source_hash":"z","source_text":"Bamboo Records",
+ "glossary":{"terms":[{"canonical_source":"Bamboo","ukrainian":"Бамбук"},
+                      {"canonical_source":"Records","ukrainian":"Записи"}]}}]}}
+JSON
+printf '[{"identity_hash":"%s","text":"бамбук та записи року"}]' "$CASE_H" > "$TMP/case-cand.json"
+bash "$ROOT/cli/quality/normalize-candidate.sh" "$TMP/case-cand.json" "$TMP/case-rows.json" \
+    > "$TMP/case-clean.json" 2>/dev/null || fail 'нормалізація кандидата впала'
+jq -e '.[0].text == "Бамбук та Записи року"' "$TMP/case-clean.json" >/dev/null \
+    || fail "регістр глосарія не виправлено: $(jq -r '.[0].text' "$TMP/case-clean.json")"
+php -r '
+require $argv[1];
+use Bdo\Translate\Batch\RowSet;
+use Bdo\Translate\Quality\Defects;
+$rows = RowSet::fromFile($argv[2]);
+$before = json_decode(file_get_contents($argv[3]), true)[0]["text"];
+$after = json_decode(file_get_contents($argv[4]), true)[0]["text"];
+$row = $rows->getOrEmpty($argv[5]);
+if (count(Defects::inTranslation($row, $before)) === 0) { fwrite(STDERR, "FAIL: тест не відтворює дефект\n"); exit(1); }
+if (Defects::inTranslation($row, $after) !== []) { fwrite(STDERR, "FAIL: після виправлення дефект лишився\n"); exit(1); }
+' "$ROOT/lib/autoload.php" "$TMP/case-rows.json" "$TMP/case-cand.json" "$TMP/case-clean.json" "$CASE_H" \
+    || fail 'виправлення регістру не знімає механічного дефекту'
+# Рушій мусить передавати рядки, інакше виправлення не вмикається.
+grep -Fq 'normalize-candidate.sh" "$B/full.json" "$B/rows.json"' "$ROOT/cli/run/run-drive.sh" \
+    || fail 'рушій не дає нормалізації глосарій рядка'
+
 echo 'mechanical before qa: OK'

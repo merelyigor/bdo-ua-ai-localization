@@ -309,7 +309,7 @@ candidate_to_qa() {
     if [ -s "$B/twins.json" ] && [ -s "$B/memory-candidate.json" ]; then
         "$SCRIPT_DIR/cli/prepare/memory-expand.sh" "$B/candidate.json" "$B/twins.json" "$B/memory-candidate.json" > "$B/full.json" 2>/dev/null
     else cp "$B/candidate.json" "$B/full.json"; fi
-    "$SCRIPT_DIR/cli/quality/normalize-candidate.sh" "$B/full.json" > "$B/clean.json" 2>/dev/null
+    "$SCRIPT_DIR/cli/quality/normalize-candidate.sh" "$B/full.json" "$B/rows.json" > "$B/clean.json" 2>/dev/null
     "$SCRIPT_DIR/cli/quality/build-items.sh" "$B/rows.json" "$B/clean.json" "$B/items.json" "" --require-all >/dev/null
     "$SCRIPT_DIR/cli/quality/check-russianisms.sh" "$B/clean.json" "$B/rows.json" >/dev/null 2>&1 || true
     if [ "${BDO_PIPELINE_OFFLINE:-0}" != 1 ]; then validate="$($SCRIPT_DIR/cli/api/validate.sh "$B/items.json" 2>&1 || true)"; fi

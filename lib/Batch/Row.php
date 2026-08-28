@@ -154,6 +154,31 @@ final class Row
      *
      * @return list<string>
      */
+    /**
+     * Привести регістр затверджених термінів до канонічного.
+     *
+     * Це не стилістика й не здогад: різниця ЛИШЕ у великій літері, а канонічну
+     * форму задає сам глосарій. Заміряно на живій пачці 2026-08-28 (патч 7,
+     * `knowledge`): з 11 рядків, що пішли в модерацію, 3 були саме цим ·
+     * `Записи`, `Бамбук`, `Рік` з малої літери. Людина в модерації не мала там
+     * що вирішувати, а рядок губив цілий цикл лікування.
+     *
+     * Правило симетричне до {@see glossaryCaseViolations()}: заміняється лише
+     * той збіг, який ця перевірка і назвала б дефектом.
+     */
+    public function fixGlossaryCase(string $text): string
+    {
+        foreach ($this->glossary() as $approved) {
+            if ($approved === '' || mb_strtolower($approved) === $approved) {
+                continue;
+            }
+            $pattern = '/(?<![\p{L}])'.preg_quote($approved, '/').'(?![\p{L}])/iu';
+            $text = preg_replace($pattern, $approved, $text) ?? $text;
+        }
+
+        return $text;
+    }
+
     public function glossaryCaseViolations(string $text): array
     {
         $found = [];
