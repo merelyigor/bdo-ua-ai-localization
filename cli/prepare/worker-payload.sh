@@ -232,6 +232,43 @@ foreach ($examplesByHash as $list) {
     }
 }
 
+
+// Бюджет на приклади в БАЙТАХ, а не в штуках.
+//
+// Заміряно 2026-08-28 на живій пачці (патч 7, `knowledge`, 20 рядків):
+// приклади · 8 351 байт із 14 007, тобто 59% payload. Розподіл різко
+// нерівний: 230, 240, 254, 388, 402, 405, 459, 472, 484, 625, 1675, 2693.
+// Два найдовші важать 52% усіх прикладів · це цілі довгі описи предметів,
+// які як few-shot дають не більше за короткі, але витісняють їх з бюджету.
+//
+// Перевірена гіпотеза, яка НЕ підтвердилась: прибрати приклади для рядків,
+// повністю покритих глосарієм. Таких немає структурно · `en` прикладу є цілим
+// рядком гри, а не назвою терміна, тому збіг із `canonical_source` дорівнює
+// нулю (заміряно: 0 із 12).
+//
+// Тому відбір іде від КОРОТШИХ: за той самий бюджет модель бачить більше
+// різних прикладів. Відкинуте називається прямо · мовчазне обрізання читалось
+// би як «прикладів більше не було».
+$budget = (int) (getenv("BDO_EXAMPLES_BUDGET") ?: 4000);
+if ($budget > 0) {
+    usort($sharedExamples, static fn (array $a, array $b): int
+        => strlen(json_encode($a, JSON_UNESCAPED_UNICODE)) <=> strlen(json_encode($b, JSON_UNESCAPED_UNICODE)));
+    $kept = [];
+    $used = 0;
+    $skipped = 0;
+    foreach ($sharedExamples as $example) {
+        $size = strlen(json_encode($example, JSON_UNESCAPED_UNICODE));
+        if ($used + $size > $budget && $kept !== []) { $skipped++; continue; }
+        $kept[] = $example;
+        $used += $size;
+    }
+    if ($skipped > 0) {
+        fwrite(STDERR, sprintf("Приклади: лишено %d із %d у межах %d байтів (відкинуто %d найдовших)\n",
+            count($kept), count($sharedExamples), $budget, $skipped));
+    }
+    $sharedExamples = $kept;
+}
+
 $payload = [];
 $stats = ["glossary" => 0, "pending" => 0, "unresolved" => 0, "examples" => 0, "limits" => 0];
 foreach ($rows as $row) {

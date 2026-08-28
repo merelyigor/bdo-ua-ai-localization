@@ -49,6 +49,29 @@ printf '%s' "$out" | jq -e '.items | length == 3' >/dev/null || fail 'загуб
 printf '%s' "$out" | jq -e '[.examples[].en] | sort == ["Iron Ore","Steel Ore"]' >/dev/null \
     || fail 'дедуплікація загубила приклад'
 
+# Бюджет на приклади: відбір іде від КОРОТШИХ, щоб за ті самі байти модель
+# бачила більше різних прикладів. Заміряно на живій пачці: приклади · 59%
+# payload, і два найдовші важили 52% усіх прикладів.
+cat > "$TMP/state/batches/b/context.json" <<JSON
+{"$H1":[{"en":"short one","ua":"короткий"},{"en":"$(printf 'x%.0s' {1..900})","ua":"довгий"}],
+ "$H2":[{"en":"short two","ua":"другий"}]}
+JSON
+out="$(BDO_EXAMPLES_BUDGET=200 build)" || fail 'payload із бюджетом прикладів не зібрався'
+printf '%s' "$out" | jq -e '[.examples[].ua] | index("довгий") == null' >/dev/null \
+    || fail 'найдовший приклад не відкинуто попри бюджет'
+printf '%s' "$out" | jq -e '.examples | length >= 1' >/dev/null || fail 'бюджет викинув геть усе'
+grep -q 'відкинуто .* найдовших' "$TMP/err.txt" || fail 'про відкинуті приклади не сказано у звіті'
+# Бюджет 0 вимикає відбір · власник може повернути стару поведінку одним рядком.
+out="$(BDO_EXAMPLES_BUDGET=0 build)" || fail 'вимкнений бюджет ламає payload'
+printf '%s' "$out" | jq -e '[.examples[].ua] | index("довгий") != null' >/dev/null \
+    || fail 'вимкнений бюджет усе одно ріже приклади'
+# Повертаємо початковий контекст для решти перевірок.
+cat > "$TMP/state/batches/b/context.json" <<JSON
+{"$H1":[{"en":"Iron Ore","ua":"Залізна руда"}],
+ "$H2":[{"en":"Iron Ore","ua":"Залізна руда"}],
+ "$H3":[{"en":"Iron Ore","ua":"Залізна руда"},{"en":"Steel Ore","ua":"Сталева руда"}]}
+JSON
+
 # Стеля існує й про відкинуте пишеться ПРЯМО: мовчазне обрізання читалось би як
 # «прикладів більше не було».
 out="$(BDO_SHARED_EXAMPLES=1 build)" || fail 'payload зі стелею 1 не зібрався'
