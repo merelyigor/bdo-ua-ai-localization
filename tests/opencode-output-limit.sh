@@ -47,7 +47,7 @@ d=json.load(io.open(sys.argv[1],encoding="utf-8"))   # падає, якщо фа
 local=d["provider"]["ollama-local"]["models"]
 for name, entry in local.items():
     got=entry["limit"]["output"]
-    if got != 65536: raise SystemExit(f"FAIL: {name} має стелю {got} замість 65536")
+    if got != 131072: raise SystemExit(f"FAIL: {name} має стелю {got} замість 131072")
 if d["provider"]["opencode"]["models"]["big-pickle"]["limit"]["output"] != 8192:
     raise SystemExit("FAIL: чужому провайдеру змінили стелю")
 PY

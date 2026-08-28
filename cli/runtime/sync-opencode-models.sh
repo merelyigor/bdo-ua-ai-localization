@@ -151,7 +151,7 @@ foreach ($parsed["provider"] ?? [] as $provider => $conf) {
         $context = (int) ($entry["limit"]["context"] ?? 0);
         $output = (int) ($entry["limit"]["output"] ?? 0);
         if ($context <= 0 || $output <= 0) continue;
-        $want = min(65536, max(16384, intdiv($context, 4)));
+        $want = min(131072, max(16384, intdiv($context, 2)));
         if ($output < $want) {
             $staleLimits[] = [$provider, $model, $output, $want];
             printf("%s%s/%s: стеля виходу %d, а вікно дозволяє %d\n", $pad("СТЕЛЯ"), $provider, $model, $output, $want);
@@ -237,7 +237,14 @@ foreach ($missing as $provider => $models) {
         // невалідним JSON, пачка тричі поверталась на той самий крок. Вхід у
         // тій сесії був 20 221 токен при вікні 262 144 · тобто впиралися ми у
         // власну константу, а не в модель.
-        $output = min(65536, max(16384, intdiv($context, 4)));
+        //
+        // Половина вікна (рішення власника 2026-08-29). Зациклень у 330
+        // дитячих сесіях не було жодного, найдовша чесна відповідь · 16 967
+        // токенів, тому запас тут майже восьмикратний. Але нуль ставити не
+        // можна: `limit.output` ще й резервує місце з вікна, і оголосивши
+        // виходом усе вікно, ми лишили б без бюджету ВХІД · а обрізаний вхід
+        // означає, що модель мовчки не побачить частину пачки.
+        $output = min(131072, max(16384, intdiv($context, 2)));
 
         $entry = sprintf(
             "\n        %s: {\n          \"name\": %s,\n          \"limit\": {\n            \"context\": %d,\n            \"output\": %d\n          },\n          \"cost\": {\n            \"input\": 0.0,\n            \"output\": 0.0,\n            \"cache_read\": 0.0\n          }\n        },",
