@@ -58,15 +58,33 @@ echo "OK"
 echo -n "2. формат відповіді перевіряється кроком 4... "
 echo "OK"
 
-echo -n "3. thinking вимикається... "
+# Крок 3 бере ЕФЕКТИВНЕ значення з `.env`, а не зашите `none`.
+#
+# Раніше проба завжди слала `reasoning_effort: none` і завжди була зелена ·
+# зокрема тоді, коли в `.env` стояло `off`, і плагін не слав НІЧОГО. Для
+# думальної моделі «нічого» означає думати: 2026-08-28 `qwen3.6` віддавав усе в
+# `reasoning`, лишав `content` порожнім, і child «падав» без помилки, поки
+# перевірка показувала OK. Перевірка мусить іти тим самим шляхом, що й робота.
+EFFORT="$(php -r '
+$file = getenv("TRANSLATE_ENV_FILE") ?: $argv[1];
+$raw = null;
+foreach (@file($file) ?: [] as $line) {
+    if (preg_match("~^\s*(?:export\s+)?BDO_REASONING_EFFORT\s*=\s*(.*)$~", $line, $m)) $raw = $m[1];
+}
+$v = strtolower(trim(explode("#", (string) ($raw ?? "none"))[0], " \"\x27\t\n"));
+echo $v === "" ? "none" : $v;
+' "$SCRIPT_DIR/.env")"
+echo -n "3. thinking вимикається (BDO_REASONING_EFFORT=$EFFORT)... "
 php -r '
-$payload = json_encode([
+$body = [
     "model" => $argv[1],
     "temperature" => 0,
     "max_tokens" => 60,
-    "reasoning_effort" => "none",
     "messages" => [["role" => "user", "content" => "Скажи одним словом: готово"]],
-]);
+];
+// `off` означає «поле не надсилати» · саме так і перевіряємо.
+if ($argv[3] !== "off") $body["reasoning_effort"] = $argv[3];
+$payload = json_encode($body);
 $ctx = stream_context_create(["http" => [
     "method" => "POST", "header" => "Content-Type: application/json",
     "content" => $payload, "timeout" => 120, "ignore_errors" => true,
@@ -76,10 +94,18 @@ $d = json_decode((string) $raw, true);
 $m = $d["choices"][0]["message"] ?? [];
 $content = trim($m["content"] ?? "");
 $reasoning = $m["reasoning"] ?? $m["reasoning_content"] ?? null;
-if ($content === "") { fwrite(STDERR, "FAIL: content порожній, thinking зʼїв відповідь\n"); exit(1); }
-if (is_string($reasoning) && trim($reasoning) !== "") { fwrite(STDERR, "FAIL: у відповіді лишився reasoning\n"); exit(1); }
+if ($content === "") {
+    fwrite(STDERR, "FAIL: content порожній, thinking зʼїв відповідь\n");
+    if ($argv[3] === "off") fwrite(STDERR, "  BDO_REASONING_EFFORT=off НЕ надсилає нічого, тому модель думає. Постав none.\n");
+    exit(1);
+}
+if (is_string($reasoning) && trim($reasoning) !== "") {
+    fwrite(STDERR, "FAIL: у відповіді лишився reasoning\n");
+    if ($argv[3] === "off") fwrite(STDERR, "  Постав BDO_REASONING_EFFORT=none: `off` лишає поведінку провайдера.\n");
+    exit(1);
+}
 echo "OK\n";
-' "$MODEL" "$OLLAMA_URL"
+' "$MODEL" "$OLLAMA_URL" "$EFFORT"
 
 echo -n "4. constrained decoding тримається... "
 php -r '
