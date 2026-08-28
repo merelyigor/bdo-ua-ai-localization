@@ -272,8 +272,59 @@ completion() {
             $done, (int) round($staged/1024));
         $out["staged_kb"]=(int) round($staged/1024);
     }
+    // Ціль прогону, а не пачки.
+    //
+    // `complete` наприкінці пачки читалось як «роботу зроблено», і диригент
+    // зупинявся з питанням «продовжувати?», хоч у патчі лишались сотні рядків
+    // (2026-08-28: пʼята пачка закрилась, у knowledge лишався 141 рядок).
+    // Ціль записана в `run-goal.json` під час `mode start`, тому тут її можна
+    // перевірити механічно й сказати рівно наступний крок.
+    $goalFile=dirname($argv[4])."/run-goal.json";
+    $goal=is_file($goalFile)?json_decode((string)file_get_contents($goalFile),true):null;
+    if(is_array($goal)&&($goal["query"]??"")!==""&&$argv[6]!==""){
+        $remaining=(int)$argv[6];
+        if($remaining>0){
+            $out["kind"]="continue_run";
+            $out["remaining"]=$remaining;
+            $out["goal"]=["mode"=>$goal["mode"]??"","patch"=>$goal["patch"]??"","domain"=>$goal["domain"]??""];
+            $out["command"]=trim(sprintf("./bdo mode start %s 50 %s %s",
+                (string)($goal["mode"]??""),(string)($goal["patch"]??""),(string)($goal["domain"]??"")));
+            $out["hint"]=sprintf(
+                "Ціль ще не досягнута: лишилось %d рядків. Почни наступну пачку САМ (%s) і не питай дозволу · власник просив довести ціль до кінця.",
+                $remaining,$out["command"]);
+        }else{
+            $out["kind"]="goal_complete";
+            $out["goal"]=["mode"=>$goal["mode"]??"","patch"=>$goal["patch"]??"","domain"=>$goal["domain"]??""];
+            $out["hint"]="Ціль досягнута: рядків за цим фільтром більше немає. Доповідай власнику підсумок прогону.";
+        }
+    }
     echo json_encode($out,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES);
-    ' "$B/batch-summary.json" "$B/commit-report.txt" "$B/manifest.json" "$STATE_DIR/run-summary.json" "$(basename "$B")"
+    ' "$B/batch-summary.json" "$B/commit-report.txt" "$B/manifest.json" "$STATE_DIR/run-summary.json" "$(basename "$B")" "$(goal_remaining)"
+}
+
+# Скільки рядків ще підпадає під ціль прогону.
+#
+# Порожній вивід означає «невідомо» (офлайн або збій запиту) · тоді конверт
+# лишається старим `complete`, і диригент питає власника. Вигадувати нуль тут
+# не можна: «невідомо» і «роботи немає» · різні стани, і плутанина між ними
+# зупинила б прогін саме тоді, коли робота ще є.
+goal_remaining() {
+    # Заглушка лише для тестів: живий шлях однаково йде в API нижче.
+    if [ -n "${BDO_GOAL_REMAINING_STUB:-}" ]; then printf '%s' "$BDO_GOAL_REMAINING_STUB"; return 0; fi
+    test "${BDO_PIPELINE_OFFLINE:-0}" = 1 && return 0
+    test -s "$STATE_DIR/run-goal.json" || return 0
+    local query
+    query="$(php -r '$g=json_decode((string)file_get_contents($argv[1]),true)?:[];echo (string)($g["query"]??"");' "$STATE_DIR/run-goal.json")"
+    test -n "$query" || return 0
+    ( set +e
+      # shellcheck source=/dev/null
+      source "$SCRIPT_DIR/cli/system/select-env.sh" >/dev/null 2>&1 || exit 0
+      "$SCRIPT_DIR/cli/api/http-request.sh" -fsS -H "X-API-Key: $BDO_API_KEY" \
+          "$BDO_API_BASE/rows?$query&exclude_proposed=1&limit=1&include_total=1&fields=core" 2>/dev/null \
+          | php -r '$d=json_decode((string)stream_get_contents(STDIN),true);
+              if(!is_array($d)||!isset($d["meta"]["total_matching"]))exit;
+              echo (int)$d["meta"]["total_matching"];' ) || true
+    return 0
 }
 prepare_worker() {
     local rows="$B/rows.json" count

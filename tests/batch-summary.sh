@@ -29,4 +29,35 @@ second="$(BDO_STATE_DIR="$TMP/state" bash "$ROOT/cli/run/run-drive.sh")"
 jq -e '.next.run.rows == 1 and .next.run.target_written == 1' <<< "$second" >/dev/null \
     || { echo 'FAIL: repeated complete double-counted run totals'; exit 1; }
 
+# Ціль прогону переживає кінець пачки й стискання сесії.
+#
+# 2026-08-28 власник сказав «треба доперекласти всі knowledge», диригент закрив
+# пʼяту пачку, побачив `complete` і запитав «Продовжувати?», хоча в патчі
+# лишався 141 рядок. Ціль жила лише в тексті чату, тому після стискання сесії
+# продовжувати не було кому. Тепер вона лежить у `state/run-goal.json`, і
+# конверт наприкінці пачки каже РІВНО наступний крок.
+printf '{"mode":"patch","patch":"7","domain":"knowledge","channel":"machine","query":"patch=7&missing=machine&domain=knowledge"}\n' \
+    > "$TMP/state/run-goal.json"
+
+# Офлайн залишок невідомий · конверт мусить лишитись старим `complete`.
+# «Невідомо» і «роботи немає» це різні стани: сплутати їх означає зупинити
+# прогін саме тоді, коли робота ще є.
+offline="$(BDO_PIPELINE_OFFLINE=1 BDO_STATE_DIR="$TMP/state" bash "$ROOT/cli/run/run-drive.sh")"
+jq -e '.next.kind == "complete"' <<< "$offline" >/dev/null \
+    || { echo 'FAIL: невідомий залишок змінив вирок'; exit 1; }
+
+# Залишок є · диригент мусить отримати команду, а не питання.
+export BDO_GOAL_REMAINING_STUB=141
+withwork="$(BDO_STATE_DIR="$TMP/state" BDO_PIPELINE_OFFLINE=1 bash "$ROOT/cli/run/run-drive.sh")"
+jq -e '.next.kind == "continue_run" and .next.remaining == 141
+    and (.next.command | test("mode start patch 50 7 knowledge"))' <<< "$withwork" >/dev/null \
+    || { echo "FAIL: залишок 141 не дав continue_run: $withwork"; exit 1; }
+
+# Залишку немає · ціль досягнута, і це теж сказано словом, а не мовчанням.
+export BDO_GOAL_REMAINING_STUB=0
+done_env="$(BDO_STATE_DIR="$TMP/state" BDO_PIPELINE_OFFLINE=1 bash "$ROOT/cli/run/run-drive.sh")"
+jq -e '.next.kind == "goal_complete"' <<< "$done_env" >/dev/null \
+    || { echo "FAIL: нульовий залишок не дав goal_complete: $done_env"; exit 1; }
+unset BDO_GOAL_REMAINING_STUB
+
 echo 'batch summary: OK'

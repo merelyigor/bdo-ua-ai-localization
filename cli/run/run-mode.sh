@@ -111,6 +111,20 @@ file_put_contents($f,json_encode($run,JSON_UNESCAPED_UNICODE|JSON_THROW_ON_ERROR
     printf '%s\n' "$batches"
     exit 1
 }
+# Ціль прогону лишається на диску, а не в памʼяті диригента.
+#
+# 2026-08-28 власник сказав «треба доперекласти всі knowledge», диригент закрив
+# пʼяту пачку й запитав «Продовжувати?», хоча в патчі лишалось 141 рядок. Після
+# стискання сесії формулювання цілі вижило лише як текст, а обовʼязку
+# продовжувати не мав ніхто. Тепер ціль записана: `run drive` сам бачить, що
+# робота не скінчилась, і каже про це наступним кроком, а не «complete».
+php -r '
+$file=$argv[1];
+file_put_contents($file, json_encode([
+    "mode"=>$argv[2],"patch"=>$argv[3],"domain"=>$argv[4],"channel"=>$argv[5],"query"=>$argv[6],
+], JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES|JSON_THROW_ON_ERROR)."\n", LOCK_EX);
+' "$STATE_DIR/run-goal.json" "$MODE" "$PATCH" "$DOMAIN" "$channel" "$query"
+
 "$SCRIPT_DIR/cli/batch/batch-new.sh" "$rows" >/dev/null
 B="$($SCRIPT_DIR/cli/batch/batch-dir.sh)"
 php -r 'require $argv[1];$w=Bdo\Translate\Batch\Workspace::requireCurrent($argv[2]);$w->updateManifest(function($m)use($argv){$m["mode"]=$argv[3];$m["channel"]=$argv[4];$m["query"]=$argv[5];$m["memory_layers"]=$argv[6];$m["patch"]=$argv[7];$m["domain"]=$argv[8];return $m;},"run_spec");' "$SCRIPT_DIR/lib/autoload.php" "${BDO_STATE_DIR:-$SCRIPT_DIR/state}" "$MODE" "$channel" "$query" "$memory_layers" "$PATCH" "$DOMAIN"
