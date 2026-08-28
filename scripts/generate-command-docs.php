@@ -21,8 +21,17 @@ foreach ($registry['sections'] as $section) {
     $lines[] = '| Команда | Призначення |';
     $lines[] = '| --- | --- |';
     foreach ($section['entries'] as [$usage, $description]) {
+        // Позначка «для розробки» мусить бути ВИДНОЮ в довіднику, а не лише в
+        // guard allowlist. 2026-08-28: `./bdo review` і `./bdo session` guard
+        // диригенту не дає, але з довідника цього не було видно, і читач
+        // (людина або агент) вважав їх частиною флоу.
+        $key = explode(' ', trim((string)$usage))[0];
+        $denied = $registry['guard_denied'][$key] ?? $registry['guard_denied'][trim((string)$usage)] ?? null;
         $usage = str_replace('|', '&#124;', (string)$usage);
         $description = str_replace('|', '&#124;', (string)$description);
+        if (is_string($denied) && str_contains($denied, 'РОЗРОБКИ')) {
+            $description .= ' · **для розробки**, диригент флоу цю команду не запускає';
+        }
         $lines[] = '| `./bdo ' . $usage . '` | ' . $description . ' |';
     }
     $lines[] = '';
