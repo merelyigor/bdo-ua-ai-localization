@@ -37,4 +37,16 @@ php -r '$d=json_decode(file_get_contents($argv[1]),true);unset($d["data"]["rows"
     file_put_contents($argv[1],json_encode($d,JSON_UNESCAPED_UNICODE));' "$TMP/rows.json"
 build --with-reference | has reference_ru && fail 'порожня RU-довідка потрапила в payload'
 
+# QA мусить знати про поле, яке ми йому надсилаємо.
+#
+# У режимі покращення ШІ `qa-payload.sh --with-current` кладе в кожен рядок
+# `current` · попередній український текст. Промпт QA про це поле не знав
+# узагалі (виявлено 2026-08-29 аудитом режимів без прогону), тобто суддя бачив
+# дані, про які йому ніхто не сказав. Payload і промпт мусять описувати той
+# самий контракт.
+grep -Fq 'current' "$ROOT/.opencode/agent-templates/translation-qa.md" \
+    || fail 'QA-промпт не знає про поле current, яке приходить у режимі improve'
+grep -Fq '"current"' "$ROOT/cli/prepare/qa-payload.sh" \
+    || fail 'qa-payload більше не кладе current · перевірку треба переглянути'
+
 echo 'worker reference: OK'

@@ -61,17 +61,43 @@ OUT="$SCRIPT_DIR/output/write_${TIMESTAMP}.json"
 # контракт до побудови payload, щоб скрипт не витрачав квоту запитом, який
 # сервер гарантовано відхилить.
 ME=$("$SCRIPT_DIR/cli/api/http-request.sh" -fsS -H "X-API-Key: $KEY" "$API/me")
-test "$CHANNEL" = machine || ME='{"data":{"user":{"role":"admin"},"effective_abilities":["translations:write-machine"]}}'
 php -r '
 $me = json_decode($argv[1], true);
+$channel = $argv[2];
 $role = $me["data"]["user"]["role"] ?? null;
 $abilities = $me["data"]["effective_abilities"] ?? [];
+
+// Право на канал беремо з `data.writes`, а не вгадуємо за `abilities`.
+//
+// Раніше тут стояв обхід: для не-machine каналів скрипт підставляв ВИГАДАНУ
+// відповідь `/me` й перевіряв її. 2026-08-29 я на цьому помилився публічно ·
+// прочитав перелік `abilities`, не знайшов там неіснуючої
+// `translations:write-manual` і заявив, що ручний режим пише в чергу.
+// Насправді автосхвалення вирішує РОЛЬ власника, і сервер додав `data.writes`
+// саме тому, що з `abilities` цього не видно.
+$writes = $me["data"]["writes"] ?? null;
+if (is_array($writes)) {
+    $channels = $writes["channels"] ?? $writes;
+    $entry = $channels[$channel] ?? null;
+    $allowed = is_array($entry) ? ($entry["allowed"] ?? false) : false;
+    if ($allowed !== true) {
+        fwrite(STDERR, "Ключ не має права писати в канал $channel (/me -> data.writes).\n");
+        exit(1);
+    }
+    $result = is_array($entry) ? (string) ($entry["result"] ?? "") : "";
+    if ($result !== "") fwrite(STDERR, "Канал $channel: результат запису · $result\n");
+    exit(0);
+}
+
+// Сервер ще не віддає `data.writes` · лишається стара перевірка, і лише для
+// machine: саме для нього здатність оголошена явно.
+if ($channel !== "machine") exit(0);
 if (!in_array($role, ["admin", "super_admin"], true)
     || !in_array("translations:write-machine", $abilities, true)) {
     fwrite(STDERR, "Цей ключ не має доступу до machine + direct. Потрібні роль admin/super_admin і translations:write-machine у /me.\n");
     exit(1);
 }
-' "$ME"
+' "$ME" "$CHANNEL"
 
 # Формуємо payload
 php -r '
