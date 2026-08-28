@@ -208,6 +208,7 @@ case "$group" in
     judge)      sh_run cli/audit/judge-report.sh "${@:2}" ;;
     audit-dump) sh_run cli/audit/audit-dump.sh "${@:2}" ;;
     profile)    sh_run cli/runtime/set-translation-profile.sh "${@:2}" ;;
+    terms)      sh_run cli/api/term-notes-queue.sh --report "${@:2}" ;;
     concepts)   sh_run cli/api/glossary-concepts.sh "${@:2}" ;;
     models)     sh_run cli/runtime/sync-opencode-models.sh "${@:2}" ;;
     bench)      sh_run cli/runtime/model-ab.sh "${@:2}" ;;

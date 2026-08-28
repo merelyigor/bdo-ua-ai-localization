@@ -161,6 +161,31 @@ done
 grep -Fq 'glossary-concepts.sh' "$ROOT/cli/run/run-drive.sh" || fail 'рушій не оновлює перелік понять'
 grep -Fq 'BDO_CONCEPTS_TTL_HOURS' "$ROOT/cli/api/glossary-concepts.sh" || fail 'перелік понять не кешується'
 
+# Черга термінів без опису: рахуємо, але НІЧОГО не надсилаємо. Рішення власника
+# 2026-08-28 · часу на довгу модерацію немає, глосарій наповнений, тому новий
+# термін не пропонуємо взагалі, а опис до наявного лише тоді, коли впевненість
+# у релевантності саме для BDO вища за 50%.
+cat > "$TMP/queue-terms.json" <<'JSON'
+[{"canonical_source":"Tears of the Falling Moon","ukrainian":"Сльози Старого Місяця","entity_type":"item"},
+ {"canonical_source":"Set Effect","ukrainian":"Ефект комплекту","definition":"опис уже є"},
+ {"canonical_source":"Unknown Thing"}]
+JSON
+cat > "$TMP/queue-rows.json" <<JSON
+{"data":{"rows":[{"identity_hash":"$H1","source_hash":"a","source_text":"Set Effect of Tears of the Falling Moon is active."}]}}
+JSON
+BDO_STATE_DIR="$TMP/state" bash "$ROOT/cli/api/term-notes-queue.sh" "$TMP/queue-terms.json" "$TMP/queue-rows.json" 2>/dev/null \
+    || fail 'черга термінів без опису не збирається'
+BDO_STATE_DIR="$TMP/state" bash "$ROOT/cli/api/term-notes-queue.sh" "$TMP/queue-terms.json" "$TMP/queue-rows.json" 2>/dev/null || true
+jq -e '[.terms[].canonical_source] == ["Tears of the Falling Moon"]' "$TMP/state/term-notes-queue.json" >/dev/null \
+    || fail "у черзі не ті терміни: $(jq -c '[.terms[].canonical_source]' "$TMP/state/term-notes-queue.json")"
+jq -e '.terms[0].seen == 2' "$TMP/state/term-notes-queue.json" >/dev/null \
+    || fail 'частота терміна не накопичується між пачками'
+jq -e '.terms[0].samples | length >= 1' "$TMP/state/term-notes-queue.json" >/dev/null \
+    || fail 'у черзі немає живого рядка, з якого писати опис'
+# Найдорожче правило: черга НІЧОГО не надсилає в API.
+grep -Fq 'http-request.sh' "$ROOT/cli/api/term-notes-queue.sh" && fail 'черга термінів звертається до API'
+grep -Fq 'term-notes-queue.sh' "$ROOT/cli/run/run-drive.sh" || fail 'рушій не наповнює чергу термінів'
+
 # Нагадування про свіжу сесію · єдине, що прибирає вже накопичений транскрипт.
 grep -Fq 'BDO_SESSION_HINT_BATCHES' "$ROOT/cli/run/run-drive.sh" \
     || fail 'рушій не нагадує почати нову сесію після N пачок'

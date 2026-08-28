@@ -270,6 +270,10 @@ prepare_worker() {
         test "${BDO_PIPELINE_OFFLINE:-0}" = 1 || \
             "$SCRIPT_DIR/cli/api/glossary-concepts.sh" >/dev/null 2>&1 || true
         "$SCRIPT_DIR/cli/prepare/worker-payload.sh" "$rows" "${args[@]}" > "$B/worker-payload.json"
+        # Терміни без опису · лише рахуємо. Жодного виклику моделі й жодного
+        # запису в API: черга модерації від цього не росте (рішення власника).
+        test -s "$B/terms.json" && \
+            "$SCRIPT_DIR/cli/api/term-notes-queue.sh" "$B/terms.json" "$rows" >/dev/null 2>&1 || true
     else
         echo '[]' > "$B/worker-payload.json"
         cp "$B/memory-candidate.json" "$B/candidate.json"
