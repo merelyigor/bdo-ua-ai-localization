@@ -18,7 +18,11 @@ PATH="$TMP:$PATH" "$ROOT/cli/api/http-request.sh" -fsS -X POST \
 
 grep -Fxq -- '--retry' "$TMP/args"
 grep -Fxq -- '1000' "$TMP/args"
-grep -Fxq -- '--retry-all-errors' "$TMP/args"
+# Постійні помилки не повторюються: `--retry-all-errors` крутив 404 і 400 ті
+# самі 570 секунд, і зникла різниця між «сервер тимчасово впав» і «такого
+# маршруту немає». 2026-08-28 це двічі виглядало як зависання клієнта.
+grep -Fxq -- '--retry-all-errors' "$TMP/args" && {
+    echo 'FAIL: постійні HTTP-помилки знову повторюються' >&2; exit 1; }
 grep -Fxq -- '--retry-max-time' "$TMP/args"
 grep -Fxq -- '570' "$TMP/args"
 grep -Fxq -- '--max-time' "$TMP/args"
@@ -28,4 +32,4 @@ grep -Fxq -- '10' "$TMP/args"
 grep -Fxq -- 'https://example.test/api' "$TMP/args"
 grep -Fxq -- '{"ok":true}' "$TMP/body"
 
-echo 'OK: BDO API retry має backoff, 10-хвилинний бюджет і таймаути спроби'
+echo 'OK: BDO API retry має backoff, 10-хвилинний бюджет, таймаути спроби й не повторює постійних помилок'
