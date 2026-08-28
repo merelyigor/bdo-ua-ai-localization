@@ -38,6 +38,7 @@ const WORKFLOW_FILES = [
   ".opencode/agents/translation-terminology.md",
   ".opencode/agents/translation-judge.md",
   ".opencode/agents/translation-smoke.md",
+  ".opencode/agents/translation-glossary.md",
 ]
 
 function workflowFingerprint(directory: string): string {
@@ -94,6 +95,7 @@ const CHILD_ROLES = new Set([
   "translation-repair",
   "translation-judge",
   "translation-smoke",
+  "translation-glossary",
 ])
 
 /** Роль зі staged envelope · щоб відмова називала, чого саме чекає рушій. */

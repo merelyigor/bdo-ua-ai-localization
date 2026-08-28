@@ -59,6 +59,9 @@ foreach ($queue as $entry) {
     if (isset($entry["canonical_source"])) $byName[$entry["canonical_source"]] = $entry;
 }
 
+// Snapshot пачки віддає сам API у `meta.snapshot_id` відповіді `/rows`.
+$snapshotId = json_decode((string) file_get_contents($argv[2]), true)["meta"]["snapshot_id"] ?? null;
+$snapshotId = is_int($snapshotId) ? $snapshotId : null;
 $added = 0;
 $unknown = 0;
 foreach ($terms as $term) {
@@ -91,15 +94,20 @@ foreach ($terms as $term) {
     ];
     $entry["seen"] = (int) $entry["seen"] + 1;
     // Кілька живих рядків · це те, з чого людина або модель зможе написати опис.
+    // Разом із ними зберігаємо identity ПЕРШОГО такого рядка й snapshot пачки:
+    // `POST /glossary/proposals` вимагає `source_identity`, і вигадати його
+    // потім буде ні з чого.
     if (count($entry["samples"]) < 3) {
         foreach ($rows as $row) {
             $text = $row->sourceText();
             if ($text === "" || ! str_contains($text, $name)) continue;
             $sample = mb_substr($text, 0, 200);
             if (! in_array($sample, $entry["samples"], true)) $entry["samples"][] = $sample;
+            if (! isset($entry["identity_hash"])) $entry["identity_hash"] = $row->identityHash();
             break;
         }
     }
+    if ($snapshotId !== null && ! isset($entry["snapshot_id"])) $entry["snapshot_id"] = $snapshotId;
     if (! isset($byName[$name])) $added++;
     $byName[$name] = $entry;
 }

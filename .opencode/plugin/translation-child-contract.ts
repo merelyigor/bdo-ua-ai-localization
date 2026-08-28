@@ -20,6 +20,7 @@ const ROLES = new Set([
   "translation-repair",
   "translation-judge",
   "translation-smoke",
+  "translation-glossary",
 ])
 
 type ChildEnvelope = { kind?: string; role?: string; payload_path?: string; response_path?: string }

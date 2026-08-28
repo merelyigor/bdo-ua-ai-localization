@@ -82,12 +82,12 @@ for agent in "${AGENTS[@]}"; do
     }
 done
 
-# У runtime opencode.json змінюються лише шість model-полів.
+# У runtime opencode.json змінюються лише model-поля дитячих ролей.
 config_template_normalized="$(mktemp)"
 config_runtime_normalized="$(mktemp)"
 trap 'rm -f "$config_template_normalized" "$config_runtime_normalized"' EXIT
-jq 'reduce ["translation-terminology","translation-worker","translation-qa","translation-repair","translation-judge","translation-smoke"][] as $r (. ; .agent[$r].model = "__RUNTIME_MODEL__")' "$CONFIG_TEMPLATE" > "$config_template_normalized"
-jq 'reduce ["translation-terminology","translation-worker","translation-qa","translation-repair","translation-judge","translation-smoke"][] as $r (. ; .agent[$r].model = "__RUNTIME_MODEL__")' "$CONFIG" > "$config_runtime_normalized"
+jq 'reduce ["translation-terminology","translation-worker","translation-qa","translation-repair","translation-judge","translation-smoke","translation-glossary"][] as $r (. ; .agent[$r].model = "__RUNTIME_MODEL__")' "$CONFIG_TEMPLATE" > "$config_template_normalized"
+jq 'reduce ["translation-terminology","translation-worker","translation-qa","translation-repair","translation-judge","translation-smoke","translation-glossary"][] as $r (. ; .agent[$r].model = "__RUNTIME_MODEL__")' "$CONFIG" > "$config_runtime_normalized"
 cmp -s "$config_template_normalized" "$config_runtime_normalized" || {
     echo 'ERROR: runtime opencode.json differs from tracked template beyond models' >&2
     exit 1
@@ -163,6 +163,8 @@ done
 declare -A MAX_LINES=(
     [translation-smoke]=40 [translation-worker]=90 [translation-qa]=90
     [translation-repair]=80 [translation-terminology]=80 [translation-judge]=90
+    # Описувач термінів: рамка гри + шість правил + контракт відповіді.
+    [translation-glossary]=60
     # 2026-08-25: стеля primary піднята зі 120 до 135 · диригент тепер сам
     # діагностує середовище (`platform`/`--fix`) і сам виходить із
     # `no_current_batch`. 2026-08-27: 135 -> 155, бо додано розпізнавання

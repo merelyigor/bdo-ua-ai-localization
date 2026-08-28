@@ -46,6 +46,13 @@
                     "ollama-local/gemma4:12b",
                     "ollama-local/gemma4:e4b",
                     "ollama-local/qwen3.5:9b"
+                ],
+                "translation-glossary": [
+                    "ollama-local/qwen3.6:35b-a3b-mtp-q4_K_M",
+                    "ollama-local/qwen3.8:27b",
+                    "ollama-local/gemma4:12b",
+                    "ollama-local/gemma4:e4b",
+                    "ollama-local/qwen3.5:9b"
                 ]
             },
             "paid_routes": [],
@@ -86,6 +93,13 @@
                     "ollama-local/qwen3.5:9b"
                 ],
                 "translation-judge": [
+                    "ollama-local/qwen3.6:35b-a3b-mtp-q4_K_M",
+                    "ollama-local/qwen3.8:27b",
+                    "ollama-local/gemma4:12b",
+                    "ollama-local/gemma4:e4b",
+                    "ollama-local/qwen3.5:9b"
+                ],
+                "translation-glossary": [
                     "ollama-local/qwen3.6:35b-a3b-mtp-q4_K_M",
                     "ollama-local/qwen3.8:27b",
                     "ollama-local/gemma4:12b",
@@ -120,6 +134,10 @@
                 "translation-judge": [
                     "opencode/big-pickle",
                     "opencode/muse-spark-1.2-contributor-free"
+                ],
+                "translation-glossary": [
+                    "opencode/big-pickle",
+                    "opencode/muse-spark-1.2-contributor-free"
                 ]
             },
             "paid_routes": [],
@@ -145,6 +163,10 @@
                     "opencode/muse-spark-1.2-contributor-free"
                 ],
                 "translation-judge": [
+                    "opencode/big-pickle",
+                    "opencode/muse-spark-1.2-contributor-free"
+                ],
+                "translation-glossary": [
                     "opencode/big-pickle",
                     "opencode/muse-spark-1.2-contributor-free"
                 ]
@@ -189,6 +211,13 @@
                     "opencode-go/hy3"
                 ],
                 "translation-judge": [
+                    "opencode-go/ox-alpha-free",
+                    "opencode-go/mimo-v2.5",
+                    "opencode-go/mimo-v2.5-pro",
+                    "opencode-go/muse-spark-1.2-contributor",
+                    "opencode-go/hy3"
+                ],
+                "translation-glossary": [
                     "opencode-go/ox-alpha-free",
                     "opencode-go/mimo-v2.5",
                     "opencode-go/mimo-v2.5-pro",
@@ -245,6 +274,13 @@
                     "opencode-go/mimo-v2.5-pro",
                     "opencode-go/muse-spark-1.2-contributor",
                     "opencode-go/hy3"
+                ],
+                "translation-glossary": [
+                    "opencode-go/ox-alpha-free",
+                    "opencode-go/mimo-v2.5",
+                    "opencode-go/mimo-v2.5-pro",
+                    "opencode-go/muse-spark-1.2-contributor",
+                    "opencode-go/hy3"
                 ]
             }
         },
@@ -267,6 +303,9 @@
                     "openai/gpt-5.6-luna"
                 ],
                 "translation-smoke": [
+                    "openai/gpt-5.6-luna"
+                ],
+                "translation-glossary": [
                     "openai/gpt-5.6-luna"
                 ]
             },

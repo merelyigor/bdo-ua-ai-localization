@@ -37,7 +37,8 @@
                     "translation-qa": "allow",
                     "translation-repair": "allow",
                     "translation-smoke": "allow",
-                    "translation-judge": "allow"
+                    "translation-judge": "allow",
+                    "translation-glossary": "allow"
                 }
             }
         },
@@ -51,7 +52,8 @@
                     "translation-qa": "allow",
                     "translation-repair": "allow",
                     "translation-smoke": "allow",
-                    "translation-judge": "allow"
+                    "translation-judge": "allow",
+                    "translation-glossary": "allow"
                 }
             }
         },
@@ -91,7 +93,8 @@
                     "translation-qa": "allow",
                     "translation-repair": "allow",
                     "translation-smoke": "allow",
-                    "translation-judge": "allow"
+                    "translation-judge": "allow",
+                    "translation-glossary": "allow"
                 }
             }
         },
@@ -105,7 +108,8 @@
                     "translation-qa": "allow",
                     "translation-repair": "allow",
                     "translation-smoke": "allow",
-                    "translation-judge": "allow"
+                    "translation-judge": "allow",
+                    "translation-glossary": "allow"
                 }
             }
         },
@@ -119,7 +123,8 @@
                     "translation-qa": "allow",
                     "translation-repair": "allow",
                     "translation-smoke": "allow",
-                    "translation-judge": "allow"
+                    "translation-judge": "allow",
+                    "translation-glossary": "allow"
                 }
             }
         },
@@ -133,11 +138,16 @@
                     "translation-qa": "allow",
                     "translation-repair": "allow",
                     "translation-smoke": "allow",
-                    "translation-judge": "allow"
+                    "translation-judge": "allow",
+                    "translation-glossary": "allow"
                 }
             }
         },
         "translation-judge": {
+            "mode": "subagent",
+            "model": "ollama-local/qwen3.6:35b-a3b-mtp-q4_K_M"
+        },
+        "translation-glossary": {
             "mode": "subagent",
             "model": "ollama-local/qwen3.6:35b-a3b-mtp-q4_K_M"
         }

@@ -199,6 +199,35 @@ grep -Fq 'array_key_exists("definition", $term)' "$ROOT/cli/prepare/worker-paylo
 grep -Fq 'http-request.sh' "$ROOT/cli/api/term-notes-queue.sh" && fail 'черга термінів звертається до API'
 grep -Fq 'term-notes-queue.sh' "$ROOT/cli/run/run-drive.sh" || fail 'рушій не наповнює чергу термінів'
 
+# Описувач термінів: завдання будується лише з придатних кандидатів, а
+# надсилання відсіює низьку впевненість. Поріг 60 · рішення власника 2026-08-28.
+cat > "$TMP/state/term-notes-queue.json" <<JSON
+{"updated_at":"x","terms":[
+ {"canonical_source":"Tears of the Falling Moon","ukrainian":"Сльози Старого Місяця","seen":5,
+  "samples":["Tears of the Falling Moon glows."],"identity_hash":"$H1","snapshot_id":7},
+ {"canonical_source":"No Identity","ukrainian":"Без ідентичності","seen":9,"samples":["x"]}]}
+JSON
+BDO_STATE_DIR="$TMP/state" bash "$ROOT/cli/api/term-notes-describe.sh" > "$TMP/describe.json" 2>/dev/null \
+    || fail 'завдання на опис термінів не будується'
+jq -e '.next.role == "translation-glossary"' "$TMP/describe.json" >/dev/null \
+    || fail 'завдання не адресоване ролі translation-glossary'
+jq -e '.next.prompt == ("payload:" + .next.payload_path)' "$TMP/describe.json" >/dev/null \
+    || fail 'у завданні немає готового prompt'
+# Термін без identity/snapshot надіслати неможливо · у завдання він не йде.
+jq -e '[.items[].canonical_source] == ["Tears of the Falling Moon"]' "$TMP/state/term-notes-payload.json" >/dev/null \
+    || fail 'у завдання потрапив термін, пропозицію для якого сервер не прийме'
+# Низька впевненість НЕ надсилається, і причина названа.
+printf '{"items":[{"canonical_source":"Tears of the Falling Moon","gist":"g","definition":"d","confidence":45}]}' \
+    > "$TMP/state/term-notes-response.json"
+out="$(BDO_STATE_DIR="$TMP/state" bash "$ROOT/cli/api/term-notes-submit.sh" 2>/dev/null)" || true
+printf '%s' "$out" | grep -q 'Пропозицій надіслано: 0' || fail "опис із впевненістю 45 надіслано: $out"
+printf '%s' "$out" | grep -q 'низька впевненість 1' || fail 'причину пропуску не названо'
+# Найдорожче правило: перед записом стан терміна перечитується з API.
+grep -Fq 'glossary/terms?q=' "$ROOT/cli/api/term-notes-submit.sh" \
+    || fail 'відправник не перечитує свіжий стан терміна перед пропозицією'
+grep -Fq 'array_key_exists("definition", $term)' "$ROOT/cli/api/term-notes-submit.sh" \
+    || fail 'відправник приймає відсутність поля за порожній опис'
+
 # Нагадування про свіжу сесію · єдине, що прибирає вже накопичений транскрипт.
 grep -Fq 'BDO_SESSION_HINT_BATCHES' "$ROOT/cli/run/run-drive.sh" \
     || fail 'рушій не нагадує почати нову сесію після N пачок'
