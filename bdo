@@ -89,6 +89,7 @@ dispatcher, execution guard, цим flow і документацією.
   ./bdo audit                                       правда про сесії
   ./bdo session [N] [--errors]                      кроки й відмови диригента
   ./bdo review                                      стан проєкту одним екраном
+  ./bdo inspect [тека]                              інспекції PhpStorm (IDE має бути закрита)
 
 Повна послідовність із причинами · UI_SUBAGENT_WORKFLOW.md
 TXT
@@ -199,6 +200,7 @@ case "$group" in
 
     # --- обслуговування ------------------------------------------------------
     audit)      sh_run cli/audit/verify-run.sh "${@:2}" ;;
+    inspect)    sh_run cli/system/ide-inspect.sh "${@:2}" ;;
     review)     sh_run cli/audit/project-review.sh "${@:2}" ;;
     session)    sh_run cli/audit/session-tail.sh "${@:2}" ;;
     incidents)  sh_run cli/audit/flow-incidents.sh "${@:2}" ;;

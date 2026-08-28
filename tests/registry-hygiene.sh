@@ -61,4 +61,13 @@ grep -Fq 'review)     sh_run cli/audit/project-review.sh' "$ROOT/bdo" || fail 'd
 # 6. Правило ведення реєстру живе в правилах, а не лише в голові агента.
 grep -Fq 'DEFECTS.md' "$ROOT/AGENTS.md" || fail 'AGENTS.md не вимагає вести реєстр дефектів'
 
+# 7. Інспекції IDE · окрема команда й окреме правило, бо gate типів не бачить.
+test -x "$ROOT/cli/system/ide-inspect.sh" || fail 'немає cli/system/ide-inspect.sh'
+grep -Fq '"inspect ' "$ROOT/cli/command-registry.json" || fail 'команда inspect не в реєстрі'
+grep -Fq 'inspect)    sh_run cli/system/ide-inspect.sh' "$ROOT/bdo" || fail 'dispatcher не знає команди inspect'
+# Недоступність мусить бути ГОЛОСНОЮ: мовчазний пропуск читався б як «чисто».
+grep -Fq 'Only one instance' "$ROOT/cli/system/ide-inspect.sh" \
+    || fail 'inspect не пояснює, чому headless не запускається при відкритій IDE'
+grep -Fq 'exit 2' "$ROOT/cli/system/ide-inspect.sh" || fail 'inspect мовчки завершується успіхом при недоступності'
+
 echo 'registry hygiene: OK'

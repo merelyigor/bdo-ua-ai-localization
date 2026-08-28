@@ -159,6 +159,10 @@ check_rules() {
         || fail 'AGENTS.md не вимагає prompt compatibility зі слабкими моделями'
     # Рішення власника 2026-08-28: знання моделі про гру є ресурсом, але не
     # джерелом відповідника. Без другої половини правило небезпечне.
+    grep -Fq 'phpstorm lint_files' AGENTS.md \
+        || fail 'AGENTS.md не вимагає інспекції IDE після зміни коду'
+    grep -Fq 'phpstorm lint_files' docs/CHECKLIST.md \
+        || fail 'чекліст не називає інспекцію IDE'
     grep -Fq 'офіційна українська локалізація Black Desert Online' AGENTS.md \
         || fail 'AGENTS.md не фіксує рамку задачі для child'
     grep -Fq '§8.13 Child-prompt задає рамку задачі' docs/AI_AGENT_RULES_REFERENCE.md \
