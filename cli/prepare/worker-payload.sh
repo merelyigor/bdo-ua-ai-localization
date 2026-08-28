@@ -171,6 +171,18 @@ if [ "$WANT_CONTEXT" = 1 ]; then
                     $value = $term[$field] ?? null;
                     if (is_string($value) && $value !== "") $entry[$field] = $value;
                 }
+                // Відсутність поля НЕ дорівнює відсутності опису.
+                //
+                // Порожні поля з payload викидаються заради ваги, і після цього
+                // «немає ключа `definition`» читається однаково і як «опису в
+                // базі немає», і як «сервер про нього не сказав». Різниця
+                // критична: на першому можна пропонувати опис, на другому · ні,
+                // інакше пропозиція перезапише те, що вже написала людина.
+                // Тому факт відповіді фіксується окремо й лише коли ключ
+                // ПРИЙШОВ від API.
+                if (array_key_exists("definition", $term)) {
+                    $entry["has_definition"] = is_string($term["definition"]) && trim($term["definition"]) !== "";
+                }
                 if (! empty($term["ambiguous"])) $entry["ambiguous"] = true;
                 if (! empty($term["scopes"])) $entry["scopes"] = $term["scopes"];
                 $terms[$canonical] = $entry;

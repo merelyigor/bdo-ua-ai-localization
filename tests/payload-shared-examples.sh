@@ -165,9 +165,13 @@ grep -Fq 'BDO_CONCEPTS_TTL_HOURS' "$ROOT/cli/api/glossary-concepts.sh" || fail '
 # 2026-08-28 · часу на довгу модерацію немає, глосарій наповнений, тому новий
 # термін не пропонуємо взагалі, а опис до наявного лише тоді, коли впевненість
 # у релевантності саме для BDO вища за 50%.
+# Три стани, і плутати їх означає зіпсувати чужі дані: опис є · опису немає ·
+# сервер про нього не сказав. Останній МОВЧКИ пропускається, а не вважається
+# порожнім, інакше пропозиція піде поверх написаного людиною.
 cat > "$TMP/queue-terms.json" <<'JSON'
-[{"canonical_source":"Tears of the Falling Moon","ukrainian":"Сльози Старого Місяця","entity_type":"item"},
- {"canonical_source":"Set Effect","ukrainian":"Ефект комплекту","definition":"опис уже є"},
+[{"canonical_source":"Tears of the Falling Moon","ukrainian":"Сльози Старого Місяця","entity_type":"item","has_definition":false},
+ {"canonical_source":"Set Effect","ukrainian":"Ефект комплекту","definition":"опис уже є","has_definition":true},
+ {"canonical_source":"Ancient Relic","ukrainian":"Стародавня реліквія"},
  {"canonical_source":"Unknown Thing"}]
 JSON
 cat > "$TMP/queue-rows.json" <<JSON
@@ -182,6 +186,15 @@ jq -e '.terms[0].seen == 2' "$TMP/state/term-notes-queue.json" >/dev/null \
     || fail 'частота терміна не накопичується між пачками'
 jq -e '.terms[0].samples | length >= 1' "$TMP/state/term-notes-queue.json" >/dev/null \
     || fail 'у черзі немає живого рядка, з якого писати опис'
+# Термін, про опис якого сервер не сказав, у чергу НЕ потрапляє й про це видно.
+BDO_STATE_DIR="$TMP/state" bash "$ROOT/cli/api/term-notes-queue.sh" "$TMP/queue-terms.json" "$TMP/queue-rows.json" 2>"$TMP/queue-err.txt" || true
+grep -q 'не сказав, чи є в них опис' "$TMP/queue-err.txt" \
+    || fail 'невідомий стан опису пропущено мовчки'
+jq -e '[.terms[].canonical_source] | index("Ancient Relic") == null' "$TMP/state/term-notes-queue.json" >/dev/null \
+    || fail 'термін з невідомим станом опису потрапив у чергу · так псуються чужі дані'
+# Прапорець будується лише тоді, коли API справді відповів про поле.
+grep -Fq 'array_key_exists("definition", $term)' "$ROOT/cli/prepare/worker-payload.sh" \
+    || fail 'payload не розрізняє «опису немає» і «сервер не сказав»'
 # Найдорожче правило: черга НІЧОГО не надсилає в API.
 grep -Fq 'http-request.sh' "$ROOT/cli/api/term-notes-queue.sh" && fail 'черга термінів звертається до API'
 grep -Fq 'term-notes-queue.sh' "$ROOT/cli/run/run-drive.sh" || fail 'рушій не наповнює чергу термінів'

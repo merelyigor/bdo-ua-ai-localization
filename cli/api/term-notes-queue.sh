@@ -60,11 +60,26 @@ foreach ($queue as $entry) {
 }
 
 $added = 0;
+$unknown = 0;
 foreach ($terms as $term) {
     $name = (string) ($term["canonical_source"] ?? "");
-    // Беремо ЛИШЕ наявні терміни без опису: новий термін власник просив не
-    // пропонувати, а термін з описом уже закритий.
-    if ($name === "" || ($term["ukrainian"] ?? "") === "" || ($term["definition"] ?? "") !== "") {
+    // Беремо ЛИШЕ наявні терміни з ДОВЕДЕНО порожнім описом.
+    //
+    // Три різні випадки, і плутати їх означає зіпсувати чужі дані:
+    //   опис є        · термін закритий, чіпати не можна;
+    //   опису немає   · кандидат (API прямо сказав `definition: null`);
+    //   невідомо      · API не віддав поля взагалі · МОВЧКИ ПРОПУСКАЄМО.
+    // Третій випадок трапляється на старішому деплої сервера, і саме він
+    // небезпечний: якби «немає ключа» читалось як «немає опису», пропозиція
+    // пішла б поверх уже написаного людиною тексту.
+    if ($name === "" || ($term["ukrainian"] ?? "") === "") {
+        continue;
+    }
+    if (! array_key_exists("has_definition", $term)) {
+        $unknown++;
+        continue;
+    }
+    if ($term["has_definition"] === true || ($term["definition"] ?? "") !== "") {
         continue;
     }
     $entry = $byName[$name] ?? [
@@ -96,4 +111,8 @@ file_put_contents($tmp, json_encode(
 ));
 rename($tmp, $queueFile);
 fprintf(STDERR, "Терміни без опису: %d у черзі (нових цією пачкою %d)\n", count($byName), $added);
+if ($unknown > 0) {
+    // Мовчазний пропуск читався б як «таких термінів немає».
+    fprintf(STDERR, "Пропущено %d термінів: сервер не сказав, чи є в них опис · пропонувати наосліп не можна.\n", $unknown);
+}
 ' "$TERMS_FILE" "$ROWS_FILE" "$QUEUE" "$SCRIPT_DIR/lib/autoload.php"
