@@ -168,12 +168,21 @@ foreach ($missing as $provider => $models) {
         // Контекст беремо з самої Ollama, а не з припущення.
         $show = shell_exec("ollama show " . escapeshellarg($model) . " 2>/dev/null") ?: "";
         $context = preg_match("/context length\s+(\d+)/", $show, $m) ? (int) $m[1] : 131072;
+        // Стеля ВИХОДУ, а не входу, і саме вона ріже відповідь.
+        //
+        // Тут стояло 16384 для всіх моделей. 2026-08-28 QA на пачці з 61 рядка
+        // видала рівно 16 384 токени й обірвалась на півслові: відповідь стала
+        // невалідним JSON, пачка тричі поверталась на той самий крок. Вхід у
+        // тій сесії був 20 221 токен при вікні 262 144 · тобто впиралися ми у
+        // власну константу, а не в модель.
+        $output = min(65536, max(16384, intdiv($context, 4)));
 
         $entry = sprintf(
-            "\n        %s: {\n          \"name\": %s,\n          \"limit\": {\n            \"context\": %d,\n            \"output\": 16384\n          },\n          \"cost\": {\n            \"input\": 0.0,\n            \"output\": 0.0,\n            \"cache_read\": 0.0\n          }\n        },",
+            "\n        %s: {\n          \"name\": %s,\n          \"limit\": {\n            \"context\": %d,\n            \"output\": %d\n          },\n          \"cost\": {\n            \"input\": 0.0,\n            \"output\": 0.0,\n            \"cache_read\": 0.0\n          }\n        },",
             json_encode($model),
             json_encode($model . " (GGUF)"),
-            $context
+            $context,
+            $output
         );
 
         // Вставляємо одразу після відкриття "models": { потрібного провайдера.
