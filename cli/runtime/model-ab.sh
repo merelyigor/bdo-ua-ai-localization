@@ -152,7 +152,7 @@ if (!is_array($items)) {
     } elseif (str_starts_with(ltrim((string) $content), "[") && json_last_error() === JSON_ERROR_CTRL_CHAR) {
         // Відповідь ПОЧАЛАСЬ правильно (масив, за схемою) і обірвалась на півслові.
         // Це не про схему: схема діяла, інакше першим символом не був би `[`.
-        // Розрізняти обовʼязково · інакше підказка веде шукати MLX там, де
+        // Розрізняти обовʼязково · інакше підказка веде шукати формат там, де
         // насправді генерація просто спинилась.
         fwrite(STDERR, "  content почався як JSON-масив і ОБІРВАВСЯ на " . strlen((string) $content) . " символах.\n");
         fwrite(STDERR, "  Схема діяла (перший символ `[`), тобто справа не в ній і не в MLX.\n");
@@ -162,7 +162,7 @@ if (!is_array($items)) {
         fwrite(STDERR, "    - чи не вивантажилась модель посеред запиту (логи Ollama).\n");
     } else {
         fwrite(STDERR, "  content є, але не JSON-масив · constrained decoding не застосувався.\n");
-        fwrite(STDERR, "  Лише GGUF: MLX-runner мовчки ігнорує схему. Перевір: ./bdo runtime, пункт 2.\n");
+        fwrite(STDERR, "  Схема не застосувалась цим runner. Перевір: ./bdo runtime, крок 4.\n");
     }
     fwrite(STDERR, "\nПовна відповідь для розбору: " . $argv[6] . "\n");
     exit(1);

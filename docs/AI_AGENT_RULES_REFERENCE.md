@@ -156,8 +156,9 @@
   джерело правди після run · receipt та `./bdo audit`, не self-report.
 - §8.2 Worker, repair і QA під constrained schema не мають жодних tools. Payload
   передається текстом. Tool call вимикає constrained decoding.
-- §8.3 Дозволені лише маршрути активного профілю. Ollama MLX заборонений, бо
-  runner ігнорує constrained decoding. Платний маршрут вимагає явного
+- §8.3 Дозволені лише маршрути активного профілю. Формат моделі (GGUF, MLX) не
+  вгадується за назвою тега: дотримання схеми доводить `./bdo runtime` перед
+  першою пачкою. Платний маршрут вимагає явного
   `allow_paid`; credentials належать OpenCode і не живуть у repo. Профіль
   `session-go` дозволяє лише явні `opencode-go/ox-alpha-free`,
   `opencode-go/mimo-v2.5`, `opencode-go/mimo-v2.5-pro`,

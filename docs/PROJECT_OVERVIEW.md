@@ -92,8 +92,8 @@ HTTP write, model invocation та state lifecycle мають штатні entryp
 - Batch належність перевіряє manifest; cursor рухається після завершення batch.
 - Worker/repair/QA під schema не мають tools; payload передається текстом.
 - Маршрути моделей задає generated/ignored `.opencode/translation-models.json`,
-  створений із tracked `.opencode/templates/translation-models.json`; Ollama MLX не
-  забезпечує constrained decoding, а платні fallback за замовчуванням заборонені.
+  створений із tracked `.opencode/templates/translation-models.json`; дотримання
+  схеми доводить `./bdo runtime`, а платні fallback за замовчуванням заборонені.
 - Windows підтримується через WSL2; native PowerShell flow не дублюється.
 - Ціль і дозвіл на запис дає `BDO_ENV`; `run start` фіксує ціль, `commit --write` її звіряє.
 

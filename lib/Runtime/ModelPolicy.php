@@ -8,6 +8,18 @@ use RuntimeException;
 
 final class ModelPolicy
 {
+    // Заборони маршрутів за НАЗВОЮ тут немає свідомо.
+    //
+    // До 2026-08-28 будь-який `-mlx` відхилявся: тодішній runner мовчки
+    // ігнорував constrained decoding. Перевірено наново на Ollama 0.33.1 (у
+    // застосунку зʼявились рантайми `mlx_metal_v3/v4` з `libmlx.dylib`):
+    // `gemma4:e4b-mlx` дотримав strict-схему в 4 прогонах із 4 і встояв навіть
+    // проти промпта, який ПРЯМО вимагав додати зайві поля.
+    //
+    // Назва тега ніколи не була доказом · доказом є поведінка. Її перевіряє
+    // `./bdo runtime` (крок «constrained decoding тримається») перед першою
+    // пачкою, і саме там модель, яка ігнорує схему, не пройде · хоч GGUF, хоч
+    // MLX, хоч будь-що майбутнє.
     public const ROLES = ['translation-terminology', 'translation-worker', 'translation-qa', 'translation-repair', 'translation-judge', 'translation-smoke', 'translation-glossary'];
 
     public static function load(string $file): array
@@ -31,14 +43,14 @@ final class ModelPolicy
                 $routes = $profile['routes'][$role] ?? null;
                 if (!is_array($routes) || $routes === []) throw new RuntimeException("Profile $name has no route for $role.");
                 foreach ($routes as $route) {
-                    if (!is_string($route) || !preg_match('~^[^/\s]+/[^\s]+$~', $route) || str_contains(strtolower($route), '-mlx')) throw new RuntimeException("Invalid or forbidden route in $name/$role: ".(string) $route);
+                    if (!is_string($route) || !preg_match('~^[^/\s]+/[^\s]+$~', $route)) throw new RuntimeException("Invalid or forbidden route in $name/$role: ".(string) $route);
                     if (isset($paid[$route]) && $profile['allow_paid'] !== true) throw new RuntimeException("Paid route $route is disabled in profile $name.");
                 }
                 if (isset($profile['default_routes'])) {
                     $defaults = $profile['default_routes'][$role] ?? null;
                     if (!is_array($defaults) || $defaults === []) throw new RuntimeException("Profile $name has no default route for $role.");
                     foreach ($defaults as $route) {
-                        if (!is_string($route) || !preg_match('~^[^/\s]+/[^\s]+$~', $route) || str_contains(strtolower($route), '-mlx')) throw new RuntimeException("Invalid or forbidden default route in $name/$role: ".(string) $route);
+                        if (!is_string($route) || !preg_match('~^[^/\s]+/[^\s]+$~', $route)) throw new RuntimeException("Invalid or forbidden default route in $name/$role: ".(string) $route);
                     }
                 }
             }

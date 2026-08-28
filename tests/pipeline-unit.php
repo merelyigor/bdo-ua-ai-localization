@@ -187,13 +187,26 @@ try {
     $expectedWorkerRoute = $policy['profiles'][$activeProfile]['routes']['translation-worker'][0] ?? null;
     expect(is_string($expectedWorkerRoute) && $expectedWorkerRoute !== '', 'active worker route is absent');
     expect(ModelPolicy::routes($policy, 'translation-worker')[0] === $expectedWorkerRoute, 'active worker route is wrong');
+    // Формат моделі більше не вгадується за назвою тега.
+    //
+    // До 2026-08-28 будь-який `-mlx` відхилявся policy. Перевірено наново на
+    // Ollama 0.33.1: `gemma4:e4b-mlx` дотримав strict-схему в 4 прогонах із 4 і
+    // встояв проти промпта, який ПРЯМО вимагав зайві поля. Отже підстава
+    // заборони зникла, а поведінку однаково доводить `./bdo runtime`.
+    $mlx = $policy;
+    foreach ($mlx['profiles']['ollama-local']['routes'] as $role => $routes) {
+        $mlx['profiles']['ollama-local']['routes'][$role] = ['ollama-local/gemma4:26b-mlx'];
+        $mlx['profiles']['ollama-local']['default_routes'][$role] = ['ollama-local/gemma4:26b-mlx'];
+    }
+    ModelPolicy::validate($mlx);
+    // А от зламаний маршрут policy мусить відхиляти й далі.
     $broken = $policy;
-    $broken['profiles']['ollama-local']['routes']['translation-worker'] = ['ollama-local/model-mlx'];
+    $broken['profiles']['ollama-local']['routes']['translation-worker'] = ['без-слеша'];
     try {
         ModelPolicy::validate($broken);
-        throw new RuntimeException('MLX route was accepted');
+        throw new RuntimeException('broken route was accepted');
     } catch (RuntimeException $error) {
-        expect(str_contains($error->getMessage(), 'forbidden route'), 'wrong MLX policy error');
+        expect(str_contains($error->getMessage(), 'Invalid or forbidden route'), 'wrong route policy error');
     }
     echo "pipeline unit: OK\n";
 } finally {
