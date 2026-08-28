@@ -63,10 +63,38 @@ qa="$(BDO_STATE_DIR="$TMP/state" bash "$ROOT/cli/prepare/qa-payload.sh" "$TMP/ro
 printf '%s' "$qa" | jq -e 'has("examples") and has("items")' >/dev/null \
     || fail 'qa-payload лишився зі старою формою'
 
+# Терміни пачки · теж спільний блок. Береться з одного пачкового запиту
+# `POST /rows/context` (сервер 3.7.5) замість запиту на кожен рядок.
+cat > "$TMP/state/batches/b/terms.json" <<'JSON'
+[{"canonical_source":"Iron Ore","ukrainian":"Залізна руда","policy":"profile_default","severity":"mandatory","entity_type":"item"},
+ {"canonical_source":"Steel Ore","ambiguous":true}]
+JSON
+out="$(build)" || fail 'payload із термінами не зібрався'
+printf '%s' "$out" | jq -e '.terms | length == 2' >/dev/null || fail 'терміни пачки не дійшли в payload'
+printf '%s' "$out" | jq -e '.terms[0].severity == "mandatory"' >/dev/null || fail 'сила правила терміна загубилась'
+printf '%s' "$out" | jq -e '.terms[1].ambiguous == true' >/dev/null || fail 'ознака неоднозначності загубилась'
+# `definition` сьогодні порожній у всіх термінів, але тільки-но глосарій його
+# отримає · він мусить доїхати без жодної зміни коду.
+cat > "$TMP/state/batches/b/terms.json" <<'JSON'
+[{"canonical_source":"Iron Ore","definition":"Руда, з якої плавлять залізо.","wiki_url":"https://example/ore"}]
+JSON
+out="$(build)" || fail 'payload з описом терміна не зібрався'
+printf '%s' "$out" | jq -e '.terms[0].definition and .terms[0].wiki_url' >/dev/null \
+    || fail 'опис із вікі не доходить до моделі'
+qa2="$(BDO_STATE_DIR="$TMP/state" bash "$ROOT/cli/prepare/qa-payload.sh" "$TMP/rows.json" "$TMP/candidate.json" 2>/dev/null)"
+printf '%s' "$qa2" | jq -e '.terms[0].definition' >/dev/null \
+    || fail 'QA судить без тих самих термінів, що бачив воркер'
+
+# Один пачковий запит замість запиту на кожен рядок.
+grep -Fq '/rows/context' "$ROOT/cli/prepare/worker-payload.sh" || fail 'контекст береться не пачковим запитом'
+grep -Fq 'max_context_rows' "$ROOT/cli/prepare/worker-payload.sh" || fail 'ліміт пачки контексту зашитий у клієнт замість /me'
+
 # Обидва промпти мусять знати нову форму, інакше слабка модель шукатиме масив.
 for role in worker qa; do
     grep -Fq '`items` · масив рядків' "$ROOT/.opencode/agent-templates/translation-$role.md" \
         || fail "child $role не знає, що payload має ключі examples та items"
+    grep -Fq '`terms` · терміни цієї пачки' "$ROOT/.opencode/agent-templates/translation-$role.md" \
+        || fail "child $role не знає блоку terms"
 done
 
 # Нагадування про свіжу сесію · єдине, що прибирає вже накопичений транскрипт.

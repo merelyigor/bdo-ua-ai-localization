@@ -61,12 +61,16 @@ while [ $# -gt 0 ]; do
 done
 
 CONTEXT_FILE=""
+# Терміни пачки живуть окремим файлом, бо `context.json` читають ще qa-payload
+# і judge-payload у старій формі «приклади за хешем».
+TERMS_FILE=""
 if [ "$WANT_CONTEXT" = 1 ]; then
     # Тека пачки, якщо вона є: тоді контекст переживе цей запуск і дістанеться QA.
     # Без розпочатої пачки лишається тимчасовий файл · QA його не побачить.
     BATCH_DIR="$("$SCRIPT_DIR/cli/batch/batch-dir.sh" 2>/dev/null || true)"
     if [ -n "$BATCH_DIR" ]; then
         CONTEXT_FILE="$BATCH_DIR/context.json"
+        TERMS_FILE="$BATCH_DIR/terms.json"
     else
         CONTEXT_FILE="$(mktemp)"
         trap 'rm -f "$CONTEXT_FILE"' EXIT
@@ -86,50 +90,105 @@ if [ "$WANT_CONTEXT" = 1 ]; then
         # shellcheck source=/dev/null
         source "$SCRIPT_DIR/cli/system/select-env.sh"
         php -r '
+        // ОДИН запит на всю пачку замість запиту на кожен рядок.
+        //
+        // До 2026-08-28 тут був цикл `GET /rows/{hash}/context`: 29-50 HTTP на
+        // пачку, і проба з трьох рядків існувала саме тому, що кожен запит
+        // коштував окремо. Сервер отримав `POST /agent/v1/rows/context`
+        // (версія 3.7.5), який приймає масив хешів і повертає ту саму структуру
+        // ключем за identity_hash. Проба більше не потрібна: порожній корпус
+        // коштує рівно один запит.
+        //
+        // Ліміт пачки контексту віддає сам сервер у `GET /me`
+        // (`data.batch.max_context_rows`); зашивати 50 у клієнт не можна ·
+        // власник міняє його змінною оточення без зміни коду.
         $rows = json_decode(file_get_contents($argv[1]), true, 512, JSON_THROW_ON_ERROR)["data"]["rows"] ?? [];
-        // Запобіжник 1: проба. Якщо перші PROBE рядків не дали жодного приклада,
-        // корпус для цієї пачки порожній · решту не питаємо.
-        $probe = 3;
-        $out = [];
-        $asked = 0;
-        $failed = 0;
-        foreach ($rows as $i => $row) {
-            if ($i === $probe && $out === []) break;
-            $hash = $row["identity_hash"] ?? "";
-            if ($hash === "") continue;
-            $url = $argv[2] . "/rows/" . $hash . "/context";
-            $command = escapeshellarg($argv[5]) . " -fsS -H "
-                . escapeshellarg("X-API-Key: " . $argv[3]) . " " . escapeshellarg($url);
+        $hashes = [];
+        foreach ($rows as $row) {
+            $hash = (string) ($row["identity_hash"] ?? "");
+            if ($hash !== "") $hashes[] = $hash;
+        }
+        $http = $argv[5];
+        $call = static function (string $url, ?string $body) use ($http, $argv): ?array {
+            $command = escapeshellarg($http) . " -fsS -H " . escapeshellarg("X-API-Key: " . $argv[3]);
+            if ($body !== null) {
+                $command .= " -X POST -H " . escapeshellarg("Content-Type: application/json")
+                    . " -d " . escapeshellarg($body);
+            }
+            $command .= " " . escapeshellarg($url);
             $lines = [];
             $status = 0;
-            exec($command, $lines, $status);
-            $ctx = $status === 0 ? implode("\n", $lines) : false;
-            $asked++;
-            // Один запит уже використав увесь retry-бюджет. Не множимо
-            // 10 хвилин на решту рядків: контекст optional, payload без нього робочий.
-            if ($ctx === false) { $failed++; break; }
-            $data = json_decode($ctx, true)["data"]["context"] ?? [];
-            $examples = [];
-            foreach (array_slice($data["related_rows"] ?? [], 0, 3) as $related) {
+            exec($command . " 2>/dev/null", $lines, $status);
+            if ($status !== 0) return null;
+            $data = json_decode(implode("\n", $lines), true);
+            return is_array($data) ? $data : null;
+        };
+
+        $limit = 50;
+        $me = $call($argv[2] . "/me", null);
+        if (isset($me["data"]["batch"]["max_context_rows"])) {
+            $limit = max(1, (int) $me["data"]["batch"]["max_context_rows"]);
+        }
+
+        $contexts = [];
+        $requests = 0;
+        $failed = 0;
+        foreach (array_chunk($hashes, $limit) as $chunk) {
+            $requests++;
+            $answer = $call($argv[2] . "/rows/context", json_encode(["identity_hashes" => $chunk]));
+            if ($answer === null) { $failed++; break; }
+            foreach ($answer["data"]["contexts"] ?? [] as $hash => $context) {
+                $contexts[$hash] = $context;
+            }
+        }
+
+        // `context.json` лишається у СТАРІЙ формі (приклади за хешем): його
+        // читають ще qa-payload і judge-payload, і ламати їх заради одного
+        // споживача не можна.
+        $examples = [];
+        $terms = [];
+        foreach ($contexts as $hash => $context) {
+            $rowExamples = [];
+            foreach (array_slice($context["related_rows"] ?? [], 0, 3) as $related) {
                 $text = $related["translation"]["text"] ?? null;
                 $src = $related["source_text"] ?? null;
                 if (is_string($text) && is_string($src) && $text !== "" && $src !== "") {
-                    $examples[] = ["en" => $src, "ua" => $text];
+                    $rowExamples[] = ["en" => $src, "ua" => $text];
                 }
             }
-            if ($examples !== []) $out[$hash] = $examples;
+            if ($rowExamples !== []) $examples[$hash] = $rowExamples;
+
+            // Терміни · СПІЛЬНІ для пачки й дедупліковані за канонічною назвою.
+            // Модель має бачити не лише відповідник, а й СИЛУ правила
+            // (`policy`, `severity`), ознаку неоднозначності та опис із вікі,
+            // коли він зʼявиться. Порожні поля не кладемо: сьогодні `definition`
+            // порожній у всіх термінів, і зайвий null лише важчає payload.
+            foreach ($context["terms"] ?? [] as $term) {
+                $canonical = (string) ($term["canonical_source"] ?? "");
+                if ($canonical === "" || isset($terms[$canonical])) continue;
+                $entry = ["canonical_source" => $canonical];
+                foreach (["ukrainian", "policy", "severity", "entity_type", "definition", "wiki_url"] as $field) {
+                    $value = $term[$field] ?? null;
+                    if (is_string($value) && $value !== "") $entry[$field] = $value;
+                }
+                if (! empty($term["ambiguous"])) $entry["ambiguous"] = true;
+                if (! empty($term["scopes"])) $entry["scopes"] = $term["scopes"];
+                $terms[$canonical] = $entry;
+            }
         }
-        file_put_contents($argv[4], json_encode($out, JSON_UNESCAPED_UNICODE));
-        $total = count($rows);
-        if ($out === [] && $asked < $total) {
-            fwrite(STDERR, sprintf(
-                "Приклади: перші %d рядків не дали жодного · решту %d не питав (порожній корпус для цієї пачки).\n",
-                $asked, $total - $asked));
-        } else {
-            fwrite(STDERR, sprintf("Приклади: %d рядків із %d (запитів %d%s)\n",
-                count($out), $total, $asked, $failed > 0 ? ", невдалих $failed" : ""));
+
+        file_put_contents($argv[4], json_encode($examples, JSON_UNESCAPED_UNICODE));
+        if ($argv[6] !== "") {
+            file_put_contents($argv[6], json_encode(array_values($terms), JSON_UNESCAPED_UNICODE));
         }
-        ' "$ROWS_FILE" "$BDO_API_BASE" "$BDO_API_KEY" "$CONTEXT_FILE" "$SCRIPT_DIR/cli/api/http-request.sh"
+        $withWiki = count(array_filter($terms, static fn (array $t): bool => isset($t["definition"])));
+        fwrite(STDERR, sprintf(
+            "Контекст пачки: %d рядків одним запитом%s | приклади для %d рядків | термінів %d (з описом %d)\n",
+            count($hashes), $requests > 1 ? " x$requests" : "", count($examples), count($terms), $withWiki));
+        if ($failed > 0) {
+            fwrite(STDERR, "Запит контексту не вдався · payload будується без нього, це робочий payload зі слабшим сигналом.\n");
+        }
+        ' "$ROWS_FILE" "$BDO_API_BASE" "$BDO_API_KEY" "$CONTEXT_FILE" "$SCRIPT_DIR/cli/api/http-request.sh" "$TERMS_FILE"
     fi
 fi
 
@@ -229,11 +288,26 @@ foreach ($rows as $row) {
     if (!empty($examplesByHash[$hash])) $stats["examples"]++;
     $payload[] = $item;
 }
-echo json_encode(["examples" => $sharedExamples, "items" => $payload], JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR), "\n";
+// Терміни пачки · спільний блок поруч із прикладами. Модель бачить не лише
+// відповідник, а й силу правила; коли глосарій наповнять описами, вони
+// доїдуть сюди без жодної зміни коду.
+$sharedTerms = [];
+if ($argv[6] !== "" && is_file($argv[6])) {
+    $sharedTerms = json_decode((string) file_get_contents($argv[6]), true) ?: [];
+    $termLimit = (int) (getenv("BDO_SHARED_TERMS") ?: 40);
+    if (count($sharedTerms) > $termLimit) {
+        fwrite(STDERR, sprintf("Термінів понад стелю: %d, лишаю %d (BDO_SHARED_TERMS)\n",
+            count($sharedTerms) - $termLimit, $termLimit));
+        $sharedTerms = array_slice($sharedTerms, 0, $termLimit);
+    }
+}
+$out = ["examples" => $sharedExamples, "items" => $payload];
+if ($sharedTerms !== []) $out = ["terms" => $sharedTerms] + $out;
+echo json_encode($out, JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR), "\n";
 // Підсумок у stderr: диригент звітує з нього, замість перечитувати payload.
 // stdout лишається чистим JSON, тому підстановку в промпт це не ламає.
 fwrite(STDERR, sprintf(
     "payload воркера: %d рядків | глосарій %d | без відповідника %d | нерозпізнані назви %d | приклади %d спільних (рядків із прикладами %d, відкинуто понад стелю %d) | межі довжини %d\n",
     count($payload), $stats["glossary"], $stats["pending"], $stats["unresolved"],
     count($sharedExamples), $stats["examples"], $exampleDropped, $stats["limits"]));
-' "$ROWS_FILE" "$CONTEXT_FILE" "$WITH_CURRENT" "$SCRIPT_DIR/lib/autoload.php" "$WITH_REFERENCE"
+' "$ROWS_FILE" "$CONTEXT_FILE" "$WITH_CURRENT" "$SCRIPT_DIR/lib/autoload.php" "$WITH_REFERENCE" "$TERMS_FILE"

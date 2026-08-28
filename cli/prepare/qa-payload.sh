@@ -34,9 +34,12 @@ while [ $# -gt 0 ]; do
         *) echo "Невідомий прапорець: $1" >&2; exit 1 ;;
     esac
 done
+TERMS_FILE=""
 if [ -z "$CONTEXT_FILE" ]; then
     BATCH_DIR="$("$SCRIPT_DIR/cli/batch/batch-dir.sh" 2>/dev/null || true)"
     test -n "$BATCH_DIR" && test -f "$BATCH_DIR/context.json" && CONTEXT_FILE="$BATCH_DIR/context.json"
+    # Терміни пачки збирає worker-payload одним запитом; QA читає той самий файл.
+    test -n "${BATCH_DIR:-}" && test -f "$BATCH_DIR/terms.json" && TERMS_FILE="$BATCH_DIR/terms.json"
 fi
 
 php -r '
@@ -129,8 +132,18 @@ foreach ($rows as $row) {
     if (!empty($examplesByHash[$hash])) $stats["examples"]++;
     $payload[] = $item;
 }
-echo json_encode(["examples" => $sharedExamples, "items" => $payload], JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR), "\n";
+// Ті самі терміни, що бачив воркер: інакше QA судить за іншим правилом, ніж
+// той, кого перевіряє.
+$sharedTerms = [];
+if (($argv[6] ?? "") !== "" && is_file($argv[6])) {
+    $sharedTerms = json_decode((string) file_get_contents($argv[6]), true) ?: [];
+    $termLimit = (int) (getenv("BDO_SHARED_TERMS") ?: 40);
+    if (count($sharedTerms) > $termLimit) $sharedTerms = array_slice($sharedTerms, 0, $termLimit);
+}
+$out = ["examples" => $sharedExamples, "items" => $payload];
+if ($sharedTerms !== []) $out = ["terms" => $sharedTerms] + $out;
+echo json_encode($out, JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR), "\n";
 fwrite(STDERR, sprintf(
     "payload QA: %d рядків | глосарій %d | без відповідника %d | нерозпізнані назви %d | приклади %d | межі довжини %d\n",
     count($payload), $stats["glossary"], $stats["pending"], $stats["unresolved"], $stats["examples"], $stats["limits"]));
-' "$ROWS_FILE" "$CANDIDATE_FILE" "$SCRIPT_DIR/lib/autoload.php" "$CONTEXT_FILE" "$WITH_CURRENT"
+' "$ROWS_FILE" "$CANDIDATE_FILE" "$SCRIPT_DIR/lib/autoload.php" "$CONTEXT_FILE" "$WITH_CURRENT" "$TERMS_FILE"
