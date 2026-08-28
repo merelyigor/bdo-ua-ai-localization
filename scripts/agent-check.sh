@@ -503,6 +503,7 @@ check_agents() {
     run node --experimental-strip-types tests/runtime-state-reader.mjs
     run node --experimental-strip-types tests/result-writer.mjs
     run node --experimental-strip-types tests/child-contract.mjs
+    run node --experimental-strip-types tests/autopilot.mjs
 }
 
 check_runtime() { run ./bdo runtime; }

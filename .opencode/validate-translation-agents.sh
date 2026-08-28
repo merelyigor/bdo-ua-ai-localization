@@ -20,8 +20,25 @@ fi
 jq -e . "$CONFIG" >/dev/null
 test -f "$CONFIG_TEMPLATE" || { echo 'ERROR: tracked opencode template is missing' >&2; exit 1; }
 php -r 'require $argv[1]; Bdo\Translate\Runtime\ModelPolicy::load($argv[2]);' "$ROOT/lib/autoload.php" "$POLICY"
-if rg -n 'client\.session\.(create|prompt|promptAsync)' "$ROOT/.opencode/plugin" >/dev/null; then
-    echo 'ERROR: plugins must not create hidden child sessions; use native visible Task' >&2
+# Заборонена НЕВИДИМА робота, а не будь-який виклик API сесій.
+#
+# Правило починалось як «жодного client.session.prompt», бо плагін, який
+# створює власну сесію й запускає в ній агента, робить роботу повз видимий
+# native Task · її не видно ні власнику, ні аудиту. Це лишається під забороною.
+#
+# Але 2026-08-29 знадобився протилежний випадок: диригент після успішного QA
+# написав звіт і зупинився посеред пачки, і набір мусить сказати «продовжуй» у
+# ту саму ВІДКРИТУ сесію власника. Такий поштовх нічого не ховає: він видимий у
+# чаті, порахований у `state/autopilot.jsonl` і обмежений лічильником.
+#
+# Тому межа проведена по суті: заборонено створювати сесії й запускати в них
+# агента (`agent:` у виклику), дозволено надіслати текст у наявну сесію.
+if rg -n 'client\.session\.create' "$ROOT/.opencode/plugin" >/dev/null; then
+    echo 'ERROR: plugins must not create hidden sessions; use native visible Task' >&2
+    exit 1
+fi
+if rg -nU 'client\.session\.(prompt|promptAsync)\([^)]{0,400}agent\s*:' "$ROOT/.opencode/plugin" >/dev/null; then
+    echo 'ERROR: plugins must not run agents through session.prompt; use native visible Task' >&2
     exit 1
 fi
 test -f "$ROOT/.opencode/plugin/translation-result-writer.ts" || {

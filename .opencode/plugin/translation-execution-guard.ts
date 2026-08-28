@@ -28,6 +28,7 @@ const WORKFLOW_FILES = [
   ".opencode/plugin/translation-routing-guard.ts",
   ".opencode/plugin/translation-child-contract.ts",
   ".opencode/plugin/translation-result-writer.ts",
+  ".opencode/plugin/translation-autopilot.ts",
   ".opencode/lib/child-response.ts",
   ".opencode/agents/патч.md",
   ".opencode/agents/ручний.md",
