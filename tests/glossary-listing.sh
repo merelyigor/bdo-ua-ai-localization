@@ -7,6 +7,9 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 fail() { printf 'FAIL: %s\n' "$1" >&2; exit 1; }
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
+# Свій STATE_DIR обовʼязковий: інакше тест пише кеш глосарію в робочий стан
+# проєкту, і наступний виклик читає ВИГАДАНІ дані замість справжніх.
+export BDO_STATE_DIR="$TMP/state"
 
 # Заглушка HTTP: віддає дві сторінки, потім кінець.
 cat > "$TMP/http-ok.sh" <<'SH'
@@ -29,10 +32,16 @@ exit 22
 SH
 chmod +x "$TMP"/http-*.sh
 
+# Вивід · NDJSON: каталог на 136 тисяч записів у памʼять не збирається.
 out="$(BDO_HTTP_CLIENT="$TMP/http-ok.sh" bash "$ROOT/cli/api/glossary-list.sh" 2>/dev/null)"
-printf '%s' "$out" | jq -e '.terms | length == 3' >/dev/null || fail "обхід зібрав не всі сторінки: $out"
-printf '%s' "$out" | jq -e '[.terms[].canonical_source] == ["Iron Sword","GO","Week"]' >/dev/null \
+test "$(printf '%s\n' "$out" | grep -c .)" -eq 3 || fail "обхід зібрав не всі сторінки: $out"
+test "$(printf '%s\n' "$out" | jq -r '.canonical_source' | paste -sd, -)" = 'Iron Sword,GO,Week' \
     || fail 'порядок або вміст сторінок зіпсовано'
+
+# Повний обхід кешується: другий виклик не має ходити в мережу взагалі.
+cached="$(BDO_HTTP_CLIENT="$TMP/http-404.sh" bash "$ROOT/cli/api/glossary-list.sh" 2>/dev/null)"
+test "$(printf '%s\n' "$cached" | grep -c .)" -eq 3 || fail 'кеш повного обходу не використано'
+rm -f "$TMP/state/glossary-full.json"
 
 set +e
 BDO_HTTP_CLIENT="$TMP/http-loop.sh" bash "$ROOT/cli/api/glossary-list.sh" >/dev/null 2>"$TMP/loop.err"
@@ -46,7 +55,8 @@ BDO_HTTP_CLIENT="$TMP/http-404.sh" bash "$ROOT/cli/api/glossary-list.sh" >"$TMP/
 code=$?
 set -e
 test "$code" -ne 0 || fail 'недоступний перелік віддав успіх'
-test ! -s "$TMP/empty.json" || fail 'при помилці виведено масив, який прочитають як повний глосарій'
+test ! -s "$TMP/empty.json" || fail 'при помилці виведено рядки, які прочитають як повний глосарій'
+test ! -e "$TMP/state/glossary-full.json" || fail 'кеш зʼявився після невдалого обходу'
 grep -q 'недоступний' "$TMP/err.txt" || fail 'причина недоступності не названа'
 
 # Те, що клієнт не повторює постійних помилок, перевіряє tests/http-retry.sh:

@@ -61,12 +61,40 @@ require $argv[1];
 
 use Bdo\Translate\Quality\GlossarySuspects;
 
-$terms = json_decode((string) file_get_contents($argv[2]), true)["terms"] ?? [];
-$suspects = GlossarySuspects::find($terms);
+// Два формати входу з однією семантикою:
+//   NDJSON  · повний каталог із `glossary-list.sh` (136 тисяч записів, у памʼять
+//             цілком не влазить · читаємо потоком);
+//   {"terms":[…]} · реєстр баченого в роботі.
+// Приклади рядків беремо лише з другого: у повному переліку їх немає.
+$suspects = [];
+$samples = [];
+$count = 0;
+$handle = fopen($argv[2], "rb");
+if ($handle === false) { fwrite(STDERR, "Не читається джерело термінів.\n"); exit(1); }
+$first = fgets($handle);
+rewind($handle);
+$isNdjson = is_string($first) && str_starts_with(ltrim($first), "{") && ! str_contains($first, "\"terms\"");
+if ($isNdjson) {
+    while (($line = fgets($handle)) !== false) {
+        $term = json_decode($line, true);
+        if (! is_array($term)) continue;
+        $count++;
+        $hit = GlossarySuspects::perTerm($term);
+        if ($hit !== null) $suspects[] = $hit;
+    }
+} else {
+    $terms = json_decode((string) stream_get_contents($handle), true)["terms"] ?? [];
+    $count = count($terms);
+    $suspects = GlossarySuspects::find($terms);
+    foreach ($terms as $term) {
+        $samples[(string) ($term["canonical_source"] ?? "")] = $term["samples"][0] ?? "";
+    }
+}
+fclose($handle);
 $listOnly = $argv[5] === "1";
 
 printf("Джерело: %s | термінів: %d | підозрілих: %d\n",
-    $argv[6] === "full" ? "весь глосарій" : "лише бачені в роботі", count($terms), count($suspects));
+    $argv[6] === "full" ? "весь глосарій" : "лише бачені в роботі", $count, count($suspects));
 foreach ($suspects as $s) {
     printf("  %s -> %s · %s (%s), траплявся %d раз(ів)\n",
         $s["canonical_source"], $s["ukrainian"], $s["reason"], $s["detail"], $s["seen"]);
@@ -74,17 +102,21 @@ foreach ($suspects as $s) {
 if ($listOnly) exit(0);
 
 // Позначки для коду: рівно назви термінів і причина, без тексту звіту.
+// `withhold` вирішує, чи прибирати термін із payload. Не кожна підозра цього
+// варта: `untranslated_target` каже моделі те саме, що й оригінал, і прибрати
+// його означає ЗМІНИТИ поведінку там, де помилки ще ніхто не довів.
+$withheld = ["latin_target_mismatch" => true, "time_unit_mismatch" => true, "function_word" => true];
 $marks = ["updated_at" => gmdate("c"), "terms" => []];
 foreach ($suspects as $s) {
-    $marks["terms"][$s["canonical_source"]] = ["reason" => $s["reason"], "ukrainian" => $s["ukrainian"]];
+    $marks["terms"][$s["canonical_source"]] = [
+        "reason" => $s["reason"],
+        "ukrainian" => $s["ukrainian"],
+        "withhold" => isset($withheld[$s["reason"]]),
+    ];
 }
 file_put_contents($argv[3], json_encode($marks, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT | JSON_THROW_ON_ERROR)."\n");
 
 $rows = "";
-$samples = [];
-foreach ($terms as $term) {
-    $samples[(string) ($term["canonical_source"] ?? "")] = $term["samples"][0] ?? "";
-}
 foreach ($suspects as $s) {
     $sample = str_replace(["|", "\n"], [" ", " "], (string) ($samples[$s["canonical_source"]] ?? ""));
     $rows .= sprintf("| `%s` | `%s` | %s | %s | %d | %s |\n",
@@ -104,10 +136,17 @@ $text = "# Підозрілі записи глосарію\n\n"
         : "ОХОПЛЕННЯ · лише терміни, які вже траплялись у прогонах: повний перелік\n"
           ."глосарію був недоступний під час генерації. Це НЕ повний аудит.\n\n")
     ."Класи підозр:\n\n"
+    ."- `latin_target_mismatch` · у полі українського відповідника стоїть ІНШИЙ\n"
+    ."  латинський рядок (`FTP -> QZG`, `Bilson -> Kiraki`) · майже напевно\n"
+    ."  переплутані записи; такий термін не подається моделі;\n"
     ."- `time_unit_mismatch` · одиниця часу перекладена іншою одиницею часу;\n"
     ."- `function_word` · займенник або визначник як обовʼязковий термін;\n"
-    ."- `acronym` · абревіатура, яку кодом не перевірити;\n"
-    ."- `duplicate_ukrainian` · один відповідник на кілька різних термінів.\n\n"
+    ."- `untranslated_target` · відповідник збігається з оригіналом з точністю до\n"
+    ."  регістру · шкоди немає, тому модель його бачить, це лише до відома.\n\n"
+    ."Дослівний збіг (`AP -> AP`) і політика `keep_source` підозрою не є: це\n"
+    ."свідоме «не перекладати». Правила «один відповідник на кілька термінів»\n"
+    ."немає навмисно · на повному каталозі таких 47 205 із 136 022 (35%), це\n"
+    ."нормальні варіанти предметів, а не дефект.\n\n"
     ."| Термін | Відповідник | Клас | Чому | Разів | Приклад рядка |\n"
     ."|---|---|---|---|---|---|\n"
     .($rows === "" ? "| — | — | — | підозрілих записів немає | 0 | — |\n" : $rows);

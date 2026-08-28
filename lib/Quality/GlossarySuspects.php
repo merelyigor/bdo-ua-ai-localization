@@ -35,6 +35,41 @@ final class GlossarySuspects
     ];
 
     /**
+     * Підозра, яку видно з ОДНОГО запису.
+     *
+     * Окремо від `find()`, бо весь глосарій у памʼять не влазить: 136 022
+     * записи вбили `php` з типовим лімітом 128 МБ на 80 000. Потокова перевірка
+     * тримає в памʼяті лише знахідки.
+     *
+     * @param array<string,mixed> $term
+     * @return array{canonical_source:string,ukrainian:string,reason:string,detail:string,seen:int}|null
+     */
+    public static function perTerm(array $term): ?array
+    {
+        $source = trim((string) ($term['canonical_source'] ?? ''));
+        $ukrainian = trim((string) ($term['ukrainian'] ?? ''));
+        if ($source === '' || $ukrainian === '') {
+            return null;
+        }
+        // `keep_source` і дослівний збіг · свідоме «не перекладати», не помилка.
+        if (($term['policy'] ?? '') === 'keep_source' || $source === $ukrainian) {
+            return null;
+        }
+        $reason = self::reasonFor($source, $ukrainian);
+        if ($reason === null) {
+            return null;
+        }
+
+        return [
+            'canonical_source' => $source,
+            'ukrainian' => $ukrainian,
+            'reason' => $reason['reason'],
+            'detail' => $reason['detail'],
+            'seen' => (int) ($term['seen'] ?? 0),
+        ];
+    }
+
+    /**
      * Підозрілі записи серед переданих термінів.
      *
      * @param list<array<string,mixed>> $terms
@@ -42,16 +77,6 @@ final class GlossarySuspects
      */
     public static function find(array $terms): array
     {
-        $byUkrainian = [];
-        foreach ($terms as $term) {
-            $source = trim((string) ($term['canonical_source'] ?? ''));
-            $ukrainian = trim((string) ($term['ukrainian'] ?? ''));
-            if ($source === '' || $ukrainian === '') {
-                continue;
-            }
-            $byUkrainian[mb_strtolower($ukrainian)][] = $source;
-        }
-
         $found = [];
         foreach ($terms as $term) {
             $source = trim((string) ($term['canonical_source'] ?? ''));
@@ -59,7 +84,10 @@ final class GlossarySuspects
             if ($source === '' || $ukrainian === '') {
                 continue;
             }
-            $reason = self::reasonFor($source, $ukrainian, $byUkrainian);
+            if (($term['policy'] ?? '') === 'keep_source' || $source === $ukrainian) {
+                continue;
+            }
+            $reason = self::reasonFor($source, $ukrainian);
             if ($reason === null) {
                 continue;
             }
@@ -75,11 +103,8 @@ final class GlossarySuspects
         return $found;
     }
 
-    /**
-     * @param array<string,list<string>> $byUkrainian
-     * @return array{reason:string,detail:string}|null
-     */
-    private static function reasonFor(string $source, string $ukrainian, array $byUkrainian): ?array
+    /** @return array{reason:string,detail:string}|null */
+    private static function reasonFor(string $source, string $ukrainian): ?array
     {
         $lower = mb_strtolower($source);
 
@@ -108,25 +133,30 @@ final class GlossarySuspects
             ];
         }
 
-        // 3. Абревіатура без розшифровки: перевірити її може лише людина, яка
-        //    знає, що саме скорочено в грі.
-        if (preg_match('/^[A-Z]{2,4}$/', $source) === 1) {
-            return [
-                'reason' => 'acronym',
-                'detail' => 'абревіатуру не можна перевірити кодом · потрібна людина',
-            ];
+        // 3. «Український» відповідник без жодної кирилиці.
+        //
+        //    Точна рівність з оригіналом · це свідоме «лишити як є» (`AP`, `HP`,
+        //    `DP`), і воно ніколи не буває помилкою. А от ІНШИЙ латинський
+        //    рядок у полі українського відповідника не пояснити нічим:
+        //    `FTP -> QZG`, `Bilson -> Kiraki`, `Gladius -> Labour Day`. На
+        //    повному каталозі (136 022 записи) таких 203, тобто 0,15% ·
+        //    перевірка точкова, а не сито.
+        if (preg_match('/\p{Cyrillic}/u', $ukrainian) !== 1 && preg_match('/[A-Za-z]/', $ukrainian) === 1) {
+            $sameText = mb_strtolower(preg_replace('/\s+/u', ' ', $source))
+                === mb_strtolower(preg_replace('/\s+/u', ' ', $ukrainian));
+
+            return $sameText
+                // Той самий текст, інший регістр: запис не перекладено, але
+                // шкоди від нього немає · моделі він каже те саме.
+                ? ['reason' => 'untranslated_target', 'detail' => 'відповідник збігається з оригіналом з точністю до регістру']
+                // Інший латинський рядок · майже напевно переплутані записи.
+                : ['reason' => 'latin_target_mismatch', 'detail' => 'у полі українського відповідника стоїть інший латинський рядок'];
         }
 
-        // 4. Один український відповідник на кілька різних термінів: у тексті
-        //    їх стане неможливо розрізнити.
-        $others = array_values(array_unique($byUkrainian[mb_strtolower($ukrainian)] ?? []));
-        if (count($others) > 1) {
-            return [
-                'reason' => 'duplicate_ukrainian',
-                'detail' => 'той самий відповідник має ще: '.implode(', ', array_diff($others, [$source])),
-            ];
-        }
-
+        // Правила «один відповідник на кілька термінів» тут НЕМАЄ свідомо.
+        // Виміряно на повному каталозі: 47 205 записів із 136 022 (35%) ділять
+        // відповідник з іншим терміном · це нормальні варіанти предметів, і
+        // звіт із 47 тисяч рядків не прочитає ніхто.
         return null;
     }
 }

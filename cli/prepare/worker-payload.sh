@@ -110,7 +110,12 @@ if [ "$WANT_CONTEXT" = 1 ]; then
         // моделі як закон, поки людина не вирішить.
         $suspects = [];
         if (is_file($argv[8])) {
-            $suspects = array_keys(json_decode((string) file_get_contents($argv[8]), true)["terms"] ?? []);
+            foreach (json_decode((string) file_get_contents($argv[8]), true)["terms"] ?? [] as $name => $mark) {
+                // Прибираємо лише те, що позначене до вилучення: підозра «не
+                // перекладено» шкоди не робить, і мовчки міняти поведінку через
+                // неї не можна.
+                if (! empty($mark["withhold"])) $suspects[] = (string) $name;
+            }
         }
         $rows = json_decode(file_get_contents($argv[1]), true, 512, JSON_THROW_ON_ERROR)["data"]["rows"] ?? [];
         $hashes = [];

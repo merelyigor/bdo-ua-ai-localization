@@ -203,32 +203,45 @@ $found = GlossarySuspects::find([
     ["canonical_source" => "Week", "ukrainian" => "Місяць", "seen" => 2],
     ["canonical_source" => "Day", "ukrainian" => "День", "seen" => 1],
     ["canonical_source" => "Her", "ukrainian" => "Вона", "seen" => 1],
-    ["canonical_source" => "GO", "ukrainian" => "ВПЕ", "seen" => 4],
+    ["canonical_source" => "FTP", "ukrainian" => "QZG", "seen" => 0],
+    ["canonical_source" => "We are Family", "ukrainian" => "We are family", "seen" => 0],
+    ["canonical_source" => "AP", "ukrainian" => "AP", "seen" => 9],
+    ["canonical_source" => "Week ", "ukrainian" => "Week", "policy" => "keep_source", "seen" => 0],
     ["canonical_source" => "Cheongsa Island", "ukrainian" => "Острів Ліхтарів", "seen" => 6],
     ["canonical_source" => "Sunset Coral Essence", "ukrainian" => "Есенція корала заходу сонця", "seen" => 1],
 ]);
 $byName = [];
 foreach ($found as $s) $byName[$s["canonical_source"]] = $s["reason"];
-foreach (["Week" => "time_unit_mismatch", "Her" => "function_word", "GO" => "acronym"] as $name => $reason) {
+$expected = [
+    "Week" => "time_unit_mismatch",
+    "Her" => "function_word",
+    "FTP" => "latin_target_mismatch",
+    "We are Family" => "untranslated_target",
+];
+foreach ($expected as $name => $reason) {
     if (($byName[$name] ?? null) !== $reason) $fail("$name не позначено як $reason");
 }
-// Здорові записи не чіпаємо: хибне звинувачення затвердженого терміна гірше
-// за пропущене, бо забирає в моделі правильний закон.
-foreach (["Day", "Cheongsa Island", "Sunset Coral Essence"] as $name) {
+// Здорові записи не чіпаємо: хибне звинувачення затвердженого терміна гірше за
+// пропущене, бо забирає в моделі правильний закон. `AP -> AP` і `keep_source` ·
+// свідоме «не перекладати», а не помилка.
+foreach (["Day", "AP", "Week ", "Cheongsa Island", "Sunset Coral Essence"] as $name) {
     if (isset($byName[$name])) $fail("здоровий термін $name потрапив у підозрілі");
 }
-// Один відповідник на два різні терміни зробить їх нерозрізненними в тексті.
-$dup = GlossarySuspects::find([
-    ["canonical_source" => "Ocean Draught", "ukrainian" => "Океанічний напій"],
-    ["canonical_source" => "Vast Ocean Draught", "ukrainian" => "Океанічний напій"],
-]);
-if (count($dup) !== 2 || $dup[0]["reason"] !== "duplicate_ukrainian") $fail("однаковий відповідник не помічено");
+// Потокова перевірка мусить давати ТОЙ САМИЙ вирок: повний каталог у памʼять не
+// влазить, і саме `perTerm` бачить 136 тисяч записів.
+foreach ($expected as $name => $reason) {
+    $one = GlossarySuspects::perTerm(["canonical_source" => $name, "ukrainian" => (string) array_column(
+        array_filter($found, static fn (array $f): bool => $f["canonical_source"] === $name), "ukrainian")[0]]);
+    if (($one["reason"] ?? null) !== $reason) $fail("потокова перевірка розійшлась із пакетною на $name");
+}
 ' "$ROOT/lib/autoload.php" || fail 'детектор підозрілих термінів не тримає контракт'
 
 grep -Fq 'Терміни під підозрою пропущено' "$ROOT/cli/prepare/worker-payload.sh" \
     || fail 'payload мовчки подає підозрілі терміни як закон'
 grep -Fq 'glossary-suspects.json' "$ROOT/cli/prepare/worker-payload.sh" \
     || fail 'payload не читає позначки підозрілих термінів'
+grep -Fq 'empty($mark["withhold"])' "$ROOT/cli/prepare/worker-payload.sh" \
+    || fail 'payload прибирає терміни, не питаючи про позначку withhold'
 
 # Один пачковий запит замість запиту на кожен рядок.
 grep -Fq '/rows/context' "$ROOT/cli/prepare/worker-payload.sh" || fail 'контекст береться не пачковим запитом'
