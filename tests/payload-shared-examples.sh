@@ -228,6 +228,37 @@ grep -Fq 'glossary/terms?q=' "$ROOT/cli/api/term-notes-submit.sh" \
 grep -Fq 'array_key_exists("definition", $term)' "$ROOT/cli/api/term-notes-submit.sh" \
     || fail 'відправник приймає відсутність поля за порожній опис'
 
+# Описи вмикаються САМІ й лише за потреби · власник нічого не каже диригенту.
+DRIVE="$TMP/drive"; mkdir -p "$DRIVE/batches/b"
+printf 'b\n' > "$DRIVE/current-batch"
+cat > "$DRIVE/batches/b/manifest.json" <<'JSON'
+{"id":"b","state":"selected","rows":1,"mode":"patch","patch":"7","channel":"machine","steps":{},"attempts":{}}
+JSON
+cat > "$DRIVE/batches/b/rows.json" <<JSON
+{"data":{"rows":[{"identity_hash":"$H1","source_hash":"a","source_text":"x"}]},"meta":{"snapshot_id":7}}
+JSON
+php -r '$t=[];for($i=1;$i<=6;$i++){$t[]=["canonical_source"=>"Term $i","ukrainian"=>"Термін $i","seen"=>$i,"samples"=>["зразок"],"identity_hash"=>$argv[2],"snapshot_id"=>7];}
+    file_put_contents($argv[1], json_encode(["updated_at"=>"x","terms"=>$t], JSON_UNESCAPED_UNICODE));' \
+    "$DRIVE/term-notes-queue.json" "$H1"
+out="$(BDO_STATE_DIR="$DRIVE" bash "$ROOT/cli/run/run-drive.sh" 2>/dev/null)" || true
+printf '%s' "$out" | jq -e '.next.role == "translation-glossary"' >/dev/null \
+    || fail "описи не вмикаються самі при повній черзі: $(printf '%s' "$out" | head -c 120)"
+# Порожня черга · крок не вмикається взагалі, пачка йде своїм шляхом.
+rm -f "$DRIVE/term-notes-queue.json" "$DRIVE/term-notes-payload.json"
+out="$(BDO_STATE_DIR="$DRIVE" BDO_PIPELINE_OFFLINE=1 bash "$ROOT/cli/run/run-drive.sh" 2>/dev/null)" || true
+printf '%s' "$out" | jq -e '.next.role != "translation-glossary"' >/dev/null \
+    || fail 'описи вмикаються навіть тоді, коли описувати нічого'
+# Завдання без відповіді не зациклює пачку. Стан пачки повертаємо на `selected`:
+# попередній виклик уже провів її до воркера, а гілка описів живе саме тут.
+cat > "$DRIVE/batches/b/manifest.json" <<'JSON'
+{"id":"b","state":"selected","rows":1,"mode":"patch","patch":"7","channel":"machine","steps":{},"attempts":{}}
+JSON
+printf '{"items":[]}' > "$DRIVE/term-notes-payload.json"
+out="$(BDO_STATE_DIR="$DRIVE" BDO_PIPELINE_OFFLINE=1 bash "$ROOT/cli/run/run-drive.sh" 2>/dev/null)" || true
+printf '%s' "$out" | jq -e '.next.role != "translation-glossary"' >/dev/null \
+    || fail 'завдання без відповіді видається знову й зациклює пачку'
+if [ -f "$DRIVE/term-notes-payload.json" ]; then fail 'застаріле завдання не прибрано'; fi
+
 # Нагадування про свіжу сесію · єдине, що прибирає вже накопичений транскрипт.
 grep -Fq 'BDO_SESSION_HINT_BATCHES' "$ROOT/cli/run/run-drive.sh" \
     || fail 'рушій не нагадує почати нову сесію після N пачок'

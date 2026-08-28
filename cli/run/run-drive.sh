@@ -455,6 +455,48 @@ judge_or_commit() {
 state="$(field state)"
 case "$state" in
 selected)
+    # Описи термінів · САМІ, і лише коли є що описувати.
+    #
+    # Власник не має нічого казати диригенту (UX-контракт): крок вмикається
+    # автоматично на початку пачки, якщо в черзі назбиралось достатньо
+    # кандидатів, і не вмикається взагалі, якщо їх немає. Місце обране навмисно:
+    # тут пачка ще нічого не робила, тому вставка нічого не переб'є, а
+    # підсумок попередньої пачки вже показано власнику.
+    if [ "${BDO_TERM_NOTES_AUTO:-on}" = on ]; then
+        if [ -s "$STATE_DIR/term-notes-payload.json" ] && [ ! -s "$STATE_DIR/term-notes-response.json" ]; then
+            # Завдання видане, а відповіді немає: child не відповів. Прибираємо
+            # ЗАВЖДИ, зокрема офлайн · інакше застарілий файл назавжди блокує
+            # наступні спроби, і крок тихо перестає працювати.
+            rm -f "$STATE_DIR/term-notes-payload.json"
+            echo 'Опис термінів: попереднє завдання лишилось без відповіді · пропускаю.' >&2
+        fi
+    fi
+    if [ "${BDO_TERM_NOTES_AUTO:-on}" = on ] && [ "${BDO_PIPELINE_OFFLINE:-0}" != 1 ]; then
+        if [ -s "$STATE_DIR/term-notes-response.json" ]; then
+            # Відповідь є · надсилаємо й ідемо далі тією ж пачкою.
+            "$SCRIPT_DIR/cli/api/term-notes-submit.sh" >&2 || true
+        else
+            ready="$(php -r '
+                $q = is_file($argv[1]) ? (json_decode((string) file_get_contents($argv[1]), true)["terms"] ?? []) : [];
+                $done = is_file($argv[2]) ? (json_decode((string) file_get_contents($argv[2]), true)["terms"] ?? []) : [];
+                $n = 0;
+                foreach ($q as $t) {
+                    if (! isset($t["identity_hash"], $t["snapshot_id"])) continue;
+                    if (in_array($t["canonical_source"] ?? "", $done, true)) continue;
+                    $n++;
+                }
+                echo $n;' "$STATE_DIR/term-notes-queue.json" "$STATE_DIR/proposed-term-notes.json" 2>/dev/null || echo 0)"
+            if [ "${ready:-0}" -ge "${BDO_TERM_NOTES_MIN_QUEUE:-5}" ]; then
+                if "$SCRIPT_DIR/cli/api/term-notes-describe.sh" > "$STATE_DIR/.term-notes-next" 2>/dev/null \
+                   && grep -q '"kind":"child"' "$STATE_DIR/.term-notes-next"; then
+                    cat "$STATE_DIR/.term-notes-next"
+                    rm -f "$STATE_DIR/.term-notes-next"
+                    exit 0
+                fi
+                rm -f "$STATE_DIR/.term-notes-next"
+            fi
+        fi
+    fi
     # Шари памʼяті задає preset режиму (manifest.memory_layers). Для improve
     # це manual: старий machine-текст із RU не є памʼяттю для покращення.
     mem_layers="$(field memory_layers)"
