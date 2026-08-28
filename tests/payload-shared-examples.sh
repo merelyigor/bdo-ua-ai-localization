@@ -202,11 +202,14 @@ $fail = static function (string $m): void { fwrite(STDERR, "FAIL: $m\n"); exit(1
 $found = GlossarySuspects::find([
     ["canonical_source" => "Week", "ukrainian" => "Місяць", "seen" => 2],
     ["canonical_source" => "Day", "ukrainian" => "День", "seen" => 1],
+    // Займенник МОЖЕ мати затверджений відповідник: власник глосарію перевірив
+    // `Her -> Вона` окремо й підтвердив. Наше колишнє правило було хибним.
     ["canonical_source" => "Her", "ukrainian" => "Вона", "seen" => 1],
-    ["canonical_source" => "FTP", "ukrainian" => "QZG", "seen" => 0],
+    ["canonical_source" => "Bilson", "ukrainian" => "Kiraki", "seen" => 0],
+    ["canonical_source" => "<PAOldColor> Value Pack", "ukrainian" => "<PAOldColor>Value Pack", "seen" => 0],
     ["canonical_source" => "We are Family", "ukrainian" => "We are family", "seen" => 0],
     ["canonical_source" => "AP", "ukrainian" => "AP", "seen" => 9],
-    ["canonical_source" => "Week ", "ukrainian" => "Week", "policy" => "keep_source", "seen" => 0],
+    ["canonical_source" => "Bilson ", "ukrainian" => "Bilson", "policy" => "keep_source", "seen" => 0],
     ["canonical_source" => "Cheongsa Island", "ukrainian" => "Острів Ліхтарів", "seen" => 6],
     ["canonical_source" => "Sunset Coral Essence", "ukrainian" => "Есенція корала заходу сонця", "seen" => 1],
 ]);
@@ -214,17 +217,17 @@ $byName = [];
 foreach ($found as $s) $byName[$s["canonical_source"]] = $s["reason"];
 $expected = [
     "Week" => "time_unit_mismatch",
-    "Her" => "function_word",
-    "FTP" => "latin_target_mismatch",
-    "We are Family" => "untranslated_target",
+    "Bilson" => "latin_target_mismatch",
+    "<PAOldColor> Value Pack" => "markup_or_space_only",
+    "We are Family" => "case_only",
 ];
 foreach ($expected as $name => $reason) {
     if (($byName[$name] ?? null) !== $reason) $fail("$name не позначено як $reason");
 }
 // Здорові записи не чіпаємо: хибне звинувачення затвердженого терміна гірше за
 // пропущене, бо забирає в моделі правильний закон. `AP -> AP` і `keep_source` ·
-// свідоме «не перекладати», а не помилка.
-foreach (["Day", "AP", "Week ", "Cheongsa Island", "Sunset Coral Essence"] as $name) {
+// свідоме «не перекладати», а `Her -> Вона` перевірений людиною.
+foreach (["Day", "AP", "Her", "Bilson ", "Cheongsa Island", "Sunset Coral Essence"] as $name) {
     if (isset($byName[$name])) $fail("здоровий термін $name потрапив у підозрілі");
 }
 // Потокова перевірка мусить давати ТОЙ САМИЙ вирок: повний каталог у памʼять не
