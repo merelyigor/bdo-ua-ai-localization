@@ -465,6 +465,7 @@ check_shell() {
     run bash tests/primary-prompt-drift.sh
     run bash tests/mechanical-before-qa.sh
     run bash tests/payload-shared-examples.sh
+    run bash tests/registry-hygiene.sh
 }
 
 check_agents() {
