@@ -269,6 +269,23 @@ export const TranslationExecutionGuard: Plugin = async ({ client, directory }) =
       // translation-ролі. OpenCode створив звичайного агента, він завис у
       // `pending`, пачка лишилась в `awaiting_worker`, а токени пішли в сесію,
       // якої ніхто не контролює. Дозволені рівно шість ролей і жодної іншої.
+      // Диригенту нема чого читати staged payload.
+      //
+      // Саме з `read` починався весь цикл: модель відкривала payload, `read`
+      // віддавав ОБРІЗАНИЙ вміст (2000 символів), і вона переписувала цю копію
+      // в аргумент Task. 2026-08-28 у журналі порушень три поспіль спроби по
+      // 3284 символи при файлі в 4650 · тобто child мав отримати неповні дані.
+      // Заборона тут дешевша за будь-яке правило в промпті: нема що копіювати.
+      if (input.tool === "read") {
+        const file = String((output.args as Record<string, unknown> | undefined)?.filePath ?? "")
+        if (/state\/batches\/[^/]+\/[a-z-]*payload[a-z-]*\.json$/.test(file)) {
+          await refuse(
+            input.sessionID,
+            "Staged payload читати не треба й не можна: його вміст підставляє plugin. "
+            + "Передай у Task значення `next.prompt` зі staged envelope · рівно його, без вмісту файла.",
+          )
+        }
+      }
       if (input.tool === "task") {
         const role = String(output.args?.subagent_type ?? "").trim()
         if (!CHILD_ROLES.has(role)) {

@@ -159,6 +159,28 @@ const refuse = async (before, input, args, what) => {
   if (!other.includes("unavailable in translation primary")) throw new Error(`wrong refusal for a foreign tool: ${other}`)
 }
 
+// Staged payload диригенту читати нема чого: саме з `read` починався цикл
+// переписування (read віддає обрізані 2000 символів, модель копіює їх у Task).
+{
+  const { before, directory } = await makeGuard()
+  for (const bad of [
+    `${directory}/state/batches/20260828_0530/worker-payload.json`,
+    `${directory}/state/batches/20260828_0530/heal-repair-payload.json`,
+    "state/batches/x/qa-payload.json",
+  ]) {
+    let message = ""
+    await before({ tool: "read", sessionID: "read-payload", callID: "c" }, { args: { filePath: bad } })
+      .catch((error) => { message = String(error) })
+    if (!message.includes("Staged payload читати не треба")) {
+      throw new Error(`read of ${bad} was accepted: ${message}`)
+    }
+  }
+  // Решта файлів пачки лишається читабельною: без цього диригент не розбере збою.
+  for (const good of ["state/batches/x/manifest.json", "state/batches/x/heal-report.txt", "state/next-child.json"]) {
+    await before({ tool: "read", sessionID: "read-ok", callID: "c" }, { args: { filePath: good } })
+  }
+}
+
 // Task БЕЗ дозволеної ролі мусить бути відхилений.
 //
 // 2026-08-28: диригент видав `task` без `subagent_type` і без `prompt`. Обидва

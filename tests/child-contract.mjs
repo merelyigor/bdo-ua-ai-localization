@@ -43,39 +43,36 @@ if (args.prompt !== payload) throw new Error("prompt was not replaced with the s
   }
 }
 
-// Переписаний payload у аргументі відхиляється. 2026-08-27 диригент носив
-// payload сам, і на пачці 50 рядків виклик ламався на розборі JSON (позиція
-// 76134). Правило було в промпті всіх чотирьох режимів і не втрималось.
+// Переписаний payload НЕ валить виклик: плагін підставляє правильні байти й
+// фіксує порушення. Відмова тут була помилкою проєктування · 2026-08-28
+// диригент тричі поспіль передав вміст payload (3284 символи при файлі 4650,
+// тобто ще й обрізану копію після `read`), щоразу отримував ту саму відмову й
+// не виправлявся. Пачка стала намертво. Обовʼязок плагіна · доставити child
+// правильні байти, а не виховувати диригента.
 {
   const huge = { subagent_type: "translation-worker", description: "d", prompt: payload }
-  await before({ tool: "task", sessionID: "s", callID: "c" }, { args: huge }).then(
-    () => { throw new Error("transcribed payload was accepted") },
-    (error) => {
-      if (!/РІВНО посилання/.test(error.message)) throw new Error(`wrong transcription error: ${error.message}`)
-      if (!error.message.includes(envelope.payload_path)) throw new Error("error must name the exact reference to pass")
-    },
-  )
-  // Порожній prompt і довільний текст · та сама відмова.
-  for (const bad of ["", "QA batch 7", "payload", "Ось payload: [{...}]"]) {
-    await before({ tool: "task", sessionID: "s", callID: "c" }, { args: { subagent_type: "translation-worker", prompt: bad } }).then(
-      () => { throw new Error(`prompt «${bad}» was accepted`) },
-      (error) => { if (!/РІВНО посилання/.test(error.message)) throw new Error(`wrong error for «${bad}»: ${error.message}`) },
-    )
-  }
-  // Доказ мусить лишитись: стискання аргументу рятує контекст, але знищує
-  // свідчення. 2026-08-28 саме через це я публічно назвав справжню відмову
-  // хибною · у транскрипті лежало акуратне посилання, яке дописав плагін.
+  await before({ tool: "task", sessionID: "s", callID: "c" }, { args: huge })
+  if (huge.prompt !== payload) throw new Error("child не отримав повного staged payload")
+  // Обрізана копія теж замінюється повним файлом, інакше child перекладе не все.
+  const truncated = { subagent_type: "translation-worker", description: "d", prompt: payload.slice(0, 12) }
+  await before({ tool: "task", sessionID: "s", callID: "c" }, { args: truncated })
+  if (truncated.prompt !== payload) throw new Error("обрізаний payload не замінено повним")
+  // Порожній prompt · те саме: виклик іде, child отримує файл.
+  const empty = { subagent_type: "translation-worker", description: "d", prompt: "" }
+  await before({ tool: "task", sessionID: "s", callID: "c" }, { args: empty })
+  if (empty.prompt !== payload) throw new Error("порожній prompt не замінено payload")
+
+  // Кожне порушення лишає слід: інакше «диригент виправився» і «плагін мовчки
+  // все чинить» виглядають однаково.
   const violations = readFileSync(join(directory, "state/prompt-violations.jsonl"), "utf8")
     .trim().split("\n").map((line) => JSON.parse(line))
-  const transcription = violations.find((v) => v.given_length === payload.length)
-  if (!transcription || transcription.role !== "translation-worker") {
-    throw new Error(`журнал порушень не зафіксував переписаного payload: ${JSON.stringify(violations)}`)
+  if (!violations.some((v) => v.given_length === payload.length)) {
+    throw new Error("журнал не зафіксував переписаного payload")
   }
-  if (!transcription.expected.endsWith("payload.json")) throw new Error("журнал не називає очікуваного посилання")
-  // Порожній prompt теж мусить лишити слід: інакше «нічого не передали» і
-  // «передали не те» виглядають однаково.
   if (!violations.some((v) => v.given_length === 0)) throw new Error("порожній prompt не потрапив у журнал")
-
+  if (!violations.every((v) => v.expected.endsWith("payload.json"))) {
+    throw new Error("журнал не називає очікуваного посилання")
+  }
   // Написання шляху не має значення: важливо, що це ТОЙ САМИЙ payload.
   for (const good of [`payload:${envelope.payload_path}`, "payload:payload.json", "payload: state/batch/payload.json"]) {
     if (!referencesStagedPayload(good, envelope.payload_path)) throw new Error(`legal reference rejected: ${good}`)

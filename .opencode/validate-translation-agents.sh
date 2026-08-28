@@ -352,7 +352,9 @@ for primary in патч ручний пропозиції покращення-�
         printf 'ERROR: %s primary must pass the staged payload by reference, not by value\n' "$primary" >&2
         exit 1
     }
-    grep -Fq 'Сам payload НЕ читай' "$ROOT/.opencode/agents/$primary.md" || {
+    # 2026-08-28: формулювання посилено · тепер прямо сказано, що `read` заборонений
+    # guard-ом і однаково обрізає файл. Саме з `read` починався цикл переписування.
+    grep -Fq 'Staged payload НЕ читай через `read`' "$ROOT/.opencode/agents/$primary.md" || {
         printf 'ERROR: %s primary must not read the staged payload into its own context\n' "$primary" >&2
         exit 1
     }
