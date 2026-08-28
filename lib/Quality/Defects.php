@@ -22,8 +22,14 @@ final class Defects
     public static function inTranslation(Row $row, string $text): array
     {
         $defects = [];
-        foreach (Homoglyphs::find($text) as $found) {
-            $defects[] = 'латинський гомогліф: '.$found['word'].' -> '.$found['fixed'];
+        foreach (Homoglyphs::find($text, $row->sourceText()) as $found) {
+            // Слово, для якого детермінованого виправлення немає, називається
+            // окремо: це не «заміни X на Y», а «рядок зіпсований, перекладай
+            // наново». Мовчати про нього не можна · саме так `Sаmоtня` дійшла
+            // до QA як чистий рядок.
+            $defects[] = $found['fixed'] === $found['word']
+                ? 'змішана абетка без автовиправлення: '.$found['word']
+                : 'латинський гомогліф: '.$found['word'].' -> '.$found['fixed'];
         }
         foreach (Russianisms::findInRow($row, $text) as $found) {
             $defects[] = 'русизм: '.$found['word'].' -> '.$found['suggest'];

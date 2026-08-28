@@ -108,6 +108,40 @@ qa2="$(BDO_STATE_DIR="$TMP/state" bash "$ROOT/cli/prepare/qa-payload.sh" "$TMP/r
 printf '%s' "$qa2" | jq -e '.terms[0].definition' >/dev/null \
     || fail 'QA судить без тих самих термінів, що бачив воркер'
 
+# Недоступний контекст ЗУПИНЯЄ крок, а не робить «слабший payload».
+#
+# 2026-08-28 на пачці 20260828_100456 цей запит мовчки не вдався, затверджені
+# терміни глосарію до моделі не доїхали, і 11 із 24 рядків модерації · це один
+# і той самий `Cheongsa Island` у трьох варіантах, хоча відповідник «Острів
+# Ліхтарів» був затверджений і повертався API.
+cat > "$TMP/http-fail.sh" <<'STUB'
+#!/usr/bin/env bash
+exit 22
+STUB
+chmod +x "$TMP/http-fail.sh"
+: > "$TMP/state/batches/b/context.json"
+set +e
+BDO_CONTEXT_HTTP="$TMP/http-fail.sh" BDO_API_BASE=https://example.invalid BDO_API_KEY=x \
+    BDO_STATE_DIR="$TMP/state" bash "$ROOT/cli/prepare/worker-payload.sh" "$TMP/rows.json" \
+    >"$TMP/broken.json" 2>"$TMP/broken-err.txt"
+code=$?
+set -e
+test "$code" -ne 0 || fail 'payload зібрався без контексту з термінами'
+grep -q 'Контекст пачки недоступний' "$TMP/broken-err.txt" || fail 'причина зупинки не названа'
+rm -f "$TMP/broken.json" "$TMP/state/batches/b/context.json"
+# Далі тести знову працюють зі зібраним контекстом.
+cp "$TMP/context-backup.json" "$TMP/state/batches/b/context.json" 2>/dev/null || true
+
+# Рушій мусить перетворити цю зупинку на повтор, а не впасти з порожнім файлом.
+# Живий прогін тут не відтворити (крок онлайновий), тому перевіряється звʼязок:
+# код виходу враховано, недобудований payload прибрано, причина названа.
+grep -Fq 'if ! "$SCRIPT_DIR/cli/prepare/worker-payload.sh"' "$ROOT/cli/run/run-drive.sh" \
+    || fail 'run drive ігнорує код виходу worker-payload'
+grep -Fq 'context_unavailable' "$ROOT/cli/run/run-drive.sh" \
+    || fail 'run drive не називає недоступний контекст окремою причиною'
+grep -Fq 'rm -f "$B/worker-payload.json.new"' "$ROOT/cli/run/run-drive.sh" \
+    || fail 'недобудований payload лишається на диску'
+
 # Один пачковий запит замість запиту на кожен рядок.
 grep -Fq '/rows/context' "$ROOT/cli/prepare/worker-payload.sh" || fail 'контекст береться не пачковим запитом'
 grep -Fq 'max_context_rows' "$ROOT/cli/prepare/worker-payload.sh" || fail 'ліміт пачки контексту зашитий у клієнт замість /me'

@@ -295,7 +295,15 @@ prepare_worker() {
         # робочий, лише слабший, тому збій тут не валить пачку.
         test "${BDO_PIPELINE_OFFLINE:-0}" = 1 || \
             "$SCRIPT_DIR/cli/api/glossary-concepts.sh" >/dev/null 2>&1 || true
-        "$SCRIPT_DIR/cli/prepare/worker-payload.sh" "$rows" "${args[@]}" > "$B/worker-payload.json"
+        # Контекст пачки везе затверджені терміни глосарію, тому його недоступність
+        # зупиняє крок, а не робить «слабший payload»: без термінів пачка йде в
+        # модерацію цілком (пачка 20260828_100456, 11 рядків одного острова).
+        if ! "$SCRIPT_DIR/cli/prepare/worker-payload.sh" "$rows" "${args[@]}" > "$B/worker-payload.json.new"; then
+            rm -f "$B/worker-payload.json.new"
+            emit 0 "$(field state)" '{"kind":"retry","reason":"context_unavailable","hint":"Контекст пачки (терміни глосарію) недоступний. Це минуще: виконай ./bdo run drive ще раз. Якщо повторюється · скажи власнику перевірити API."}'
+            exit 1
+        fi
+        mv "$B/worker-payload.json.new" "$B/worker-payload.json"
         # Терміни без опису · лише рахуємо. Жодного виклику моделі й жодного
         # запису в API: черга модерації від цього не росте (рішення власника).
         test -s "$B/terms.json" && \

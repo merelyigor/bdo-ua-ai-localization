@@ -108,7 +108,7 @@ if [ "$WANT_CONTEXT" = 1 ]; then
             $hash = (string) ($row["identity_hash"] ?? "");
             if ($hash !== "") $hashes[] = $hash;
         }
-        $http = $argv[5];
+        $http = getenv("BDO_CONTEXT_HTTP") ?: $argv[5];
         $call = static function (string $url, ?string $body) use ($http, $argv): ?array {
             $command = escapeshellarg($http) . " -fsS -H " . escapeshellarg("X-API-Key: " . $argv[3]);
             if ($body !== null) {
@@ -134,12 +134,31 @@ if [ "$WANT_CONTEXT" = 1 ]; then
         $requests = 0;
         $failed = 0;
         foreach (array_chunk($hashes, $limit) as $chunk) {
-            $requests++;
-            $answer = $call($argv[2] . "/rows/context", json_encode(["identity_hashes" => $chunk]));
+            // Один повтор перед тим, як здатись: мережевий збій і недоступний
+            // контекст · різні речі, і платити пачкою за перший не можна.
+            $answer = null;
+            foreach ([0, 1] as $attempt) {
+                $requests++;
+                $answer = $call($argv[2] . "/rows/context", json_encode(["identity_hashes" => $chunk]));
+                if ($answer !== null) break;
+                if ($attempt === 0) sleep(2);
+            }
             if ($answer === null) { $failed++; break; }
             foreach ($answer["data"]["contexts"] ?? [] as $hash => $context) {
                 $contexts[$hash] = $context;
             }
+        }
+        // Контекст пачки НЕ є прикрасою: у ньому приходять затверджені терміни
+        // глосарію з `severity=mandatory`. 2026-08-28 цей запит мовчки не вдався
+        // на пачці 20260828_100456, модель перекладала `Cheongsa Island`
+        // наосліп, і 11 із 24 рядків модерації · це той самий острів у трьох
+        // різних варіантах, хоча відповідник «Острів Ліхтарів» був затверджений
+        // і повертався API. «Робочий payload зі слабшим сигналом» тут означає
+        // зіпсовану пачку, тому онлайн-шлях падає, а не деградує.
+        if ($failed > 0) {
+            fwrite(STDERR, "Контекст пачки недоступний після повтору · payload НЕ будується.\n");
+            fwrite(STDERR, "У контексті приходять затверджені терміни глосарію; без них пачка піде в модерацію.\n");
+            exit(3);
         }
 
         // `context.json` лишається у СТАРІЙ формі (приклади за хешем): його
@@ -197,8 +216,11 @@ if [ "$WANT_CONTEXT" = 1 ]; then
         fwrite(STDERR, sprintf(
             "Контекст пачки: %d рядків одним запитом%s | приклади для %d рядків | термінів %d (з описом %d)\n",
             count($hashes), $requests > 1 ? " x$requests" : "", count($examples), count($terms), $withWiki));
-        if ($failed > 0) {
-            fwrite(STDERR, "Запит контексту не вдався · payload будується без нього, це робочий payload зі слабшим сигналом.\n");
+        // Часткова відповідь · теж сигнал: рядок без контексту перекладається
+        // без своїх термінів, і мовчати про це не можна.
+        $missing = count($hashes) - count($contexts);
+        if ($missing > 0) {
+            fwrite(STDERR, sprintf("УВАГА: контексту немає для %d рядків із %d.\n", $missing, count($hashes)));
         }
         ' "$ROWS_FILE" "$BDO_API_BASE" "$BDO_API_KEY" "$CONTEXT_FILE" "$SCRIPT_DIR/cli/api/http-request.sh" "$TERMS_FILE"
     fi

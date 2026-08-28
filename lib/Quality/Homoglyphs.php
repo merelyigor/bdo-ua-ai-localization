@@ -55,19 +55,35 @@ final class Homoglyphs
     /**
      * Слова зі змішаними абетками.
      *
+     * Повертає ВСІ такі слова, зокрема ті, які код виправити не може.
+     *
+     * Раніше умова була `$fixed !== $word`, тобто детектор бачив лише те, що
+     * вмів полагодити. 2026-08-28 на живій пачці рядок `Sаmоtня альтанка серед
+     * природи.` пройшов механіку як чистий: латинські `S` і `m` кириличних
+     * двійників не мають, тому слово не змінювалось · і зникало зі списку разом
+     * із латинськими `а` та `о`, які двійників мають. Зловила його вже модель
+     * QA, тобто випадково: механічний дефект опинився нижче судді.
+     *
+     * Виявлення й виправлення розділені: `fixed` може дорівнювати `word`, і це
+     * означає «дефект є, автоматичного виправлення немає» · такий рядок іде в
+     * repair, а не в шар.
+     *
+     * `$source` дозволяє слово, яке дослівно є в оригіналі: там змішана абетка
+     * є даними гри, а не зривом моделі.
+     *
      * @return list<array{word:string,fixed:string}>
      */
-    public static function find(string $text): array
+    public static function find(string $text, string $source = ''): array
     {
         $found = [];
         foreach (self::words($text) as $word) {
             if (! self::isMixed($word)) {
                 continue;
             }
-            $fixed = self::fixWord($word);
-            if ($fixed !== $word) {
-                $found[] = ['word' => $word, 'fixed' => $fixed];
+            if ($source !== '' && str_contains($source, $word)) {
+                continue;
             }
+            $found[] = ['word' => $word, 'fixed' => self::fixWord($word)];
         }
 
         return $found;
