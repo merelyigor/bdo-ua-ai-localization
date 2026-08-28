@@ -1,5 +1,5 @@
-import { readFileSync } from "node:fs"
-import { basename, resolve } from "node:path"
+import { appendFileSync, readFileSync } from "node:fs"
+import { basename, join, resolve } from "node:path"
 import type { Plugin } from "@opencode-ai/plugin"
 import {
   atomicWrite,
@@ -125,6 +125,30 @@ export const TranslationChildContract: Plugin = async ({ directory }) => ({
     // Перевірка ПІСЛЯ перевірок payload: якщо зламаний наш власний staged файл,
     // диригент має побачити саме це, а не претензію до форми свого виклику.
     if (!referencesStagedPayload(output.args.prompt, next.payload_path)) {
+      // Спершу ЗАФІКСУВАТИ, що саме передали.
+      //
+      // Стискання нижче рятує контекст, але знищує доказ: у транскрипті лишається
+      // акуратне посилання, і потім неможливо сказати, чи модель справді
+      // переписала payload. 2026-08-28 я на цьому помилився публічно · заявив,
+      // що відмова була хибною, хоча вона була справжньою. Тому довжина й початок
+      // переданого рядка йдуть у журнал ДО стискання.
+      try {
+        const given = typeof output.args.prompt === "string" ? output.args.prompt : ""
+        appendFileSync(
+          join(directory, "state/prompt-violations.jsonl"),
+          JSON.stringify({
+            at: new Date().toISOString(),
+            role,
+            given_length: given.length,
+            given_head: given.slice(0, 120),
+            expected: `payload:${next.payload_path}`,
+          }) + "\n",
+        )
+      } catch (cause) {
+        // Журнал не є ворітьми: його збій не скасовує відмову. Але й мовчати не
+        // можна · саме порожній `catch` ховав би помилку самого журналу.
+        console.error("prompt-violations journal failed:", cause instanceof Error ? cause.message : cause)
+      }
       // Стиснути аргумент ДО кидка помилки.
       //
       // Заміряно на сесії 2026-08-27: шість кроків із переписаним payload дали

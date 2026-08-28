@@ -105,6 +105,13 @@ if [ -f "$STATE_DIR/session-load.json" ]; then
             (int) round(((int)($d["staged_bytes"]??0))/1024), (int)($d["calls"]??0));' \
         "$STATE_DIR/session-load.json"
 fi
+if [ -s "$STATE_DIR/prompt-violations.jsonl" ]; then
+    # Скільки разів диригент передав у Task не посилання. Доказ пишеться ДО
+    # стискання аргументу · інакше в транскрипті лишається акуратне посилання,
+    # і відмова виглядає безпідставною.
+    php -r '$n=0;$last="";foreach(file($argv[1]) as $line){$d=json_decode($line,true);if(!is_array($d))continue;$n++;$last=sprintf("%s, %d символів", $d["role"]??"?", (int)($d["given_length"]??0));}
+        printf("  порушень контракту prompt: %d (останнє: %s)\n", $n, $last);' "$STATE_DIR/prompt-violations.jsonl"
+fi
 printf '  інцидентів: %s | карантин: %s | рішень судді: %s\n' \
     "$(wc -l < "$STATE_DIR/flow-incidents.jsonl" 2>/dev/null | tr -d ' ' || echo 0)" \
     "$(wc -l < "$STATE_DIR/quarantine.jsonl" 2>/dev/null | tr -d ' ' || echo 0)" \

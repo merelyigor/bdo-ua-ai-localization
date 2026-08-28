@@ -62,6 +62,20 @@ if (args.prompt !== payload) throw new Error("prompt was not replaced with the s
       (error) => { if (!/РІВНО посилання/.test(error.message)) throw new Error(`wrong error for «${bad}»: ${error.message}`) },
     )
   }
+  // Доказ мусить лишитись: стискання аргументу рятує контекст, але знищує
+  // свідчення. 2026-08-28 саме через це я публічно назвав справжню відмову
+  // хибною · у транскрипті лежало акуратне посилання, яке дописав плагін.
+  const violations = readFileSync(join(directory, "state/prompt-violations.jsonl"), "utf8")
+    .trim().split("\n").map((line) => JSON.parse(line))
+  const transcription = violations.find((v) => v.given_length === payload.length)
+  if (!transcription || transcription.role !== "translation-worker") {
+    throw new Error(`журнал порушень не зафіксував переписаного payload: ${JSON.stringify(violations)}`)
+  }
+  if (!transcription.expected.endsWith("payload.json")) throw new Error("журнал не називає очікуваного посилання")
+  // Порожній prompt теж мусить лишити слід: інакше «нічого не передали» і
+  // «передали не те» виглядають однаково.
+  if (!violations.some((v) => v.given_length === 0)) throw new Error("порожній prompt не потрапив у журнал")
+
   // Написання шляху не має значення: важливо, що це ТОЙ САМИЙ payload.
   for (const good of [`payload:${envelope.payload_path}`, "payload:payload.json", "payload: state/batch/payload.json"]) {
     if (!referencesStagedPayload(good, envelope.payload_path)) throw new Error(`legal reference rejected: ${good}`)
