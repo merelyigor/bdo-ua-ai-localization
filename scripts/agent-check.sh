@@ -265,10 +265,13 @@ check_references() {
     #     разом із хешем, з якого їх можна відновити. Забороняє подавати їх як
     #     команду окрема перевірка нижче.
     #
+    # `inspect.sh` · бінарник JetBrains поза репозиторієм: він згадується в
+    # документації як інструмент, а не як файл проєкту.
+    #
     # Один рядок навмисно: перевірка нижче робить `case " $external " in *" $ref "*`,
     # тобто шукає імʼя, оточене ПРОБІЛАМИ. Перенос рядка всередині списку робить
     # перше імʼя наступного рядка невидимим для match.
-    local -r external='docs/AGENT_TRANSLATION_API.md YYYY-MM-DD_SLUG.md translate-patch.sh translate-menu.sh agent-call.sh merge-verdicts.sh'
+    local -r external='docs/AGENT_TRANSLATION_API.md YYYY-MM-DD_SLUG.md translate-patch.sh translate-menu.sh agent-call.sh merge-verdicts.sh inspect.sh'
     local doc ref plan base checked=0
     while IFS= read -r doc; do
         test -f "$doc" || continue
