@@ -255,6 +255,13 @@ resolve_reference() {
     do
         test -e "$candidate" && return 0
     done
+    # Голе імʼя файла з дерева проєкту (`term-notes-submit.sh` із `cli/api/`).
+    # Шукаємо серед відстежуваних файлів, а не тримаємо список каталогів:
+    # каталог `cli/**` росте, і список довелося б доповнювати щоразу.
+    case "$ref" in
+        */*) ;;
+        *) git ls-files -- "*/$ref" | grep -q . && return 0 ;;
+    esac
     return 1
 }
 
