@@ -42,4 +42,18 @@ test "$reason" = fetch_failed || { echo "FAIL: очікували reason=fetch_f
 printf '%s' "$out" | grep -Fq 'detail' \
     || { echo 'FAIL: fetch_failed не передає detail, причина знову невидима' >&2; exit 1; }
 
+# 3. `./bdo batch check` без аргументу відповідає на питання, а не сипле bash.
+#
+# 2026-08-28 диригент виконав документовану команду під час розбору й отримав
+# `batch-assert.sh: line 15: 1: Потрібен rows.json` · номер рядка чужого скрипта
+# замість «файли пачки свої / пачки немає». Причина мусить бути читабельною
+# навіть у діагностичній команді, інакше агент переказує власнику «сталася
+# помилка».
+out="$(BDO_STATE_DIR="$TMP/state" bash cli/batch/batch-assert.sh 2>&1 || true)"
+printf '%s' "$out" | grep -Fq 'ПОМИЛКА: пачку не розпочато' \
+    || { echo "FAIL: batch check без пачки не назвав причину: $out" >&2; exit 1; }
+printf '%s' "$out" | grep -Fqv 'line ' \
+    || { echo "FAIL: у виводі лишилось сире посилання на рядок скрипта: $out" >&2; exit 1; }
+
+
 echo 'no silent failures: OK'
