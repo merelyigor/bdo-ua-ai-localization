@@ -798,9 +798,22 @@ awaiting_judge)
 ready_to_commit|committing)
     source "$SCRIPT_DIR/cli/system/select-env.sh" >/dev/null
     "$SCRIPT_DIR/cli/quality/build-items.sh" "$B/rows.json" "$B/final-candidate.json" "$B/final-items.json" "" --require-all >/dev/null
+    # ФІНАЛЬНА валідація · після лікування, перед записом.
+    #
+    # Перша валідація йде ще до QA, і її відмови лікує repair. Але текст після
+    # repair до сервера більше не показувався: якщо виправлення саме порушувало
+    # глосарій, ми дізнавалися про це лише на записі, і рядок падав у карантин.
+    # З 2026-08-29 API відхиляє порушення глосарію, тож ця перевірка стала
+    # обовʼязковою. `validate` · це dry-run того самого коду, що й запис.
+    final_validate=""
+    if [ "${BDO_PIPELINE_OFFLINE:-0}" != 1 ]; then
+        final_validate="$("$SCRIPT_DIR/cli/api/validate.sh" "$B/final-items.json" 2>&1 || true)"
+        final_validate="$(printf '%s\n' "$final_validate" | grep -oE '/[^ ]*/output/validate_[0-9_]+\.json' | tail -1 || true)"
+    fi
     key="$(php -r 'require $argv[1];$x=json_decode(file_get_contents($argv[5]),true,512,JSON_THROW_ON_ERROR);echo Bdo\Translate\Api\IdempotencyKey::forBatch($argv[2],$argv[3],$argv[4],$x);' "$SCRIPT_DIR/lib/autoload.php" "$BDO_ENV" "$(field channel)" "$(basename "$B")" "$B/final-items.json")"
     test "$state" = committing || transition committing
     judge_args=(); test -s "$B/judge-verdicts.json" && judge_args=(--judge "$B/judge-verdicts.json")
+    test -n "$final_validate" && judge_args+=(--api-rejected "$final_validate")
     if "$SCRIPT_DIR/cli/batch/batch-commit.sh" "$B/rows.json" "$B/final-candidate.json" "$B/final-verdicts.json" --channel "$(field channel)" --idempotency-key-prefix "$key" "${judge_args[@]}" --write > "$B/commit-report.txt" 2>&1; then
         complete commit "$B/commit-report.txt"; transition committed; transition verified; "$SCRIPT_DIR/cli/prepare/build-schema.sh" --clear >/dev/null
         # Конверт рахується ДО прибирання: `completion` читає commit-report.txt

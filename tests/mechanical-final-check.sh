@@ -125,4 +125,44 @@ if (ChannelRouter::route("machine", "PASS", "none", false, false) !== ChannelRou
 grep -q 'ChannelRouter::route($argv\[13\], $status, $severity, $hasText, $mechanical !== \[\])' "$ROOT/cli/batch/batch-commit.sh" \
     || fail 'commit не передає механічний вирок у маршрут'
 
+# Відмова API на ФІНАЛЬНІЙ валідації знімає рядок із запису.
+#
+# З 2026-08-29 сервер відхиляє порушення глосарію (`glossary_violation`).
+# Перша валідація йде до QA, і repair її лікує · але текст ПІСЛЯ repair до
+# сервера більше не показувався. Якщо саме виправлення порушувало глосарій, ми
+# дізнавалися про це аж на записі, і рядок падав у карантин.
+FINAL_TMP="$(mktemp -d)"
+H="$(printf '%064d' 7)"
+cat > "$FINAL_TMP/rows.json" <<JSON
+{"data":{"rows":[{"identity_hash":"$H","source_hash":"a","source_text":"A shop on Cheongsa Island."}]}}
+JSON
+cat > "$FINAL_TMP/candidate.json" <<JSON
+[{"identity_hash":"$H","text":"Крамниця на Острові Чхонса."}]
+JSON
+cat > "$FINAL_TMP/verdicts.json" <<JSON
+[{"identity_hash":"$H","status":"PASS","severity":"none","issue":"","fix":""}]
+JSON
+cat > "$FINAL_TMP/validate.json" <<JSON
+{"data":{"results":[{"identity_hash":"$H","status":"rejected","code":"glossary_violation",
+ "message":"Порушено глосарій.","details":{"glossary":[{"termId":1,"canonical":"Cheongsa Island",
+ "expected":"Острів Ліхтарів","issue":"missing","severity":"mandatory"}]}}]}}
+JSON
+out="$(BDO_STATE_DIR="$FINAL_TMP/state" bash "$ROOT/cli/batch/batch-commit.sh" "$FINAL_TMP/rows.json" \
+    "$FINAL_TMP/candidate.json" "$FINAL_TMP/verdicts.json" --channel machine \
+    --api-rejected "$FINAL_TMP/validate.json" 2>&1 || true)"
+printf '%s' "$out" | grep -Eq 'До запису: 0' \
+    || fail "рядок із відмовою API пішов у запис: $out"
+printf '%s' "$out" | grep -Eq 'у модерацію: 1' \
+    || fail "рядок із відмовою API не потрапив до людини: $out"
+# Без прапорця поведінка лишається старою: PASS іде в запис.
+out="$(BDO_STATE_DIR="$FINAL_TMP/state" bash "$ROOT/cli/batch/batch-commit.sh" "$FINAL_TMP/rows.json" \
+    "$FINAL_TMP/candidate.json" "$FINAL_TMP/verdicts.json" --channel machine 2>&1 || true)"
+printf '%s' "$out" | grep -Eq 'До запису: 1' \
+    || fail "без відмови API рядок мусить іти в запис: $out"
+rm -rf "$FINAL_TMP"
+
+grep -Fq 'final_validate' "$ROOT/cli/run/run-drive.sh" \
+    || fail 'run drive більше не робить фінальної валідації перед комітом'
+
+
 echo 'mechanical final check: OK'

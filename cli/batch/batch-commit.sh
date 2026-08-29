@@ -56,6 +56,7 @@ for arg in "$@"; do [ "$arg" = "--write" ] && DO_WRITE="--write"; done
 # ручний шар: там нову назву предмета справді варто показати людині.
 NAMES_TO_MODERATION=0
 JUDGE_FILE=
+API_REJECTED_FILE=
 PASS_CHANNEL=machine
 IDEMPOTENCY_KEY_PREFIX=""
 while [ $# -gt 0 ]; do
@@ -64,6 +65,7 @@ while [ $# -gt 0 ]; do
         --channel) PASS_CHANNEL="${2:?machine|manual}"; shift 2 ;;
         --idempotency-key-prefix) IDEMPOTENCY_KEY_PREFIX="${2:?потрібен ключ}"; shift 2 ;;
         --judge) JUDGE_FILE="${2:?потрібен файл вироків судді}"; shift 2 ;;
+        --api-rejected) API_REJECTED_FILE="${2:?потрібен файл відповіді validate}"; shift 2 ;;
         *) shift ;;
     esac
 done
@@ -125,6 +127,12 @@ $pass = []; $held = []; $moderation = []; $unresolvedCount = 0; $counts = ["PASS
 $judge = Bdo\Translate\Pipeline\JudgeDecisions::fromFile((string) ($argv[14] ?? ""));
 $minConfidence = Bdo\Translate\Pipeline\JudgePolicy::minConfidence($argv[15] ?? null);
 $judgeLog = []; $judgeCounts = []; $sameAsSource = 0; $mechanicalHeld = 0; $mechanicalLog = [];
+// Відмови фінальної валідації: identity_hash => причина з машиночитною
+// підказкою (`Response::rejections()` уже додає очікувану назву терміна).
+$apiRejected = [];
+if ($argv[18] !== "" && is_file($argv[18])) {
+    $apiRejected = Bdo\Translate\Api\Response::fromFile($argv[18])->rejections();
+}
 if ($missing !== []) {
     foreach ($rowByHash as $hash => $row) {
         $held[] = ["identity_hash" => $hash, "reason" => "qa_incomplete",
@@ -172,6 +180,15 @@ if ($missing !== []) {
         $severity = strtolower((string) ($v["severity"] ?? ""));
         $hasText = is_string($text) && trim($text) !== "";
         $mechanical = $hasText ? Bdo\Translate\Quality\Defects::inTranslation($row, (string) $text) : [];
+        // Відмова сервера на ФІНАЛЬНІЙ валідації · такий самий факт, як механіка.
+        //
+        // З 2026-08-29 API відхиляє рядок, який порушує глосарій. Раніше ми
+        // дізнавалися про це аж на записі: сервер відмовляв, рядок падав у
+        // карантин, і робота пачки частково згорала. Тепер відмова приходить ДО
+        // запису й переводить рядок до людини · у чергу модерації.
+        if (isset($apiRejected[$hash])) {
+            $mechanical[] = $apiRejected[$hash];
+        }
         $route = Bdo\Translate\Pipeline\ChannelRouter::route($argv[13], $status, $severity, $hasText, $mechanical !== []);
         if ($mechanical !== [] && $route === Bdo\Translate\Pipeline\ChannelRouter::PROPOSAL) {
             $mechanicalHeld++;
@@ -308,7 +325,8 @@ printf("До запису: %d | у модерацію: %d (з них нероз�
 if ($blocked !== null) printf("ЗАПИС ЗАБЛОКОВАНО: %s\n", $blocked);
 ' "$ROWS_FILE" "$CAND_FILE" "$VERDICT_FILE" "$QUARANTINE" "$PASS_ITEMS" \
   "$BDO_API_ENV" "$RUN_TARGET" "$REMAINING" "$DO_WRITE" "$SCRIPT_DIR/lib/autoload.php" "$HELD_ITEMS" "$NAMES_TO_MODERATION" "$PASS_CHANNEL" \
-  "$JUDGE_FILE" "${BDO_JUDGE_MIN_CONFIDENCE:-}" "$STATE_DIR/judge-decisions.jsonl" "$(basename "$(dirname "$CAND_FILE")")"
+  "$JUDGE_FILE" "${BDO_JUDGE_MIN_CONFIDENCE:-}" "$STATE_DIR/judge-decisions.jsonl" "$(basename "$(dirname "$CAND_FILE")")" \
+  "$API_REJECTED_FILE"
 
 COUNT="$(php -r 'echo count(json_decode(file_get_contents($argv[1]), true) ?: []);' "$PASS_ITEMS")"
 MOD_COUNT="$(php -r 'echo count(json_decode(file_get_contents($argv[1]), true) ?: []);' "$HELD_ITEMS")"
