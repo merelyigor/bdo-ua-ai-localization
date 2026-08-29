@@ -249,8 +249,14 @@ const refuse = async (before, input, args, what) => {
     { tool: "bash", sessionID: "workflow-changed", callID: "c" },
     { args: { command: "./bdo env" } },
   ).catch((error) => { restart = String(error) })
-  if (!restart.includes("OPENCODE_RESTART_REQUIRED") || !restart.includes("workflow змінився")) {
-    throw new Error(`changed primary workflow was not blocked clearly: ${restart}`)
+  if (!restart.includes("OPENCODE_RESTART_REQUIRED")) {
+    throw new Error(`changed primary workflow was not blocked: ${restart}`)
+  }
+  // Відмова мусить НАЗВАТИ файл. Без цього диригент вгадує причину: 2026-08-29
+  // він видав власнику пʼятнадцять абзаців припущень про фоновий `git pull`,
+  // хоча достатньо було одного імені файла.
+  if (!restart.includes(".opencode/agents/патч.md")) {
+    throw new Error(`відмова не назвала змінений файл: ${restart}`)
   }
 }
 

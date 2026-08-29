@@ -43,18 +43,42 @@ const WORKFLOW_FILES = [
   ".opencode/agents/translation-glossary.md",
 ]
 
+/** Відбиток КОЖНОГО файла окремо · щоб на розбіжності назвати винного. */
+export function workflowFileHashes(directory: string): Record<string, string> {
+  const hashes: Record<string, string> = {}
+  for (const relative of WORKFLOW_FILES) {
+    try {
+      hashes[relative] = createHash("sha256").update(readFileSync(join(directory, relative))).digest("hex")
+    } catch {
+      hashes[relative] = "<missing>"
+    }
+  }
+
+  return hashes
+}
+
 function workflowFingerprint(directory: string): string {
   const hash = createHash("sha256")
-  for (const relative of WORKFLOW_FILES) {
-    hash.update(relative).update("\0")
-    try {
-      hash.update(readFileSync(join(directory, relative)))
-    } catch {
-      hash.update("<missing>")
-    }
-    hash.update("\0")
+  for (const [relative, digest] of Object.entries(workflowFileHashes(directory))) {
+    hash.update(relative).update("\0").update(digest).update("\0")
   }
+
   return hash.digest("hex")
+}
+
+/**
+ * Які саме файли змінились після старту сесії.
+ *
+ * Без цього переліку диригент лишається наодинці з фактом «щось змінилось» і
+ * починає вгадувати: 2026-08-29 він написав власнику пʼятнадцять абзаців
+ * припущень (фоновий `git pull`? зміна за секунди? сесія не перезапущена?),
+ * жодне з яких не було потрібне · достатньо було назвати файл.
+ */
+export function changedWorkflowFiles(
+  before: Record<string, string>,
+  after: Record<string, string>,
+): string[] {
+  return Object.keys(after).filter((file) => before[file] !== after[file])
 }
 
 type CommandRegistry = { guard_patterns?: unknown }
@@ -246,6 +270,7 @@ export function unparsableTaskHint(directory: string): string {
 /** Закриває всі shell/API/CLI шляхи, якими можна створити невидимого агента. */
 export const TranslationExecutionGuard: Plugin = async ({ client, directory }) => {
   const safeBdoCommands = registryPatterns(directory)
+  const bootWorkflowFiles = workflowFileHashes(directory)
   const bootWorkflowFingerprint = workflowFingerprint(directory)
   // Один раз на старті: помилкове значення має впасти зараз, а не посеред пачки.
   const bridge = shellBridge(directory, process.platform)
@@ -344,9 +369,11 @@ export const TranslationExecutionGuard: Plugin = async ({ client, directory }) =
       }
       if (input.tool !== "bash") return
       if (workflowFingerprint(directory) !== bootWorkflowFingerprint) {
+        const changed = changedWorkflowFiles(bootWorkflowFiles, workflowFileHashes(directory))
         throw new Error(
-          "OPENCODE_RESTART_REQUIRED: primary prompt або ./bdo workflow змінився після старту сесії. "
-          + "Перезапустіть OpenCode і повторіть запит; незавершену пачку збережено.",
+          "OPENCODE_RESTART_REQUIRED: після старту сесії змінилися файли робочого набору: "
+          + (changed.length > 0 ? changed.join(", ") : "перелік порожній, але відбиток інший")
+          + ". Перезапустіть OpenCode і повторіть запит; незавершену пачку збережено.",
         )
       }
       const command = typeof output.args?.command === "string" ? output.args.command.trim() : ""
