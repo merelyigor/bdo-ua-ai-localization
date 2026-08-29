@@ -105,7 +105,21 @@ function envelope(directory: string): ChildEnvelope | undefined {
  * Дефект формату не зупиняє прогін: він фіксується в журналі, файл відповіді не
  * зʼявляється, і наступний `./bdo run drive` перезапускає того самого child.
  */
-export const TranslationChildContract: Plugin = async ({ directory }) => ({
+export const TranslationChildContract: Plugin = async ({ directory }) => {
+  // Диригент мусить ДІЗНАТИСЯ, що його аргумент проігноровано.
+  //
+  // Плагін тихо підставляв staged payload і писав порушення лише в журнал. Для
+  // моделі це виглядало так, ніби її саморобний payload і є тим, що отримав
+  // child · тому 2026-08-29 диригент почав «відновлювати» вміст payload по
+  // памʼяті, сам це помітив і написав власнику, що «продовжувати з вигаданими
+  // проміжними payload безвідповідально при живих записах у PROD». Дані при
+  // цьому були цілі, бо їх підставляє плагін. Страждали лише токени й довіра.
+  //
+  // Тепер після виклику диригент бачить прямий рядок: аргумент проігноровано,
+  // збирати payload не треба.
+  const substituted = new Set<string>()
+
+  return {
   "tool.execute.before": async (input, output) => {
     if (input.tool !== "task") return
     const role = typeof output.args?.subagent_type === "string" ? output.args.subagent_type : ""
@@ -180,6 +194,7 @@ export const TranslationChildContract: Plugin = async ({ directory }) => ({
       // підставити зі staged файла й іти далі. Обрізана копія так само не
       // потрапить до child · він отримає повний файл.
       restorePromptReference(input, output, next.payload_path)
+      substituted.add(next.response_path)
     }
     const previous = pendingIncident(directory, next.response_path)
     output.args.prompt = previous === undefined ? payload : `${payload}${retryNote(previous)}`
@@ -252,13 +267,18 @@ export const TranslationChildContract: Plugin = async ({ directory }) => ({
         return "?"
       }
     })()
+    const ignored = substituted.delete(next.response_path)
     output.output = [
       `Збережено відповідь ${role}: ${items} елементів -> ${next.response_path}.`,
+      ignored
+        ? "УВАГА: твій аргумент prompt проігноровано · child отримав staged payload із state/next-child.json. Вміст payload не збирай і не відновлюй: передавай рівно рядок next.prompt."
+        : "",
       split.note === "" ? "" : "Child додав примітку · збережено для власника (./bdo incidents).",
       "Далі: ./bdo run drive.",
     ].filter(Boolean).join(" ")
-  },
-})
+    },
+  }
+}
 
 // Keep helper exports available to tests, but make the runtime entry explicit
 // so OpenCode does not invoke helpers as legacy plugins.

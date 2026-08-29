@@ -199,4 +199,34 @@ await before({ tool: "task", sessionID: "s", callID: "c" }, { args: { subagent_t
   () => undefined,
 )
 
+// Диригент мусить ДІЗНАТИСЯ, що його аргумент проігноровано.
+//
+// 2026-08-29 він почав «відновлювати» вміст payload по памʼяті й сам написав
+// власнику, що працює з вигаданими даними · хоча плагін щоразу підставляв
+// правильні. Мовчазне виправлення виглядало як згода з його вигадкою.
+{
+  // Попередні блоки прибирали envelope, перевіряючи інші межі · повертаємо його.
+  writeFileSync(join(directory, "state/next-child.json"), JSON.stringify(envelope))
+  writeFileSync(join(directory, "state/batch/payload.json"), `${payload}\n`)
+  const own = { subagent_type: "translation-worker", description: "d", prompt: '[{"identity_hash":"вигадане"}]' }
+  await before({ tool: "task", sessionID: "s", callID: "c" }, { args: own })
+  if (own.prompt !== payload) throw new Error("плагін не підставив staged payload замість вигаданого")
+  const result = { output: '<task_result>\n[{"identity_hash":"aaaa","text":"Меч"}]\n</task_result>', args: own }
+  await after({ tool: "task", sessionID: "s", callID: "c", args: own }, result)
+  if (!String(result.output).includes("проігноровано")) {
+    throw new Error(`диригент не дізнався, що його payload не використали: ${result.output}`)
+  }
+}
+
+// А коли диригент передав рівно посилання · зайвого попередження бути не має.
+{
+  const ok = { subagent_type: "translation-worker", description: "d", prompt: `payload:${envelope.payload_path}` }
+  await before({ tool: "task", sessionID: "s", callID: "c" }, { args: ok })
+  const result = { output: '<task_result>\n[{"identity_hash":"aaaa","text":"Меч"}]\n</task_result>', args: ok }
+  await after({ tool: "task", sessionID: "s", callID: "c", args: ok }, result)
+  if (String(result.output).includes("проігноровано")) {
+    throw new Error("попередження зʼявилось там, де диригент усе зробив правильно")
+  }
+}
+
 console.log("translation child contract: OK")
