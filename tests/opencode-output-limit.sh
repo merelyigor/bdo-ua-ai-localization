@@ -46,11 +46,31 @@ import json,sys,io
 d=json.load(io.open(sys.argv[1],encoding="utf-8"))   # падає, якщо файл зіпсовано
 local=d["provider"]["ollama-local"]["models"]
 for name, entry in local.items():
+    context=entry["limit"]["context"]
+    want=min(131072, max(16384, context // 2))
     got=entry["limit"]["output"]
-    if got != 131072: raise SystemExit(f"FAIL: {name} має стелю {got} замість 131072")
+    if got != want: raise SystemExit(f"FAIL: {name} має стелю {got} замість {want} при вікні {context}")
 if d["provider"]["opencode"]["models"]["big-pickle"]["limit"]["output"] != 8192:
     raise SystemExit("FAIL: чужому провайдеру змінили стелю")
 PY
+
+# Оголошене вікно не має бути БІЛЬШИМ за реальне.
+#
+# У застосунку Ollama є повзунок «Context length»: `ollama show` каже 262 144, а
+# llama.cpp піднімає модель зі 131 072. OpenCode стискає розмову за
+# `limit.context`, тому завищене вікно означає, що стискання не настане ніколи,
+# а Ollama почне викидати початок розмови (`n_keep = 4`) мовчки.
+python3 - "$CFG" <<'PY'
+import json,sys,io
+p=sys.argv[1]
+d=json.load(io.open(p,encoding="utf-8"))
+for name,entry in d["provider"]["ollama-local"]["models"].items():
+    entry["limit"]["context"]=262144
+io.open(p,"w",encoding="utf-8").write(json.dumps(d,ensure_ascii=False,indent=2))
+PY
+out="$(BDO_OPENCODE_HOME="$TMP" OLLAMA_URL="http://127.0.0.1:1" bash "$ROOT/cli/runtime/sync-opencode-models.sh" 2>&1 || true)"
+printf '%s' "$out" | grep -q 'ВІКНО' && fail 'без даних про реальне вікно скрипт не має вигадувати розбіжність'
+
 
 # Повторний запуск нічого не міняє: інструмент має бути ідемпотентним.
 out="$(BDO_OPENCODE_HOME="$TMP" bash "$ROOT/cli/runtime/sync-opencode-models.sh" 2>&1 || true)"

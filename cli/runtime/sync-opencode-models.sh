@@ -56,13 +56,31 @@ REQUIRED="$(printf '%s\n%s\n' "$REQUIRED" "$(jq -r '
 
 INSTALLED="$(ollama list | awk 'NR>1 {print $1}')"
 
+# РЕАЛЬНЕ вікно, а не максимум моделі.
+#
+# У застосунку Ollama є повзунок «Context length», і він жорстко обмежує вікно
+# для ВСІХ моделей: `ollama show` каже 262 144, а llama.cpp виділяє стільки,
+# скільки стоїть на повзунку (`n_ctx_slot = 131072` у логу сервера). Якщо
+# оголосити OpenCode більше, ніж є насправді, він не почне стискати вчасно, а
+# Ollama мовчки викине початок розмови · `n_keep = 4`, тобто від системного
+# промпта лишиться чотири токени. Ніхто про це не повідомить.
+#
+# Джерело правди · `/api/ps` завантаженої моделі: вона показує вікно, з яким її
+# фактично підняли. Нічого не завантажено · межі не знаємо й нічого не міняємо.
+RUNTIME_CTX="$(curl -fsS -m 5 "${OLLAMA_URL:-http://127.0.0.1:11434}/api/ps" 2>/dev/null \
+    | php -r '$d=json_decode((string)stream_get_contents(STDIN),true);
+        $max=0; foreach($d["models"]??[] as $m){$max=max($max,(int)($m["context_length"]??0));}
+        echo $max > 0 ? $max : "";' 2>/dev/null || true)"
+test -n "$RUNTIME_CTX" && printf 'Реальне вікно Ollama зараз: %s токенів (повзунок застосунку)\n' "$RUNTIME_CTX" >&2
+
 php -r '
 $config = $argv[1];
 $required = array_filter(explode("\n", trim($argv[2])));
 $installed = array_filter(explode("\n", trim($argv[3])));
-$apply = $argv[4] === "1";
+$runtimeContext = (int) $argv[4];
+$apply = $argv[5] === "1";
 
-$prune = $argv[5] ?? "";
+$prune = $argv[6] ?? "";
 
 $raw = file_get_contents($config);
 // JSONC: коментарі прибираємо лише для РОЗБОРУ. Файл на диску правиться
@@ -145,14 +163,28 @@ foreach ($required as $route) {
 // і крок повторювався тричі. Тому розбіжність між оголошеною стелею й
 // виведеною з вікна моделі ми ПОКАЗУЄМО, а `--apply` її виправляє.
 $staleLimits = [];
+$staleContext = [];
 foreach ($parsed["provider"] ?? [] as $provider => $conf) {
     if (!str_contains($provider, "ollama")) continue;
     foreach ($conf["models"] ?? [] as $model => $entry) {
         $context = (int) ($entry["limit"]["context"] ?? 0);
         $output = (int) ($entry["limit"]["output"] ?? 0);
         if ($context <= 0 || $output <= 0) continue;
-        $want = min(131072, max(16384, intdiv($context, 2)));
-        if ($output < $want) {
+        // Оголошене вікно БІЛЬШЕ за реальне · найтихіший з можливих дефектів.
+        //
+        // OpenCode стискає розмову, орієнтуючись на `limit.context`. Якщо там
+        // 262 144, а llama.cpp підняв модель зі 131 072 (повзунок застосунку),
+        // стискання не настане ніколи · натомість Ollama почне викидати
+        // початок розмови з `n_keep = 4`. Ні OpenCode, ні набір про це не
+        // дізнаються: помилки немає, просто зникає контекст.
+        if ($runtimeContext > 0 && $context > $runtimeContext) {
+            $staleContext[] = [$provider, $model, $context, $runtimeContext];
+            printf("%s%s/%s: оголошено вікно %d, а Ollama підняла модель зі %d\n",
+                $pad("ВІКНО"), $provider, $model, $context, $runtimeContext);
+        }
+        $effective = $runtimeContext > 0 ? min($context, $runtimeContext) : $context;
+        $want = min(131072, max(16384, intdiv($effective, 2)));
+        if ($output !== $want) {
             $staleLimits[] = [$provider, $model, $output, $want];
             printf("%s%s/%s: стеля виходу %d, а вікно дозволяє %d\n", $pad("СТЕЛЯ"), $provider, $model, $output, $want);
         }
@@ -173,6 +205,18 @@ foreach ($parsed["provider"] ?? [] as $provider => $conf) {
 // заміною за іменем ключа. Глобальна заміна тут заборонена: у тому ж файлі
 // живуть ХМАРНІ моделі зі своїми справжніми лімітами, і піднімати їх наосліп
 // означало б обіцяти провайдеру те, чого він не вміє.
+// Вікно правиться тим самим точковим способом, що й стеля.
+$bumpContext = static function (string $raw, array $stale): array {
+    $done = [];
+    foreach ($stale as [$provider, $model, $was, $want]) {
+        $pattern = "~(\"".preg_quote($model, "~")."\"\s*:\s*\{.*?\"limit\"\s*:\s*\{[^}]*?\"context\"\s*:\s*)\d+~s";
+        $updated = preg_replace($pattern, "\${1}".$want, $raw, 1, $count);
+        if ($count === 1 && $updated !== null) { $raw = $updated; $done[] = "$provider/$model вікно $was -> $want"; }
+    }
+
+    return [$raw, $done];
+};
+
 $bumpLimits = static function (string $raw, array $stale): array {
     $done = [];
     foreach ($stale as [$provider, $model, $was, $want]) {
@@ -191,8 +235,10 @@ $bumpLimits = static function (string $raw, array $stale): array {
     return [$raw, $done];
 };
 
-if ($missing === [] && $staleLimits !== [] && $apply) {
+if ($missing === [] && ($staleLimits !== [] || $staleContext !== []) && $apply) {
     [$raw, $done] = $bumpLimits($raw, $staleLimits);
+    [$raw, $doneContext] = $bumpContext($raw, $staleContext);
+    $done = array_merge($done, $doneContext);
     if ($done !== []) {
         $backup = $config . ".bak-" . date("Ymd-His");
         copy($config, $backup) || exit(1);
@@ -205,7 +251,7 @@ if ($missing === [] && $staleLimits !== [] && $apply) {
 }
 
 if ($missing === []) {
-    if ($staleLimits !== [] && !$apply) {
+    if (($staleLimits !== [] || $staleContext !== []) && !$apply) {
         echo "\nВИРОК: стеля виходу застаріла. Полагодити: ./bdo models --apply\n";
         echo "Обірвана на стелі відповідь виглядає як зіпсований JSON, а не як помилка.\n";
         exit(1);
@@ -230,6 +276,8 @@ foreach ($missing as $provider => $models) {
         // Контекст беремо з самої Ollama, а не з припущення.
         $show = shell_exec("ollama show " . escapeshellarg($model) . " 2>/dev/null") ?: "";
         $context = preg_match("/context length\s+(\d+)/", $show, $m) ? (int) $m[1] : 131072;
+        // Повзунок застосунку сильніший за максимум моделі.
+        if ($runtimeContext > 0 && $runtimeContext < $context) $context = $runtimeContext;
         // Стеля ВИХОДУ, а не входу, і саме вона ріже відповідь.
         //
         // Тут стояло 16384 для всіх моделей. 2026-08-28 QA на пачці з 61 рядка
@@ -276,4 +324,4 @@ if (!is_array(json_decode($check, true))) {
 file_put_contents($config, $raw);
 printf("\nКопія попереднього конфіга: %s\n", $backup);
 echo "ВИРОК: конфіг оновлено. Перезапусти OpenCode, щоб він перечитав провайдера.\n";
-' "$CONFIG" "$REQUIRED" "$INSTALLED" "$APPLY" "$PRUNE"
+' "$CONFIG" "$REQUIRED" "$INSTALLED" "${RUNTIME_CTX:-0}" "$APPLY" "$PRUNE"
