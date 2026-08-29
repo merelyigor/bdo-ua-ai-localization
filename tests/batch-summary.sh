@@ -63,21 +63,21 @@ unset BDO_GOAL_REMAINING_STUB
 # Категорія скінчилась · але ціль ширша за категорію.
 #
 # 2026-08-29 диригент закрив `entity`, отримав `goal_complete` і став чекати
-# рішення власника, хоча в патчі лишалось десять категорій і власник просив
-# «перекласти весь патч». Тепер рушій сам називає наступну категорію.
+# рішення власника, хоча власник просив «перекласти весь патч». Тепер рушій
+# переводить ціль на ПАТЧ без категорії · категорія була лише способом роботи.
 export BDO_GOAL_REMAINING_STUB=0
-export BDO_NEXT_DOMAIN_STUB="premium_shop 436"
+export BDO_PATCH_REMAINING_STUB=1210
 next="$(BDO_STATE_DIR="$TMP/state" BDO_PIPELINE_OFFLINE=1 bash "$ROOT/cli/run/run-drive.sh")"
-jq -e '.next.kind == "continue_run" and .next.goal.domain == "premium_shop"
-    and .next.remaining == 436
-    and (.next.command | test("mode start patch 50 7 premium_shop"))' <<< "$next" >/dev/null \
-    || { echo "FAIL: вичерпана категорія не дала наступної: $next"; exit 1; }
+jq -e '.next.kind == "continue_run" and .next.goal.domain == ""
+    and .next.remaining == 1210
+    and (.next.command | test("mode start patch 50 7$"))' <<< "$next" >/dev/null \
+    || { echo "FAIL: вичерпана категорія не перевела ціль на весь патч: $next"; exit 1; }
 
 # А коли роботи немає в ЖОДНІЙ категорії · ціль справді досягнута.
-export BDO_NEXT_DOMAIN_STUB=""
+export BDO_PATCH_REMAINING_STUB=0
 done_all="$(BDO_STATE_DIR="$TMP/state" BDO_PIPELINE_OFFLINE=1 bash "$ROOT/cli/run/run-drive.sh")"
 jq -e '.next.kind == "goal_complete"' <<< "$done_all" >/dev/null \
     || { echo "FAIL: порожній патч не дав goal_complete: $done_all"; exit 1; }
-unset BDO_GOAL_REMAINING_STUB BDO_NEXT_DOMAIN_STUB
+unset BDO_GOAL_REMAINING_STUB BDO_PATCH_REMAINING_STUB
 
 echo 'batch summary: OK'

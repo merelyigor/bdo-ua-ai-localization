@@ -213,7 +213,7 @@ give_up_silent() {
 
 # Наступну категорію шукаємо ЛИШЕ коли поточна вичерпалась: інакше це зайві
 # тринадцять запитів на кожній пачці.
-next_domain_when_needed() {
+patch_remaining_when_needed() {
     test -s "$STATE_DIR/run-goal.json" || return 0
     local domain patch remaining
     domain="$(php -r '$g=json_decode((string)file_get_contents($argv[1]),true)?:[];echo (string)($g["domain"]??"");' "$STATE_DIR/run-goal.json")"
@@ -222,7 +222,7 @@ next_domain_when_needed() {
     test -n "$patch" || return 0
     remaining="$(goal_remaining)"
     test "${remaining:-1}" = 0 || return 0
-    next_domain_with_work "$patch"
+    patch_remaining "$patch"
     return 0
 }
 
@@ -307,18 +307,18 @@ completion() {
             $out["hint"]=sprintf(
                 "Ціль ще не досягнута: лишилось %d рядків. Почни наступну пачку САМ (%s) і не питай дозволу · власник просив довести ціль до кінця.",
                 $remaining,$out["command"]);
-        }elseif(($goal["domain"]??"")!==""&&$argv[7]!==""){
-            // Категорія скінчилась, але патч · ні. Ціль власника ширша за
-            // категорію, тому називаємо наступну замість зупинки.
-            [$nextDomain,$nextCount]=array_pad(explode(" ",$argv[7],2),2,"");
+        }elseif(($goal["domain"]??"")!==""&&(int)$argv[7]>0){
+            // Категорія скінчилась, але патч · ні. Далі йдемо ПАТЧЕМ, без
+            // категорії: власник просив патч, а категорія була лише способом
+            // згрупувати роботу.
             $out["kind"]="continue_run";
-            $out["remaining"]=(int)$nextCount;
-            $out["goal"]=["mode"=>$goal["mode"]??"","patch"=>$goal["patch"]??"","domain"=>$nextDomain];
-            $out["command"]=trim(sprintf("./bdo mode start %s 50 %s %s",
-                (string)($goal["mode"]??""),(string)($goal["patch"]??""),$nextDomain));
+            $out["remaining"]=(int)$argv[7];
+            $out["goal"]=["mode"=>$goal["mode"]??"","patch"=>$goal["patch"]??"","domain"=>""];
+            $out["command"]=trim(sprintf("./bdo mode start %s 50 %s",
+                (string)($goal["mode"]??""),(string)($goal["patch"]??"")));
             $out["hint"]=sprintf(
-                "Категорію %s завершено, але патч ні: у %s лишилось %d рядків. Почни наступну пачку САМ (%s) і не питай дозволу.",
-                (string)($goal["domain"]??""),$nextDomain,(int)$nextCount,$out["command"]);
+                "Категорію %s завершено, але в патчі лишилось %d рядків. Продовжуй ПАТЧЕМ без категорії: %s. Дозволу не питай.",
+                (string)($goal["domain"]??""),(int)$argv[7],$out["command"]);
         }else{
             $out["kind"]="goal_complete";
             $out["goal"]=["mode"=>$goal["mode"]??"","patch"=>$goal["patch"]??"","domain"=>$goal["domain"]??""];
@@ -326,7 +326,7 @@ completion() {
         }
     }
     echo json_encode($out,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES);
-    ' "$B/batch-summary.json" "$B/commit-report.txt" "$B/manifest.json" "$STATE_DIR/run-summary.json" "$(basename "$B")" "$(goal_remaining)" "$(next_domain_when_needed)"
+    ' "$B/batch-summary.json" "$B/commit-report.txt" "$B/manifest.json" "$STATE_DIR/run-summary.json" "$(basename "$B")" "$(goal_remaining)" "$(patch_remaining_when_needed)"
 }
 
 # Скільки рядків ще підпадає під ціль прогону.
@@ -335,36 +335,29 @@ completion() {
 # лишається старим `complete`, і диригент питає власника. Вигадувати нуль тут
 # не можна: «невідомо» і «роботи немає» · різні стани, і плутанина між ними
 # зупинила б прогін саме тоді, коли робота ще є.
-# Наступна КАТЕГОРІЯ того самого патча, у якій ще є робота.
+# Скільки рядків лишилось у ПАТЧІ, коли ціль була звужена категорією.
 #
-# Ціль власника · перекласти патч, а не одну категорію. Категорія є способом
-# роботи: однорідна пачка дає кращий глосарій і менше модерації. Тому коли
-# категорія вичерпалась, зупинятись зарано · треба назвати наступну.
-# 2026-08-29 диригент закрив `entity`, побачив `goal_complete` і став чекати
-# рішення власника, хоча в патчі лишалось десять інших категорій.
+# Категорія · це спосіб роботи, а не ціль. Власник просить «переклади патч», і
+# вичерпана категорія не означає, що робота скінчилась. 2026-08-29 диригент на
+# цьому зупинився після `entity`, хоча в патчі лишалось понад тисяча рядків.
 #
-# Порожній вивід означає «роботи більше немає в жодній категорії».
-next_domain_with_work() {
-    local patch="$1" domain
-    # Заглушка лише для тестів: живий шлях однаково йде в API нижче.
-    if [ -n "${BDO_NEXT_DOMAIN_STUB+x}" ]; then printf '%s' "$BDO_NEXT_DOMAIN_STUB"; return 0; fi
+# Свідомо БЕЗ вибору «наступної категорії»: перебирати тринадцять фільтрів і
+# вгадувати, який кращий, означає нав'язати диригенту категоризацію, якої
+# власник не просив. Далі йде звичайна пачка по всьому патчу.
+patch_remaining() {
+    local patch="$1"
+    # Заглушка перевіряється ПЕРШОЮ: офлайн-тест інакше вийшов би до неї, і
+    # перевірка мовчки міряла б порожнечу замість поведінки.
+    if [ -n "${BDO_PATCH_REMAINING_STUB+x}" ]; then printf '%s' "$BDO_PATCH_REMAINING_STUB"; return 0; fi
     test "${BDO_PIPELINE_OFFLINE:-0}" = 1 && return 0
     ( set +e
       # shellcheck source=/dev/null
       source "$SCRIPT_DIR/cli/system/select-env.sh" >/dev/null 2>&1 || exit 0
-      best=""; best_count=0
-      for domain in $(php -r 'require $argv[1];
-          $r=new ReflectionClass(Bdo\Translate\Pipeline\RunSpec::class);
-          echo implode(" ", $r->getConstant("DOMAINS"));' "$SCRIPT_DIR/lib/autoload.php"); do
-          count="$("$SCRIPT_DIR/cli/api/http-request.sh" -fsS -H "X-API-Key: $BDO_API_KEY" \
-              "$BDO_API_BASE/rows?patch=$patch&missing=machine&exclude_proposed=1&domain=$domain&limit=1&include_total=1&fields=core" 2>/dev/null \
-              | php -r '$d=json_decode((string)stream_get_contents(STDIN),true);
-                  echo (int)($d["meta"]["total_matching"] ?? 0);')"
-          # Найбільша категорія першою: однорідна пачка дає кращий глосарій, а
-          # великий блок швидше зменшує залишок патча.
-          if [ "${count:-0}" -gt "$best_count" ]; then best_count="$count"; best="$domain"; fi
-      done
-      test -n "$best" && printf '%s %s' "$best" "$best_count" ) || true
+      "$SCRIPT_DIR/cli/api/http-request.sh" -fsS -H "X-API-Key: $BDO_API_KEY" \
+          "$BDO_API_BASE/rows?patch=$patch&missing=machine&exclude_proposed=1&limit=1&include_total=1&fields=core" 2>/dev/null \
+          | php -r '$d=json_decode((string)stream_get_contents(STDIN),true);
+              if(!is_array($d)||!isset($d["meta"]["total_matching"]))exit;
+              echo (int)$d["meta"]["total_matching"];' ) || true
     return 0
 }
 
@@ -425,7 +418,7 @@ prepare_worker() {
     fi
     complete prepared "$B/worker-payload.json"; transition prepared; transition awaiting_worker
     if [ "$count" -eq 0 ]; then
-        emit 1 awaiting_worker '{"kind":"continue"}'
+        emit 1 awaiting_worker '{"kind":"continue","reason":"memory_covered_all_rows"}'
         return 0
     fi
     child awaiting_worker translation-worker "$B/worker-payload.json" "$B/candidate.json"
@@ -582,7 +575,7 @@ rm -f "$STATE_DIR/next-child.json"
 judge_or_commit() {
     local rows="$1" candidate="$2" verdicts="$3" validate="$4"
     if [ "${BDO_JUDGE:-on}" = off ]; then
-        transition ready_to_commit; emit 1 ready_to_commit '{"kind":"continue"}'; return 0
+        transition ready_to_commit; emit 1 ready_to_commit '{"kind":"continue","reason":"judge_disabled"}'; return 0
     fi
     "$SCRIPT_DIR/cli/prepare/judge-payload.sh" "$rows" "$candidate" "$verdicts" "$validate" > "$B/judge-payload.json" 2>/dev/null || echo '[]' > "$B/judge-payload.json"
     local disputed
@@ -593,7 +586,7 @@ judge_or_commit() {
         transition awaiting_judge
         child awaiting_judge translation-judge "$B/judge-payload.json" "$B/judge-verdicts.json"
     else
-        transition ready_to_commit; emit 1 ready_to_commit '{"kind":"continue"}'
+        transition ready_to_commit; emit 1 ready_to_commit '{"kind":"continue","reason":"no_disputed_rows"}'
     fi
 }
 
@@ -788,19 +781,19 @@ awaiting_judge)
         # Суддя не є ворітьми: вичерпані спроби не блокують пачку, а просто
         # лишають стару поведінку каналу · це рішення про маршрут, не про дані.
         if retry_exceeded awaiting_judge; then
-            transition ready_to_commit; emit 1 ready_to_commit '{"kind":"continue"}'; exit 0
+            transition ready_to_commit; emit 1 ready_to_commit '{"kind":"continue","reason":"judge_retry_exhausted"}'; exit 0
         fi
         child awaiting_judge translation-judge "$B/judge-payload.json" "$B/judge-verdicts.json"; exit 0
     fi
     if ! php -r 'require $argv[1];Bdo\Translate\Pipeline\JudgeDecisions::fromFile($argv[2]);' "$SCRIPT_DIR/lib/autoload.php" "$B/judge-verdicts.json" 2>/dev/null; then
         mv "$B/judge-verdicts.json" "$B/judge-verdicts.invalid.$(date +%s).json"
         if retry_exceeded awaiting_judge; then
-            transition ready_to_commit; emit 1 ready_to_commit '{"kind":"continue"}'; exit 0
+            transition ready_to_commit; emit 1 ready_to_commit '{"kind":"continue","reason":"judge_answer_invalid"}'; exit 0
         fi
         child awaiting_judge translation-judge "$B/judge-payload.json" "$B/judge-verdicts.json"; exit 0
     fi
     complete judge "$B/judge-verdicts.json"
-    transition ready_to_commit; emit 1 ready_to_commit '{"kind":"continue"}'
+    transition ready_to_commit; emit 1 ready_to_commit '{"kind":"continue","reason":"judge_done"}'
     ;;
 ready_to_commit|committing)
     source "$SCRIPT_DIR/cli/system/select-env.sh" >/dev/null
