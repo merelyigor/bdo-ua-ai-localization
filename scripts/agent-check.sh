@@ -491,6 +491,7 @@ check_shell() {
     run bash tests/registry-hygiene.sh
     run bash tests/glossary-listing.sh
     run bash tests/opencode-output-limit.sh
+    run bash tests/write-channel-rights.sh
 }
 
 check_agents() {

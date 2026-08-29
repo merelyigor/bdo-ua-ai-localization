@@ -76,15 +76,26 @@ $abilities = $me["data"]["effective_abilities"] ?? [];
 // Насправді автосхвалення вирішує РОЛЬ власника, і сервер додав `data.writes`
 // саме тому, що з `abilities` цього не видно.
 $writes = $me["data"]["writes"] ?? null;
-if (is_array($writes)) {
-    $channels = $writes["channels"] ?? $writes;
-    $entry = $channels[$channel] ?? null;
-    $allowed = is_array($entry) ? ($entry["allowed"] ?? false) : false;
-    if ($allowed !== true) {
-        fwrite(STDERR, "Ключ не має права писати в канал $channel (/me -> data.writes).\n");
+if (is_array($writes) && isset($writes["channels"]) && is_array($writes["channels"])) {
+    // `channels` · це СПИСОК обʼєктів {layer, mode, allowed, result}, а не мапа
+    // за назвою нашого каналу. Перша версія цієї перевірки читала його як мапу,
+    // не знаходила нічого й блокувала КОЖЕН коміт із «ключ не має права»
+    // (2026-08-29, пачка 20260829_025045 стала в `committing`). Причина була не
+    // в ключі, а в тому, що я вигадав форму відповіді замість того, щоб її
+    // прочитати. Тому тут звірка йде саме за парою layer+mode, як у запиті.
+    $found = null;
+    foreach ($writes["channels"] as $entry) {
+        if (! is_array($entry)) continue;
+        if (($entry["layer"] ?? null) === $argv[3] && ($entry["mode"] ?? null) === $argv[4]) { $found = $entry; break; }
+    }
+    if ($found === null || ($found["allowed"] ?? false) !== true) {
+        fwrite(STDERR, "Ключ не має права на запис layer=".$argv[3]." mode=".$argv[4]." (/me -> data.writes).\n");
         exit(1);
     }
-    $result = is_array($entry) ? (string) ($entry["result"] ?? "") : "";
+    $result = (string) ($found["result"] ?? "");
+    // `manual` і `proposal` · одна пара layer+mode; різницю робить auto_approve
+    // у НАШОМУ запиті, тому очікуваний результат уточнюємо самі.
+    if ($channel === "proposal") $result = "pending_review";
     if ($result !== "") fwrite(STDERR, "Канал $channel: результат запису · $result\n");
     exit(0);
 }
@@ -97,7 +108,7 @@ if (!in_array($role, ["admin", "super_admin"], true)
     fwrite(STDERR, "Цей ключ не має доступу до machine + direct. Потрібні роль admin/super_admin і translations:write-machine у /me.\n");
     exit(1);
 }
-' "$ME" "$CHANNEL"
+' "$ME" "$CHANNEL" "$LAYER" "$MODE"
 
 # Формуємо payload
 php -r '
