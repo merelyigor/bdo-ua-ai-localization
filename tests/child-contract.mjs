@@ -213,8 +213,13 @@ await before({ tool: "task", sessionID: "s", callID: "c" }, { args: { subagent_t
   if (own.prompt !== payload) throw new Error("плагін не підставив staged payload замість вигаданого")
   const result = { output: '<task_result>\n[{"identity_hash":"aaaa","text":"Меч"}]\n</task_result>', args: own }
   await after({ tool: "task", sessionID: "s", callID: "c", args: own }, result)
-  if (!String(result.output).includes("проігноровано")) {
-    throw new Error(`диригент не дізнався, що його payload не використали: ${result.output}`)
+  if (!String(result.output).includes("Payload підставив набір")) {
+    throw new Error(`диригент не дізнався, що payload підставив набір: ${result.output}`)
+  }
+  // Формулювання не має звучати як докір: на «УВАГА: проігноровано» диригент
+  // завис, пояснюючи власнику, що не має копії staged файла (2026-08-29).
+  if (/УВАГА|проігноровано/.test(String(result.output))) {
+    throw new Error(`сигнал знову звучить як докір: ${result.output}`)
   }
 }
 
@@ -224,8 +229,8 @@ await before({ tool: "task", sessionID: "s", callID: "c" }, { args: { subagent_t
   await before({ tool: "task", sessionID: "s", callID: "c" }, { args: ok })
   const result = { output: '<task_result>\n[{"identity_hash":"aaaa","text":"Меч"}]\n</task_result>', args: ok }
   await after({ tool: "task", sessionID: "s", callID: "c", args: ok }, result)
-  if (String(result.output).includes("проігноровано")) {
-    throw new Error("попередження зʼявилось там, де диригент усе зробив правильно")
+  if (String(result.output).includes("Payload підставив набір")) {
+    throw new Error("повідомлення зʼявилось там, де диригент усе зробив правильно")
   }
 }
 
