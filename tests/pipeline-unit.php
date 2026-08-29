@@ -208,6 +208,37 @@ try {
     } catch (RuntimeException $error) {
         expect(str_contains($error->getMessage(), 'Invalid or forbidden route'), 'wrong route policy error');
     }
+
+// Машиночитні `details` мусять доходити до repair як ІНСТРУКЦІЯ.
+//
+// Сервер із 2026-08-29 віддає у відмові `details.glossary[].expected` саме для
+// того, щоб агент підставив правильну назву, а не вгадував її з тексту
+// помилки. Ми ж брали лише `code` і `message`, тому найцінніше поле не доходило
+// до `heal-plan` узагалі. Перевірено читанням серверного коду:
+// `EvaluateTranslationCandidate` -> `ApplyApiTranslationBatch::result()`.
+$rejectFile = $root.'/validate-details.json';
+file_put_contents($rejectFile, json_encode(['data' => ['results' => [
+    ['identity_hash' => 'aaa', 'status' => 'rejected', 'code' => 'glossary_violation',
+     'message' => 'Порушено глосарій.',
+     'details' => ['glossary' => [['termId' => 1, 'canonical' => 'Cheongsa Island',
+        'expected' => 'Острів Ліхтарів', 'issue' => 'missing', 'severity' => 'mandatory']]]],
+    ['identity_hash' => 'bbb', 'status' => 'rejected', 'code' => 'markup_mismatch',
+     'message' => 'Розмітка.', 'details' => ['must_preserve' => ['<PAOldColor>']]],
+    ['identity_hash' => 'ccc', 'status' => 'accepted'],
+]]], JSON_UNESCAPED_UNICODE));
+$rejections = Bdo\Translate\Api\Response::fromFile($rejectFile)->rejections();
+expect(count($rejections) === 2, 'прийнятий рядок потрапив у відмови');
+expect(str_contains($rejections['aaa'] ?? '', 'Острів Ліхтарів'),
+    'очікуваний відповідник глосарію не доїхав до repair: '.($rejections['aaa'] ?? ''));
+expect(str_contains($rejections['aaa'] ?? '', 'Cheongsa Island'), 'у підказці немає самого терміна');
+expect(str_contains($rejections['bbb'] ?? '', '<PAOldColor>'), 'токен розмітки не доїхав до repair');
+// Відповідь без `details` мусить лишатись робочою: старіший сервер їх не слав.
+file_put_contents($rejectFile, json_encode(['data' => ['results' => [
+    ['identity_hash' => 'ddd', 'status' => 'rejected', 'code' => 'unchanged', 'message' => 'Без змін.'],
+]]], JSON_UNESCAPED_UNICODE));
+$plain = Bdo\Translate\Api\Response::fromFile($rejectFile)->rejections();
+expect(($plain['ddd'] ?? '') === 'API: unchanged Без змін.', 'відмова без details зіпсована: '.($plain['ddd'] ?? ''));
+
     echo "pipeline unit: OK\n";
 } finally {
     $entries = new RecursiveIteratorIterator(

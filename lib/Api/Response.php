@@ -153,6 +153,45 @@ final class Response
     }
 
     /**
+     * Машиночитні подробиці відмови, придатні як ІНСТРУКЦІЯ, а не як текст.
+     *
+     * Сервер віддає `details` з 2026-08-29: для `glossary_violation` там перелік
+     * `{canonical, expected, issue}`, для розмітки · `must_preserve`. Сенс саме
+     * в тому, щоб repair підставив правильну назву, а не вгадував її з речення
+     * помилки. Раніше ми брали лише `code` і `message`, тому найцінніше поле
+     * (`expected`) до repair не доходило.
+     *
+     * @param array<string,mixed> $result
+     */
+    private static function detailHint(array $result): string
+    {
+        $details = $result['details'] ?? null;
+        if (! is_array($details)) {
+            return '';
+        }
+        $parts = [];
+        foreach ($details['glossary'] ?? [] as $issue) {
+            if (! is_array($issue)) {
+                continue;
+            }
+            $canonical = (string) ($issue['canonical'] ?? '');
+            $expected = (string) ($issue['expected'] ?? '');
+            if ($canonical === '' || $expected === '') {
+                continue;
+            }
+            // Формулювання наказове: repair мусить ПІДСТАВИТИ назву.
+            $parts[] = sprintf('ужий «%s» для «%s»', $expected, $canonical);
+        }
+        foreach ($details['must_preserve'] ?? [] as $token) {
+            if (is_string($token) && $token !== '') {
+                $parts[] = sprintf('збережи токен «%s»', $token);
+            }
+        }
+
+        return $parts === [] ? '' : ' | '.implode('; ', $parts);
+    }
+
+    /**
      * Відхилені рядки з кодом і поясненням, придатним як defect для repair.
      *
      * @return array<string,string> identity_hash => опис проблеми
@@ -169,7 +208,7 @@ final class Response
                 continue;
             }
             $code = (string) ($result['code'] ?? 'rejected');
-            $rejected[$hash] = trim('API: '.$code.' '.(string) ($result['message'] ?? ''));
+            $rejected[$hash] = trim('API: '.$code.' '.(string) ($result['message'] ?? '').self::detailHint($result));
         }
 
         return $rejected;
