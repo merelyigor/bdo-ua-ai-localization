@@ -31,11 +31,13 @@ const manifest = (state) => writeFileSync(join(dir, "state/batches/b1/manifest.j
 process.env.BDO_STATE_DIR = join(dir, "state")
 
 const sent = []
+const toasts = []
 const client = {
   session: {
     get: async () => ({ data: { agent: "патч" } }),
     promptAsync: async (args) => { sent.push(args.body.parts[0].text); return {} },
   },
+  tui: { showToast: async (args) => { toasts.push(args.body); return {} } },
 }
 const hooks = await plugin.server({ directory: dir, client })
 
@@ -67,5 +69,20 @@ if (sent.length !== 1) fail("BDO_AUTOPILOT=off не вимкнув автопі�
 if (!existsSync(join(dir, "state/autopilot.jsonl"))) fail("журнал поштовхів не створено")
 const log = readFileSync(join(dir, "state/autopilot.jsonl"), "utf8").trim().split("\n")
 if (!JSON.parse(log[0]).nudge) fail("у журналі немає номера поштовху")
+
+// 7. Здача автопілота мусить бути ВИДИМОЮ власнику.
+//
+// 2026-08-29 диригент тричі відповів «продовжую негайно» без жодного виклику,
+// автопілот вичерпав поштовхи й замовк у журнал · власник сидів і дивився, як
+// нічого не відбувається.
+writeFileSync(join(dir, ".env"), "BDO_AUTOPILOT=on\nBDO_AUTOPILOT_MAX_NUDGES=1\n")
+manifest("awaiting_qa")
+writeFileSync(join(dir, "state/autopilot.json"), JSON.stringify({ batch: "b1", state: "awaiting_qa", nudges: 1 }))
+await hooks.event({ event: { type: "session.idle", properties: { sessionID: "ses_1" } } })
+if (toasts.length !== 1) fail(`здача не показана власнику: ${JSON.stringify(toasts)}`)
+if (!String(toasts[0].message).includes("НОВУ сесію")) fail("порада без конкретної дії")
+// Повторно не спамимо.
+await hooks.event({ event: { type: "session.idle", properties: { sessionID: "ses_1" } } })
+if (toasts.length !== 1) fail("сповіщення повторюється на кожній події")
 
 console.log("autopilot: OK")

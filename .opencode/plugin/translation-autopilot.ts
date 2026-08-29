@@ -1,4 +1,4 @@
-import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from "node:fs"
+import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs"
 import { resolve } from "node:path"
 import type { Plugin } from "@opencode-ai/plugin"
 
@@ -116,6 +116,28 @@ export const TranslationAutopilot: Plugin = async ({ directory, client }) => ({
     if (ledger === undefined) {
       appendFileSync(resolve(dir, "autopilot.jsonl"),
         `${JSON.stringify({ at, batch: batch.batch, state: batch.state, action: "give_up" })}\n`)
+      // Здача набору мусить бути ВИДИМОЮ.
+      //
+      // 2026-08-29 диригент тричі відповів «продовжую негайно» і жодного разу
+      // не викликав Task · сесія набрала 1,96 млн вхідних токенів і після
+      // стискання перестала доводити крок до дії. Автопілот чесно вичерпав
+      // поштовхи й замовк у журнал, а власник просто сидів і дивився, як
+      // нічого не відбувається. Тому тут · сповіщення в інтерфейс, один раз на
+      // пару «пачка+стан», із конкретною порадою.
+      const told = resolve(dir, `autopilot-told-${batch.batch}-${batch.state}`)
+      if (!existsSync(told)) {
+        writeFileSync(told, at)
+        await client.tui.showToast({
+          body: {
+            title: "Прогін став",
+            message: `Диригент не рухає пачку ${batch.state} після ${limit} поштовхів. `
+              + "Найімовірніше вичерпано контекст сесії: почни НОВУ сесію режиму й напиши «продовжуй». "
+              + "Стан пачки на диску, нічого не втрачено.",
+            variant: "warning",
+            duration: 20000,
+          },
+        }).catch(() => undefined)
+      }
 
       return
     }
