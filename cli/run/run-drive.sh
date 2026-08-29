@@ -716,11 +716,26 @@ awaiting_qa)
     fi
     qa_scope="$B/rows.json"; test -s "$B/qa-subset.json" && qa_scope="$B/qa-subset.json"
     if ! valid_qa "$B/verdicts.json" "$qa_scope"; then
-        mv "$B/verdicts.json" "$B/verdicts.invalid.$(date +%s).json"
-        if retry_exceeded awaiting_qa; then give_up awaiting_qa; fi
-        ensure_schema qa
-        child awaiting_qa translation-qa "$B/qa-payload.json" "$B/verdicts.json"
-        exit 0
+        # Спроби вичерпані · рятуємо пачку, а не викидаємо її.
+        #
+        # 2026-08-29 QA двічі поспіль повернула 48 вироків із 49, щоразу
+        # пропускаючи той самий рядок. Стара гілка тут зупиняла пачку цілком,
+        # хоча 48 готових вироків були правильні. Тепер прогалину добиваємо
+        # чесним `REVIEW/minor` · рядок дивиться людина, решта пачки живе далі.
+        if retry_exceeded awaiting_qa; then
+            if "$SCRIPT_DIR/cli/quality/qa-coverage-fill.sh" "$qa_scope" "$B/verdicts.json" >&2 \
+                && valid_qa "$B/verdicts.json" "$qa_scope"; then
+                :
+            else
+                mv "$B/verdicts.json" "$B/verdicts.invalid.$(date +%s).json"
+                give_up awaiting_qa
+            fi
+        else
+            mv "$B/verdicts.json" "$B/verdicts.invalid.$(date +%s).json"
+            ensure_schema qa
+            child awaiting_qa translation-qa "$B/qa-payload.json" "$B/verdicts.json"
+            exit 0
+        fi
     fi
     merge_pre_verdicts
     complete qa "$B/verdicts.json"; transition qa_valid

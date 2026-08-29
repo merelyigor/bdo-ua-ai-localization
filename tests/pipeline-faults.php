@@ -190,6 +190,45 @@ $blockedGone = json_decode(implode("\n", $outB), true, 512, JSON_THROW_ON_ERROR)
 check($codeB !== 0, 'справжнє мовчання після зняття блоку не зупинило прогін');
 check(($blockedGone['next']['reason'] ?? null) === 'child_no_response', 'причина не названа після зняття блоку');
 
+// QA пропустила рядок · пачка не має ходити колами.
+//
+// 2026-08-29 QA двічі поспіль повернула 48 вироків із 49, щоразу пропускаючи
+// той самий хеш. Пачка з 50 рядків почала ходити колами, власник тричі написав
+// «продовжуй» без руху, а 48 готових вироків щоразу викидались. Прогалину
+// добиваємо чесним `REVIEW/minor`: рядок дивиться людина, решта пачки живе.
+$fillRoot = sys_get_temp_dir().'/bdo-fault-coverage-'.bin2hex(random_bytes(6));
+if (! mkdir($fillRoot, 0o755, true) && ! is_dir($fillRoot)) {
+    throw new RuntimeException("Не вдалося створити тимчасовий каталог $fillRoot.");
+}
+// Власні рядки: у базовому наборі тесту рядок один, і прогалини не буде.
+$hashes = [str_repeat('a', 64), str_repeat('b', 64), str_repeat('c', 64)];
+$fillRows = $fillRoot.'/rows.json';
+file_put_contents($fillRows, json_encode(['data' => ['rows' => array_map(
+    static fn (string $hash): array => [
+        'identity_hash' => $hash, 'source_hash' => substr($hash, 0, 8), 'source_text' => 'Row '.$hash[0],
+    ],
+    $hashes,
+)]], JSON_UNESCAPED_UNICODE));
+// Вирок лише на ПЕРШИЙ рядок · решта прогалина.
+$partial = [[
+    'identity_hash' => $hashes[0], 'status' => 'PASS', 'severity' => 'none', 'issue' => '', 'fix' => '',
+]];
+$fillVerdicts = $fillRoot.'/verdicts.json';
+file_put_contents($fillVerdicts, json_encode($partial, JSON_UNESCAPED_UNICODE));
+exec(sprintf('bash %s %s %s 2>&1', escapeshellarg($repo.'/cli/quality/qa-coverage-fill.sh'),
+    escapeshellarg($fillRows), escapeshellarg($fillVerdicts)), $fillOut, $fillCode);
+check($fillCode === 0, 'добивання покриття впало: '.implode(' | ', $fillOut));
+$filled = json_decode((string) file_get_contents($fillVerdicts), true);
+check(count($filled) === count($hashes), 'покриття не добито до повного: '.count($filled).' із '.count($hashes));
+$added = array_values(array_filter($filled, static fn (array $v): bool => $v['identity_hash'] !== $hashes[0]));
+check(($added[0]['status'] ?? '') === 'REVIEW' && ($added[0]['severity'] ?? '') === 'minor',
+    'добитий вирок мусить іти до людини, а не в шар');
+check(str_contains($added[0]['issue'] ?? '', 'QA не винесла вирок'), 'причина добивання не названа');
+// Повне покриття добивати нічого · код виходу ненульовий, файл не чіпаємо.
+exec(sprintf('bash %s %s %s 2>&1', escapeshellarg($repo.'/cli/quality/qa-coverage-fill.sh'),
+    escapeshellarg($fillRows), escapeshellarg($fillVerdicts)), $again, $againCode);
+check($againCode !== 0, 'повне покриття не мало давати успіх добивання');
+
 // А ось зіпсована відповідь мовчанням НЕ є: там інцидент, і лікує його повтор.
 $root4 = sys_get_temp_dir().'/bdo-fault-noisy-'.bin2hex(random_bytes(6));
 if (! mkdir($root4, 0o755, true) && ! is_dir($root4)) {
