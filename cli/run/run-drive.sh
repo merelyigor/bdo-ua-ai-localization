@@ -211,6 +211,21 @@ give_up_silent() {
     exit 1
 }
 
+# Наступну категорію шукаємо ЛИШЕ коли поточна вичерпалась: інакше це зайві
+# тринадцять запитів на кожній пачці.
+next_domain_when_needed() {
+    test -s "$STATE_DIR/run-goal.json" || return 0
+    local domain patch remaining
+    domain="$(php -r '$g=json_decode((string)file_get_contents($argv[1]),true)?:[];echo (string)($g["domain"]??"");' "$STATE_DIR/run-goal.json")"
+    patch="$(php -r '$g=json_decode((string)file_get_contents($argv[1]),true)?:[];echo (string)($g["patch"]??"");' "$STATE_DIR/run-goal.json")"
+    test -n "$domain" || return 0
+    test -n "$patch" || return 0
+    remaining="$(goal_remaining)"
+    test "${remaining:-1}" = 0 || return 0
+    next_domain_with_work "$patch"
+    return 0
+}
+
 completion() {
     php -r '
     $summaryFile=$argv[1];$reportFile=$argv[2];$manifestFile=$argv[3];$runFile=$argv[4];$batch=$argv[5];
@@ -292,6 +307,18 @@ completion() {
             $out["hint"]=sprintf(
                 "Ціль ще не досягнута: лишилось %d рядків. Почни наступну пачку САМ (%s) і не питай дозволу · власник просив довести ціль до кінця.",
                 $remaining,$out["command"]);
+        }elseif(($goal["domain"]??"")!==""&&$argv[7]!==""){
+            // Категорія скінчилась, але патч · ні. Ціль власника ширша за
+            // категорію, тому називаємо наступну замість зупинки.
+            [$nextDomain,$nextCount]=array_pad(explode(" ",$argv[7],2),2,"");
+            $out["kind"]="continue_run";
+            $out["remaining"]=(int)$nextCount;
+            $out["goal"]=["mode"=>$goal["mode"]??"","patch"=>$goal["patch"]??"","domain"=>$nextDomain];
+            $out["command"]=trim(sprintf("./bdo mode start %s 50 %s %s",
+                (string)($goal["mode"]??""),(string)($goal["patch"]??""),$nextDomain));
+            $out["hint"]=sprintf(
+                "Категорію %s завершено, але патч ні: у %s лишилось %d рядків. Почни наступну пачку САМ (%s) і не питай дозволу.",
+                (string)($goal["domain"]??""),$nextDomain,(int)$nextCount,$out["command"]);
         }else{
             $out["kind"]="goal_complete";
             $out["goal"]=["mode"=>$goal["mode"]??"","patch"=>$goal["patch"]??"","domain"=>$goal["domain"]??""];
@@ -299,7 +326,7 @@ completion() {
         }
     }
     echo json_encode($out,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES);
-    ' "$B/batch-summary.json" "$B/commit-report.txt" "$B/manifest.json" "$STATE_DIR/run-summary.json" "$(basename "$B")" "$(goal_remaining)"
+    ' "$B/batch-summary.json" "$B/commit-report.txt" "$B/manifest.json" "$STATE_DIR/run-summary.json" "$(basename "$B")" "$(goal_remaining)" "$(next_domain_when_needed)"
 }
 
 # Скільки рядків ще підпадає під ціль прогону.
@@ -308,6 +335,39 @@ completion() {
 # лишається старим `complete`, і диригент питає власника. Вигадувати нуль тут
 # не можна: «невідомо» і «роботи немає» · різні стани, і плутанина між ними
 # зупинила б прогін саме тоді, коли робота ще є.
+# Наступна КАТЕГОРІЯ того самого патча, у якій ще є робота.
+#
+# Ціль власника · перекласти патч, а не одну категорію. Категорія є способом
+# роботи: однорідна пачка дає кращий глосарій і менше модерації. Тому коли
+# категорія вичерпалась, зупинятись зарано · треба назвати наступну.
+# 2026-08-29 диригент закрив `entity`, побачив `goal_complete` і став чекати
+# рішення власника, хоча в патчі лишалось десять інших категорій.
+#
+# Порожній вивід означає «роботи більше немає в жодній категорії».
+next_domain_with_work() {
+    local patch="$1" domain
+    # Заглушка лише для тестів: живий шлях однаково йде в API нижче.
+    if [ -n "${BDO_NEXT_DOMAIN_STUB+x}" ]; then printf '%s' "$BDO_NEXT_DOMAIN_STUB"; return 0; fi
+    test "${BDO_PIPELINE_OFFLINE:-0}" = 1 && return 0
+    ( set +e
+      # shellcheck source=/dev/null
+      source "$SCRIPT_DIR/cli/system/select-env.sh" >/dev/null 2>&1 || exit 0
+      best=""; best_count=0
+      for domain in $(php -r 'require $argv[1];
+          $r=new ReflectionClass(Bdo\Translate\Pipeline\RunSpec::class);
+          echo implode(" ", $r->getConstant("DOMAINS"));' "$SCRIPT_DIR/lib/autoload.php"); do
+          count="$("$SCRIPT_DIR/cli/api/http-request.sh" -fsS -H "X-API-Key: $BDO_API_KEY" \
+              "$BDO_API_BASE/rows?patch=$patch&missing=machine&exclude_proposed=1&domain=$domain&limit=1&include_total=1&fields=core" 2>/dev/null \
+              | php -r '$d=json_decode((string)stream_get_contents(STDIN),true);
+                  echo (int)($d["meta"]["total_matching"] ?? 0);')"
+          # Найбільша категорія першою: однорідна пачка дає кращий глосарій, а
+          # великий блок швидше зменшує залишок патча.
+          if [ "${count:-0}" -gt "$best_count" ]; then best_count="$count"; best="$domain"; fi
+      done
+      test -n "$best" && printf '%s %s' "$best" "$best_count" ) || true
+    return 0
+}
+
 goal_remaining() {
     # Заглушка лише для тестів: живий шлях однаково йде в API нижче.
     if [ -n "${BDO_GOAL_REMAINING_STUB:-}" ]; then printf '%s' "$BDO_GOAL_REMAINING_STUB"; return 0; fi
