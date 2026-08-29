@@ -72,6 +72,23 @@ out="$(BDO_OPENCODE_HOME="$TMP" OLLAMA_URL="http://127.0.0.1:1" bash "$ROOT/cli/
 printf '%s' "$out" | grep -q 'ВІКНО' && fail 'без даних про реальне вікно скрипт не має вигадувати розбіжність'
 
 
+# Попередження про завищене вікно мусить лунати НА КОЖНІЙ пачці, а не лише коли
+# власник згадає запустити ./bdo models. Повзунок у застосунку Ollama можна
+# посунути будь-коли, і мовчазна втрата початку розмови · найдорожчий наслідок.
+grep -Fq 'context-drift.sh' "$ROOT/cli/run/run-mode.sh" \
+    || fail 'mode start більше не перевіряє розбіжність вікна'
+python3 - "$CFG" <<'PY'
+import json,sys,io
+p=sys.argv[1]
+d=json.load(io.open(p,encoding="utf-8"))
+for entry in d["provider"]["ollama-local"]["models"].values():
+    entry["limit"]["context"]=262144
+io.open(p,"w",encoding="utf-8").write(json.dumps(d,ensure_ascii=False,indent=2))
+PY
+out="$(BDO_OPENCODE_HOME="$TMP" OLLAMA_URL="http://127.0.0.1:1" bash "$ROOT/cli/runtime/context-drift.sh" 2>&1 || true)"
+test -z "$out" || fail "без даних про рантайм скрипт не має попереджати: $out"
+
+
 # Повторний запуск нічого не міняє: інструмент має бути ідемпотентним.
 out="$(BDO_OPENCODE_HOME="$TMP" bash "$ROOT/cli/runtime/sync-opencode-models.sh" 2>&1 || true)"
 printf '%s' "$out" | grep -q 'СТЕЛЯ' && fail 'після підняття стеля досі рахується застарілою'

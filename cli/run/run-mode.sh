@@ -125,6 +125,11 @@ file_put_contents($file, json_encode([
 ], JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES|JSON_THROW_ON_ERROR)."\n", LOCK_EX);
 ' "$STATE_DIR/run-goal.json" "$MODE" "$PATCH" "$DOMAIN" "$channel" "$query"
 
+# Вікно моделі задає повзунок застосунку Ollama, і власник може посунути його
+# будь-коли. Перевірка коштує один локальний запит, а її відсутність коштує
+# мовчазної втрати початку розмови · тому вона тут, на кожній пачці.
+"$SCRIPT_DIR/cli/runtime/context-drift.sh" >&2 || true
+
 "$SCRIPT_DIR/cli/batch/batch-new.sh" "$rows" >/dev/null
 B="$($SCRIPT_DIR/cli/batch/batch-dir.sh)"
 php -r 'require $argv[1];$w=Bdo\Translate\Batch\Workspace::requireCurrent($argv[2]);$w->updateManifest(function($m)use($argv){$m["mode"]=$argv[3];$m["channel"]=$argv[4];$m["query"]=$argv[5];$m["memory_layers"]=$argv[6];$m["patch"]=$argv[7];$m["domain"]=$argv[8];return $m;},"run_spec");' "$SCRIPT_DIR/lib/autoload.php" "${BDO_STATE_DIR:-$SCRIPT_DIR/state}" "$MODE" "$channel" "$query" "$memory_layers" "$PATCH" "$DOMAIN"
