@@ -286,7 +286,7 @@
             ]
         },
         "session-omniroute": {
-            "allow_paid": true,
+            "allow_paid": false,
             "routes": {
                 "translation-terminology": [
                     "opencode-omniroute/auto/cheap",
@@ -323,13 +323,7 @@
                     "opencode-omniroute/auto/best-coding"
                 ]
             },
-            "paid_routes": [
-                "opencode-omniroute/auto/best-coding",
-                "opencode-omniroute/auto/cheap",
-                "opencode-omniroute/auto/fast",
-                "opencode-omniroute/auto/smart",
-                "opencode-omniroute/auto/vision"
-            ],
+            "paid_routes": [],
             "default_routes": {
                 "translation-terminology": [
                     "opencode-omniroute/auto/cheap",
