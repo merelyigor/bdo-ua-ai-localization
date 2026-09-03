@@ -85,8 +85,28 @@ TRANSLATE_HOME="$HOME_DIR" php "$ROOT/cli/runtime/model-profile.php" \
     || fail 'хмарну модель поза маршрутами заблоковано помилково'
 
 # 5. `./bdo models` бере перелік із policy, а не лише з активного frontmatter.
-grep -Fq 'select(startswith("ollama"))' "$ROOT/cli/runtime/sync-opencode-models.sh" \
-    || fail 'sync-opencode-models.sh більше не звіряє всі локальні маршрути policy'
+#
+#    Раніше тут стояв grep по джерелу (`select(startswith("ollama"))`). Це була
+#    фіктивна перевірка: 2026-09-03 фільтр законно розширили на всі маршрути
+#    профілів, і тест упав, хоча поведінка стала кращою · а зворотне звуження
+#    він так само пропустив би, якби текст лишився схожим. Тепер запускаємо сам
+#    скрипт із підробленими `ollama` й конфігом OpenCode і дивимось на ЗВІТ.
+FAKE_HOME="$(mktemp -d)"
+mkdir -p "$FAKE_HOME/.config/opencode" "$FAKE_HOME/bin"
+cat > "$FAKE_HOME/.config/opencode/opencode.jsonc" <<'JSON'
+{ "provider": { "ollama-local": { "options": { "baseURL": "http://127.0.0.1:11434/v1" }, "models": {} } } }
+JSON
+# `ollama list` без жодної моделі: нас цікавить лише ПЕРЕЛІК маршрутів у звіті.
+printf '#!/bin/sh\necho "NAME ID SIZE"\n' > "$FAKE_HOME/bin/ollama"
+chmod +x "$FAKE_HOME/bin/ollama"
+report="$(PATH="$FAKE_HOME/bin:$PATH" BDO_OPENCODE_HOME="$FAKE_HOME" \
+    bash "$ROOT/cli/runtime/sync-opencode-models.sh" 2>/dev/null || true)"
+while IFS= read -r route; do
+    printf '%s' "$report" | grep -Fq "$route" \
+        || fail "у звіті ./bdo models немає локального маршруту policy: $route"
+done < <(jq -r '[.profiles[] | (.routes, (.default_routes // {}))[][]]
+    | unique[] | select(startswith("ollama"))' "$TEMPLATE")
+rm -rf "$FAKE_HOME"
 # Хмарний маршрут не є проблемою Ollama: без цієї гілки звіт під session-free
 # показував вигадані «НЕМАЄ В OLLAMA» і привчав ігнорувати власний звіт.
 grep -Fq 'ЗОВНІШНІЙ' "$ROOT/cli/runtime/sync-opencode-models.sh" \

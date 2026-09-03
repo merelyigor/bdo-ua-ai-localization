@@ -284,6 +284,88 @@
             "paid_routes": [
                 "openai/gpt-5.6-luna"
             ]
+        },
+        "session-omniroute": {
+            "allow_paid": true,
+            "routes": {
+                "translation-terminology": [
+                    "opencode-omniroute/auto/cheap",
+                    "opencode-omniroute/auto/fast",
+                    "opencode-omniroute/auto/best-coding"
+                ],
+                "translation-worker": [
+                    "opencode-omniroute/auto/best-coding",
+                    "opencode-omniroute/auto/cheap",
+                    "opencode-omniroute/auto/fast"
+                ],
+                "translation-qa": [
+                    "opencode-omniroute/auto/vision",
+                    "opencode-omniroute/auto/cheap",
+                    "opencode-omniroute/auto/smart"
+                ],
+                "translation-repair": [
+                    "opencode-omniroute/auto/cheap",
+                    "opencode-omniroute/auto/fast",
+                    "opencode-omniroute/auto/best-coding"
+                ],
+                "translation-smoke": [
+                    "opencode-omniroute/auto/best-coding",
+                    "opencode-omniroute/auto/cheap"
+                ],
+                "translation-judge": [
+                    "opencode-omniroute/auto/vision",
+                    "opencode-omniroute/auto/cheap",
+                    "opencode-omniroute/auto/smart"
+                ],
+                "translation-glossary": [
+                    "opencode-omniroute/auto/cheap",
+                    "opencode-omniroute/auto/fast",
+                    "opencode-omniroute/auto/best-coding"
+                ]
+            },
+            "paid_routes": [
+                "opencode-omniroute/auto/best-coding",
+                "opencode-omniroute/auto/cheap",
+                "opencode-omniroute/auto/fast",
+                "opencode-omniroute/auto/smart",
+                "opencode-omniroute/auto/vision"
+            ],
+            "default_routes": {
+                "translation-terminology": [
+                    "opencode-omniroute/auto/cheap",
+                    "opencode-omniroute/auto/fast",
+                    "opencode-omniroute/auto/best-coding"
+                ],
+                "translation-worker": [
+                    "opencode-omniroute/auto/best-coding",
+                    "opencode-omniroute/auto/cheap",
+                    "opencode-omniroute/auto/fast"
+                ],
+                "translation-qa": [
+                    "opencode-omniroute/auto/vision",
+                    "opencode-omniroute/auto/cheap",
+                    "opencode-omniroute/auto/smart"
+                ],
+                "translation-repair": [
+                    "opencode-omniroute/auto/cheap",
+                    "opencode-omniroute/auto/fast",
+                    "opencode-omniroute/auto/best-coding"
+                ],
+                "translation-smoke": [
+                    "opencode-omniroute/auto/best-coding",
+                    "opencode-omniroute/auto/cheap"
+                ],
+                "translation-judge": [
+                    "opencode-omniroute/auto/vision",
+                    "opencode-omniroute/auto/cheap",
+                    "opencode-omniroute/auto/smart"
+                ],
+                "translation-glossary": [
+                    "opencode-omniroute/auto/cheap",
+                    "opencode-omniroute/auto/fast",
+                    "opencode-omniroute/auto/best-coding"
+                ]
+            }
         }
     }
 }

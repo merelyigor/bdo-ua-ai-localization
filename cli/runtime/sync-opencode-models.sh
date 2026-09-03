@@ -44,15 +44,22 @@ REQUIRED="$(grep -h '^model: ' "$TRANSLATE_AGENTS_DIR"/translation*.md \
     | sed 's/^model: //' | sort -u)"
 test -n "$REQUIRED" || { echo "У $TRANSLATE_AGENTS_DIR немає жодного 'model:'." >&2; exit 1; }
 
-# Плюс УСІ локальні маршрути профілю: фронтматер тримає лише ту модель, що
-# активна зараз, а власник перемикає модель одним рядком `TRANSLATE_MODEL` у
-# `.env`. Якщо оголошувати тільки активну, кожне таке перемикання давало б ту
-# саму порожню дочірню сесію, заради якої цей скрипт і написаний.
+# Плюс УСІ маршрути профілів: фронтматер тримає лише ту модель, що активна
+# зараз, а власник перемикає модель одним рядком `TRANSLATE_MODEL` у `.env`.
+# Якщо оголошувати тільки активну, кожне таке перемикання давало б ту саму
+# порожню дочірню сесію, заради якої цей скрипт і написаний.
+#
+# Беремо не лише `ollama*`. Провайдер із власним `options.baseURL` (наприклад
+# шлюз OmniRoute) для OpenCode так само не має вбудованого каталогу моделей:
+# неоголошений маршрут дає рівно ту саму мовчазну порожню сесію, що й
+# неоголошена локальна модель. Провайдери без `baseURL` (`opencode`, `openai`)
+# OpenCode знає зі своєї auth, і їх тут не чіпаємо · нижче вони позначаються
+# `ЗОВНІШНІЙ`.
 POLICY="$SCRIPT_DIR/.opencode/translation-models.json"
 test -f "$POLICY" || POLICY="$SCRIPT_DIR/.opencode/templates/translation-models.json"
 REQUIRED="$(printf '%s\n%s\n' "$REQUIRED" "$(jq -r '
-    [.profiles[] | (.routes, (.default_routes // {}))[][] ]
-    | unique[] | select(startswith("ollama"))' "$POLICY")" | sed '/^$/d' | sort -u)"
+    [.profiles[] | (.routes, (.default_routes // {}))[][] ] | unique[]' "$POLICY")" \
+    | sed '/^$/d' | sort -u)"
 
 INSTALLED="$(ollama list | awk 'NR>1 {print $1}')"
 
@@ -81,6 +88,8 @@ $runtimeContext = (int) $argv[4];
 $apply = $argv[5] === "1";
 
 $prune = $argv[6] ?? "";
+// Довідник про кастомні провайдери · та сама реалізація, що й у тесті.
+$helper = $argv[7] ?? "";
 
 $raw = file_get_contents($config);
 // JSONC: коментарі прибираємо лише для РОЗБОРУ. Файл на диску правиться
@@ -129,12 +138,35 @@ if ($prune !== "") {
 
 $missing = [];
 $problems = 0;
+// Чи є провайдер кастомним endpoint-ом · питаємо ту саму реалізацію, яку
+// перевіряє tests/custom-provider-routes.sh. Довідник відповідає переліком
+// нерозвʼязаних маршрутів, тому «жодного рядка» тут і означає «оголошено».
+$isCustom = static function (string $provider) use ($config, $helper): bool {
+    $probe = $provider."/__перевірка-кастомності__";
+    exec(sprintf("php %s %s %s", escapeshellarg($helper), escapeshellarg($config), escapeshellarg($probe)), $out);
+
+    return trim(implode("", $out)) === $probe;
+};
 // printf("%-22s") рахує байти, а стани тут кириличні: без mb-вирівнювання
 // колонка зʼїжджала й звіт читався як каша.
 $pad = static fn (string $state): string => $state . str_repeat(" ", max(1, 22 - mb_strlen($state)));
 foreach ($required as $route) {
     [$provider, $model] = array_pad(explode("/", $route, 2), 2, null);
     if ($model === null) continue;
+    // Провайдер із власним endpoint (`options.baseURL`) вимагає явного
+    // оголошення КОЖНОЇ моделі · каталогу для нього в OpenCode немає. Саме
+    // так поводиться шлюз OmniRoute: у конфізі власника оголошено рівно
+    // `auto/best-coding`, і будь-який інший `auto/*` маршрут профілю дав би
+    // мовчазну порожню дочірню сесію, без помилки й без токенів.
+    //
+    // Умову тримає cli/runtime/custom-provider-models.php · один шлях і для
+    // роботи, і для тесту.
+    if ($isCustom($provider)) {
+        $declared = isset($parsed["provider"][$provider]["models"][$model]);
+        if (!$declared) { $problems++; $missing[$provider][] = $model; }
+        printf("%s %s/%s\n", $pad($declared ? "OK" : "НЕ ОГОЛОШЕНА В КОНФІЗІ"), $provider, $model);
+        continue;
+    }
     // Хмарний provider не має бути в `ollama list`, і його відсутність там не є
     // дефектом: OpenCode бере такі моделі зі своєї auth, а перевіряє їх child
     // smoke. Без цієї гілки звіт під session-free показував три вигаданих
@@ -272,7 +304,35 @@ $backup = $config . ".bak-" . date("Ymd-His");
 copy($config, $backup) || exit(1);
 
 foreach ($missing as $provider => $models) {
+    $custom = $isCustom($provider);
     foreach ($models as $model) {
+        if ($custom) {
+            // Шлюз обіцяє 1 000 000 токенів КОЖНОМУ `auto/*` маршруту, хоча
+            // модель за маршрутом обирається на кожен запит окремо й реально
+            // це буває 200 000 (claude-sonnet-4.5, claude-haiku-4.5). Оголосити
+            // мільйон означало б повторити дефект вікна Ollama: OpenCode не
+            // почав би стискати вчасно, а бекенд обрізав би початок розмови
+            // мовчки. Тому беремо НИЖНЮ межу спостережених бекендів · помилка
+            // в цей бік лише змушує стискати раніше, і нічого не втрачається.
+            $context = 200000;
+            $output = 64000;
+            $entry = sprintf(
+                "\n        %s: {\n          \"name\": %s,\n          \"limit\": {\n            \"context\": %d,\n            \"output\": %d\n          }\n        },",
+                json_encode($model),
+                json_encode($model . " (OmniRoute)"),
+                $context,
+                $output
+            );
+            $pattern = "~(\"" . preg_quote($provider, "~") . "\"\s*:\s*\{.*?\"models\"\s*:\s*\{)~s";
+            $updated = preg_replace($pattern, "\$1" . str_replace("\\", "\\\\", $entry), $raw, 1, $count);
+            if ($count !== 1 || $updated === null) {
+                fwrite(STDERR, "Не знайшов блок models у провайдері $provider. Файл не змінено.\n");
+                exit(1);
+            }
+            $raw = $updated;
+            printf("Додано: %s/%s (context %d, output %d)\n", $provider, $model, $context, $output);
+            continue;
+        }
         // Контекст беремо з самої Ollama, а не з припущення.
         $show = shell_exec("ollama show " . escapeshellarg($model) . " 2>/dev/null") ?: "";
         $context = preg_match("/context length\s+(\d+)/", $show, $m) ? (int) $m[1] : 131072;
@@ -324,4 +384,4 @@ if (!is_array(json_decode($check, true))) {
 file_put_contents($config, $raw);
 printf("\nКопія попереднього конфіга: %s\n", $backup);
 echo "ВИРОК: конфіг оновлено. Перезапусти OpenCode, щоб він перечитав провайдера.\n";
-' "$CONFIG" "$REQUIRED" "$INSTALLED" "${RUNTIME_CTX:-0}" "$APPLY" "$PRUNE"
+' "$CONFIG" "$REQUIRED" "$INSTALLED" "${RUNTIME_CTX:-0}" "$APPLY" "$PRUNE" "$SCRIPT_DIR/cli/runtime/custom-provider-models.php"
