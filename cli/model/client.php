@@ -117,7 +117,10 @@ $stats = ['in' => null, 'out' => null];
 
 /** Журнал викликів · власна заміна бази OpenCode. Пишеться ЗАВЖДИ. */
 $journal = static function (string $verdict) use ($callsFile, $role, $model, $started, &$stats): void {
-    @mkdir(dirname($callsFile), 0777, true);
+    $dir = dirname($callsFile);
+    if (! is_dir($dir) && ! mkdir($dir, 0777, true) && ! is_dir($dir)) {
+        return;
+    }
     @file_put_contents($callsFile, json_encode([
         'at' => gmdate('c'),
         'role' => $role,
@@ -219,7 +222,10 @@ if (! is_array($decoded)) {
 require_once __DIR__.'/unwrap.php';
 $items = bdo_unwrap_child_json($decoded);
 
-@mkdir(dirname($responsePath), 0777, true);
+$responseDir = dirname($responsePath);
+if (! is_dir($responseDir) && ! mkdir($responseDir, 0777, true) && ! is_dir($responseDir)) {
+    $fail('response_dir', 'не вдалося створити '.$responseDir);
+}
 $temp = $responsePath.'.tmp.'.bin2hex(random_bytes(5));
 file_put_contents($temp, json_encode($items, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)."\n");
 rename($temp, $responsePath);
