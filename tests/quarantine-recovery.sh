@@ -65,8 +65,21 @@ printf '%s' "$report" | grep -q 'machine  *1' || fail "зведення не р�
 listing="$(BDO_STATE_DIR="$TMP/state" bash "$ROOT/cli/audit/quarantine-report.sh" --list 1)"
 printf '%s' "$listing" | grep -q 'Kamasylvia' || fail "--list не показав кандидата: $listing"
 
+# `--clear` дозволений агентові (рішення власника 2026-09-04), тому він мусить
+# ЗСУВАТИ слід в архів, а не знищувати: рівно цим слідом доведені D53, D56, D58.
+printf '{"identity_hash":"z","reason":"api_glossary_violation"}\n' > "$TMP/state/row-attempts.jsonl"
 BDO_STATE_DIR="$TMP/state" bash "$ROOT/cli/audit/quarantine-report.sh" --clear >/dev/null
 test ! -s "$TMP/state/quarantine.jsonl" || fail '--clear не очистив карантин'
+test -s "$TMP/state/quarantine.jsonl.archived" \
+    || fail '--clear знищив слід замість зсуву в архів'
+test "$(wc -l < "$TMP/state/quarantine.jsonl.archived" | tr -d ' ')" = 2 \
+    || fail 'в архів потрапили не всі рядки сліду'
+test ! -s "$TMP/state/row-attempts.jsonl" \
+    || fail '--clear не обнулив журнал спроб · виключені рядки не вернулись у вибірку'
+# Другий --clear на порожньому сліді архів не псує й не падає.
+BDO_STATE_DIR="$TMP/state" bash "$ROOT/cli/audit/quarantine-report.sh" --clear >/dev/null 2>&1 || true
+test "$(wc -l < "$TMP/state/quarantine.jsonl.archived" | tr -d ' ')" = 2 \
+    || fail 'повторний --clear подвоїв архів'
 
 # Прапорця `--requeue` більше немає: реєстр, який він розблоковував, прибрано.
 BDO_STATE_DIR="$TMP/state" bash "$ROOT/cli/audit/quarantine-report.sh" --requeue >/dev/null 2>&1 \

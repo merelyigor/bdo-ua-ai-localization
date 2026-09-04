@@ -151,6 +151,18 @@ do
     fi
 done
 
+# Архів карантину · не кеш і не квитанція, але й не вічний: його створює
+# `./bdo quarantine --clear`, щоб дозвіл на очищення не коштував доказів, і
+# після `BDO_KEEP_DAYS` він уже нічого не доводить.
+archives=0
+archive="$STATE_DIR/quarantine.jsonl.archived"
+if [ -s "$archive" ] && find "$archive" -mtime "+$DAYS" -print -quit | grep -q .; then
+    archive_kb="$(du -sk "$archive" | cut -f1)"
+    if [ "$APPLY" = 1 ]; then rm -f "$archive"; fi
+    say "  архів карантину старший за $DAYS дн.: $(basename "$archive") (${archive_kb} КБ)"
+    archives=$((archives + 1)); freed=$((freed + archive_kb))
+fi
+
 if [ -d "$OUTPUT_DIR" ]; then
     while IFS= read -r file; do
         if [ "$APPLY" = 1 ]; then rm -f "$file"; fi
@@ -169,7 +181,7 @@ if [ "$QUIET" != 1 ]; then
         "$pruned" "$dropped" "$files" "$caches" "$freed"
     if [ "$APPLY" = 1 ]; then
         echo 'ВИРОК: прибрано. Поточна пачка, карантин, журнал спроб і write-log недоторкані.'
-    elif [ $((pruned + dropped + files + caches)) -eq 0 ]; then
+    elif [ $((pruned + dropped + files + caches + archives)) -eq 0 ]; then
         echo 'ВИРОК: прибирати нічого.'
     else
         echo "ВИРОК: це лише показ. Прибрати: ./bdo clean --days $DAYS --apply"
