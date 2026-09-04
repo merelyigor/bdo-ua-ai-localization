@@ -2,7 +2,7 @@
 
 - **Створено:** 2026-08-27
 - **Формат:** [docs/API_CHANGE_HANDOFF.md](../API_CHANGE_HANDOFF.md)
-- **Навіщо:** [docs/plans/active/2026-08-27_FLOW_AND_SUBAGENT_ECONOMY.md](../plans/done/2026-08-27_FLOW_AND_SUBAGENT_ECONOMY.md)
+- **Навіщо:** план економії флоу від 2026-08-27 (закритий і видалений 2026-09-04)
 
 Скопіювати текст нижче цілком у сесію агента, який працює в серверному проєкті
 BDO UA Translate API. Нічого дописувати не треба.

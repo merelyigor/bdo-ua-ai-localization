@@ -76,7 +76,7 @@ grep -Fq 'exit 2' "$ROOT/cli/system/ide-inspect.sh" || fail 'inspect мовчк�
 # повертав ненульовий код, і екран стану обривався одразу після першого рядка.
 # Тобто нагорода за закриття всіх планів була зламаним інструментом.
 work="$(mktemp -d)"
-mkdir -p "$work/docs/plans/active" "$work/docs/plans/done" "$work/state"
+mkdir -p "$work/docs/plans/active" "$work/state"
 cp "$ROOT/docs/plans/README.md" "$ROOT/docs/plans/DEFECTS.md" "$ROOT/docs/plans/BACKLOG.md" "$work/docs/plans/"
 out="$(BDO_STATE_DIR="$work/state" bash "$ROOT/cli/audit/project-review.sh" 2>&1)" \
     || fail "екран стану впав при порожній теці active/: $out"

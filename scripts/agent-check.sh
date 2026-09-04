@@ -242,7 +242,7 @@ check_references() {
     broken="$(php -r '
     $bad = [];
     foreach (explode("\n", trim(shell_exec("git ls-files \"*.md\""))) as $doc) {
-        if ($doc === "" || str_starts_with($doc, "docs/archive/")) { continue; }
+        if ($doc === "") { continue; }
         $dir = dirname($doc);
         preg_match_all("~\]\(([^)#][^)]*\.md)\)~", (string) file_get_contents($doc), $m);
         foreach ($m[1] as $target) {
