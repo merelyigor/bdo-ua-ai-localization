@@ -1,12 +1,11 @@
 #!/usr/bin/env bash
-# Керувати immutable RunSpec для чотирьох готових режимів OpenCode.
+# Керувати immutable RunSpec для чотирьох готових режимів прогону.
 #
 #   ./run-spec.sh status patch
 #   ./run-spec.sh plan patch <parent-session-id> [batch-size]
 #
-# Цей скрипт не викликає API та не створює мовних сесій. Він лише формує
-# машинний контракт, який native Task flow і run engine можуть прийняти без
-# парсингу тексту primary-агента.
+# Цей скрипт не викликає API та не викликає моделей. Він лише формує машинний
+# контракт, який драйвер і рушій приймають без розбору тексту.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")/../.." && pwd)"
@@ -32,7 +31,7 @@ case "$ACTION" in
         ' "$SCRIPT_DIR/lib/autoload.php" "$MODE" "$PATCH" "$DOMAIN"
         ;;
     plan)
-        PARENT="${3:?plan потребує OpenCode parent session ID}"
+        PARENT="${3:?plan потребує ідентифікатор прогону}"
         SIZE="${4:-50}"
         php -r '
         require $argv[1];

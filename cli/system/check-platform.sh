@@ -28,9 +28,10 @@ esac
 # Без цих п'яти не працює жодна пачка.
 REQUIRED='bash php jq curl git'
 # Ці лише звужують можливості, і кожен рядок нижче називає, що саме зникає.
-declare -a OPTIONAL_NAMES=(sqlite3 shellcheck)
+# `sqlite3` більше не потрібен: аудит читає власний журнал
+# `state/model-calls.jsonl`, а не чужу базу сесій.
+declare -a OPTIONAL_NAMES=(shellcheck)
 declare -a OPTIONAL_COST=(
-    './bdo audit і audit-dump не читатимуть базу сесій OpenCode'
     './bdo gate shell не перевірятиме скрипти'
 )
 
