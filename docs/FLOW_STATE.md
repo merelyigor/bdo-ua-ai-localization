@@ -66,6 +66,16 @@ selected → awaiting_terminology → prepared → awaiting_worker
 - **Модель не бачить `identity_hash`.** `cli/model/client.php` підміняє хеш на
   `r1…rN` у payload і схемі й повертає назад у відповіді
   (`Bdo\Translate\Model\RowAlias`); чужий ключ · відмова `unknown_id`.
+- **Пачка належить сесії роботи.** `batch-new.sh` відкриває сесію сам, якщо її
+  немає, і пише в неї пачку В МОМЕНТ створення (`Bdo\Translate\Session\Ledger`,
+  `state/sessions/<id>/batches.jsonl`). Тому підсумок сесії не залежить від
+  того, чи вціліла квитанція пачки: прибрану квитанцію названо
+  `receipt_gone`, а не викинуто молча. `./bdo session close` збирає
+  `summary.json`, переносить живі журнали (`run-transcript.log`,
+  `run-stream.log`, `model-calls.jsonl`) у теку сесії й звільняє їх; журнали
+  живуть `BDO_KEEP_DAYS` (7), підсумок і перелік пачок · назавжди.
+  `write-log.jsonl`, карантин і журнал спроб закриття не чіпає ніколи, а під
+  живим `drive.lock` відмовляє з причиною.
 
 Кожен перехід дозволяє `StateMachine::TRANSITIONS`. Драйвер не вигадує кроків:
 він виконує рівно те, що назвав рушій, і зупиняється на невідомому `kind`.

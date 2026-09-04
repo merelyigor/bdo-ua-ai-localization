@@ -18,7 +18,9 @@
 #   квитанція          · `manifest.json`, `journal.jsonl`, `batch-summary.json`
 #                        лишаються, доки не перевищено ліміт `--keep`;
 #   найстаріші понад ліміт · видаляються цілком;
-#   `output/`          · дампи API старші за `--days`.
+#   `output/`          · дампи API старші за `--days`;
+#   сесія роботи       · журнали закритої сесії старші за `--days`; підсумок і
+#                        перелік пачок (`summary.json`, `batches.jsonl`) · вічні.
 #
 # Навіщо змінено попереднє правило. Воно прибирало ЛИШЕ теки зі станом
 # `verified`, старші за `BDO_KEEP_DAYS`. Заміряно 2026-08-26: із 38 тек 37 були
@@ -164,6 +166,24 @@ for archive in "$STATE_DIR/quarantine.jsonl.archived" "$STATE_DIR/run-transcript
     archives=$((archives + 1)); freed=$((freed + archive_kb))
 done
 
+# Журнали закритих сесій старші за строк. Правило те саме, що для решти дампів,
+# але виконує його `Session\Ledger`: що саме в сесії є журналом, а що · вічною
+# історією (`summary.json`, `batches.jsonl`), вирішує один клас. Друге таке
+# рішення тут розійшлося б із першим при першій же зміні розкладки.
+sessions=0
+if [ -d "$STATE_DIR/sessions" ]; then
+    while IFS= read -r session_id; do
+        test -n "$session_id" || continue
+        say "  журнали сесії старші за $DAYS дн.: $session_id"
+        sessions=$((sessions + 1))
+    done < <(php -r '
+        require $argv[1];
+        foreach ((new Bdo\Translate\Session\Ledger($argv[2]))->prune((int) $argv[3], $argv[4] === "1") as $id) {
+            echo $id, "\n";
+        }
+    ' "$SCRIPT_DIR/lib/autoload.php" "$STATE_DIR" "$DAYS" "$APPLY")
+fi
+
 if [ -d "$OUTPUT_DIR" ]; then
     while IFS= read -r file; do
         if [ "$APPLY" = 1 ]; then rm -f "$file"; fi
@@ -178,11 +198,11 @@ fi
 
 say ""
 if [ "$QUIET" != 1 ]; then
-    printf 'Пачок стиснуто до квитанції: %d | тек видалено цілком: %d | дампів output: %d | прострочених кешів: %d | звільниться ~%d КБ\n' \
-        "$pruned" "$dropped" "$files" "$caches" "$freed"
+    printf 'Пачок стиснуто до квитанції: %d | тек видалено цілком: %d | дампів output: %d | прострочених кешів: %d | сесій без журналів: %d | звільниться ~%d КБ\n' \
+        "$pruned" "$dropped" "$files" "$caches" "$sessions" "$freed"
     if [ "$APPLY" = 1 ]; then
         echo 'ВИРОК: прибрано. Поточна пачка, карантин, журнал спроб і write-log недоторкані.'
-    elif [ $((pruned + dropped + files + caches + archives)) -eq 0 ]; then
+    elif [ $((pruned + dropped + files + caches + archives + sessions)) -eq 0 ]; then
         echo 'ВИРОК: прибирати нічого.'
     else
         echo "ВИРОК: це лише показ. Прибрати: ./bdo clean --days $DAYS --apply"

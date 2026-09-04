@@ -48,14 +48,25 @@ test -f "$ROWS_FILE" || { echo "Немає файлу: $ROWS_FILE" >&2; exit 1; 
 # інакше той самий набір рядків дає різний результат при кожному виклику.
 STAMP="$(date +%Y%m%d_%H%M%S)"
 
+# Пачка не може лишитись без сесії. Інакше історія в GUI мала б дірки саме за
+# ті прогони, коли власник забув відкрити сесію, · тобто рівно тоді, коли
+# історія й потрібна. Сесія відкривається сама, закриває її людина.
+bash "$SCRIPT_DIR/cli/system/session.sh" ensure >/dev/null
+
 php -r '
 require $argv[1];
 use Bdo\Translate\Batch\RowSet;
 use Bdo\Translate\Batch\Workspace;
+use Bdo\Translate\Session\Ledger;
 
 $rows = RowSet::fromFile($argv[2]);
 $rows->identityHashes();   // формат і унікальність - до створення теки
 $workspace = Workspace::create($argv[3], $rows, $argv[4]);
+
+// Пачка записується в сесію В МОМЕНТ створення, а не збирається при закритті:
+// `./bdo clean` тримає лише останні квитанції, тому довга сесія втратила б
+// свої перші пачки й підсумок тихо збрехав би меншим числом.
+(new Ledger($argv[3]))->recordBatch($workspace->id());
 
 // Вибірка копіюється в теку пачки й далі береться звідти: інакше вихідний файл
 // можна перезаписати наступним fetch-rows, і пачка втратить своє джерело.

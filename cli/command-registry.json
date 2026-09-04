@@ -25,6 +25,10 @@
           "скільки триває поточна робоча сесія і скільки лишилось до 4-годинної межі"
         ],
         [
+          "session [new|close|list|show]",
+          "сесія роботи: історія пачок, підсумок і прибирання журналів за BDO_KEEP_DAYS"
+        ],
+        [
           "env",
           "яка ціль стоїть у .env (PROD або DEV)"
         ],
@@ -262,6 +266,7 @@
     "^\\.\\/bdo moderation --row [0-9a-f]{64}$",
     "^\\.\\/bdo moderation --approve [1-9][0-9]*(,[1-9][0-9]*)*$",
     "^\\./bdo tui$",
+    "^\\.\\/bdo session (new|close( --drop-journals| --keep-files)?|list( [0-9]{1,3})?|show( [0-9_]{6,24})?)$",
     "^\\.\\/bdo watch (--show|--stop|tui|loop( --once| --batches [0-9]{1,3})?)$",
     "^\\.\\/bdo gif( --tape)?$",
     "^\\./bdo loop( --batches [0-9]+)?$",

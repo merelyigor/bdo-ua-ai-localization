@@ -491,6 +491,7 @@ check_shell() {
     run bash tests/run-target-env.sh
     run bash tests/http-retry.sh
     run bash tests/rotation.sh
+    run bash tests/session-lifecycle.sh
     run bash tests/no-silent-failures.sh
     run bash tests/quarantine-recovery.sh
     run bash tests/worker-reference.sh

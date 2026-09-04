@@ -118,6 +118,9 @@ case "$group" in
     loop) sh_run cli/run/run-loop.sh "${@:2}" ;;
     models-run) sh_run cli/audit/model-run.sh "${@:2}" ;;
     timer)    sh_run cli/system/session-timer.sh "${@:2}" ;;
+    # Сесія роботи · період із N пачок: історія, підсумок, прибирання журналів.
+    # Це НЕ `timer`: той рахує 4-годинну межу однієї сесії агента.
+    session)  sh_run cli/system/session.sh "${@:2}" ;;
     help|-h|--help)
         case "${2:-}" in
             '')      usage ;;
