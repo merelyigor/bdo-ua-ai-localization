@@ -106,19 +106,14 @@ if [ -n "$CURRENT" ] && [ -f "$STATE_DIR/batches/$CURRENT/manifest.json" ]; then
 else
     echo "  поточної пачки немає"
 fi
-if [ -f "$STATE_DIR/session-load.json" ]; then
-    php -r '$d=json_decode((string)file_get_contents($argv[1]),true)?:[];
-        printf("  у транскрипт диригента пішло %d КБ payload за %d викликів\n",
-            (int) round(((int)($d["staged_bytes"]??0))/1024), (int)($d["calls"]??0));' \
-        "$STATE_DIR/session-load.json"
-fi
-if [ -s "$STATE_DIR/prompt-violations.jsonl" ]; then
-    # Скільки разів диригент передав у Task не посилання. Доказ пишеться ДО
-    # стискання аргументу · інакше в транскрипті лишається акуратне посилання,
-    # і відмова виглядає безпідставною.
-    php -r '$n=0;$last="";foreach(file($argv[1]) as $line){$d=json_decode($line,true);if(!is_array($d))continue;$n++;$last=sprintf("%s, %d символів", $d["role"]??"?", (int)($d["given_length"]??0));}
-        printf("  порушень контракту prompt: %d (останнє: %s)\n", $n, $last);' "$STATE_DIR/prompt-violations.jsonl"
-fi
+# Два лічильники епохи диригента прибрано разом із ним:
+#   `session-load.json`     · скільки payload осіло в транскрипті платної моделі;
+#   `prompt-violations.jsonl` · скільки разів диригент передав не посилання.
+# Обидва не можуть більше рости: payload іде файлом, транскрипту немає. Файли
+# лишаються на диску як історія, але показувати незмінне число щоразу означало б
+# лякати власника тим, чого вже не існує.
+#
+# Що робить моделі зараз · `./bdo audit` за `state/model-calls.jsonl`.
 if [ -s "$STATE_DIR/child-blocked.json" ]; then
     # Спроби, зупинені самим набором. Вони НЕ є мовчанням провайдера, і саме
     # їх сплутування коштувало власнику хибного діагнозу 2026-08-28 (D21).
@@ -134,4 +129,4 @@ printf '  інцидентів: %s | карантин: %s | рішень суд�
 line
 
 echo "Що перевіряти далі · docs/CHECKLIST.md"
-echo "Кроки й відмови диригента · ./bdo session [N] [--errors]"
+echo "Що робили моделі цього прогону · ./bdo audit"
