@@ -11,7 +11,7 @@
 | `./bdo tui` | термінальне меню перекладу (те саме, що ./bdo без аргументів) |
 | `./bdo timer [start&#124;status&#124;check]` | скільки триває поточна робоча сесія і скільки лишилось до 4-годинної межі |
 | `./bdo env` | яка ціль стоїть у .env (PROD або DEV) |
-| `./bdo sync` | показати зміни .env і матеріалізувати generated runtime |
+| `./bdo sync` | показати зміни .env як «було → стало» з маскуванням ключів і зберегти знімок |
 | `./bdo runtime` | capability gate активної моделі перед першою пачкою |
 | `./bdo platform` | macOS, Linux або Windows/WSL2 preflight |
 | `./bdo run start&#124;show&#124;end&#124;drive` | зафіксувати / показати / зняти ціль; JSON-крок рушія |

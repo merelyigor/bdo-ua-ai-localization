@@ -256,6 +256,26 @@ check_references() {
     test -z "$broken" || fail "markdown-посилання ведуть у нікуди: $broken"
     note 'markdown-посилання ведуть на наявні файли'
 
+    # Кожен документ мусить бути ЗНАЙДЕНИЙ із навігації `docs/README.md`.
+    #
+    # Документ, на який нізвідки немає посилання, існує лише для того, хто про
+    # нього вже знає · тобто для автора. Для власника й нового агента його
+    # немає взагалі, і робота дублюється.
+    local unlisted
+    unlisted="$(php -r '
+    $nav = (string) file_get_contents("docs/README.md");
+    $skip = ["README.md" => 1, "AGENTS.md" => 1, "CLAUDE.md" => 1, "QWEN.md" => 1];
+    $out = [];
+    foreach (array_merge(glob("docs/*.md"), glob("*.md")) as $doc) {
+        $name = basename($doc);
+        if (isset($skip[$name]) || str_contains($nav, $name)) { continue; }
+        $out[] = $doc;
+    }
+    echo implode(" ", $out);
+    ')"
+    test -z "$unlisted" || fail "документи без посилання з docs/README.md: $unlisted"
+    note 'кожен документ знайдуваний із навігації'
+
     step 'Видалений скриптовий флоу не подається як робочий шлях'
     local instruction frozen hit
     # Ці файли КАЖУТЬ агентові, що робити. Після видалення скриптового флоу
