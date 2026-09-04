@@ -106,24 +106,15 @@ if [ -n "$CURRENT" ] && [ -f "$STATE_DIR/batches/$CURRENT/manifest.json" ]; then
 else
     echo "  поточної пачки немає"
 fi
-# Два лічильники епохи диригента прибрано разом із ним:
-#   `session-load.json`     · скільки payload осіло в транскрипті диригента;
-#   `prompt-violations.jsonl` · скільки разів диригент передав не посилання.
-# Обидва не можуть більше рости: payload іде файлом, транскрипту немає. Файли
-# лишаються на диску як історія, але показувати незмінне число щоразу означало б
+# Лічильники епохи диригента прибрано разом із ним · їх писали плагіни, яких
+# немає: вага payload у транскрипті, переказ payload замість посилання, дефекти
+# й примітки відповідей child. Показувати незмінне число щоразу означало б
 # лякати власника тим, чого вже не існує.
 #
-# Що робить моделі зараз · `./bdo audit` за `state/model-calls.jsonl`.
-if [ -s "$STATE_DIR/child-blocked.json" ]; then
-    # Спроби, зупинені самим набором. Вони НЕ є мовчанням провайдера, і саме
-    # їх сплутування коштувало власнику хибного діагнозу 2026-08-28 (D21).
-    php -r '$b=json_decode((string)file_get_contents($argv[1]),true)?:[];$n=0;$last="";
-        foreach($b as $path=>$d){$n+=(int)($d["count"]??0);$last=(string)($d["reason"]??"?");}
-        if($n>0) printf("  спроб зупинив сам набір: %d (причина: %s) · це не відмова моделі\n", $n, $last);' \
-        "$STATE_DIR/child-blocked.json"
-fi
-printf '  інцидентів: %s | карантин: %s | рішень судді: %s\n' \
-    "$(wc -l < "$STATE_DIR/flow-incidents.jsonl" 2>/dev/null | tr -d ' ' || echo 0)" \
+# Збої моделей рахуються там, де вони НАСПРАВДІ пишуться · у журналі викликів,
+# який веде `cli/model/client.php`. Повний розбір · `./bdo incidents`.
+printf '  збоїв моделі: %s | карантин: %s | рішень судді: %s\n' \
+    "$(php -r '$n=0; $f=$argv[1]; if (is_file($f)) { foreach (file($f, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) as $l) { $d=json_decode($l,true); if (is_array($d) && ($d["verdict"] ?? "") !== "ok") $n++; } } echo $n;' "$STATE_DIR/model-calls.jsonl")" \
     "$(wc -l < "$STATE_DIR/quarantine.jsonl" 2>/dev/null | tr -d ' ' || echo 0)" \
     "$(wc -l < "$STATE_DIR/judge-decisions.jsonl" 2>/dev/null | tr -d ' ' || echo 0)"
 line

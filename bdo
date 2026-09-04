@@ -219,7 +219,7 @@ case "$group" in
     audit)      sh_run cli/audit/model-run.sh "${@:2}" ;;
     inspect)    sh_run cli/system/ide-inspect.sh "${@:2}" ;;
     review)     sh_run cli/audit/project-review.sh "${@:2}" ;;
-    incidents)  sh_run cli/audit/flow-incidents.sh "${@:2}" ;;
+    incidents)  sh_run cli/audit/model-incidents.sh "${@:2}" ;;
     quarantine) sh_run cli/audit/quarantine-report.sh "${@:2}" ;;
     judge)      sh_run cli/audit/judge-report.sh "${@:2}" ;;
     terms)

@@ -55,7 +55,7 @@
 
 - база OpenCode · модель, провайдер, токени і виклики інструментів кожної
   child-сесії (`./bdo audit`, `cli/audit/model-run.sh`);
-- `state/flow-incidents.jsonl` · дефекти формату відповіді за ролями;
+- `state/model-calls.jsonl` · вердикти викликів за ролями (`truncated`, `not_json`, `empty_content`); журнал `flow-incidents.jsonl` писав плагін OpenCode і зник разом із ним 2026-09-04;
 - пачки в `state/batches/**` · вердикти QA, механічні дефекти, карантин.
 
 **Definition of Done.** Одна команда зводить: модель -> кількість пачок,

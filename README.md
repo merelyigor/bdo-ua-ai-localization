@@ -516,8 +516,14 @@ state/                      робочий стан прогонів, пачок
 output/                     відповіді API, бенчмарки, квитанції запису
 ```
 
-Версія набору на оркестрації OpenCode законсервована: тег `v3.0.6-opencode`,
-гілка `legacy/opencode`. Відновити · `git checkout v3.0.6-opencode`.
+Версія набору на оркестрації OpenCode законсервована й у наборі більше не
+живе: тег `v3.0.6-opencode`, гілка `legacy/opencode`, а поруч у `legacy/`
+лежить zip того самого коду (не комітиться). Відновити ·
+`git checkout v3.0.6-opencode`. Робочих слідів тієї версії в наборі немає:
+плагінів, диригента, лічильника мовчазних child і журналів, які писав плагін
+(`flow-incidents.jsonl`, `child-notes.jsonl`, `child-incidents.json`,
+`child-blocked.json`, `prompt-violations.jsonl`, `session-load.json`,
+`autopilot*`), більше не існує ні в коді, ні в `state/`.
 
 ## Документація
 

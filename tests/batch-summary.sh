@@ -46,11 +46,14 @@ offline="$(BDO_PIPELINE_OFFLINE=1 BDO_STATE_DIR="$TMP/state" bash "$ROOT/cli/run
 jq -e '.next.kind == "complete"' <<< "$offline" >/dev/null \
     || { echo 'FAIL: невідомий залишок змінив вирок'; exit 1; }
 
-# Залишок є · диригент мусить отримати команду, а не питання.
+# Залишок є · конверт мусить назвати ЦІЛЬ, за якою драйвер відкриє наступну
+# пачку. Готового рядка команди в конверті немає навмисно: його копіювала
+# модель-диригент, а драйвер складає виклик із перевірених полів `goal`.
 export BDO_GOAL_REMAINING_STUB=141
 withwork="$(BDO_STATE_DIR="$TMP/state" BDO_PIPELINE_OFFLINE=1 bash "$ROOT/cli/run/run-drive.sh")"
 jq -e '.next.kind == "continue_run" and .next.remaining == 141
-    and (.next.command | test("mode start patch 50 7 knowledge"))' <<< "$withwork" >/dev/null \
+    and .next.goal.mode == "patch" and .next.goal.patch == "7" and .next.goal.domain == "knowledge"
+    and (.next | has("command") | not)' <<< "$withwork" >/dev/null \
     || { echo "FAIL: залишок 141 не дав continue_run: $withwork"; exit 1; }
 
 # Залишку немає · ціль досягнута, і це теж сказано словом, а не мовчанням.
@@ -69,8 +72,8 @@ export BDO_GOAL_REMAINING_STUB=0
 export BDO_PATCH_REMAINING_STUB=1210
 next="$(BDO_STATE_DIR="$TMP/state" BDO_PIPELINE_OFFLINE=1 bash "$ROOT/cli/run/run-drive.sh")"
 jq -e '.next.kind == "continue_run" and .next.goal.domain == ""
-    and .next.remaining == 1210
-    and (.next.command | test("mode start patch 50 7$"))' <<< "$next" >/dev/null \
+    and .next.remaining == 1210 and .next.goal.patch == "7"
+    and (.next | has("command") | not)' <<< "$next" >/dev/null \
     || { echo "FAIL: вичерпана категорія не перевела ціль на весь патч: $next"; exit 1; }
 
 # А коли роботи немає в ЖОДНІЙ категорії · ціль справді досягнута.

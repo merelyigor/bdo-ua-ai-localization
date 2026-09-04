@@ -143,73 +143,6 @@ give_up() {
     emit 0 "$1" "$detail"
     exit 1
 }
-# Child, який не повертає НІЧОГО, це не тимчасовий збій, а конфігурація.
-#
-# Найдорожчий клас помилки цього проєкту, спостережений двічі. 2026-08-20 ·
-# дочірні сесії створювались порожніми, нуль токенів і жодної помилки в UI.
-# 2026-08-27 · те саме: провайдер відхиляв запит через несумісну схему, і воркер
-# мовчки падав пʼять разів поспіль. Обидва рази це виглядало як «падає модель» і
-# коштувало годин розбору, бо retry чесно чекав свій добовий бюджет.
-#
-# Відрізнити одне від одного можна механічно. Коли child ВІДПОВІВ, але зіпсовано,
-# after-hook плагіна пише інцидент у `state/child-incidents.json`. Коли Task
-# помер до відповіді, інциденту немає взагалі. Тобто «файла відповіді немає І
-# інциденту немає» = запит не дійшов до моделі.
-#
-# Кілька таких поспіль зупиняють прогін із названою причиною замість добового
-# мовчазного очікування. Поріг у `.env`: BDO_CHILD_SILENT_LIMIT (типово 3).
-# Спроби, зупинені НАМИ, мовчанням не є.
-#
-# 2026-08-28 три dispatch-и підряд заблокував наш власний
-# `OPENCODE_RUNTIME_INVALID` (розбіжність переліку ролей, D20). Для лічильника це
-# виглядало як мовчання провайдера: ні файла відповіді, ні інциденту формату. Тож
-# одразу після СПРАВЖНЬОГО виправлення власник отримав діагноз «перевір модель
-# субагентів у .env» · тобто вказівку шукати там, де все було справно. Плагіни
-# тепер пишуть такі спроби в `state/child-blocked.json`, і тут вони віднімаються.
-blocked_attempts() {
-    php -r '$b=is_file($argv[1])?(json_decode((string)file_get_contents($argv[1]),true)?:[]):[];echo (int)($b[$argv[2]]["count"]??0);' \
-        "$STATE_DIR/child-blocked.json" "$1"
-}
-blocked_reason() {
-    php -r '$b=is_file($argv[1])?(json_decode((string)file_get_contents($argv[1]),true)?:[]):[];echo (string)($b[$argv[2]]["reason"]??"");' \
-        "$STATE_DIR/child-blocked.json" "$1"
-}
-silent_child() {
-    local state="$1" response="$2" limit="${BDO_CHILD_SILENT_LIMIT:-3}"
-    php -r '
-        [$retries, $incidents, $key, $response, $limit, $blockedFile] =
-            [$argv[1], $argv[2], $argv[3], $argv[4], max(1, (int) $argv[5]), $argv[6]];
-        $r = is_file($retries) ? (json_decode((string) file_get_contents($retries), true) ?: []) : [];
-        $attempts = (int) ($r[$key]["count"] ?? 0);
-        $i = is_file($incidents) ? (json_decode((string) file_get_contents($incidents), true) ?: []) : [];
-        // Інцидент на цей самий response_path означає, що child ВІДПОВІВ ·
-        // зіпсовано, але відповів. Таке лікується повтором, і мовчанням не є.
-        if (isset($i[$response])) exit(1);
-        $b = is_file($blockedFile) ? (json_decode((string) file_get_contents($blockedFile), true) ?: []) : [];
-        $attempts -= (int) ($b[$response]["count"] ?? 0);
-        exit($attempts >= $limit ? 0 : 1);
-    ' "$B/drive-retries.json" "$STATE_DIR/child-incidents.json" "$state" "$response" "$limit" \
-      "$STATE_DIR/child-blocked.json"
-}
-give_up_silent() {
-    local state="$1" response="$2" attempts blocked reason
-    attempts="$(php -r '$a=is_file($argv[1])?(json_decode((string)file_get_contents($argv[1]),true)?:[]):[];echo (int)($a[$argv[2]]["count"]??0);' "$B/drive-retries.json" "$state")"
-    blocked="$(blocked_attempts "$response")"
-    reason="$(blocked_reason "$response")"
-    rm -f "$B/drive-retries.json"
-    # Заблоковані спроби названі окремо: вони кажуть шукати в наборі, а не в
-    # моделі, і саме цю різницю власник не мав змоги побачити 2026-08-28.
-    php -r 'echo json_encode(["kind"=>"retry","reason"=>"child_no_response","attempts"=>(int)$argv[1],
-        "blocked_attempts"=>(int)$argv[2], "blocked_reason"=>$argv[3],
-        "hint"=>((int)$argv[2] > 0
-            ? "Ще ".$argv[2]." спроб зупинив сам набір (".$argv[3]."), і вони до моделі не дійшли · спочатку прибери цю причину."
-            : "Субагент не повернув НІЧОГО (нуль токенів, без інциденту формату). Це не тимчасовий збій моделі, а відмова провайдера або несумісна конфігурація. Скажи власнику перевірити модель субагентів у .env і виконати smoke."),
-    ], JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES);' "$attempts" "$blocked" "$reason" > "$B/silent.json"
-    emit 0 "$state" "$(cat "$B/silent.json")"
-    rm -f "$B/silent.json"
-    exit 1
-}
-
 # Наступну категорію шукаємо ЛИШЕ коли поточна вичерпалась: інакше це зайві
 # тринадцять запитів на кожній пачці.
 patch_remaining_when_needed() {
@@ -290,11 +223,15 @@ completion() {
             $out["kind"]="continue_run";
             $out["remaining"]=$remaining;
             $out["goal"]=["mode"=>$goal["mode"]??"","patch"=>$goal["patch"]??"","domain"=>$goal["domain"]??""];
-            $out["command"]=trim(sprintf("./bdo mode start %s 50 %s %s",
-                (string)($goal["mode"]??""),(string)($goal["patch"]??""),(string)($goal["domain"]??"")));
-            $out["hint"]=sprintf(
-                "Ціль ще не досягнута: лишилось %d рядків. Почни наступну пачку САМ (%s) і не питай дозволу · власник просив довести ціль до кінця.",
-                $remaining,$out["command"]);
+            // Готового рядка команди в конверті НЕМАЄ, і це не спрощення.
+            //
+            // Поле `command` існувало для моделі-диригента, яка його копіювала.
+            // Драйвер його не виконував ніколи: наступну пачку він відкриває
+            // сам, складаючи виклик із ПЕРЕВІРЕНИХ полів `goal` (режим зі
+            // списку, патч числом, категорія літерами). Тримати поруч готовий
+            // рядок означало тримати єдине місце, де набір міг би запустити
+            // довільну команду з файла · заради читача, якого більше немає.
+            $out["hint"]=sprintf("Ціль ще не досягнута: лишилось %d рядків.",$remaining);
         }elseif(($goal["domain"]??"")!==""&&(int)$argv[7]>0){
             // Категорія скінчилась, але патч · ні. Далі йдемо ПАТЧЕМ, без
             // категорії: власник просив патч, а категорія була лише способом
@@ -302,17 +239,14 @@ completion() {
             $out["kind"]="continue_run";
             $out["remaining"]=(int)$argv[7];
             $out["goal"]=["mode"=>$goal["mode"]??"","patch"=>$goal["patch"]??"","domain"=>""];
-            $out["command"]=trim(sprintf("./bdo mode start %s 50 %s",
-                (string)($goal["mode"]??""),(string)($goal["patch"]??"")));
-            $out["hint"]=sprintf(
-                "Категорію %s завершено, але в патчі лишилось %d рядків. Продовжуй ПАТЧЕМ без категорії: %s. Дозволу не питай.",
-                (string)($goal["domain"]??""),(int)$argv[7],$out["command"]);
+            $out["hint"]=sprintf("Категорію %s завершено, але в патчі лишилось %d рядків · далі патчем без категорії.",
+                (string)($goal["domain"]??""),(int)$argv[7]);
         }else{
             $out["kind"]="goal_complete";
             $out["goal"]=["mode"=>$goal["mode"]??"","patch"=>$goal["patch"]??"","domain"=>$goal["domain"]??""];
             $out["hint"]=$waiting>0
                 ? sprintf("Ціль досягнута для машини: лишилось лише %d рядків із вичерпаними спробами · вони чекають людину (./bdo quarantine).",$waiting)
-                : "Ціль досягнута: рядків за цим фільтром більше немає. Доповідай власнику підсумок прогону.";
+                : "Ціль досягнута: рядків за цим фільтром більше немає.";
         }
     }
     echo json_encode($out,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES);
@@ -684,7 +618,6 @@ awaiting_worker)
         cp "$B/memory-candidate.json" "$B/candidate.json"
     fi
     if [ ! -s "$B/candidate.json" ]; then
-        if silent_child awaiting_worker "$B/candidate.json"; then give_up_silent awaiting_worker "$B/candidate.json"; fi
         if retry_exceeded awaiting_worker; then give_up awaiting_worker; fi
         ensure_schema rows; child awaiting_worker translation-worker "$B/worker-payload.json" "$B/candidate.json"; exit 0
     fi
@@ -710,7 +643,6 @@ deterministic_valid)
     ;;
 awaiting_qa)
     if [ ! -s "$B/verdicts.json" ]; then
-        if silent_child awaiting_qa "$B/verdicts.json"; then give_up_silent awaiting_qa "$B/verdicts.json"; fi
         if retry_exceeded awaiting_qa; then give_up awaiting_qa; fi
         ensure_schema qa; child awaiting_qa translation-qa "$B/qa-payload.json" "$B/verdicts.json"; exit 0
     fi

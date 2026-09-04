@@ -123,7 +123,7 @@ printf '%s' "$out" | grep -q 'no_current_batch' || fail "blocked без прич
 #    Без цього драйвер повторював би крок вічно · рівно те, за що автопілот
 #    здавався у старому наборі (D40), тільки мовчки.
 { for _ in $(seq 1 20); do
-      printf '%s\n' '{"ok":true,"state":"awaiting_qa","next":{"kind":"retry","reason":"child_no_response"}}'
+      printf '%s\n' '{"ok":true,"state":"awaiting_qa","next":{"kind":"retry","reason":"context_unavailable"}}'
   done; } > "$WORK/state/scenario"
 : > "$WORK/state/calls.log"
 start=$(date +%s)
