@@ -189,9 +189,19 @@ EOF
                 *[!a-z_]*) echo "ЗУПИНКА: підозріла категорія «${domain}»." >&2; exit 1 ;;
                 *) start_domain="$domain" ;;
             esac
-            log "починаю наступну пачку: $mode 50 $start_patch $start_domain"
+            # Розмір пачки бере планувальник, а не константа тут: одне число на
+            # весь набір (`Bdo\Translate\Run\Actions::BATCH_SIZE`), інакше
+            # зміна розміру лишила б драйвер на старому значенні.
+            # Голе присвоєння тут було б тихим виходом: під `set -e` драйвер
+            # помер би без жодного рядка причини (§12).
+            if ! size="$(php -r 'require $argv[1]; echo Bdo\Translate\Run\Actions::BATCH_SIZE;' "$SCRIPT_DIR/lib/autoload.php" 2>/dev/null)" \
+                || [ -z "$size" ]; then
+                echo "ЗУПИНКА: не вдалося прочитати розмір пачки з планувальника (lib/Run/Actions.php)." >&2
+                exit 1
+            fi
+            log "починаю наступну пачку: $mode $size $start_patch $start_domain"
             # shellcheck disable=SC2086
-            if ! "$DRIVE" mode start "$mode" 50 $start_patch $start_domain >/dev/null; then
+            if ! "$DRIVE" mode start "$mode" "$size" $start_patch $start_domain >/dev/null; then
                 echo "ЗУПИНКА: не вдалося почати наступну пачку." >&2
                 exit 1
             fi

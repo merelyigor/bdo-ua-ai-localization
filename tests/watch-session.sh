@@ -114,8 +114,12 @@ watch --show >/dev/null 2>&1 && fail '--show на відсутній сесії 
 GIF="$ROOT/cli/system/tui-gif.sh"
 test -x "$GIF" || fail 'немає cli/system/tui-gif.sh'
 bash "$GIF" --tape | grep -Fq 'Output' || fail 'сценарій vhs не називає файл виводу'
-bash "$GIF" --tape | grep -qE '^Type "6"$' || fail 'сценарій не натискає безпечний пункт «стан»'
-bash "$GIF" --tape | grep -qE '^Type "[1-5]"$' && fail 'сценарій натискає пункт, який запускає прогін'
+# Після звуження вікна (2026-09-05) безпечні пункти · 1 (стан) і 2 (журнал);
+# прогін запускають 5-8, і в записі вони не натискаються НІКОЛИ: GIF робиться
+# на живому наборі, тому один зайвий пункт означав би запис у PROD заради
+# картинки.
+bash "$GIF" --tape | grep -qE '^Type "1"$' || fail 'сценарій не натискає безпечний пункт «стан»'
+bash "$GIF" --tape | grep -qE '^Type "[3-8]"$' && fail 'сценарій натискає пункт, який запускає прогін або сервер'
 if ! command -v vhs >/dev/null 2>&1; then
     out="$(bash "$GIF" 2>&1 || true)"
     printf '%s' "$out" | grep -Fq 'brew install vhs' \

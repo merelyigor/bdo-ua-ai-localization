@@ -83,16 +83,53 @@ check_rules() {
         || fail "у $RULE_REFERENCE немає §14 про браузерний інтерфейс"
     # Розмір пачки зафіксовано на 50 (рішення власника 2026-08-28) і це стеля
     # запису API (`/me` -> `max_items`). Джерело правди · валідатор fetch.
-    local fetch_min fetch_max tui_size
+    local fetch_min fetch_max plan_size composers
     fetch_min="$(sed -n 's/.*BATCH < \([0-9]\{1,3\}\).*/\1/p' cli/api/fetch-rows.sh | sed -n '1p')"
     fetch_max="$(sed -n 's/.*BATCH > \([0-9]\{1,3\}\).*/\1/p' cli/api/fetch-rows.sh | sed -n '1p')"
     test -n "$fetch_min" && test -n "$fetch_max" \
         || fail 'не вдалося прочитати діапазон розміру пачки з cli/api/fetch-rows.sh'
-    tui_size="$(sed -n 's/.*mode start "\$key" \([0-9]\{1,3\}\).*/\1/p' bin/tui.sh | sed -n '1p')"
-    test -n "$tui_size" || fail 'bin/tui.sh не називає розміру пачки'
-    test "$tui_size" -ge "$fetch_min" && test "$tui_size" -le "$fetch_max" \
-        || fail "TUI бере пачку $tui_size поза діапазоном fetch $fetch_min-$fetch_max"
-    test "$tui_size" -eq 50 || fail "TUI бере пачку $tui_size; зафіксовано рівно 50"
+    # Розмір пачки бере ПЛАНУВАЛЬНИК, а не поверхня: після 2026-09-05 і сторінка,
+    # і вікно просять план у `Bdo\Translate\Run\Actions`, тому єдине число живе
+    # там. Раніше воно читалось із `bin/tui.sh` · тобто з однієї з двох поверхонь.
+    plan_size="$(sed -n 's/.*BATCH_SIZE = \([0-9]\{1,3\}\).*/\1/p' lib/Run/Actions.php | sed -n '1p')"
+    test -n "$plan_size" || fail 'lib/Run/Actions.php не називає розміру пачки'
+    test "$plan_size" -ge "$fetch_min" && test "$plan_size" -le "$fetch_max" \
+        || fail "планувальник бере пачку $plan_size поза діапазоном fetch $fetch_min-$fetch_max"
+    test "$plan_size" -eq 50 || fail "планувальник бере пачку $plan_size; зафіксовано рівно 50"
+    # МЕЖА ПРОТИ ДВОХ ПРАВД. `mode start` кличуть рівно два місця, і кожне з них
+    # названо тут разом із причиною:
+    #   lib/Run/Actions.php   · СКЛАДАЄ аргументи з вибору людини (обидві
+    #                           поверхні · сторінка й вікно · просять план у нього);
+    #   cli/run/run-loop.sh   · продовжує вже ЗАФІКСОВАНУ ціль наступною пачкою,
+    #                           нічого не вибираючи (`continue_run`).
+    # Третє місце означає другу правду: доки їх було два, вони розійшлися тихо ·
+    # меню передало `патч` замість `patch` уже після вибору патча (D50).
+    composers="$(rg -l --glob '!state/**' --glob '!tests/**' --glob '!docs/**' \
+        --glob '!scripts/agent-check.sh' \
+        -e "mode', 'start'" -e 'mode start "' -e "mode start '" . 2>/dev/null | sort -u | tr '\n' ' ' || true)"
+    test "$composers" = './cli/run/run-loop.sh ./lib/Run/Actions.php ' \
+        || fail "\`mode start\` кличе не той набір місць: [$composers]"
+    # Розмір пачки поруч із командою · лише в планувальнику. Друга константа
+    # лишила б драйвер на старому значенні після зміни розміру.
+    local hardcoded
+    # Шукаємо лише там, де код ВИКОНУЄТЬСЯ: `cli`, `bin`, `lib`, `web`.
+    # Довідка в `./bdo` і приклади в `.md` є текстом для людини, і їхню
+    # відповідність реєстру тримає `tests/command-registry.sh`.
+    hardcoded="$(rg -n --glob '!lib/Run/Actions.php' \
+        'mode.{0,12}start.{0,12}\b50\b' cli bin lib web 2>/dev/null | sed -n '1p' || true)"
+    test -z "$hardcoded" \
+        || fail "розмір пачки прописаний поруч із командою поза планувальником: $hardcoded"
+    grep -Fq 'cli/run/plan-args.php' bin/tui.sh \
+        || fail 'вікно в терміналі не бере план у спільного планувальника'
+    # Документація не має права ВЧИТИ помилки, яка вже коштувала прогону:
+    # `mode start патч` · це рівно D50. Приклад із українським ключем жив у
+    # `README.md` і `WORKFLOW.md` навіть після того, як код виправили.
+    local ua_key
+    ua_key="$(rg -n 'mode start (патч|ручний|пропозиції|покращення)' \
+        --glob '!state/**' --glob '!docs/plans/DEFECTS.md' --glob '!tests/**' \
+        --glob '!scripts/agent-check.sh' . 2>/dev/null | sed -n '1p' || true)"
+    test -z "$ua_key" \
+        || fail "приклад команди з українським ключем режиму (це і є D50): $ua_key"
     # Драйвер мусить починати наступну пачку САМ: зупинка з питанням «продовжити?»
     # була найдорожчою звичкою диригента (D25, D34).
     grep -Fq 'Наступну пачку відкриваємо САМІ' cli/run/run-loop.sh \

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Bdo\Translate\Web;
 
+use Bdo\Translate\Run\Actions;
 use RuntimeException;
 
 /**

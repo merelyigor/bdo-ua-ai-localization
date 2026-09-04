@@ -89,10 +89,10 @@ wait_for() {
 # 1. Меню малюється в живому терміналі.
 wait_for 'головне меню' || fail 'меню не зʼявилось у справжньому терміналі'
 wait_for 'Вибір:' || fail 'меню не дійшло до запиту вибору'
-screen | grep -qF '6  стан' || fail "у меню немає пункту стану: $(screen)"
+screen | grep -qF '1  стан' || fail "у меню немає пункту стану: $(screen)"
 
-# 2. Клавіша 6 · екран стану. Тут і падало вікно.
-tmux send-keys -t "$SESSION" '6' Enter
+# 2. Клавіша 1 · екран стану. Тут і падало вікно.
+tmux send-keys -t "$SESSION" '1' Enter
 wait_for 'Enter · назад' || fail 'екран стану не дійшов до підказки повернення · вікно впало (D62)'
 out="$(screen)"
 printf '%s' "$out" | grep -qF 'чекає на перевірку якості' \
@@ -107,7 +107,7 @@ tmux send-keys -t "$SESSION" Enter
 wait_for 'головне меню' || fail 'Enter не повернув у меню'
 
 # 4. Журнал теж відкривається й повертається.
-tmux send-keys -t "$SESSION" '7' Enter
+tmux send-keys -t "$SESSION" '2' Enter
 wait_for 'журнал викликів моделі' || fail 'екран журналу не відкрився'
 screen | grep -qF 'контроль якості' || fail "журнал не показав роль українською: $(screen)"
 tmux send-keys -t "$SESSION" Enter

@@ -20,6 +20,10 @@ mkdir -p "$WORK/bin" "$WORK/state/batches/20260101_000001" "$WORK/cli/run"
 cp "$ROOT/bin/tui.sh" "$WORK/bin/tui.sh"
 # Вікно переводить час через `Bdo\Translate\Ui\Clock`, тому пісочниця несе бібліотеку.
 cp -R "$ROOT/lib" "$WORK/lib"
+# Вікно НЕ складає аргументи саме: воно просить план у спільного планувальника,
+# тому пісочниця несе і його. Якщо колись вікно почне складати команди власним
+# кодом, цей тест упаде на перевірці 7.
+cp "$ROOT/cli/run/plan-args.php" "$WORK/cli/run/plan-args.php"
 
 # Підроблений `./bdo`: ціль у stderr (як у справжнього), решта · у stdout.
 cat > "$WORK/bdo" <<'SH'
@@ -55,6 +59,8 @@ case "$1" in
         echo "Що перевіряти далі · docs/CHECKLIST.md"
         ;;
     mode)    echo "пачку почато" ;;
+    loop)    echo "цикл виконано" ;;
+    web)     echo "сервер (підробка)" ;;
 esac
 exit 0
 SH
@@ -125,24 +131,47 @@ printf '%s' "$out" | grep -q 'головне меню' || fail "меню не п
 grep -q '^mode start' "$WORK/state/calls.log" && fail 'вихід із меню запустив прогін'
 
 # 6. Небезпечний ввід у полі патча й категорії відкидається, а не потрапляє в
-#    командний рядок. Сценарій: режим 1, патч «7; rm -rf /», категорія
+#    командний рядок. Сценарій: пункт 5 (патч), патч «7; rm -rf /», категорія
 #    «quest && echo», без обмеження пачок, підтвердження.
 : > "$WORK/state/calls.log"
-printf '1\n7; rm -rf /\nquest && echo\n\ny\n\nq\n' | tui >/dev/null 2>&1 || true
+printf '5\n7; rm -rf /\nquest && echo\n\ny\n\nq\n' | tui >/dev/null 2>&1 || true
 if grep -qE 'rm -rf|&&' "$WORK/state/calls.log"; then
     fail "сміття з поля вводу дійшло до команди: $(cat "$WORK/state/calls.log")"
 fi
-grep -q '^mode start patch 50$' "$WORK/state/calls.log" \
+grep -q '^mode start patch 50 active$' "$WORK/state/calls.log" \
     || fail "після відкидання сміття команда мусила лишитись чистою: $(cat "$WORK/state/calls.log")"
 # Український підпис режиму лишається лише в меню: у команду йде ключ RunSpec.
 grep -q 'mode start патч' "$WORK/state/calls.log" \
     && fail 'меню передало українську назву режиму замість ключа RunSpec'
+# Прогін без браузера йде в ЦЕЙ екран, а не в tmux: інакше власник дивився б у
+# порожнє вікно, поки робота йде в іншій сесії.
+grep -q '^loop' "$WORK/state/calls.log" \
+    || fail "вікно не запустило прогін на передньому плані: $(cat "$WORK/state/calls.log")"
+grep -q 'watch loop' "$WORK/state/calls.log" \
+    && fail 'вікно відправило свій прогін у tmux замість власного екрана'
 
-# 7. Чистий ввід навпаки доходить повністю.
+# 7. МЕЖА ПРОТИ ДВОХ ПРАВД: вікно не має права складати аргументи прогону саме.
+#    Доки таких місць було два, вони розійшлися тихо · меню передало `патч`
+#    замість `patch` (D50). Тепер валідація й порядок аргументів живуть у
+#    `Bdo\Translate\Run\Actions`, і вікно лише виконує готовий план.
+grep -nE '(mode|watch)[[:space:]]+(start|loop)' "$ROOT/bin/tui.sh" | grep -v '^[0-9]*:#' \
+    && fail 'вікно складає команду прогону власним кодом замість спільного планувальника'
+grep -Fq 'cli/run/plan-args.php' "$ROOT/bin/tui.sh" \
+    || fail 'вікно не використовує спільний планувальник аргументів'
+
+# 8. Основний інтерфейс названий у самому вікні: власник мусить бачити, куди
+#    йти, а не згадувати команду.
+out="$(printf 'q\n' | tui)"
+printf '%s' "$out" | grep -q 'інтерфейс' \
+    || fail "меню не пропонує відкрити сторінку в браузері: $out"
+
+# 9. Чистий ввід навпаки доходить повністю.
 : > "$WORK/state/calls.log"
-printf '1\n7\nquest\n2\ny\n\nq\n' | tui >/dev/null 2>&1 || true
+printf '5\n7\nquest\n2\ny\n\nq\n' | tui >/dev/null 2>&1 || true
 grep -q '^mode start patch 50 7 quest$' "$WORK/state/calls.log" \
     || fail "чистий ввід не дійшов до команди: $(cat "$WORK/state/calls.log")"
+grep -q '^loop --batches 2$' "$WORK/state/calls.log" \
+    || fail "кількість пачок не дійшла до прогону: $(cat "$WORK/state/calls.log")"
 
 # 8. Екран не залежить від локалі терміналу.
 #

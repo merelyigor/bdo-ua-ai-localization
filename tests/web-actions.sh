@@ -29,7 +29,7 @@ command -v curl >/dev/null 2>&1 || { echo 'web actions: ПРОПУЩЕНО · н
 # нічого не виконує й нічого не змінює.
 php -r '
 require $argv[1];
-use Bdo\Translate\Web\Actions;
+use Bdo\Translate\Run\Actions;
 
 $registry = json_decode((string) file_get_contents($argv[2]), true, 512, JSON_THROW_ON_ERROR);
 $patterns = $registry["guard_patterns"] ?? [];
@@ -76,7 +76,7 @@ printf("планів звірено з реєстром: %d\n", $checked);
 # --- 4. Відмови валідації (без сервера, чистою логікою) ---------------------
 php -r '
 require $argv[1];
-use Bdo\Translate\Web\Actions;
+use Bdo\Translate\Run\Actions;
 $bad = [
     ["run.start", ["mode" => "патч", "patch" => "8"], "чужий режим"],
     ["run.start", ["mode" => "patch", "patch" => "8; rm -rf /"], "команда в патчі"],

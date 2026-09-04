@@ -509,11 +509,23 @@ td.num,th.num{text-align:right;font-family:var(--mono)}
 
   // Показуємо САМУ команду, а не «запустити»: власник бачить, що піде в роботу,
   // тим самим текстом, який виконав би в терміналі (макет 04).
+  //
+  // Текст беремо в СЕРВЕРА (`/api/plan`), а не складаємо тут. Друга копія
+  // складання команди в JavaScript могла б показати одне, а виконати інше ·
+  // тобто попередній показ, який бреше саме там, де існує, щоб не брехати.
+  var previewTimer = null;
   function previewStart() {
-    var p = startPayload();
-    var cmd = './bdo mode start ' + p.mode + ' 50 ' + p.patch + (p.domain ? ' ' + p.domain : '');
-    cmd += '\n./bdo watch loop' + (p.batches ? ' --batches ' + p.batches : '');
-    el('preview').textContent = cmd;
+    if (previewTimer) { clearTimeout(previewTimer); }
+    previewTimer = setTimeout(function () {
+      var payload = startPayload();
+      fetch(q('/api/plan?action=run.start&payload=' + encodeURIComponent(JSON.stringify(payload))),
+        { headers: { 'X-Bdo-Token': token } })
+        .then(function (r) { return r.json(); })
+        .then(function (d) {
+          el('preview').textContent = (d.commands || []).join('\n') || (d.hint || '—');
+        })
+        .catch(function () { el('preview').textContent = 'сервер не відповів · план невідомий'; });
+    }, 150);
   }
 
   function renderModes(list) {

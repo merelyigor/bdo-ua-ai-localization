@@ -1,13 +1,20 @@
 #!/usr/bin/env bash
-# Термінальний інтерфейс перекладу: меню, вибір роботи, живий екран прогону.
+# Вікно в терміналі: монітор прогону й робота без браузера.
 #
 #   ./bdo            без аргументів · сюди
 #   ./bdo tui        те саме явно
 #
-# Навіщо. UX-контракт власника не змінився: він не складає команд і не веде
-# пачку руками. Раніше цю роль грав диригент-модель у OpenCode, і саме він був
-# найдорожчою та найненадійнішою частиною набору. Тепер порядок кроків тримає
-# `cli/run/run-loop.sh`, а це вікно · його очі й дві кнопки.
+# ОСНОВНИЙ інтерфейс власника · сторінка в браузері (`./bdo web`, рішення
+# власника 2026-09-04). Це вікно лишається для випадків, коли браузера немає
+# або він не потрібен: ssh, WSL2 без вікна, швидкий погляд на стан. Тому тут
+# рівно те, що потрібно очам, плюс продовження вже початої пачки.
+#
+# АРГУМЕНТИ ПРОГОНУ ВІКНО НЕ СКЛАДАЄ. Режим, патч, категорію й кількість пачок
+# перетворює в команди рівно одне місце · `Bdo\Translate\Run\Actions` через
+# `cli/run/plan-args.php`, той самий, яким користується сторінка. Доки таких
+# місць було два, вони розійшлися тихо: меню передало `патч` замість `patch`, і
+# прогін упав уже після вибору патча й підтвердження (D50). Тепер вікно лише
+# ПИТАЄ значення й виконує готовий план масивом аргументів.
 #
 # Чистий bash і ANSI, без `dialog`, `whiptail` і `fzf`: набір мусить лишатися
 # самодостатнім і працювати скрізь, де працює `./bdo`. Жодного стану всередині ·
@@ -226,11 +233,9 @@ ask_domain() {
     esac
 }
 
-# Українська назва -> ключ режиму в `lib/Pipeline/RunSpec.php`.
-#
-# Перекладати назву режиму мусить код, а не людина й не модель: 2026-09-04
-# меню передало `патч` у `./bdo mode start`, і прогін упав із
-# `RunSpec::preset('патч')` вже ПІСЛЯ вибору патча й підтвердження.
+# Українська назва -> ключ режиму. Переклад робить КОД, а не людина й не
+# модель: 2026-09-04 меню передало `патч` у `./bdo mode start`, і прогін упав
+# із `RunSpec::preset('патч')` вже ПІСЛЯ вибору патча й підтвердження (D50).
 mode_key() {
     case "$1" in
         патч) printf 'patch' ;;
@@ -241,8 +246,45 @@ mode_key() {
     esac
 }
 
+# Виконати крок плану масивом аргументів.
+#
+# Читаємо рядки, а не рядок команди: значення з клавіатури не має шансу стати
+# другим аргументом через пробіл або лапку. Порожній рядок · межа між кроками.
+run_plan() {
+    local json="$1" argv=() step_failed=0 line
+    local planned
+    planned="$(php "$ROOT/cli/run/plan-args.php" run.start "$json" 2>&1)" || {
+        printf '%s\n' "${C_ERR}${planned}${C_RESET}"
+        pause
+        return 1
+    }
+    while IFS= read -r line; do
+        if [ -z "$line" ]; then
+            if [ "${#argv[@]}" -gt 0 ]; then
+                "${argv[@]}" || step_failed=1
+                argv=()
+            fi
+            test "$step_failed" = 0 || break
+            continue
+        fi
+        # `./bdo` у плані · відносний шлях (план однаковий для всіх поверхонь).
+        # Вікно можуть запустити з будь-якої теки, тому підставляємо АБСОЛЮТНИЙ
+        # шлях: інакше «почати прогін» працювало б лише з кореня репозиторію.
+        if [ "$line" = './bdo' ] && [ "${#argv[@]}" -eq 0 ]; then
+            argv+=("$BDO")
+            continue
+        fi
+        argv+=("$line")
+    done <<< "$planned"
+    if [ "$step_failed" = 0 ] && [ "${#argv[@]}" -gt 0 ]; then
+        "${argv[@]}" || step_failed=1
+    fi
+
+    return "$step_failed"
+}
+
 run_mode() {
-    local mode="$1" key patch domain batches
+    local mode="$1" key patch domain batches json
     key="$(mode_key "$mode")" || { printf '%s\n' "${C_ERR}Невідомий режим: $mode${C_RESET}"; pause; return; }
     title "режим $mode"
     printf '  Ціль: %s\n\n' "$(target)"
@@ -252,28 +294,42 @@ run_mode() {
     read -r batches || true
     case "$batches" in *[!0-9]*) batches="" ;; esac
 
+    # JSON складає php, а не printf: інакше значення з клавіатури довелось би
+    # екранувати руками, і одна забута лапка зробила б план невалідним.
+    json="$(php -r '
+        // foreground: вікно дивиться в ЦЕЙ екран, тому прогін іде тут, а не в
+        // tmux · плану це відомо, і другого способу складати команди немає.
+        $p = ["mode" => $argv[1], "patch" => $argv[2] !== "" ? $argv[2] : "active", "foreground" => true];
+        if ($argv[3] !== "") { $p["domain"] = $argv[3]; }
+        if ($argv[4] !== "") { $p["batches"] = $argv[4]; }
+        echo json_encode($p, JSON_UNESCAPED_UNICODE);
+    ' "$key" "$patch" "$domain" "$batches")"
+
     line
     printf '  Режим: %s   патч: %s   категорія: %s   пачок: %s\n' \
-        "$mode" "${patch:-усі}" "${domain:-усі}" "${batches:-до кінця}"
+        "$mode" "${patch:-активний}" "${domain:-усі}" "${batches:-до кінця}"
+    printf '%s\n' "${C_DIM}Виконає: $(php "$ROOT/cli/run/plan-args.php" run.start "$json" 2>/dev/null | tr '\n' ' ' | sed 's/  */ /g')${C_RESET}"
     printf '%s' "Почати? [y/N] "
     read -r yes || true
     case "$yes" in y|Y|так|Т|т) ;; *) printf '  Скасовано.\n'; pause; return ;; esac
 
     line
     printf '%s\n' "${C_DIM}Ctrl-C зупиняє між кроками; стан лишається на диску.${C_RESET}"
-    # shellcheck disable=SC2086
-    if ! "$BDO" mode start "$key" 50 $patch $domain; then
-        printf '%s\n' "${C_ERR}Не вдалося почати пачку.${C_RESET}"
-        pause
-        return
-    fi
-    if [ -n "$batches" ]; then
-        "$ROOT/cli/run/run-loop.sh" --batches "$batches" || printf '%s\n' "${C_WARN}Прогін зупинено · причина вище.${C_RESET}"
+    if run_plan "$json"; then
+        printf '%s\n' "${C_OK}Прогін завершено.${C_RESET}"
     else
-        "$ROOT/cli/run/run-loop.sh" || printf '%s\n' "${C_WARN}Прогін зупинено · причина вище.${C_RESET}"
+        printf '%s\n' "${C_WARN}Крок не вдався · причина вище.${C_RESET}"
     fi
-    line
-    printf '%s\n' "${C_OK}Прогін завершено.${C_RESET}"
+    pause
+}
+
+# Сторінка в браузері · основний інтерфейс. Вікно її не дублює, а відкриває:
+# так власник із термінала потрапляє туди одним натисканням, а не згадуванням
+# команди.
+screen_web() {
+    title "інтерфейс у браузері"
+    printf '  %s\n\n' "${C_DIM}Сервер бере вільний порт і друкує посилання. Ctrl-C · повернутись сюди.${C_RESET}"
+    "$BDO" web || printf '%s\n' "${C_WARN}Сервер зупинено · причина вище.${C_RESET}"
     pause
 }
 
@@ -305,26 +361,28 @@ main_menu() {
         fi
         line
         cat <<MENU
-  ${C_BOLD}1${C_RESET}  патч            перекласти рядки патча
-  ${C_BOLD}2${C_RESET}  покращення-ші   повторний прохід по вже машинних рядках
-  ${C_BOLD}3${C_RESET}  пропозиції      те саме, але в канал пропозицій
-  ${C_BOLD}4${C_RESET}  ручний          вузький набір під підтвердження людини
-  ${C_BOLD}5${C_RESET}  продовжити      довести незавершену пачку до кінця
-  ${C_BOLD}6${C_RESET}  стан            ціль, пачка, останні виклики
-  ${C_BOLD}7${C_RESET}  журнал          скільки й за скільки працювали ролі
+  ${C_BOLD}1${C_RESET}  стан            ціль, пачка, останні виклики
+  ${C_BOLD}2${C_RESET}  журнал          скільки й за скільки працювали ролі
+  ${C_BOLD}3${C_RESET}  інтерфейс       відкрити сторінку в браузері (основний шлях)
+  ${C_BOLD}4${C_RESET}  продовжити      довести незавершену пачку до кінця
+  ${C_BOLD}5${C_RESET}  патч            почати прогін без браузера
+  ${C_BOLD}6${C_RESET}  покращення-ші   повторний прохід по вже машинних рядках
+  ${C_BOLD}7${C_RESET}  пропозиції      те саме, але в канал пропозицій
+  ${C_BOLD}8${C_RESET}  ручний          вузький набір під підтвердження людини
   ${C_BOLD}q${C_RESET}  вихід
 MENU
         line
         printf '%s' "Вибір: "
         read -r choice || return 0
         case "$choice" in
-            1) run_mode патч ;;
-            2) run_mode покращення-ші ;;
-            3) run_mode пропозиції ;;
-            4) run_mode ручний ;;
-            5) screen_resume ;;
-            6) screen_status ;;
-            7) screen_journal ;;
+            1) screen_status ;;
+            2) screen_journal ;;
+            3) screen_web ;;
+            4) screen_resume ;;
+            5) run_mode патч ;;
+            6) run_mode покращення-ші ;;
+            7) run_mode пропозиції ;;
+            8) run_mode ручний ;;
             q|Q|вихід) clear 2>/dev/null || true; return 0 ;;
             *) ;;
         esac

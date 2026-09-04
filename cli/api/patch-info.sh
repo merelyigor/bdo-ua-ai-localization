@@ -54,7 +54,7 @@ foreach ($domains as $d2) {
 }
 echo "\n  «без перекладу» включає рядки, що вже чекають на людину в модерації.\n";
 echo "  Скільки з них доступно ПРОГОНУ · розділ 2 нижче.\n";
-echo "  Узяти одну категорію: ./bdo mode start patch 50 <патч> <категорія>\n";
+echo "  Узяти одну категорію: у формі старту на сторінці ./bdo web\n";
 ' "$TMP_DIR/patch_summary.json" "$SCRIPT_DIR/lib/autoload.php"
 
 # --- 2. Без машинного ---
@@ -95,7 +95,7 @@ php -r '
 require $argv[2];
 $d = Bdo\Translate\Api\Response::fromFile($argv[1], "rows")->raw();
 printf("  рядків Bosia (legacy): %d\n", $d["meta"]["total_matching"] ?? 0);
-echo "  Це переклад НАНОВО з англійського джерела: ./bdo mode start improve 50 <патч>\n";
+echo "  Це переклад НАНОВО з англійського джерела · режим «покращення ШІ»\n";
 ' "$TMP_DIR/patch_legacy" "$SCRIPT_DIR/lib/autoload.php"
 
 # --- 4. Без ручного ---

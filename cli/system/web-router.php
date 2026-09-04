@@ -31,7 +31,7 @@ declare(strict_types=1);
 require __DIR__.'/../../lib/autoload.php';
 
 use Bdo\Translate\Session\Ledger;
-use Bdo\Translate\Web\Actions;
+use Bdo\Translate\Run\Actions;
 use Bdo\Translate\Web\Runner;
 use Bdo\Translate\Web\Snapshot;
 
@@ -178,6 +178,25 @@ switch ($path) {
 
         return;
 
+    case '/api/plan':
+        // Показ «що саме запуститься» бере ТОЙ САМИЙ планувальник, що й
+        // виконання. Друга копія складання команди в JavaScript означала б, що
+        // попередній показ може брехати · а він існує рівно для того, щоб не
+        // брехав. Це чисте читання: план нічого не запускає.
+        $payload = json_decode((string) ($_GET['payload'] ?? '{}'), true);
+        if (! is_array($payload)) {
+            $fail(400, 'bad_json', 'payload мусить бути обʼєктом JSON');
+
+            return;
+        }
+        try {
+            $json(['commands' => Actions::commands((string) ($_GET['action'] ?? ''), $payload)]);
+        } catch (Throwable $e) {
+            $fail(422, 'plan_refused', $e->getMessage());
+        }
+
+        return;
+
     case '/api/actions':
         // Що сторінка МОЖЕ попросити · перелік із коду, а не з розмітки.
         $json([
@@ -227,7 +246,7 @@ switch ($path) {
         return;
 
     default:
-        $fail(404, 'unknown_path', 'сервер віддає лише /, /api/health, /api/state, /api/sessions, /api/stream, /api/actions, а дії · POST на /api/action і /api/client-error');
+        $fail(404, 'unknown_path', 'сервер віддає лише /, /api/health, /api/state, /api/sessions, /api/stream, /api/actions, /api/plan, а дії · POST на /api/action і /api/client-error');
 
         return;
 }

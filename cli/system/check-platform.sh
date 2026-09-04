@@ -149,4 +149,67 @@ else
     echo '      Перевірити детально: ./bdo runtime' >&2
 fi
 
+# Готовність БРАУЗЕРНОГО інтерфейсу · він основний, тому мовчати про його
+# несправність не можна (§14.1). Кожен пункт тут · WARN, а не FAIL: конвеєр
+# працює й без сторінки, але власник мусить дізнатись про проблему тут, а не
+# коли клікне посилання.
+#
+# Що саме перевіряємо і чому:
+#   `php -S`         · без вбудованого сервера сторінки не буде взагалі;
+#   воркери          · без `PHP_CLI_SERVER_WORKERS` одне SSE-зʼєднання блокує
+#                      всі інші запити (заміряно 2.6 с проти 0.02 с), і потік
+#                      мусить відкотитись на опитування;
+#   чим відкрити     · macOS `open`, Linux `xdg-open`, WSL2 `explorer.exe`
+#                      (браузер живе на самому Windows, loopback пробрасується).
+web_probe="$(php -r '
+$dir = sys_get_temp_dir()."/bdo-web-probe-".getmypid();
+@mkdir($dir);
+file_put_contents($dir."/index.php", "<?php echo getenv(\"PHP_CLI_SERVER_WORKERS\") ?: \"1\";");
+$descriptors = [1 => ["pipe", "w"], 2 => ["pipe", "w"]];
+$env = getenv();
+$env["PHP_CLI_SERVER_WORKERS"] = "2";
+$proc = proc_open([PHP_BINARY, "-S", "127.0.0.1:0", "-t", $dir], $descriptors, $pipes, null, $env);
+if (! is_resource($proc)) { echo "no_server"; exit(0); }
+$port = 0;
+$deadline = microtime(true) + 5;
+$log = "";
+stream_set_blocking($pipes[2], false);
+while (microtime(true) < $deadline && $port === 0) {
+    $log .= (string) stream_get_contents($pipes[2]);
+    if (preg_match("~127\.0\.0\.1:(\d+)~", $log, $m)) { $port = (int) $m[1]; }
+    usleep(50000);
+}
+$workers = "1";
+if ($port > 0) {
+    $body = @file_get_contents("http://127.0.0.1:$port/", false, stream_context_create(["http" => ["timeout" => 3]]));
+    if (is_string($body) && $body !== "") { $workers = trim($body); }
+}
+proc_terminate($proc, 9);
+proc_close($proc);
+@unlink($dir."/index.php");
+@rmdir($dir);
+echo $port > 0 ? "ok:".$workers : "no_bind";
+' 2>/dev/null || echo 'no_php')"
+case "$web_probe" in
+    ok:1) echo 'WARN: PHP_CLI_SERVER_WORKERS не діє · сторінка працюватиме, але потік відкотиться на опитування.' >&2 ;;
+    ok:*) echo "Браузерний інтерфейс: сервер піднімається, воркерів ${web_probe#ok:}" ;;
+    no_bind) echo 'WARN: вбудований сервер PHP не зміг зайняти навіть вільний порт · ./bdo web не запуститься.' >&2 ;;
+    *) echo "WARN: не вдалося перевірити вбудований сервер PHP ($web_probe) · перевір ./bdo web вручну." >&2 ;;
+esac
+
+opener=''
+if [ "$(uname -s)" = Darwin ] && command -v open >/dev/null 2>&1; then
+    opener='open'
+elif [ "$IS_WSL" = 1 ] && command -v explorer.exe >/dev/null 2>&1; then
+    opener='explorer.exe'
+elif command -v xdg-open >/dev/null 2>&1; then
+    opener='xdg-open'
+fi
+if [ -n "$opener" ]; then
+    echo "Браузер відкриває: $opener"
+else
+    echo 'WARN: браузер сам не відкриється · ./bdo web надрукує посилання, відкривай вручну.' >&2
+    test "$IS_WSL" = 1 && echo '      У WSL2 зазвичай допомагає explorer.exe або пакет wslu (wslview).' >&2
+fi
+
 echo 'Platform preflight: OK'
