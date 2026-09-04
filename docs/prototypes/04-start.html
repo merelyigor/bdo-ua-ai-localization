@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Прототип · почати прогін</title>
+<style>
+:root{
+  --s0:#faf9f7; --s1:#f1efe8; --s2:#ffffff;
+  --tp:#2c2c2a; --ts:#5f5e5a; --tm:#888780;
+  --bd:rgba(0,0,0,.12); --bda:#185fa5;
+  --acc-bg:#e6f1fb; --acc-tx:#0c447c;
+  --ok-bg:#eaf3de; --ok-tx:#3b6d11;
+  --wr-bg:#faeeda; --wr-tx:#854f0b;
+  --dn-bg:#fcebeb; --dn-tx:#a32d2d;
+  --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+}
+@media (prefers-color-scheme:dark){
+  :root{
+    --s0:#1a1a19; --s1:#232322; --s2:#2b2b29;
+    --tp:#eceae4; --ts:#b4b2a9; --tm:#888780;
+    --bd:rgba(255,255,255,.14); --bda:#85b7eb;
+    --acc-bg:#0c447c; --acc-tx:#b5d4f4;
+    --ok-bg:#27500a; --ok-tx:#c0dd97;
+    --wr-bg:#633806; --wr-tx:#fac775;
+    --dn-bg:#791f1f; --dn-tx:#f7c1c1;
+  }
+}
+*{box-sizing:border-box}
+body{margin:0;padding:24px;background:var(--s0);color:var(--tp);font-family:var(--sans);font-size:15px;line-height:1.6}
+.wrap{max-width:980px;margin:0 auto}
+.note{background:var(--wr-bg);color:var(--wr-tx);border-radius:8px;padding:10px 14px;font-size:13px;margin-bottom:16px}
+.panel{background:var(--s1);border-radius:12px;padding:16px}
+.pill{font-size:12px;padding:3px 9px;border-radius:6px}
+.mono{font-family:var(--mono);font-size:12.5px;line-height:1.55}
+button{font-family:inherit;font-size:13px;padding:5px 12px;border-radius:8px;border:.5px solid var(--bd);background:transparent;color:var(--tp);cursor:pointer}
+button:hover{background:var(--s2)}
+button.go{border-color:var(--bda);color:var(--acc-tx);background:var(--acc-bg)}
+h1{font-size:20px;font-weight:500;margin:0 0 4px}
+.sub{font-size:13px;color:var(--ts);margin:0 0 16px}
+.sec{font-size:13px;font-weight:500;margin:14px 0 6px}
+.modes{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:8px}
+.mode{border:.5px solid var(--bd);border-radius:10px;background:var(--s2);padding:9px 11px;cursor:pointer}
+.mode[aria-pressed="true"]{border-color:var(--bda);background:var(--acc-bg)}
+.mode .n{font-size:13px;font-weight:500}
+.mode[aria-pressed="true"] .n{color:var(--acc-tx)}
+.mode .d{font-size:12px;color:var(--ts)}
+.mode[aria-pressed="true"] .d{color:var(--acc-tx)}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th{text-align:left;font-weight:400;color:var(--ts);font-size:12px;padding:5px 8px}
+td{padding:5px 8px;border-top:.5px solid var(--bd)}
+tr.p{cursor:pointer}
+tr.p[aria-selected="true"]{background:var(--acc-bg)}
+tr.p[aria-selected="true"] td{color:var(--acc-tx)}
+.num{text-align:right;font-family:var(--mono)}
+select,input[type=number]{font-family:inherit;font-size:13px;padding:5px 8px;border-radius:8px;border:.5px solid var(--bd);background:var(--s2);color:var(--tp)}
+label.ck{display:flex;gap:8px;align-items:center;font-size:13px;padding:6px 0;cursor:pointer}
+.prev{background:var(--s2);border:.5px solid var(--bd);border-radius:10px;padding:11px 13px;margin-top:12px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Почати прогін</h1>
+  <p class="sub">Прототип 04 · макет інтерфейсу, не робочий інструмент.</p>
+
+  <div class="note">
+    Це МАКЕТ. Таблиця патчів справжня · вивід <span class="mono">./bdo patches all machine</span>
+    із PROD на 2026-09-04. Кнопка нічого не запускає: у роботі вона
+    відповідатиме наявним командам <span class="mono">./bdo mode start</span> і
+    <span class="mono">./bdo loop</span> з перевіреними аргументами, а не новій
+    системі поруч.
+  </div>
+
+  <div class="panel">
+    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+      <span class="pill" style="background:var(--dn-bg);color:var(--dn-tx)">PROD</span>
+      <span class="mono" style="color:var(--ts)">bdo-ua.com.ua/api/agent/v1</span>
+      <span style="margin-left:auto;font-size:12px;color:var(--tm)">квота сьогодні: 149 202 рядки</span>
+    </div>
+
+    <div class="sec">режим</div>
+    <div class="modes" id="modes">
+      <div class="mode" data-m="patch" aria-pressed="true">
+        <div class="n">патч</div><div class="d">перекласти рядки без ШІ-шару</div>
+      </div>
+      <div class="mode" data-m="improve" aria-pressed="false">
+        <div class="n">покращення ШІ</div><div class="d">другий прохід по вже машинних</div>
+      </div>
+      <div class="mode" data-m="proposal" aria-pressed="false">
+        <div class="n">пропозиції</div><div class="d">усе в чергу до людини</div>
+      </div>
+      <div class="mode" data-m="manual" aria-pressed="false">
+        <div class="n">ручний</div><div class="d">вузький набір під підтвердження</div>
+      </div>
+    </div>
+
+    <div class="sec">патч</div>
+    <table>
+      <thead><tr><th>патч</th><th>№ у грі</th><th>опубліковано</th><th class="num">рядків</th><th class="num">без ШІ-шару</th><th></th></tr></thead>
+      <tbody id="patches">
+        <tr class="p" data-p="8" aria-selected="true"><td class="mono">8</td><td class="mono">400</td><td class="mono">2026-09-03</td><td class="num">4 517</td><td class="num">900</td><td><span class="pill" style="background:var(--ok-bg);color:var(--ok-tx)">активний</span></td></tr>
+        <tr class="p" data-p="7" aria-selected="false"><td class="mono">7</td><td class="mono">399</td><td class="mono">2026-08-27</td><td class="num">4 327</td><td class="num">11</td><td></td></tr>
+        <tr class="p" data-p="6" aria-selected="false"><td class="mono">6</td><td class="mono">398</td><td class="mono">2026-08-20</td><td class="num">1 491</td><td class="num">1</td><td></td></tr>
+        <tr class="p" data-p="5" aria-selected="false"><td class="mono">5</td><td class="mono">397</td><td class="mono">2026-08-13</td><td class="num">12 937</td><td class="num">1</td><td></td></tr>
+        <tr class="p" data-p="1" aria-selected="false"><td class="mono">1</td><td class="mono">393</td><td class="mono">2026-07-16</td><td class="num">1 387 105</td><td class="num">29 731</td><td><span class="pill" style="background:var(--s1);color:var(--ts)">основна робота</span></td></tr>
+      </tbody>
+    </table>
+    <div style="font-size:12px;color:var(--tm);margin-top:6px">
+      «неактивний» не означає «неактуальний»: саме в патчі 1 живе 97% залишку.
+    </div>
+
+    <div class="sec">обсяг</div>
+    <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+      <label style="font-size:13px;color:var(--ts)">категорія</label>
+      <select id="dom">
+        <option value="">усі категорії</option>
+        <option>quest</option><option>item</option><option>premium_shop</option>
+        <option>ui</option><option>entity</option><option>skill_effect</option>
+        <option>world</option><option>knowledge</option><option>dialogue</option>
+        <option>title</option><option>mission</option><option>market</option>
+      </select>
+      <label style="font-size:13px;color:var(--ts)">пачок</label>
+      <input type="number" id="batches" value="1" min="1" max="200" step="1" style="width:80px">
+      <label class="ck"><input type="checkbox" id="tillEnd"> до кінця цілі</label>
+    </div>
+
+    <div class="prev">
+      <div style="font-size:12px;color:var(--ts);margin-bottom:4px">що саме запуститься</div>
+      <div class="mono" id="cmd">./bdo mode start patch 50 8 &amp;&amp; ./bdo loop --batches 1</div>
+      <div class="mono" style="color:var(--ts);margin-top:4px" id="est">вибірка: patch=8&amp;missing=machine · 900 рядків ≈ 18 пачок по 50</div>
+    </div>
+
+    <label class="ck" style="margin-top:10px">
+      <input type="checkbox" id="confirm">
+      <span>Запис піде в <b style="font-weight:500">PROD</b>, і це незворотно. Розумію.</span>
+    </label>
+
+    <div style="display:flex;gap:8px;align-items:center;margin-top:6px">
+      <button class="go" id="go">почати прогін</button>
+      <span id="err" style="font-size:13px;color:var(--dn-tx)"></span>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  var state={mode:'patch',patch:'8',rows:{'8':900,'7':11,'6':1,'5':1,'1':29731}};
+  function render(){
+    var dom=document.getElementById('dom').value;
+    var till=document.getElementById('tillEnd').checked;
+    var n=document.getElementById('batches').value;
+    var cmd='./bdo mode start '+state.mode+' 50 '+state.patch+(dom?' '+dom:'');
+    cmd+=' && ./bdo loop'+(till?'':' --batches '+n);
+    document.getElementById('cmd').textContent=cmd;
+    var left=state.rows[state.patch]||0;
+    var batches=Math.max(1,Math.ceil(left/50));
+    document.getElementById('est').textContent='вибірка: patch='+state.patch+'&missing=machine'
+      +(dom?'&domain='+dom:'')+' · '+left.toLocaleString('uk-UA')+' рядків ≈ '+batches+' пачок по 50';
+    document.getElementById('batches').disabled=till;
+  }
+  document.querySelectorAll('#modes .mode').forEach(function(m){
+    m.onclick=function(){
+      document.querySelectorAll('#modes .mode').forEach(function(o){o.setAttribute('aria-pressed','false');});
+      m.setAttribute('aria-pressed','true'); state.mode=m.getAttribute('data-m'); render();
+    };
+  });
+  document.querySelectorAll('#patches tr.p').forEach(function(r){
+    r.onclick=function(){
+      document.querySelectorAll('#patches tr.p').forEach(function(o){o.setAttribute('aria-selected','false');});
+      r.setAttribute('aria-selected','true'); state.patch=r.getAttribute('data-p'); render();
+    };
+  });
+  ['dom','batches','tillEnd'].forEach(function(id){
+    document.getElementById(id).onchange=render;
+    document.getElementById(id).oninput=render;
+  });
+  document.getElementById('go').onclick=function(){
+    var err=document.getElementById('err');
+    if(!document.getElementById('confirm').checked){
+      err.textContent='Спершу підтверди запис у PROD.';
+      return;
+    }
+    err.textContent='';
+    document.getElementById('go').textContent='запущено (макет)';
+  };
+  document.getElementById('confirm').onchange=function(){ document.getElementById('err').textContent=''; };
+  render();
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Прототип · сесії роботи й історія пачок</title>
+<style>
+:root{
+  --s0:#faf9f7; --s1:#f1efe8; --s2:#ffffff;
+  --tp:#2c2c2a; --ts:#5f5e5a; --tm:#888780;
+  --bd:rgba(0,0,0,.12); --bda:#185fa5;
+  --acc-bg:#e6f1fb; --acc-tx:#0c447c;
+  --ok-bg:#eaf3de; --ok-tx:#3b6d11;
+  --wr-bg:#faeeda; --wr-tx:#854f0b;
+  --dn-bg:#fcebeb; --dn-tx:#a32d2d;
+  --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+}
+@media (prefers-color-scheme:dark){
+  :root{
+    --s0:#1a1a19; --s1:#232322; --s2:#2b2b29;
+    --tp:#eceae4; --ts:#b4b2a9; --tm:#888780;
+    --bd:rgba(255,255,255,.14); --bda:#85b7eb;
+    --acc-bg:#0c447c; --acc-tx:#b5d4f4;
+    --ok-bg:#27500a; --ok-tx:#c0dd97;
+    --wr-bg:#633806; --wr-tx:#fac775;
+    --dn-bg:#791f1f; --dn-tx:#f7c1c1;
+  }
+}
+*{box-sizing:border-box}
+body{margin:0;padding:24px;background:var(--s0);color:var(--tp);font-family:var(--sans);font-size:15px;line-height:1.6}
+.wrap{max-width:980px;margin:0 auto}
+.note{background:var(--wr-bg);color:var(--wr-tx);border-radius:8px;padding:10px 14px;font-size:13px;margin-bottom:16px}
+.panel{background:var(--s1);border-radius:12px;padding:16px}
+.pill{font-size:12px;padding:3px 9px;border-radius:6px}
+.mono{font-family:var(--mono);font-size:12.5px;line-height:1.55}
+button{font-family:inherit;font-size:13px;padding:4px 10px;border-radius:8px;border:.5px solid var(--bd);background:transparent;color:var(--tp);cursor:pointer}
+button:hover{background:var(--s2)}
+.sess{border:.5px solid var(--bd);border-radius:12px;background:var(--s2);padding:12px 14px;margin-bottom:10px}
+.sess.open{border-color:var(--bda)}
+.sh{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.grid{display:grid;grid-template-columns:1fr auto auto auto auto;gap:0;margin-top:10px;font-size:13px}
+.grid>div{padding:6px 8px;border-top:.5px solid var(--bd)}
+.grid .hd{border-top:none;color:var(--ts);font-size:12px}
+.num{text-align:right;font-family:var(--mono)}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px;margin-top:12px}
+.card{background:var(--s1);border-radius:8px;padding:10px}
+.card .l{font-size:12px;color:var(--ts)}
+.card .v{font-size:20px;font-weight:500}
+h1{font-size:20px;font-weight:500;margin:0 0 4px}
+.sub{font-size:13px;color:var(--ts);margin:0 0 16px}
+.dlg{background:var(--s2);border:.5px solid var(--bda);border-radius:12px;padding:14px;margin-top:12px}
+label{display:flex;gap:8px;align-items:flex-start;font-size:13px;padding:5px 0;cursor:pointer}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Сесії роботи й історія пачок</h1>
+  <p class="sub">Прототип 02 · макет інтерфейсу, не робочий інструмент.</p>
+
+  <div class="note">
+    Це МАКЕТ. Пачки й числа справжні · усі сім прогонів 2026-09-04 із
+    <span class="mono">state/batches/**</span>. Поділ на дві сесії домальований:
+    сесій як механізму ще НЕ існує, і саме його цей макет і проєктує. Межу
+    поділу взято там, де вона справді була · серверна правина глосарія
+    приблизно о 14:20, після якої карантин упав до нуля.
+  </div>
+
+  <div class="panel">
+    <div class="sh" style="margin-bottom:14px">
+      <span class="pill" style="background:var(--dn-bg);color:var(--dn-tx)">PROD</span>
+      <span style="font-size:13px">сесія відкрита</span>
+      <span class="mono" style="color:var(--ts)">20260904_1420 · 4 пачки · 1 год 42 хв</span>
+      <span style="margin-left:auto"></span>
+      <button id="closebtn">закрити сесію</button>
+      <button>нова сесія</button>
+    </div>
+
+    <div class="sess open">
+      <div class="sh">
+        <button class="tog" data-t="s2" style="padding:2px 8px">▾</button>
+        <span style="font-weight:500">20260904_1420</span>
+        <span class="pill" style="background:var(--acc-bg);color:var(--acc-tx)">відкрита</span>
+        <span style="font-size:12px;color:var(--tm)">патч 7 і 1 · 4 пачки · 194 рядки</span>
+        <span style="margin-left:auto;font-size:12px;color:var(--ok-tx)">карантин 0</span>
+      </div>
+      <div id="s2">
+        <div class="grid">
+          <div class="hd">пачка</div><div class="hd num">рядків</div><div class="hd num">у шар</div><div class="hd num">до людини</div><div class="hd num">карантин</div>
+          <div class="mono">20260904_143842</div><div class="num">50</div><div class="num">46</div><div class="num">4</div><div class="num" style="color:var(--ok-tx)">0</div>
+          <div class="mono">20260904_151456</div><div class="num">50</div><div class="num">45</div><div class="num">5</div><div class="num" style="color:var(--ok-tx)">0</div>
+          <div class="mono">20260904_153814</div><div class="num">44</div><div class="num">33</div><div class="num">11</div><div class="num" style="color:var(--ok-tx)">0</div>
+          <div class="mono">20260904_160206</div><div class="num">50</div><div class="num">50</div><div class="num">0</div><div class="num" style="color:var(--ok-tx)">0</div>
+        </div>
+        <div class="cards">
+          <div class="card"><div class="l">у шар</div><div class="v" style="color:var(--ok-tx)">174</div></div>
+          <div class="card"><div class="l">до людини</div><div class="v">20</div></div>
+          <div class="card"><div class="l">карантин</div><div class="v">0</div></div>
+          <div class="card"><div class="l">викликів моделі</div><div class="v">21</div></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="sess">
+      <div class="sh">
+        <button class="tog" data-t="s1" style="padding:2px 8px">▸</button>
+        <span style="font-weight:500">20260904_1100</span>
+        <span class="pill" style="background:var(--s1);color:var(--ts)">закрита</span>
+        <span style="font-size:12px;color:var(--tm)">патч 7 · 3 пачки · 150 рядків</span>
+        <span style="margin-left:auto;font-size:12px;color:var(--dn-tx)">карантин 25</span>
+      </div>
+      <div id="s1" style="display:none">
+        <div class="grid">
+          <div class="hd">пачка</div><div class="hd num">рядків</div><div class="hd num">у шар</div><div class="hd num">до людини</div><div class="hd num">карантин</div>
+          <div class="mono">20260904_110133</div><div class="num">50</div><div class="num">37</div><div class="num">8</div><div class="num" style="color:var(--dn-tx)">5</div>
+          <div class="mono">20260904_120154</div><div class="num">50</div><div class="num">38</div><div class="num">8</div><div class="num" style="color:var(--dn-tx)">4</div>
+          <div class="mono">20260904_140745</div><div class="num">50</div><div class="num">34</div><div class="num">0</div><div class="num" style="color:var(--dn-tx)">16</div>
+        </div>
+        <div style="font-size:12px;color:var(--ts);margin-top:8px">
+          причина карантину: <span class="mono">api_glossary_violation</span> · сервер вимагав машинну назву глосарія;
+          виправлено на сервері, наступна сесія дала нуль.
+        </div>
+        <div style="display:flex;gap:6px;margin-top:8px">
+          <button style="font-size:12px">відкрити прогін</button>
+          <button style="font-size:12px">видалити журнали</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="dlg" class="dlg" style="display:none">
+      <div style="font-weight:500;margin-bottom:4px">Закрити сесію 20260904_1420?</div>
+      <div style="font-size:13px;color:var(--ts);margin-bottom:8px">
+        Підсумок і перелік пачок лишаються назавжди · вони дрібні. Питання лише
+        про журнали: хронологію кроків, потік токенів і виклики моделі.
+      </div>
+      <label><input type="radio" name="keep" checked> <span><b style="font-weight:500">Тримати журнали 7 днів</b><br><span style="color:var(--ts)">можна повернутись до прогону; зникнуть самі за <span class="mono">BDO_KEEP_DAYS</span></span></span></label>
+      <label><input type="radio" name="keep"> <span><b style="font-weight:500">Видалити журнали зараз</b><br><span style="color:var(--ts)">чисто одразу; повернутись до кроків цієї сесії буде нізвідки</span></span></label>
+      <div style="font-size:12px;color:var(--tm);margin:8px 0">
+        Не чіпається ніколи: <span class="mono">write-log.jsonl</span> · незнищенний слід записів у PROD.
+      </div>
+      <div style="display:flex;gap:8px">
+        <button id="okbtn">закрити сесію</button>
+        <button id="cancelbtn">скасувати</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  document.querySelectorAll('.tog').forEach(function(b){
+    b.onclick=function(){
+      var t=document.getElementById(b.getAttribute('data-t'));
+      var open=t.style.display!=='none';
+      t.style.display=open?'none':'block';
+      b.textContent=open?'▸':'▾';
+    };
+  });
+  var d=document.getElementById('dlg');
+  document.getElementById('closebtn').onclick=function(){ d.style.display='block'; };
+  document.getElementById('cancelbtn').onclick=function(){ d.style.display='none'; };
+  document.getElementById('okbtn').onclick=function(){ d.style.display='none'; };
+})();
+</script>
+</body>
+</html>

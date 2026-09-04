@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Прототип · черга до людини</title>
+<style>
+:root{
+  --s0:#faf9f7; --s1:#f1efe8; --s2:#ffffff;
+  --tp:#2c2c2a; --ts:#5f5e5a; --tm:#888780;
+  --bd:rgba(0,0,0,.12); --bda:#185fa5;
+  --acc-bg:#e6f1fb; --acc-tx:#0c447c;
+  --ok-bg:#eaf3de; --ok-tx:#3b6d11;
+  --wr-bg:#faeeda; --wr-tx:#854f0b;
+  --dn-bg:#fcebeb; --dn-tx:#a32d2d;
+  --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+}
+@media (prefers-color-scheme:dark){
+  :root{
+    --s0:#1a1a19; --s1:#232322; --s2:#2b2b29;
+    --tp:#eceae4; --ts:#b4b2a9; --tm:#888780;
+    --bd:rgba(255,255,255,.14); --bda:#85b7eb;
+    --acc-bg:#0c447c; --acc-tx:#b5d4f4;
+    --ok-bg:#27500a; --ok-tx:#c0dd97;
+    --wr-bg:#633806; --wr-tx:#fac775;
+    --dn-bg:#791f1f; --dn-tx:#f7c1c1;
+  }
+}
+*{box-sizing:border-box}
+body{margin:0;padding:24px;background:var(--s0);color:var(--tp);font-family:var(--sans);font-size:15px;line-height:1.6}
+.wrap{max-width:980px;margin:0 auto}
+.note{background:var(--wr-bg);color:var(--wr-tx);border-radius:8px;padding:10px 14px;font-size:13px;margin-bottom:16px}
+.panel{background:var(--s1);border-radius:12px;padding:16px}
+.pill{font-size:12px;padding:3px 9px;border-radius:6px}
+.mono{font-family:var(--mono);font-size:12.5px;line-height:1.55}
+button{font-family:inherit;font-size:13px;padding:4px 10px;border-radius:8px;border:.5px solid var(--bd);background:transparent;color:var(--tp);cursor:pointer}
+button:hover{background:var(--s2)}
+.chip{font-size:12px;padding:3px 10px;border-radius:999px;border:.5px solid var(--bd);background:transparent;color:var(--ts);cursor:pointer}
+.chip[aria-pressed="true"]{background:var(--acc-bg);color:var(--acc-tx);border-color:var(--bda)}
+.item{display:flex;gap:10px;padding:10px 0;border-top:.5px solid var(--bd)}
+.item.done{opacity:.55}
+input[type=text]{font-family:var(--mono);font-size:12.5px;width:100%;padding:5px 7px;border-radius:6px;border:.5px solid var(--bd);background:var(--s2);color:var(--tp)}
+h1{font-size:20px;font-weight:500;margin:0 0 4px}
+.sub{font-size:13px;color:var(--ts);margin:0 0 16px}
+.bar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:12px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Черга до людини</h1>
+  <p class="sub">Прототип 03 · макет інтерфейсу, не робочий інструмент.</p>
+
+  <div class="note">
+    Це МАКЕТ. Рядки справжні · шість перших із черги PROD
+    (<span class="mono">./bdo moderation --limit 6</span>, усього чекає 214).
+    Кнопки нічого не надсилають: у роботі вони відповідатимуть уже наявній
+    команді <span class="mono">./bdo moderation --approve</span>, а не новій
+    системі поруч.
+  </div>
+
+  <div class="panel">
+    <div class="bar">
+      <span class="pill" style="background:var(--dn-bg);color:var(--dn-tx)">PROD</span>
+      <span style="font-size:13px">чекають на рішення</span>
+      <span style="font-size:20px;font-weight:500">214</span>
+      <span style="margin-left:auto"></span>
+      <button id="approveSel">схвалити вибрані <span id="cnt">0</span></button>
+    </div>
+
+    <div class="bar">
+      <span style="font-size:13px;font-weight:500">чому тут</span>
+      <button class="chip" data-f="all" aria-pressed="true">усі 6</button>
+      <button class="chip" data-f="name">нова назва 5</button>
+      <button class="chip" data-f="defect">механічний дефект 1</button>
+    </div>
+
+    <div id="list">
+      <div class="item" data-v="defect">
+        <input type="checkbox" class="sel">
+        <div style="flex:1;min-width:0">
+          <div style="display:flex;gap:8px;align-items:center;margin-bottom:2px">
+            <span class="mono" style="color:var(--tm)">#361</span>
+            <span class="pill" style="background:var(--dn-bg);color:var(--dn-tx)">русизм</span>
+          </div>
+          <div class="mono" style="color:var(--tm)">Sunset Tidal Black Stone</div>
+          <input type="text" value="Чорний камінь приливов заката">
+          <div style="font-size:12px;color:var(--dn-tx);margin-top:3px">
+            детектор: «приливов заката» · російська, не українська. Пропозиція: «Чорний камінь призахідного припливу».
+          </div>
+          <div style="display:flex;gap:6px;margin-top:6px">
+            <button style="font-size:12px">взяти пропозицію</button>
+            <button style="font-size:12px">схвалити як є</button>
+            <button style="font-size:12px;color:var(--dn-tx)">відхилити</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="item" data-v="name">
+        <input type="checkbox" class="sel">
+        <div style="flex:1;min-width:0">
+          <div style="display:flex;gap:8px;align-items:center;margin-bottom:2px">
+            <span class="mono" style="color:var(--tm)">#356</span>
+            <span class="pill" style="background:var(--wr-bg);color:var(--wr-tx)">нова назва предмета</span>
+          </div>
+          <div class="mono" style="color:var(--tm)">Dark Bonghwang's Sail: Panokseon</div>
+          <input type="text" value="Парус Темного Бонгванга: Паноксон">
+          <div style="font-size:12px;color:var(--ts);margin-top:3px">
+            глосарій-підказка: <span class="mono">Panokseon → Паноксон</span> (машинна) · закону на цю назву немає
+          </div>
+          <div style="display:flex;gap:6px;margin-top:6px">
+            <button style="font-size:12px">схвалити</button>
+            <button style="font-size:12px;color:var(--dn-tx)">відхилити</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="item" data-v="name">
+        <input type="checkbox" class="sel">
+        <div style="flex:1;min-width:0">
+          <div style="display:flex;gap:8px;align-items:center;margin-bottom:2px">
+            <span class="mono" style="color:var(--tm)">#357</span>
+            <span class="pill" style="background:var(--wr-bg);color:var(--wr-tx)">нова назва предмета</span>
+          </div>
+          <div class="mono" style="color:var(--tm)">Dark Bonghwang's Cannon: Panokseon</div>
+          <input type="text" value="Гармата Темного Бонгванга: Паноксон">
+          <div style="display:flex;gap:6px;margin-top:6px">
+            <button style="font-size:12px">схвалити</button>
+            <button style="font-size:12px;color:var(--dn-tx)">відхилити</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="item" data-v="name">
+        <input type="checkbox" class="sel">
+        <div style="flex:1;min-width:0">
+          <div style="display:flex;gap:8px;align-items:center;margin-bottom:2px">
+            <span class="mono" style="color:var(--tm)">#358</span>
+            <span class="pill" style="background:var(--wr-bg);color:var(--wr-tx)">нова назва предмета</span>
+          </div>
+          <div class="mono" style="color:var(--tm)">Dark Bonghwang's Plating: Panokseon</div>
+          <input type="text" value="Броня Темного Бонгванга: Паноксон">
+          <div style="display:flex;gap:6px;margin-top:6px">
+            <button style="font-size:12px">схвалити</button>
+            <button style="font-size:12px;color:var(--dn-tx)">відхилити</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="item" data-v="name">
+        <input type="checkbox" class="sel">
+        <div style="flex:1;min-width:0">
+          <div style="display:flex;gap:8px;align-items:center;margin-bottom:2px">
+            <span class="mono" style="color:var(--tm)">#359</span>
+            <span class="pill" style="background:var(--wr-bg);color:var(--wr-tx)">нова назва предмета</span>
+          </div>
+          <div class="mono" style="color:var(--tm)">Dark Bonghwang's Figurehead: Panokseon</div>
+          <input type="text" value="Ніс Темного Бонгванга: Паноксон">
+          <div style="display:flex;gap:6px;margin-top:6px">
+            <button style="font-size:12px">схвалити</button>
+            <button style="font-size:12px;color:var(--dn-tx)">відхилити</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="item" data-v="name">
+        <input type="checkbox" class="sel">
+        <div style="flex:1;min-width:0">
+          <div style="display:flex;gap:8px;align-items:center;margin-bottom:2px">
+            <span class="mono" style="color:var(--tm)">#360</span>
+            <span class="pill" style="background:var(--wr-bg);color:var(--wr-tx)">нова назва предмета</span>
+          </div>
+          <div class="mono" style="color:var(--tm)">Dark Bonghwang's Panokseon Set</div>
+          <input type="text" value="Паноксон Темного Бонгванга: комплект">
+          <div style="font-size:12px;color:var(--ts);margin-top:3px">
+            сусідні рядки цієї родини вживають «Темного Бонгванга» перед предметом · варто звірити порядок
+          </div>
+          <div style="display:flex;gap:6px;margin-top:6px">
+            <button style="font-size:12px">схвалити</button>
+            <button style="font-size:12px;color:var(--dn-tx)">відхилити</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div style="font-size:12px;color:var(--tm);margin-top:12px">
+      Схвалення пише в API рівно те, що в полі. Виправлений тут текст іде як
+      рішення ЛЮДИНИ, тому надалі він сильніший за машинну назву глосарія.
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  var cnt=document.getElementById('cnt');
+  function recount(){
+    cnt.textContent=document.querySelectorAll('#list .sel:checked').length;
+  }
+  document.querySelectorAll('#list .sel').forEach(function(c){ c.onchange=recount; });
+  document.querySelectorAll('.chip[data-f]').forEach(function(c){
+    c.onclick=function(){
+      document.querySelectorAll('.chip[data-f]').forEach(function(o){ o.setAttribute('aria-pressed','false'); });
+      c.setAttribute('aria-pressed','true');
+      var f=c.getAttribute('data-f');
+      document.querySelectorAll('#list .item').forEach(function(r){
+        r.style.display=(f==='all'||r.getAttribute('data-v')===f)?'flex':'none';
+      });
+    };
+  });
+  document.getElementById('approveSel').onclick=function(){
+    var n=document.querySelectorAll('#list .sel:checked');
+    if(n.length===0){ return; }
+    n.forEach(function(c){ c.closest('.item').classList.add('done'); c.checked=false; });
+    recount();
+  };
+})();
+</script>
+</body>
+</html>
