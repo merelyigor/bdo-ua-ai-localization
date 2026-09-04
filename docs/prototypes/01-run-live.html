@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Прототип · живий прогін як чат із конвеєром</title>
+<style>
+:root{
+  --s0:#faf9f7; --s1:#f1efe8; --s2:#ffffff;
+  --tp:#2c2c2a; --ts:#5f5e5a; --tm:#888780;
+  --bd:rgba(0,0,0,.12); --bda:#185fa5;
+  --acc-bg:#e6f1fb; --acc-tx:#0c447c;
+  --ok-bg:#eaf3de; --ok-tx:#3b6d11;
+  --wr-bg:#faeeda; --wr-tx:#854f0b;
+  --dn-bg:#fcebeb; --dn-tx:#a32d2d;
+  --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+}
+@media (prefers-color-scheme:dark){
+  :root{
+    --s0:#1a1a19; --s1:#232322; --s2:#2b2b29;
+    --tp:#eceae4; --ts:#b4b2a9; --tm:#888780;
+    --bd:rgba(255,255,255,.14); --bda:#85b7eb;
+    --acc-bg:#0c447c; --acc-tx:#b5d4f4;
+    --ok-bg:#27500a; --ok-tx:#c0dd97;
+    --wr-bg:#633806; --wr-tx:#fac775;
+    --dn-bg:#791f1f; --dn-tx:#f7c1c1;
+  }
+}
+*{box-sizing:border-box}
+body{margin:0;padding:24px;background:var(--s0);color:var(--tp);font-family:var(--sans);font-size:15px;line-height:1.6}
+.wrap{max-width:980px;margin:0 auto}
+.note{background:var(--wr-bg);color:var(--wr-tx);border-radius:8px;padding:10px 14px;font-size:13px;margin-bottom:16px}
+.panel{background:var(--s1);border-radius:12px;padding:16px}
+.bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:14px}
+.pill{font-size:12px;padding:3px 9px;border-radius:6px}
+.mono{font-family:var(--mono);font-size:12.5px;line-height:1.55}
+button{font-family:inherit;font-size:13px;padding:4px 10px;border-radius:8px;border:.5px solid var(--bd);background:transparent;color:var(--tp);cursor:pointer}
+button:hover{background:var(--s2)}
+.chip{font-size:12px;padding:3px 10px;border-radius:999px;border:.5px solid var(--bd);background:transparent;color:var(--ts);cursor:pointer}
+.chip[aria-pressed="true"]{background:var(--acc-bg);color:var(--acc-tx);border-color:var(--bda)}
+.steps{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:16px;font-size:12px;color:var(--tm)}
+.steps .done{color:var(--ok-tx)}
+.steps .now{color:var(--acc-tx);font-weight:500}
+.msg{border:.5px solid var(--bd);border-radius:12px;background:var(--s2);padding:12px 14px;margin-bottom:10px}
+.msg.active{border-color:var(--bda)}
+.mh{display:flex;align-items:center;gap:8px;margin-bottom:6px;font-size:13px}
+.mh .meta{font-size:12px;color:var(--tm)}
+.box{background:var(--s1);border-radius:8px;padding:8px 10px;margin-bottom:8px}
+.caret{display:inline-block;width:7px;height:14px;background:var(--bda);vertical-align:-2px;animation:b 1s steps(2) infinite}
+@keyframes b{50%{opacity:0}}
+.row{display:flex;gap:10px;padding:9px 0;border-top:.5px solid var(--bd)}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin-top:14px}
+.card{background:var(--s2);border-radius:8px;padding:10px}
+.card .l{font-size:12px;color:var(--ts)}
+.card .v{font-size:22px;font-weight:500}
+h1{font-size:20px;font-weight:500;margin:0 0 4px}
+.sub{font-size:13px;color:var(--ts);margin:0 0 16px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Живий прогін як чат із конвеєром</h1>
+  <p class="sub">Прототип 01 · макет інтерфейсу, не робочий інструмент.</p>
+
+  <div class="note">
+    Це МАКЕТ. Сторінка нікуди не звертається й нічого не змінює: числа взяті з
+    живої пачки <span class="mono">20260904_160206</span> (патч 1, 50 рядків,
+    QA 34 пройшло / 2 на перегляд, у шар 50, карантин 0), а потік згенерований
+    на місці. Працездатність доводить тест, а не макет.
+  </div>
+
+  <div class="panel">
+    <div class="bar">
+      <span class="pill" style="background:var(--dn-bg);color:var(--dn-tx)">PROD</span>
+      <span class="mono" style="color:var(--ts)">20260904_160206 · патч 1 · 50 рядків</span>
+      <span class="pill" style="background:var(--acc-bg);color:var(--acc-tx)">чекає на перевірку якості</span>
+      <span style="font-size:12px;color:var(--tm);margin-left:auto">3:41</span>
+      <button>пауза</button>
+      <button style="color:var(--dn-tx)">стоп</button>
+      <button id="think" class="chip" aria-pressed="false">роздуми</button>
+    </div>
+
+    <div class="steps">
+      <span class="done">терміни</span><span>›</span>
+      <span class="done">переклад</span><span>›</span>
+      <span class="now">якість</span><span>›</span>
+      <span>ремонт</span><span>›</span>
+      <span>суддя</span><span>›</span>
+      <span>запис</span>
+    </div>
+
+    <div class="msg">
+      <div class="mh">
+        <span style="font-weight:500">термінолог</span>
+        <span class="meta">28 термінів · 64 с · 2 185 ток.</span>
+        <span style="margin-left:auto;font-size:12px;color:var(--ok-tx)">ok</span>
+      </div>
+      <div class="mono" style="color:var(--ts)">Panokseon → Паноксон · ready<br>Olvia Academy → Академія Олвія · ready</div>
+    </div>
+
+    <div class="msg">
+      <div class="mh">
+        <span style="font-weight:500">перекладач</span>
+        <span class="meta">31 рядок · 151 с</span>
+        <button id="reqbtn" style="margin-left:auto;font-size:12px;padding:2px 8px">запит ▾</button>
+      </div>
+      <div id="reqbox" class="box mono" style="display:none">
+        <span style="color:var(--tm)">контекст:</span> терміни 40 · приклади 10 · глосарій-закон 1 · глосарій-підказка 39<br>
+        <span style="color:var(--tm)">1.</span> Dark Bonghwang's Panokseon Set<br>
+        <span style="color:var(--tm)">2.</span> [Corsair] Checkmate: Queen Armor
+      </div>
+      <div class="mono">
+        <span style="color:var(--tm)">Dark Bonghwang's Panokseon Set</span><br>
+        <span style="color:var(--ok-tx)">→ Паноксон Темного Бонгванга: комплект</span>
+      </div>
+    </div>
+
+    <div class="msg active">
+      <div class="mh">
+        <span style="font-weight:500;color:var(--acc-tx)">контроль якості</span>
+        <span class="meta">36 рядків · друкує…</span>
+        <span style="margin-left:auto;font-size:12px;color:var(--tm)">108 с</span>
+      </div>
+      <div id="thinkbox" class="box mono" style="display:none;color:var(--tm)">
+        роздуми: перевіряю узгодження роду в «ліхтарі… прикрашені»; глосарій-підказка «Timing → Час» не є законом, тому вердикт не знижую…
+      </div>
+      <div class="mono" id="stream" style="min-height:52px">&nbsp;</div>
+    </div>
+
+    <div style="display:flex;gap:6px;align-items:center;margin:14px 0 8px;flex-wrap:wrap">
+      <span style="font-size:13px;font-weight:500">вердикти</span>
+      <button class="chip" data-f="all" aria-pressed="true">усі 36</button>
+      <button class="chip" data-f="pass">пройшло 34</button>
+      <button class="chip" data-f="review">на перегляд 2</button>
+    </div>
+
+    <div id="list">
+      <div class="row" data-v="review">
+        <span class="pill" style="background:var(--wr-bg);color:var(--wr-tx);height:fit-content">перегляд</span>
+        <div style="flex:1;min-width:0">
+          <div class="mono" style="color:var(--tm)">Cheongsa lanterns are the symbol of the Chorong Merchants.</div>
+          <div class="mono">Ліхтарі Чонса є символом Торговців з ліхтарем.</div>
+          <div style="font-size:12px;color:var(--wr-tx);margin-top:3px">узгодження роду: «прикрашені червоною тканиною»</div>
+          <div style="display:flex;gap:6px;margin-top:6px">
+            <button style="font-size:12px;padding:2px 8px">прийняти правку</button>
+            <button style="font-size:12px;padding:2px 8px">до людини</button>
+          </div>
+        </div>
+      </div>
+      <div class="row" data-v="pass">
+        <span class="pill" style="background:var(--ok-bg);color:var(--ok-tx);height:fit-content">пройшло</span>
+        <div style="flex:1;min-width:0">
+          <div class="mono" style="color:var(--tm)">[Corsair] Checkmate: Queen Armor</div>
+          <div class="mono">[Корсар] Шах і мат: Королева — Нагрудник</div>
+        </div>
+      </div>
+      <div class="row" data-v="pass">
+        <span class="pill" style="background:var(--ok-bg);color:var(--ok-tx);height:fit-content">пройшло</span>
+        <div style="flex:1;min-width:0">
+          <div class="mono" style="color:var(--tm)">Proof of Strife</div>
+          <div class="mono">Доказ протистояння</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="cards">
+      <div class="card"><div class="l">у шар</div><div class="v" style="color:var(--ok-tx)">50</div></div>
+      <div class="card"><div class="l">до людини</div><div class="v">0</div></div>
+      <div class="card"><div class="l">карантин</div><div class="v">0</div></div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  var txt='{"items":[{"id":"r1","status":"PASS","severity":"none","issue":"","fix":""},{"id":"r2","status":"REVIEW","severity":"minor","issue":"узгодження роду: «прикрашені червоною тканиною»","fix":"…прикрашені червоним клаптем"}';
+  var el=document.getElementById('stream'), i=0;
+  function tick(){
+    i+=Math.floor(Math.random()*4)+2;
+    el.innerHTML=txt.slice(0,i).replace(/</g,'&lt;')+'<span class="caret"></span>';
+    if(i<txt.length){ setTimeout(tick,55); } else { setTimeout(function(){ i=0; tick(); },1600); }
+  }
+  tick();
+  var rb=document.getElementById('reqbox');
+  document.getElementById('reqbtn').onclick=function(){
+    rb.style.display = rb.style.display==='none' ? 'block' : 'none';
+  };
+  var tb=document.getElementById('think'), tx=document.getElementById('thinkbox');
+  tb.onclick=function(){
+    var on = tb.getAttribute('aria-pressed')!=='true';
+    tb.setAttribute('aria-pressed', on?'true':'false');
+    tx.style.display = on?'block':'none';
+  };
+  document.querySelectorAll('.chip[data-f]').forEach(function(c){
+    c.onclick=function(){
+      document.querySelectorAll('.chip[data-f]').forEach(function(o){ o.setAttribute('aria-pressed','false'); });
+      c.setAttribute('aria-pressed','true');
+      var f=c.getAttribute('data-f');
+      document.querySelectorAll('#list .row').forEach(function(r){
+        r.style.display = (f==='all'||r.getAttribute('data-v')===f) ? 'flex' : 'none';
+      });
+    };
+  });
+})();
+</script>
+</body>
+</html>

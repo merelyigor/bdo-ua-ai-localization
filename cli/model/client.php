@@ -232,6 +232,27 @@ $context = stream_context_create(['http' => [
  * нічого не додає, крім шуму.
  */
 $show = (getenv('BDO_MODEL_SHOW') !== '0') && stream_isatty(STDERR);
+// Потік пишеться ще й у файл · інакше живий UI показати його не може.
+//
+// stderr бачить лише той, хто дивиться в панель. Браузер читає ФАЙЛ, і саме
+// тому він тут: `state/run-stream.log` обнуляється на початку кожного виклику
+// (щоб не рости прогоном) і доростає чанками. Це журнал ПОКАЗУ, а не роботи:
+// правда про відповідь лишається у `<response>.json`, і жоден крок конвеєра
+// цього файла не читає.
+$streamLog = $stateDir.'/run-stream.log';
+if ($stream) {
+    @file_put_contents($streamLog, json_encode([
+        'at' => gmdate('c'), 'role' => $role, 'model' => $model, 'event' => 'start',
+    ], JSON_UNESCAPED_UNICODE)."\n");
+}
+$toFile = static function (string $text, bool $isThinking) use ($streamLog, $stream): void {
+    if (! $stream || $text === '') {
+        return;
+    }
+    @file_put_contents($streamLog, json_encode([
+        $isThinking ? 'thinking' : 'content' => $text,
+    ], JSON_UNESCAPED_UNICODE)."\n", FILE_APPEND);
+};
 $dim = ($show && getenv('NO_COLOR') === false) ? "\033[2m" : '';
 $off = $dim !== '' ? "\033[0m" : '';
 $live = static function (string $text, bool $isThinking) use ($show, $dim, $off): void {
@@ -272,6 +293,8 @@ if ($stream) {
         $thinking .= $reason;
         $live($piece, false);
         $live($reason, true);
+        $toFile($piece, false);
+        $toFile($reason, true);
         if (! empty($chunk['done'])) {
             $answer = $chunk;
         }
