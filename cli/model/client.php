@@ -77,10 +77,24 @@ $schemaPath = null;
 $explicit = array_search('--schema', $argv, true);
 if ($explicit !== false && isset($argv[$explicit + 1])) {
     $schemaPath = $argv[$explicit + 1];
-} elseif (($roleConfig['schema'] ?? 'none') === 'qa') {
-    $schemaPath = $stateDir.'/current-qa-schema.json';
-} elseif (($roleConfig['schema'] ?? 'none') === 'response') {
-    $schemaPath = $stateDir.'/current-response-schema.json';
+} else {
+    // Три джерела схеми, і всі три названі явно в `config/roles.json`:
+    //   `response` / `qa` · staged-схема пачки (її будує рушій під конкретні
+    //      рядки, тому вона живе в `state/`);
+    //   `file:<шлях>`     · схема, що не залежить від рядків (суддя,
+    //      термінологія, smoke). Раніше такі лежали константами в TS-плагіні ·
+    //      тобто формат відповіді був описаний у двох місцях і в чужому
+    //      застосунку. 2026-09-04 після зняття плагіна роль термінології
+    //      зупинила пачку з `missing_schema`, бо будувати схему стало нікому.
+    //   `none`            · схеми немає (роль вільної форми).
+    $kind = (string) ($roleConfig['schema'] ?? 'none');
+    if ($kind === 'qa') {
+        $schemaPath = $stateDir.'/current-qa-schema.json';
+    } elseif ($kind === 'response') {
+        $schemaPath = $stateDir.'/current-response-schema.json';
+    } elseif (str_starts_with($kind, 'file:')) {
+        $schemaPath = $root.'/'.substr($kind, 5);
+    }
 }
 $schema = null;
 if ($schemaPath !== null) {

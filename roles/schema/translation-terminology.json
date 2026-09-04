@@ -1,0 +1,53 @@
+{
+  "type": "object",
+  "properties": {
+    "items": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "canonical_source": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "ready",
+              "blocked_identity",
+              "no_answer"
+            ]
+          },
+          "term_id": {
+            "type": "string"
+          },
+          "entity_type": {
+            "type": "string"
+          },
+          "source_identity": {
+            "type": "string"
+          },
+          "ukrainian_proposal": {
+            "type": "string"
+          },
+          "next_action": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "canonical_source",
+          "status",
+          "term_id",
+          "entity_type",
+          "source_identity",
+          "ukrainian_proposal",
+          "next_action"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  "required": [
+    "items"
+  ],
+  "additionalProperties": false
+}

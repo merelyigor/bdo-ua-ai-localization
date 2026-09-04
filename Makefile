@@ -8,5 +8,5 @@ sync:
 	./bdo sync
 
 help:
-	@printf '%s\n' 'make env   Materialize the local OpenCode runtime from .env'
+	@printf '%s\n' 'make env   Show the run target from .env'
 	@printf '%s\n' 'make sync  Show .env changes, materialize runtime, then save a masked snapshot'

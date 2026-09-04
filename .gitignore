@@ -15,18 +15,8 @@
 # видаленого 2026-08-22. Локальні файли лишаються на диску, у Git їх немає.
 /state-auto/
 
-# Залежності плагіна OpenCode.
-node_modules/
-
-# Локальна матеріалізація OpenCode. Канонічні версії лежать у `templates/`,
-# `.opencode/templates/` і `.opencode/agent-templates/`; `./bdo env` підставляє
-# сюди профіль та модель конкретного користувача.
-/opencode.json
-/.opencode/translation-models.json
-/.opencode/agents/translation-*.md
-/.opencode/runtime-model-state.json
-/.opencode/runtime-model-state.busy
-/.opencode/env-sync-state.json
+# Знімок `.env` для `make sync`: він містить значення власника.
+/state/env-sync-state.json
 
 # macOS
 .DS_Store

@@ -151,8 +151,24 @@ ask_domain() {
     esac
 }
 
+# Українська назва -> ключ режиму в `lib/Pipeline/RunSpec.php`.
+#
+# Перекладати назву режиму мусить код, а не людина й не модель: 2026-09-04
+# меню передало `патч` у `./bdo mode start`, і прогін упав із
+# `RunSpec::preset('патч')` вже ПІСЛЯ вибору патча й підтвердження.
+mode_key() {
+    case "$1" in
+        патч) printf 'patch' ;;
+        ручний) printf 'manual' ;;
+        пропозиції) printf 'proposal' ;;
+        покращення-ші) printf 'improve' ;;
+        *) return 1 ;;
+    esac
+}
+
 run_mode() {
-    local mode="$1" patch domain batches
+    local mode="$1" key patch domain batches
+    key="$(mode_key "$mode")" || { printf '%s\n' "${C_ERR}Невідомий режим: $mode${C_RESET}"; pause; return; }
     title "режим $mode"
     printf '  Ціль: %s\n\n' "$(target)"
     patch="$(ask_patch)"
@@ -171,7 +187,7 @@ run_mode() {
     line
     printf '%s\n' "${C_DIM}Ctrl-C зупиняє між кроками; стан лишається на диску.${C_RESET}"
     # shellcheck disable=SC2086
-    if ! "$BDO" mode start "$mode" 50 $patch $domain; then
+    if ! "$BDO" mode start "$key" 50 $patch $domain; then
         printf '%s\n' "${C_ERR}Не вдалося почати пачку.${C_RESET}"
         pause
         return

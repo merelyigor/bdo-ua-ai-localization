@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 $root = dirname(__DIR__, 2);
 $envFile = getenv('TRANSLATE_ENV_FILE') ?: $root.'/.env';
-$stateFile = getenv('BDO_ENV_SYNC_STATE_FILE') ?: $root.'/.opencode/env-sync-state.json';
+$stateFile = getenv('BDO_ENV_SYNC_STATE_FILE') ?: $root.'/state/env-sync-state.json';
 $command = $argv[1] ?? 'report';
 
 if (!is_file($envFile)) {

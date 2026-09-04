@@ -53,7 +53,7 @@ sh_run() {
 usage() {
     php -r '
         $r=json_decode((string)file_get_contents($argv[1]),true,512,JSON_THROW_ON_ERROR);
-        echo "bdo · переклад рядків BDO через Agent API і субагенти OpenCode\n\n";
+        echo "bdo · переклад рядків BDO: Agent API, локальні моделі, скриптовий конвеєр\n\n";
         echo "  ./bdo help flow      порядок команд однієї пачки\n  ./bdo help <команда> довідка самого скрипта\n";
         foreach($r["sections"] as $s){echo "\n".(string)$s["title"]."\n";foreach($s["entries"] as $e){printf("  %-38s %s\n",$e[0],$e[1]);}}
         echo "\nРеєстр команд: cli/command-registry.json\n";
@@ -62,36 +62,43 @@ usage() {
 
 flow() {
     cat <<'TXT'
-ПЕРЕКЛАД РОБИТЬСЯ В OPENCODE. Оберіть primary-режим:
+ПЕРЕКЛАД ЗАПУСКАЄТЬСЯ ЧЕРЕЗ `./bdo` · меню вибере режим, патч і кількість пачок.
 
 Канонічний реєстр команд: cli/command-registry.json. Gate звіряє його з
-dispatcher, execution guard, цим flow і документацією.
+dispatcher, цим flow і документацією.
 
-  патч          активний патч -> machine
-  ручний        ручний шар; складне -> proposal
-  пропозиції    усе в модерацію
+  патч             активний патч -> machine
+  ручний           ручний шар; складне -> proposal
+  пропозиції       усе в модерацію
   покращення-ші    поліпшення наявного machine layer
 
-Режим виконує цикл `./bdo mode start <mode>` -> `./bdo run drive` -> видимий
-штатний Task-субагент OpenCode -> `translation_result` -> `./bdo run drive`,
-доки вибірка не поверне нуль. Кожну child session можна відкрити в OpenCode.
-Перед завершенням: `./bdo gate full && ./bdo api`.
+Що відбувається всередині (те саме робить `./bdo loop`):
+
+  ./bdo env                 ціль прогону з .env
+  ./bdo mode start <режим> 50 [патч] [категорія]
+  ./bdo run drive           рушій каже, який КРОК наступний
+      kind=child   -> cli/model/client.php виконує роль локальною моделлю
+      kind=retry   -> пауза, потім знову drive
+      kind=continue_run -> драйвер відкриває наступну пачку сам
+  ... доки вибірка не поверне нуль.
+
+Перед завершенням змін у коді: `./bdo gate full && ./bdo api`.
 
 --- Окремі команди · лише для розбору збою, не для роботи ------------------
 
   ./bdo runtime                                     перед ПЕРШОЮ пачкою прогону
-  ./bdo env                                         яка ціль стоїть у .env
-  ./bdo payload terminology rows.json               -> @translation-terminology
+  ./bdo payload terminology rows.json               вхід для ролі термінології
   ./bdo items rows.json clean.json items.json "" --require-all
   ./bdo validate items.json
   ./bdo heal rows.json clean.json verdicts.json [validate.json]
   ./bdo commit rows.json clean.json verdicts.json --write
-  ./bdo audit                                       правда про сесії
-  ./bdo session [N] [--errors]                      кроки й відмови диригента
+  ./bdo audit                                       що робили моделі прогону
+  ./bdo models-run 40                               останні виклики по одному
+  ./bdo timer                                       скільки триває сесія
   ./bdo review                                      стан проєкту одним екраном
-  ./bdo inspect [тека]                              інспекції PhpStorm (IDE має бути закрита)
+  ./bdo inspect [тека]                              інспекції PhpStorm (IDE закрита)
 
-Повна послідовність із причинами · UI_SUBAGENT_WORKFLOW.md
+Повна послідовність із причинами · WORKFLOW.md
 TXT
 }
 

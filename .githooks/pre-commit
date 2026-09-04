@@ -38,7 +38,7 @@ if [ -f "$env_file" ]; then
     while IFS= read -r line; do
         case "$line" in ''|\#*) continue ;; *=*) ;; *) continue ;; esac
         # Provider/model IDs are public routing names, not credentials. They may
-        # intentionally appear in .env.example comments and OpenCode config.
+        # intentionally appear in .env.example comments and role schemas.
         case "${line%%=*}" in TRANSLATE_MODEL|TRANSLATE_MODEL_PROFILE|TRANSLATE_MODEL_COST) continue ;; esac
         value="${line#*=}"
         value="${value%\"}"; value="${value#\"}"

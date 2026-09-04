@@ -83,13 +83,16 @@ printf '1\n7; rm -rf /\nquest && echo\n\ny\n\nq\n' | tui >/dev/null 2>&1 || true
 if grep -qE 'rm -rf|&&' "$WORK/state/calls.log"; then
     fail "сміття з поля вводу дійшло до команди: $(cat "$WORK/state/calls.log")"
 fi
-grep -q '^mode start патч 50$' "$WORK/state/calls.log" \
+grep -q '^mode start patch 50$' "$WORK/state/calls.log" \
     || fail "після відкидання сміття команда мусила лишитись чистою: $(cat "$WORK/state/calls.log")"
+# Український підпис режиму лишається лише в меню: у команду йде ключ RunSpec.
+grep -q 'mode start патч' "$WORK/state/calls.log" \
+    && fail 'меню передало українську назву режиму замість ключа RunSpec'
 
 # 7. Чистий ввід навпаки доходить повністю.
 : > "$WORK/state/calls.log"
 printf '1\n7\nquest\n2\ny\n\nq\n' | tui >/dev/null 2>&1 || true
-grep -q '^mode start патч 50 7 quest$' "$WORK/state/calls.log" \
+grep -q '^mode start patch 50 7 quest$' "$WORK/state/calls.log" \
     || fail "чистий ввід не дійшов до команди: $(cat "$WORK/state/calls.log")"
 
 echo "OK: TUI показує факти й фільтрує ввід."

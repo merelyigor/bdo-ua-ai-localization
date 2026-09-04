@@ -64,10 +64,10 @@ test "$roles" = "translation-terminology translation-worker translation-qa " \
 # 2. Ціль не досягнута · драйвер САМ починає наступну пачку.
 #    Саме цього не робила модель: вона зупинялась і питала дозволу (D25, D34).
 scenario \
-    '{"ok":true,"state":"verified","next":{"kind":"continue_run","remaining":120,"goal":{"mode":"патч","patch":"7","domain":"quest"},"command":"rm -rf /"}}' \
-    '{"ok":true,"state":"verified","next":{"kind":"goal_complete","goal":{"mode":"патч","patch":"7","domain":""}}}'
+    '{"ok":true,"state":"verified","next":{"kind":"continue_run","remaining":120,"goal":{"mode":"patch","patch":"7","domain":"quest"},"command":"rm -rf /"}}' \
+    '{"ok":true,"state":"verified","next":{"kind":"goal_complete","goal":{"mode":"patch","patch":"7","domain":""}}}'
 out="$(loop)" || fail "прогін із ціллю зупинився передчасно: $out"
-grep -q '^mode start патч 50 7 quest$' "$WORK/state/calls.log" \
+grep -q '^mode start patch 50 7 quest$' "$WORK/state/calls.log" \
     || fail "драйвер не почав наступну пачку: $(cat "$WORK/state/calls.log")"
 # Рядок `command` із конверта виконуватись НЕ мусить · він міг би бути чим завгодно.
 grep -q 'rm -rf' "$WORK/state/calls.log" && fail 'драйвер виконав рядок command із конверта'
@@ -77,9 +77,16 @@ scenario '{"ok":true,"state":"verified","next":{"kind":"continue_run","remaining
 out="$(loop)" && fail 'драйвер прийняв невідомий режим цілі'
 printf '%s' "$out" | grep -q 'невідомий режим' || fail "зупинка без причини: $out"
 
+# 3б. Українська назва режиму до драйвера доходити не мусить: переклад робить
+#     меню один раз. Якщо вона тут зʼявилась · щось передало людський підпис
+#     замість ключа, і мовчки вгадувати його не можна.
+scenario '{"ok":true,"state":"verified","next":{"kind":"continue_run","remaining":10,"goal":{"mode":"патч","patch":"7","domain":""}}}'
+out="$(loop)" && fail 'драйвер прийняв українську назву режиму замість ключа'
+printf '%s' "$out" | grep -q 'невідомий режим' || fail "зупинка без причини: $out"
+
 # 4. Категорія з підозрілими символами · зупинка (сюди підставляється значення,
 #    що піде в командний рядок).
-scenario '{"ok":true,"state":"verified","next":{"kind":"continue_run","remaining":10,"goal":{"mode":"патч","patch":"7","domain":"quest;rm"}}}'
+scenario '{"ok":true,"state":"verified","next":{"kind":"continue_run","remaining":10,"goal":{"mode":"patch","patch":"7","domain":"quest;rm"}}}'
 out="$(loop)" && fail 'драйвер прийняв категорію зі стороннім символом'
 printf '%s' "$out" | grep -q 'підозріла категорія' || fail "зупинка без причини: $out"
 

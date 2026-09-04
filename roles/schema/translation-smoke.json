@@ -1,0 +1,16 @@
+{
+  "type": "object",
+  "properties": {
+    "ok": {
+      "const": true
+    },
+    "text": {
+      "const": "готово"
+    }
+  },
+  "required": [
+    "ok",
+    "text"
+  ],
+  "additionalProperties": false
+}

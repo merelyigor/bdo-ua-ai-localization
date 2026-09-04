@@ -5,12 +5,33 @@
   "num_ctx": 131072,
   "timeout_seconds": 900,
   "roles": {
-    "translation-terminology": { "schema": "response", "temperature": 0.1 },
-    "translation-worker": { "schema": "response", "temperature": 0.1 },
-    "translation-qa": { "schema": "qa", "temperature": 0.1 },
-    "translation-repair": { "schema": "response", "temperature": 0.1 },
-    "translation-judge": { "schema": "qa", "temperature": 0.1 },
-    "translation-glossary": { "schema": "response", "temperature": 0.1 },
-    "translation-smoke": { "schema": "none", "temperature": 0.1 }
+    "translation-terminology": {
+      "schema": "file:roles/schema/translation-terminology.json",
+      "temperature": 0.1
+    },
+    "translation-worker": {
+      "schema": "response",
+      "temperature": 0.1
+    },
+    "translation-qa": {
+      "schema": "qa",
+      "temperature": 0.1
+    },
+    "translation-repair": {
+      "schema": "response",
+      "temperature": 0.1
+    },
+    "translation-judge": {
+      "schema": "file:roles/schema/translation-judge.json",
+      "temperature": 0.1
+    },
+    "translation-glossary": {
+      "schema": "file:roles/schema/translation-glossary.json",
+      "temperature": 0.1
+    },
+    "translation-smoke": {
+      "schema": "file:roles/schema/translation-smoke.json",
+      "temperature": 0.1
+    }
   }
 }

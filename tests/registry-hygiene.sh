@@ -49,7 +49,7 @@ grep -o 'tests/[a-z0-9.-]*\.\(sh\|mjs\|php\)' "$DEFECTS" | sort -u | while read 
 done
 
 # 4. Чекліст веде до живих команд і реєстрів.
-for needle in './bdo review' './bdo session' 'plans/DEFECTS.md' 'FLOW_STATE.md' './bdo gate full'; do
+for needle in './bdo review' './bdo audit' './bdo timer' 'plans/DEFECTS.md' 'FLOW_STATE.md' './bdo gate full'; do
     grep -Fq "$needle" "$CHECKLIST" || fail "чекліст не згадує $needle"
 done
 

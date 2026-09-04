@@ -77,7 +77,7 @@ check_rules() {
     fetch_max="$(sed -n 's/.*BATCH > \([0-9]\{1,3\}\).*/\1/p' cli/api/fetch-rows.sh | sed -n '1p')"
     test -n "$fetch_min" && test -n "$fetch_max" \
         || fail 'не вдалося прочитати діапазон розміру пачки з cli/api/fetch-rows.sh'
-    tui_size="$(sed -n 's/.*mode start "\$mode" \([0-9]\{1,3\}\).*/\1/p' bin/tui.sh | sed -n '1p')"
+    tui_size="$(sed -n 's/.*mode start "\$key" \([0-9]\{1,3\}\).*/\1/p' bin/tui.sh | sed -n '1p')"
     test -n "$tui_size" || fail 'bin/tui.sh не називає розміру пачки'
     test "$tui_size" -ge "$fetch_min" && test "$tui_size" -le "$fetch_max" \
         || fail "TUI бере пачку $tui_size поза діапазоном fetch $fetch_min-$fetch_max"
@@ -437,6 +437,8 @@ check_agents() {
         schema="$(jq -r --arg r "$role" '.roles[$r].schema // "none"' config/roles.json)"
         case "$schema" in
             response|qa|none) ;;
+            file:*) test -f "${schema#file:}" \
+                || fail "роль $role посилається на відсутню схему ${schema#file:}" ;;
             *) fail "роль $role має невідомий тип схеми: $schema" ;;
         esac
         # Рамка «офіційна українська локалізація BDO» · рішення власника

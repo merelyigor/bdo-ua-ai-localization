@@ -191,7 +191,12 @@ try {
     expect(is_string($roles['default_model'] ?? null) && $roles['default_model'] !== '', 'config/roles.json has no default model');
     foreach ($roles['roles'] as $role => $conf) {
         expect(is_file(dirname(__DIR__).'/roles/'.$role.'.md'), "role $role has no prompt");
-        expect(in_array($conf['schema'] ?? 'none', ['response', 'qa', 'none'], true), "role $role has unknown schema kind");
+        $kind = (string) ($conf['schema'] ?? 'none');
+        $known = in_array($kind, ['response', 'qa', 'none'], true) || str_starts_with($kind, 'file:');
+        expect($known, "role $role has unknown schema kind: $kind");
+        if (str_starts_with($kind, 'file:')) {
+            expect(is_file(dirname(__DIR__).'/'.substr($kind, 5)), "role $role points at a missing schema file");
+        }
         $model = (string) ($conf['model'] ?? $roles['default_model']);
         expect($model !== '' && !str_contains($model, '/'), "role $role model must be a bare Ollama tag, got $model");
     }
