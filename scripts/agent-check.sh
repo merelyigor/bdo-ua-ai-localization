@@ -519,6 +519,7 @@ check_agents() {
     run bash tests/model-client.sh
     run bash tests/driver-loop.sh
     run bash tests/tui.sh
+    run bash tests/tui-live.sh
     run bash tests/qa-scope.sh
     run bash tests/row-attempts.sh
     run bash tests/names-pass.sh
