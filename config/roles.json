@@ -1,6 +1,19 @@
 {
   "version": 1,
   "endpoint": "http://127.0.0.1:11434",
+  "provider": "ollama",
+  "providers": {
+    "ollama": {
+      "transport": "ollama",
+      "endpoint": "http://127.0.0.1:11434"
+    },
+    "openai": {
+      "transport": "openai",
+      "endpoint": "https://api.openai.com/v1",
+      "api_key_env": "OPENAI_API_KEY",
+      "reasoning_effort": "low"
+    }
+  },
   "default_model": "qwen3.6:35b-a3b-mtp-q4_K_M",
   "num_ctx": 131072,
   "timeout_seconds": 900,

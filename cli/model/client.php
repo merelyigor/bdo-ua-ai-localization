@@ -28,6 +28,12 @@ declare(strict_types=1);
  *  - порожній `content` · ПОМИЛКА з причиною, а не привід мовчки повторити.
  *  - `num_ctx` звіряється з реальним вікном із `/api/ps`: застосунок Ollama має
  *    повзунок, який сильніший за налаштування моделі (D32).
+ *
+ * ПРОТОКОЛ ВІДДІЛЕНО ВІД ЗМІСТУ (2026-09-05). Розмову з провайдером веде
+ * `lib/Model/Transport/**`: Ollama (NDJSON) або зовнішній API формату OpenAI
+ * (SSE). Вибір · рядок `provider` у `config/roles.json`, а не правка цього
+ * файла. Усі перевірки вище лишились ТУТ і в тому самому порядку: інакше їх
+ * довелось би подвоїти в кожному транспорті, а подвоєна перевірка розходиться.
  */
 
 $role = $argv[1] ?? '';
@@ -56,8 +62,23 @@ if (! is_array($config) || ! isset($config['roles'][$role])) {
     exit(1);
 }
 $roleConfig = $config['roles'][$role];
-$endpoint = rtrim((string) (getenv('OLLAMA_URL') ?: $config['endpoint']), '/');
-$model = (string) ($roleConfig['model'] ?? $config['default_model']);
+require_once $root.'/lib/autoload.php';
+try {
+    $transport = \Bdo\Translate\Model\Transport\Factory::forRole($config, $roleConfig);
+} catch (\Bdo\Translate\Model\Transport\TransportError $e) {
+    fwrite(STDERR, $e->reason.': '.$e->getMessage()."\n");
+    exit(1);
+}
+$provider = $transport->name();
+$model = \Bdo\Translate\Model\Transport\Factory::modelForRole($config, $roleConfig);
+// Модель мусить бути НАЗВАНА. Зовнішній провайдер не має відношення до
+// `default_model` набору (там локальна модель), тому «взяти щось із конфігу»
+// тут означало б відправити чужому API назву, якої він не знає, і отримати
+// помилку провайдера замість зрозумілої причини.
+if (trim($model) === '') {
+    fwrite(STDERR, "missing_model: для провайдера $provider не названо модель · додай \"model\" ролі або \"default_model\" провайдера в config/roles.json\n");
+    exit(1);
+}
 $numCtx = (int) ($roleConfig['num_ctx'] ?? $config['num_ctx']);
 $timeout = (int) ($config['timeout_seconds'] ?? 900);
 
@@ -119,7 +140,6 @@ $prompt = (string) file_get_contents($promptPath);
 // відповіді · копіювання, а не робота. Тут хеш стає `r1`, `r2`, …, схема
 // отримує enum цих ключів, а після відповіді хеші повертаються назад · решта
 // конвеєра підміни не бачить. `BDO_ROW_ALIAS=0` вимикає для порівняння.
-require_once $root.'/lib/autoload.php';
 $alias = null;
 // Лише для ролей, чия ВІДПОВІДЬ несе identity_hash (воркер, QA, ремонт, суддя):
 // термінологія й smoke бачать payload як є.
@@ -139,7 +159,7 @@ $callsFile = $stateDir.'/model-calls.jsonl';
 $stats = ['in' => null, 'out' => null];
 
 /** Журнал викликів · власна заміна бази OpenCode. Пишеться ЗАВЖДИ. */
-$journal = static function (string $verdict) use ($callsFile, $role, $model, $started, &$stats): void {
+$journal = static function (string $verdict) use ($callsFile, $role, $model, $provider, $started, &$stats): void {
     $dir = dirname($callsFile);
     if (! is_dir($dir) && ! mkdir($dir, 0777, true) && ! is_dir($dir)) {
         return;
@@ -148,6 +168,7 @@ $journal = static function (string $verdict) use ($callsFile, $role, $model, $st
         'at' => gmdate('c'),
         'role' => $role,
         'model' => $model,
+        'provider' => $provider,
         'verdict' => $verdict,
         'ms' => (int) round((microtime(true) - $started) * 1000),
         'in' => $stats['in'],
@@ -155,21 +176,6 @@ $journal = static function (string $verdict) use ($callsFile, $role, $model, $st
         'think' => getenv('BDO_MODEL_THINK') === '1',
         'stream' => getenv('BDO_MODEL_STREAM') !== '0',
     ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)."\n", FILE_APPEND);
-};
-
-/** Реальне вікно моделі, яку Ollama тримає піднятою (0 · не завантажена). */
-$loadedWindow = static function () use ($endpoint, $model): int {
-    $ps = @file_get_contents($endpoint.'/api/ps', false, stream_context_create(['http' => ['timeout' => 3]]));
-    if (! is_string($ps)) {
-        return 0;
-    }
-    foreach ((json_decode($ps, true)['models'] ?? []) as $entry) {
-        if (($entry['name'] ?? '') === $model) {
-            return (int) ($entry['context_length'] ?? 0);
-        }
-    }
-
-    return 0;
 };
 
 // ПОТІК І ДУМАННЯ · переміряно 2026-09-04 на Ollama 0.33.3.
@@ -196,30 +202,19 @@ $loadedWindow = static function () use ($endpoint, $model): int {
 $stream = getenv('BDO_MODEL_STREAM') !== '0';
 $think = getenv('BDO_MODEL_THINK') === '1';
 
-$body = [
-    'model' => $model,
-    'stream' => $stream,
-    'think' => $think,
-    'messages' => [
-        ['role' => 'system', 'content' => $prompt],
-        ['role' => 'user', 'content' => $payload],
-    ],
-    'options' => [
-        'temperature' => (float) ($roleConfig['temperature'] ?? 0.1),
-        'num_ctx' => $numCtx,
-    ],
-];
-if ($schema !== null) {
-    $body['format'] = $schema;
-}
+$request = new \Bdo\Translate\Model\Transport\Request(
+    role: $role,
+    model: $model,
+    prompt: $prompt,
+    payload: $payload,
+    schema: $schema,
+    stream: $stream,
+    think: $think,
+    temperature: (float) ($roleConfig['temperature'] ?? 0.1),
+    numCtx: $numCtx,
+    timeout: $timeout,
+);
 
-$context = stream_context_create(['http' => [
-    'method' => 'POST',
-    'header' => "Content-Type: application/json\r\n",
-    'content' => json_encode($body, JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR),
-    'timeout' => $timeout,
-    'ignore_errors' => true,
-]]);
 /**
  * Живий показ роботи моделі.
  *
@@ -242,86 +237,49 @@ $show = (getenv('BDO_MODEL_SHOW') !== '0') && stream_isatty(STDERR);
 $streamLog = $stateDir.'/run-stream.log';
 if ($stream) {
     @file_put_contents($streamLog, json_encode([
-        'at' => gmdate('c'), 'role' => $role, 'model' => $model, 'event' => 'start',
+        'at' => gmdate('c'), 'role' => $role, 'model' => $model,
+        'provider' => $provider, 'event' => 'start',
     ], JSON_UNESCAPED_UNICODE)."\n");
 }
-$toFile = static function (string $text, bool $isThinking) use ($streamLog, $stream): void {
-    if (! $stream || $text === '') {
-        return;
-    }
-    @file_put_contents($streamLog, json_encode([
-        $isThinking ? 'thinking' : 'content' => $text,
-    ], JSON_UNESCAPED_UNICODE)."\n", FILE_APPEND);
-};
 $dim = ($show && getenv('NO_COLOR') === false) ? "\033[2m" : '';
 $off = $dim !== '' ? "\033[0m" : '';
-$live = static function (string $text, bool $isThinking) use ($show, $dim, $off): void {
-    if (! $show || $text === '') {
+$chunkSeen = 0;
+$onChunk = static function (string $text, bool $isThinking) use (
+    $show, $dim, $off, $streamLog, $stream, &$chunkSeen
+): void {
+    if ($text === '') {
         return;
     }
-    fwrite(STDERR, $isThinking ? $dim.$text.$off : $text);
+    $chunkSeen++;
+    if ($show) {
+        fwrite(STDERR, $isThinking ? $dim.$text.$off : $text);
+    }
+    if ($stream) {
+        @file_put_contents($streamLog, json_encode([
+            $isThinking ? 'thinking' : 'content' => $text,
+        ], JSON_UNESCAPED_UNICODE)."\n", FILE_APPEND);
+    }
 };
 
-if ($stream) {
-    // Читаємо NDJSON рядок за рядком. `file_get_contents` тут не годиться: він
-    // буферизує все до кінця, і сенс потоку зникає.
-    $handle = @fopen($endpoint.'/api/chat', 'r', false, $context);
-    if ($handle === false) {
-        $fail('model_unreachable', $endpoint.' не відповідає');
-    }
-    $content = '';
-    $thinking = '';
-    $answer = [];
-    $chunks = 0;
-    while (($line = fgets($handle)) !== false) {
-        $line = trim($line);
-        if ($line === '') {
-            continue;
-        }
-        $chunk = json_decode($line, true);
-        if (! is_array($chunk)) {
-            continue;
-        }
-        if (isset($chunk['error'])) {
-            fclose($handle);
-            $fail('model_error', (string) $chunk['error']);
-        }
-        $chunks++;
-        $piece = (string) ($chunk['message']['content'] ?? '');
-        $reason = (string) ($chunk['message']['thinking'] ?? '');
-        $content .= $piece;
-        $thinking .= $reason;
-        $live($piece, false);
-        $live($reason, true);
-        $toFile($piece, false);
-        $toFile($reason, true);
-        if (! empty($chunk['done'])) {
-            $answer = $chunk;
-        }
-    }
-    fclose($handle);
-    if ($show && $chunks > 0) {
-        fwrite(STDERR, "\n");
-    }
-    if ($answer === []) {
-        $fail('stream_incomplete', "потік обірвався без завершального чанка (отримано $chunks)");
-    }
-    // Зібране кладемо туди, де його чекають наступні перевірки · далі код
-    // однаковий для обох шляхів.
-    $answer['message'] = ['content' => $content, 'thinking' => $thinking];
-} else {
-    $raw = @file_get_contents($endpoint.'/api/chat', false, $context);
-    if ($raw === false) {
-        $fail('model_unreachable', $endpoint.' не відповідає');
-    }
-    $answer = json_decode((string) $raw, true);
-    if (! is_array($answer)) {
-        $fail('bad_response', 'відповідь не є JSON: '.substr((string) $raw, 0, 200));
-    }
+try {
+    $reply = $transport->send($request, $stream ? $onChunk : null);
+} catch (\Bdo\Translate\Model\Transport\TransportError $e) {
+    // Причина вже машиночитана й уже названа транспортом · клієнт її не
+    // переписує, лише журналює й показує.
+    $fail($e->reason, $e->getMessage());
 }
-if (isset($answer['error'])) {
-    $fail('model_error', (string) $answer['error']);
+if ($show && $chunkSeen > 0) {
+    fwrite(STDERR, "\n");
 }
+
+// Далі код НЕ залежить від провайдера: усі перевірки змісту робляться на
+// зібраній відповіді, як і до появи транспортів.
+$answer = [
+    'done_reason' => $reply->doneReason,
+    'prompt_eval_count' => $reply->in,
+    'eval_count' => $reply->out,
+    'message' => ['content' => $reply->content, 'thinking' => $reply->thinking],
+];
 $stats['in'] = $answer['prompt_eval_count'] ?? null;
 $stats['out'] = $answer['eval_count'] ?? null;
 
@@ -332,7 +290,10 @@ $stats['out'] = $answer['eval_count'] ?? null;
 // із РЕАЛЬНИМ вікном піднятої моделі. Затискати `num_ctx` наперед не можна:
 // піднята зараз копія могла стартувати з чужим маленьким вікном, і затиск
 // перетворив би нашу вимогу на її обмеження. Просимо своє, а перевіряємо факт.
-$window = $loadedWindow();
+// Вікно питаємо в ТРАНСПОРТУ. Нуль означає «провайдер вікна не повідомляє»
+// (зовнішній API), і тоді перевірки немає · це сказано вголос, а не сховано за
+// «все гаразд».
+$window = $transport->window($model);
 $promptTokens = (int) ($answer['prompt_eval_count'] ?? 0);
 if ($window > 0 && $promptTokens > 0 && $promptTokens > (int) ($window * 0.9)) {
     $fail('context_overflow', "вхід $promptTokens токенів при вікні $window · "

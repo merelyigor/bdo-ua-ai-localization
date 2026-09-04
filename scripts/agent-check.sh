@@ -554,6 +554,7 @@ check_agents() {
     done
     test -z "$missing" || fail "рушій кличе ролі, яких немає в config/roles.json:$missing"
     run bash tests/model-client.sh
+    run bash tests/model-transports.sh
     run bash tests/driver-loop.sh
     run bash tests/tui.sh
     run bash tests/tui-live.sh
