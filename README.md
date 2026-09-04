@@ -276,134 +276,65 @@ BDO_API_KEY_PROD=ваш-ключ
 
 ### Як виглядає обробка пачки
 
-Після підтвердження пачки диригент послідовно показує child-сесії окремих ролей:
+Драйвер показує кожен крок одним рядком:
 
-- спочатку готується термінологічна памʼять;
-- `translation-worker` створює кандидат перекладу для кожного рядка;
-- `translation-qa` перевіряє кандидатів;
-- `translation-repair` виправляє названі дефекти, після чого QA повторюється;
-- `translation-judge` вирішує, у який канал потрапляє остаточний результат.
+```text
+[06:04:14] awaiting_terminology · роль translation-terminology
+[06:04:31] awaiting_worker · роль translation-worker
+[06:05:16] awaiting_qa · роль translation-qa
+[06:11:02] healing · роль translation-repair
+[06:11:34] awaiting_judge · роль translation-judge
+[06:14:07] ready_to_commit · далі: judge_done
+[06:14:12] пачку завершено, усього 1 · лишилось рядків: 311
+[06:14:12] починаю наступну пачку: patch 50 7
+```
 
-![Планування пачки та child-сесії](docs/assets/screenshots/03-patch-planning-and-agents.png)
+Порядок цих кроків задає не модель, а машина станів
+[`lib/Pipeline/StateMachine.php`](lib/Pipeline/StateMachine.php). Роль виконує
+рівно одну задачу й нічого не вирішує про подальший маршрут.
 
-На цьому етапі диригент не перекладає сам. Він фіксує ціль, розмір пачки та
-порядок роботи, а потім створює видимі native child-сесії. На скріншоті видно,
-що окремо запускаються `Translation-Worker`, `Translation-Qa` і
-`Translation-Judge`.
+#### 1. `translation-terminology` — термінолог
 
-Актуальний приклад повного flow для 50 рядків показує, як після старту пачки
-послідовно зʼявляються термінолог, перекладач, тестувальник, ремонтник,
-контрольний QA та суддя.
-
-![Повний flow пачки з усіма child-сесіями](docs/assets/screenshots/07-full-patch-flow.png)
-
-#### 1. `translation-terminology` — термінолог і укладач глосарія
-
-Термінолог першим перевіряє назви та нові поняття через API, знаходить
-канонічні відповідники й повертає пропозиції глосарія. Його результат стає
-памʼяттю для перекладача та наступних перевірок; сам він переклад не записує.
-
-![Child-сесія translation-terminology](docs/assets/screenshots/12-translation-terminology.png)
+Отримує терміни пачки, яких немає в глосарії, і пропонує відповідники. Його
+пропозиції не стають законом одразу: вони йдуть у чергу термінів, а вже
+затверджений відповідник ніколи не перезаписується.
 
 #### 2. `translation-worker` — перекладач пачки
 
-Перекладач отримує підготовлені рядки та термінологічну памʼять і створює
-кандидатські переклади. Він не обирає канал запису: результат переходить до QA.
+Отримує рядки разом із затвердженими термінами, прикладами з памʼяті перекладів
+і поняттями гри. Відповідь обмежена схемою: рівно ті `identity_hash`, що були на
+вході, кожен один раз.
 
-![Child-сесія translation-worker](docs/assets/screenshots/11-translation-worker-latest.png)
+#### 3. Механічні перевірки
 
-На цьому скріншоті відкрито сесію `Translate BDO batch
-(@translation-worker subagent)`.
+До QA рядок проходить детерміновані перевірки [`lib/Quality/**`](lib/Quality):
+незмінність identity, PA-розмітка, плейсхолдери, переноси, межі довжини, словник
+русизмів, латинські гомогліфи в кирилиці, відповідність глосарію. Механічний
+дефект сильніший за будь-який вирок моделі.
 
-#### 3. `translation-qa` — тестувальник перекладу
+#### 4. `translation-qa` — тестувальник
 
-Тестувальник перевіряє кожен кандидат: identity, placeholders, markup,
-довжину, мовну якість та інші обмеження. Він повертає формальний вердикт і
-визначає, чи потрібен ремонт.
+Виносить вирок КОЖНОМУ рядку: `PASS`, `REVIEW` або `REJECT` із severity й
+описом дефекту. Пропущений рядок не вважається схваленим · покриття перевіряє
+`VerdictSet::assertCoverage`.
 
-![Child-сесія translation-qa](docs/assets/screenshots/10-translation-qa-latest.png)
+#### 5. `translation-repair` — ремонтник
 
-На цьому скріншоті відкрито сесію `QA BDO batch
-(@translation-qa subagent)`.
+Отримує лише проблемні рядки разом із причиною й машиночитними `details` від
+API (наприклад, який саме відповідник вимагає глосарій). Після ремонту
+перевірки повторюються.
 
-#### 4. `translation-repair` — ремонтник перекладу
+#### 6. `translation-judge` — суддя
 
-Ремонтник отримує лише рядки й дефекти, названі QA, та виправляє конкретні
-помилки, зберігаючи identity, markup і зміст.
+Вирішує МАРШРУТ спірного рядка (шар чи модерація), а не його текст. Нижче
+`BDO_JUDGE_MIN_CONFIDENCE` рядок іде до людини. Журнал рішень ·
+`state/judge-decisions.jsonl`.
 
-![Child-сесія translation-repair](docs/assets/screenshots/08-translation-repair.png)
+#### 7. Фінальна валідація й запис
 
-Після Repair ті самі рядки обовʼязково проходять контрольний QA ще раз.
-
-#### 5. Контрольний `translation-qa` — повторна перевірка
-
-Контрольний QA підтверджує, що виправлення справді усунули дефекти й не
-пошкодили інші обмеження. Лише після цього рядок передається судді.
-
-#### 6. `translation-judge` — суддя перекладу
-
-Суддя розбирає результати після QA, вирішує, що справді є проблемою, і
-затверджує маршрут: `ai_layer`, `manual` або `proposal` на модерацію.
-
-![Child-сесія translation-judge](docs/assets/screenshots/09-translation-judge-latest.png)
-
-На цьому скріншоті відкрито сесію `Judge BDO batch
-(@translation-judge subagent)`.
-
-Пункт меню «журнал» показує кожен виклик моделі: роль, час, токени й вирок.
-Те саме з терміналу дає `./bdo audit`.
-
-`@` у чаті кличе СУБАГЕНТА (`@translation-smoke`), а диригент · це primary-агент
-сесії, не `@`-виклик.
-
-```text
-переклади 50 рядків активного патча
-переклади 5 пачок
-перевір 50 рядків без запису
-переклади назви предметів, у ручний шар
-переклади весь патч до кінця
-```
-
-Ціль прогону він не вигадує й не питає: вона задана `BDO_ENV` у `.env`.
-Про середовище він скаже вам одним рядком на початку.
-
-**Що primary робить під капотом (внутрішні кроки, не основний користувацький workflow).** Знати це для роботи не потрібно · корисно,
-коли щось пішло не так. Той самий список друкує `./bdo help flow`:
-
-```bash
-./bdo runtime                                   # перед першою пачкою
-./bdo run start                                 # зафіксувати ціль прогону
-
-./bdo fetch 15 "patch=active&missing=machine"   # +&exclude_proposed=1 лише для пропозицій
-./bdo batch new rows.json                       # тека пачки; далі файли лише туди
-./bdo memory find rows.json                     # чи вже перекладено цей оригінал
-./bdo memory apply rows.json memory.json        # закрити такі рядки без моделі
-./bdo glossary gaps rows.json                   # ЗАВЖДИ; читати останній рядок ВИРОК
-./bdo payload terminology rows.json             # -> @translation-terminology, якщо є прогалини
-                                                # resolve уже зроблений скриптом
-./bdo schema build to-translate.json            # прибити формат відповіді
-./bdo payload worker to-translate.json          # -> @translation-worker
-./bdo memory expand candidate.json twins.json memory-candidate.json > full.json
-./bdo normalize full.json > clean.json          # гомогліфи, безкоштовно
-./bdo items rows.json clean.json items.json "" --require-all
-./bdo russianisms clean.json rows.json
-./bdo validate items.json
-
-./bdo schema qa rows.json
-./bdo payload qa rows.json clean.json           # -> @translation-qa
-./bdo heal rows.json candidate.json verdicts.json validate.json
-                                                # -> @translation-repair, ./bdo merge, контрольний QA
-                                                # -> @translation-repair, потім контрольний QA
-./bdo commit rows.json heal-merged.json verdicts.json --write
-./bdo schema clear && ./bdo batch end
-./bdo audit                                     # правда про сесії, не самозвіт
-```
-
-Максимум **шість субагентських сесій на пачку**: worker, QA, repair, контрольний
-QA і terminology за потреби. Більше · помилка процесу.
-
-Повний процес із причинами кожного кроку ·
-[WORKFLOW.md](WORKFLOW.md).
+Текст ще раз перевіряється ПЕРЕД записом · уже після ремонту й судді. Рядок,
+який відхилив API на цьому кроці, знімається із запису й іде до людини, а не
+втрачається.
 
 ## CLI-довідка для розробників і діагностики (не основний користувацький workflow)
 
