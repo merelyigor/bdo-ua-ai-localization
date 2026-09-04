@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Розділити кандидата на «механічно дефектні» й «чисті» ДО виклику QA.
 #
-#   ./mechanical-split.sh rows.json clean.json pre-verdicts.json qa-subset.json
+#   ./mechanical-split.sh rows.json clean.json pre-verdicts.json qa-subset.json [--memory memory-candidate.json]
 #
 # Навіщо. `Defects::inTranslation` рахувався лише в `cli/heal/heal-plan.sh`,
 # тобто ПІСЛЯ виклику QA. Рядок, який код уже вміє засудити (русизм, гомогліф,
@@ -18,6 +18,13 @@
 #
 # Порожній `qa-subset` є легальним результатом: тоді виклик QA не потрібен
 # зовсім, і рушій іде одразу в лікування.
+#
+# `--memory memory-candidate.json` · текст, який прийшов із ПАМʼЯТІ, а не від
+# моделі цієї пачки. Він уже проходив цей самий конвеєр і вже прийнятий, тому
+# чистий рядок із памʼяті отримує готовий `PASS/none` і до QA не їде. Заміряно
+# 2026-09-04 (D57): пачка перекладала 4 рядки, а QA дивилась 49 · 60% часу
+# прогону йшло на перевірку вже прийнятого тексту, і ремонтник переписував його.
+# Механічні перевірки памʼять проходить так само, як і машинний текст.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")/../.." && pwd)"
@@ -25,6 +32,14 @@ ROWS_FILE="${1:?Потрібен rows.json}"
 CAND_FILE="${2:?Потрібен clean.json}"
 PRE_FILE="${3:?Потрібен шлях для pre-verdicts.json}"
 SUBSET_FILE="${4:?Потрібен шлях для qa-subset.json}"
+MEMORY_FILE=""
+shift 4
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --memory) MEMORY_FILE="${2:?--memory потребує шлях до memory-candidate.json}"; shift 2 ;;
+        *) echo "Невідомий прапорець: $1" >&2; exit 1 ;;
+    esac
+done
 
 php -r '
 require $argv[5];
@@ -37,9 +52,11 @@ $rows = RowSet::fromFile($argv[1]);
 $candidate = Candidate::fromFile($argv[2]);
 $raw = json_decode((string) file_get_contents($argv[1]), true, 512, JSON_THROW_ON_ERROR);
 $all = $raw["data"]["rows"] ?? [];
+$memory = ($argv[6] !== "" && is_file($argv[6])) ? Candidate::fromFile($argv[6]) : null;
 
 $pre = [];
 $clean = [];
+$fromMemory = 0;
 foreach ($all as $row) {
     $hash = (string) ($row["identity_hash"] ?? "");
     $text = $candidate->text($hash);
@@ -51,6 +68,12 @@ foreach ($all as $row) {
     }
     $defects = Defects::inTranslation($rows->getOrEmpty($hash), (string) $text);
     if ($defects === []) {
+        // Той самий текст, що й у памʼяті · перевіряти його моделлю вдруге нема за що.
+        if ($memory !== null && $memory->has($hash) && $memory->text($hash) === (string) $text) {
+            $pre[] = ["identity_hash" => $hash, "status" => "PASS", "severity" => "none", "issue" => "", "fix" => ""];
+            $fromMemory++;
+            continue;
+        }
         $clean[] = $row;
         continue;
     }
@@ -71,10 +94,11 @@ file_put_contents($argv[3], json_encode($pre, JSON_UNESCAPED_UNICODE | JSON_THRO
 
 fprintf(
     STDERR,
-    "механіка до QA: дефектних %d, чистих %d із %d\n",
-    count($pre),
+    "механіка до QA: дефектних %d, з памʼяті без QA %d, до QA %d із %d\n",
+    count($pre) - $fromMemory,
+    $fromMemory,
     count($clean),
     count($all),
 );
 echo count($clean), "\n";
-' "$ROWS_FILE" "$CAND_FILE" "$PRE_FILE" "$SUBSET_FILE" "$SCRIPT_DIR/lib/autoload.php"
+' "$ROWS_FILE" "$CAND_FILE" "$PRE_FILE" "$SUBSET_FILE" "$SCRIPT_DIR/lib/autoload.php" "$MEMORY_FILE"

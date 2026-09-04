@@ -93,6 +93,34 @@ final class Row
     }
 
     /**
+     * Походження українського відповідника: `canonical_source` => `ukrainian_layer`.
+     *
+     * API віддає це поле і в `/rows?fields=glossary`, і в `/rows/context`
+     * (перевірено 2026-09-04 на PROD), а ми його досі викидали. Різниця
+     * вирішальна: у дампі `state/glossary-full.json` із 136 022 записів
+     * **131 391 має `ukrainian_layer: machine`** із `severity: mandatory`, і
+     * лише 89 · `manual/mandatory`. Тобто «затверджений відповідник», який наш
+     * промпт називає законом, у 96,6% випадків є машинною здогадкою такої самої
+     * моделі. Змушувати модель підставляти її дослівно означає закріплювати
+     * машинну назву як стандарт патча.
+     *
+     * @return array<string,string>
+     */
+    public function glossaryLayers(): array
+    {
+        $layers = [];
+        foreach ($this->data['glossary']['terms'] ?? [] as $term) {
+            $name = $term['canonical_source'] ?? $term['source'] ?? null;
+            $layer = $term['ukrainian_layer'] ?? null;
+            if (is_string($name) && $name !== '' && is_string($layer) && $layer !== '') {
+                $layers[$name] = $layer;
+            }
+        }
+
+        return $layers;
+    }
+
+    /**
      * Обовʼязкові терміни без затвердженого відповідника.
      *
      * @return list<string>

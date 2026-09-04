@@ -21,8 +21,15 @@
 # Прапорця `--requeue` тут навмисно немає. Він мав сенс, доки локальний реєстр
 # `state/run-seen.json` блокував повторне взяття рядка; реєстр прибрано
 # 2026-08-26, бо серверний фільтр `missing=` виявився точним. Повторне взяття
-# тепер не потребує жодної локальної дії: наступний `mode start` бере ці рядки
-# сам, бо сервер їх і далі віддає.
+# не потребує жодної локальної дії: наступний `mode start` бере ці рядки сам,
+# бо сервер їх і далі віддає.
+#
+# Зворотний бік цієї точності виміряно 2026-09-04: рядок, якому сервер відмовив
+# і в шарі, і в модерації (D56), повертався в КОЖНУ пачку · 597 записів тут на
+# 84 унікальні identity, один рядок пройшов конвеєр 21 раз (D58). Тому спроби
+# рахує `state/row-attempts.jsonl` (`Pipeline\RowAttempts`): після стелі
+# `BDO_ROW_MAX_ATTEMPTS` (типово 2) вибірка рядок не бере, і він чекає людину
+# тут. `--clear` обнуляє обидва файли · це і є «людина розібралась».
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")/../.." && pwd)"
@@ -46,12 +53,20 @@ fi
 
 if [ "$MODE" = clear ]; then
     : > "$QUARANTINE"
-    echo 'Карантин очищено. Рядки в шарах не змінені.'
+    # Разом із слідом обнуляється й журнал спроб: інакше рядок, який людина вже
+    # полагодила в адмінці, лишався б виключеним із вибірки назавжди.
+    php -r 'require $argv[1]; (new Bdo\Translate\Pipeline\RowAttempts($argv[2]))->clear();' \
+        "$SCRIPT_DIR/lib/autoload.php" "$STATE_DIR"
+    echo 'Карантин і журнал спроб очищено. Рядки в шарах не змінені; наступна пачка знову візьме ці рядки.'
     exit 0
 fi
 
 php -r '
+require $argv[4];
 [$file, $mode, $limit] = [$argv[1], $argv[2], (int) $argv[3]];
+$attempts = new Bdo\Translate\Pipeline\RowAttempts(dirname($file));
+$tries = $attempts->counts();
+$max = Bdo\Translate\Pipeline\RowAttempts::maxAttempts();
 $entries = [];
 foreach (file($file, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) as $line) {
     $row = json_decode($line, true);
@@ -66,7 +81,14 @@ foreach ($entries as $row) {
     $byChannel[(string) ($row["channel"] ?? "?")] = ($byChannel[(string) ($row["channel"] ?? "?")] ?? 0) + 1;
 }
 arsort($byReason);
-printf("Карантин: %d рядків\n\n", count($entries));
+$unique = [];
+foreach ($entries as $row) $unique[(string) ($row["identity_hash"] ?? "?")] = true;
+printf("Карантин: %d записів на %d унікальних рядків\n", count($entries), count($unique));
+$exhausted = $attempts->exhausted($max);
+if ($max > 0) {
+    printf("Вичерпали стелю спроб (%d): %d рядків · у наступні пачки не беруться, чекають людину\n", $max, count($exhausted));
+}
+echo "\n";
 echo "За причиною:\n";
 foreach ($byReason as $reason => $count) printf("  %-28s %d\n", $reason, $count);
 echo "\nЗа каналом:\n";
@@ -75,12 +97,13 @@ foreach ($byChannel as $channel => $count) printf("  %-28s %d\n", $channel, $cou
 if ($mode === "list") {
     echo "\nОстанні ", min($limit, count($entries)), ":\n";
     foreach (array_slice($entries, -$limit) as $row) {
-        printf("\n  %s  %s  %s\n", substr((string) ($row["identity_hash"] ?? ""), 0, 12),
-            (string) ($row["at"] ?? "?"), (string) ($row["reason"] ?? "?"));
+        printf("\n  %s  %s  %s  спроб: %d\n", substr((string) ($row["identity_hash"] ?? ""), 0, 12),
+            (string) ($row["at"] ?? "?"), (string) ($row["reason"] ?? "?"),
+            $tries[(string) ($row["identity_hash"] ?? "")] ?? 0);
         if (isset($row["source_text"])) printf("    EN: %s\n", mb_substr((string) $row["source_text"], 0, 90));
         if (isset($row["candidate"])) printf("    UA: %s\n", mb_substr((string) $row["candidate"], 0, 90));
     }
 }
-echo "\nЦі рядки сервер і далі віддає у вибірку · наступний `mode start` візьме їх сам.\n";
-echo "Очистити слід після розбору: ./bdo quarantine --clear\n";
-' "$QUARANTINE" "$MODE" "$LIMIT"
+echo "\nРядок береться в наступну пачку, доки не вичерпає стелю спроб (BDO_ROW_MAX_ATTEMPTS); далі його чекає людина.\n";
+echo "Очистити слід і журнал спроб після розбору: ./bdo quarantine --clear\n";
+' "$QUARANTINE" "$MODE" "$LIMIT" "$SCRIPT_DIR/lib/autoload.php"

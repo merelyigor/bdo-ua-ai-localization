@@ -26,7 +26,7 @@ H1="$(printf 1 | shasum -a 256 | awk '{print $1}')"
 H2="$(printf 2 | shasum -a 256 | awk '{print $1}')"
 php -r 'file_put_contents($argv[1], json_encode(["data" => ["rows" => [
     ["identity_hash" => $argv[2], "source_hash" => hash("sha256", "Move"), "source_text" => "Move",
-     "glossary" => ["terms" => [["canonical_source" => "Move", "ukrainian" => "Переміщення", "severity" => "mandatory"]]]],
+     "glossary" => ["terms" => [["canonical_source" => "Move", "ukrainian" => "Переміщення", "ukrainian_layer" => "manual", "severity" => "mandatory"]]]],
     ["identity_hash" => $argv[3], "source_hash" => hash("sha256", "Iron Sword"), "source_text" => "Iron Sword"],
 ]]], JSON_THROW_ON_ERROR));' "$STATE/rows.json" "$H1" "$H2"
 
@@ -45,6 +45,29 @@ payload="$(bash "$ROOT/cli/prepare/names-payload.sh" "$STATE/rows.json" "$STATE/
 test "$(jq 'length' <<<"$payload")" = 1 || fail "у payload мусив бути 1 рядок: $payload"
 jq -e --arg h "$H1" '.[0].identity_hash == $h and .[0].current == "Рух" and .[0].defects == ["ужий «Переміщення» для «Move»"]' <<<"$payload" >/dev/null \
     || fail "payload не несе єдиного наказу: $payload"
+
+# 2б. МЕЖА: наказ віддається лише для назви, затвердженої ЛЮДИНОЮ.
+#
+#     Перевірено на PROD 2026-09-04: 131 391 запис глосарія із 136 022 має
+#     `ukrainian_layer: machine` при `severity: mandatory`. Рядок `ad739b68…`
+#     («…spotted on the move») отримав mandatory-вимогу «Переміщення» для
+#     англійського `move` у прозі саме з машинної назви. Змусити модель
+#     підставити її дослівно означає закріпити машинну здогадку як стандарт.
+for layer in machine ''; do
+    php -r '$d=json_decode(file_get_contents($argv[1]),true);
+        $t=["canonical_source"=>"Move","ukrainian"=>"Переміщення","severity"=>"mandatory"];
+        if ($argv[2] !== "") $t["ukrainian_layer"]=$argv[2];
+        $d["data"]["rows"][0]["glossary"]["terms"]=[$t];
+        file_put_contents($argv[1],json_encode($d,JSON_THROW_ON_ERROR|JSON_UNESCAPED_UNICODE));' "$STATE/rows.json" "$layer"
+    out="$(bash "$ROOT/cli/prepare/names-payload.sh" "$STATE/rows.json" "$STATE/final-candidate.json" "$STATE/validate.json" 2>"$TMP/err")"
+    test "$(jq 'length' <<<"$out")" = 0         || fail "походження назви «${layer:-невідоме}» мусило пропустити наказ: $out"
+    grep -q 'пропущено 1' "$TMP/err" || fail "пропуск не названо вголос (${layer:-невідоме}): $(cat "$TMP/err")"
+done
+# Людська назва наказ дає · інакше межа перетворилась би на глухий вимикач.
+php -r '$d=json_decode(file_get_contents($argv[1]),true);
+    $d["data"]["rows"][0]["glossary"]["terms"]=[["canonical_source"=>"Move","ukrainian"=>"Переміщення","ukrainian_layer"=>"manual","severity"=>"mandatory"]];
+    file_put_contents($argv[1],json_encode($d,JSON_THROW_ON_ERROR|JSON_UNESCAPED_UNICODE));' "$STATE/rows.json"
+test "$(bash "$ROOT/cli/prepare/names-payload.sh" "$STATE/rows.json" "$STATE/final-candidate.json" "$STATE/validate.json" 2>/dev/null | jq 'length')" = 1     || fail 'людська назва не дала наказу'
 
 # 3. Рушій: із ready_to_commit пачка іде в names_pass до repair, і лише раз.
 cat > "$TMP/.env" <<ENV
@@ -98,5 +121,8 @@ grep -Fq 'names-pass.done' "$ROOT/cli/run/run-drive.sh" || fail 'немає ме
 # Репарувальник мусить знати, що означає наказ · це виміряний дефект промпта, а не смак.
 grep -Fq 'Дефект виду «ужий «X» для «Y»» означає' "$ROOT/roles/translation-repair.md" \
     || fail 'промпт repair не пояснює наказ «ужий»'
+# Межа стоїть у КОДІ, а не в промпті: промпт можна вмовити, перевірку · ні.
+grep -Fq 'glossaryLayers' "$ROOT/cli/prepare/names-payload.sh" \
+    || fail 'прохід по назвах не перевіряє походження назви'
 
 echo 'names pass: OK · один прохід по назвах перед записом, без повтору.'

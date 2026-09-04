@@ -199,26 +199,34 @@ file_put_contents($argv[6], $line . "\n", FILE_APPEND);
 php -r '
 require $argv[1];
 use Bdo\Translate\Api\Response;
+use Bdo\Translate\Pipeline\RowAttempts;
 $response = Response::fromFile($argv[2], "POST /translations");
 $items = json_decode((string) file_get_contents($argv[3]), true) ?: [];
 $stamp = date("c");
 $lost = 0;
 $fh = fopen($argv[4], "a");
+// Той самий факт · у журнал спроб: саме він не дає рядку крутитись по колу
+// (D58 · 21 прохід на одному identity), бо наступна вибірка його вже не візьме.
+$attempts = new RowAttempts($argv[7]);
 foreach ($response->results() as $r) {
     if (in_array($r["status"] ?? "", ["ok", "repaired", "unchanged", "skipped"], true)) continue;
     $index = $r["index"] ?? null;
+    $hash = (string) ($r["identity_hash"] ?? ($items[$index]["identity_hash"] ?? ""));
+    $reason = "api_" . ($r["code"] ?? "rejected");
     fwrite($fh, json_encode([
-        "identity_hash" => $r["identity_hash"] ?? ($items[$index]["identity_hash"] ?? null),
-        "reason" => "api_" . ($r["code"] ?? "rejected"),
+        "identity_hash" => $hash,
+        "reason" => $reason,
         "detail" => mb_substr((string) ($r["message"] ?? ""), 0, 200),
         "candidate" => $items[$index]["text"] ?? null,
         "at" => $stamp, "env" => $argv[5], "channel" => $argv[6],
     ], JSON_UNESCAPED_UNICODE) . "\n");
+    $attempts->record($hash, $reason, $argv[8], $argv[6]);
     $lost++;
 }
 fclose($fh);
 if ($lost > 0) printf("У КАРАНТИН: %d рядків, які API відхилив.\n", $lost);
-' "$SCRIPT_DIR/lib/autoload.php" "$OUT" "$INPUT" "${BDO_STATE_DIR:-$SCRIPT_DIR/state}/quarantine.jsonl" "$BDO_API_ENV" "$CHANNEL"
+' "$SCRIPT_DIR/lib/autoload.php" "$OUT" "$INPUT" "${BDO_STATE_DIR:-$SCRIPT_DIR/state}/quarantine.jsonl" "$BDO_API_ENV" "$CHANNEL" \
+  "${BDO_STATE_DIR:-$SCRIPT_DIR/state}" "$(basename "$("$SCRIPT_DIR/cli/batch/batch-dir.sh" 2>/dev/null || echo -)")"
 
 echo ""
 echo "Деталі: $OUT"

@@ -276,6 +276,16 @@ completion() {
     $goal=is_file($goalFile)?json_decode((string)file_get_contents($goalFile),true):null;
     if(is_array($goal)&&($goal["query"]??"")!==""&&$argv[6]!==""){
         $remaining=(int)$argv[6];
+        // Рядки з вичерпаними спробами сервер і далі рахує як «лишилось», а
+        // вибірка їх уже не бере (D58). Без віднімання прогін ганявся б за
+        // нулем, якого не досягти. Список веде `fetch-rows.sh` під запитом цілі.
+        $excludedFile=dirname($argv[4])."/run-excluded.json";
+        $excluded=is_file($excludedFile)?(json_decode((string)file_get_contents($excludedFile),true)?:[]):[];
+        $waiting=(($excluded["query"]??null)===($goal["query"]??""))?count($excluded["identities"]??[]):0;
+        if($waiting>0){
+            $remaining=max(0,$remaining-$waiting);
+            $out["waiting_human"]=$waiting;
+        }
         if($remaining>0){
             $out["kind"]="continue_run";
             $out["remaining"]=$remaining;
@@ -300,7 +310,9 @@ completion() {
         }else{
             $out["kind"]="goal_complete";
             $out["goal"]=["mode"=>$goal["mode"]??"","patch"=>$goal["patch"]??"","domain"=>$goal["domain"]??""];
-            $out["hint"]="Ціль досягнута: рядків за цим фільтром більше немає. Доповідай власнику підсумок прогону.";
+            $out["hint"]=$waiting>0
+                ? sprintf("Ціль досягнута для машини: лишилось лише %d рядків із вичерпаними спробами · вони чекають людину (./bdo quarantine).",$waiting)
+                : "Ціль досягнута: рядків за цим фільтром більше немає. Доповідай власнику підсумок прогону.";
         }
     }
     echo json_encode($out,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES);
@@ -453,10 +465,15 @@ candidate_to_qa() {
 # Дефектні рядки отримують готовий вердикт `REJECT/critical` і йдуть у лікування
 # тим самим шляхом, що й думка QA. Усі рядки дефектні · виклику QA не буде
 # взагалі: платити повним проходом за вирок, який уже винесено, немає за що.
+#
+# QA дивиться лише текст, який написала МОДЕЛЬ у цій пачці. Рядки, закриті
+# памʼяттю, вже проходили цей конвеєр і вже прийняті: чистий такий рядок
+# отримує PASS від коду (D57 · 49 рядків у QA при 4 перекладених).
 dispatch_qa() {
-    local clean_rows
+    local clean_rows split_args=()
+    test -s "$B/memory-candidate.json" && split_args=(--memory "$B/memory-candidate.json")
     "$SCRIPT_DIR/cli/quality/mechanical-split.sh" "$B/rows.json" "$B/clean.json" \
-        "$B/pre-verdicts.json" "$B/qa-subset.json" > "$B/mechanical-split.txt" 2>&1 || {
+        "$B/pre-verdicts.json" "$B/qa-subset.json" "${split_args[@]}" > "$B/mechanical-split.txt" 2>&1 || {
         # Розділювач не є ворітьми: його збій не має зупиняти пачку, лише
         # повертає стару поведінку · QA дивиться всі рядки.
         cp "$B/rows.json" "$B/qa-subset.json"; echo '[]' > "$B/pre-verdicts.json"
@@ -465,7 +482,12 @@ dispatch_qa() {
     if [ "${clean_rows:-0}" -eq 0 ]; then
         cp "$B/pre-verdicts.json" "$B/verdicts.json"
         transition awaiting_qa
-        emit 1 awaiting_qa '{"kind":"continue","reason":"mechanical_only"}'
+        # Причина називає, ЩО саме зняло QA: суцільний дефект або суцільна памʼять.
+        if grep -q '"status":"REJECT"' "$B/pre-verdicts.json"; then
+            emit 1 awaiting_qa '{"kind":"continue","reason":"mechanical_only"}'
+        else
+            emit 1 awaiting_qa '{"kind":"continue","reason":"memory_only"}'
+        fi
         return 0
     fi
     "$SCRIPT_DIR/cli/prepare/build-schema.sh" --qa "$B/qa-subset.json" >/dev/null
@@ -803,6 +825,30 @@ ready_to_commit|committing)
         final_validate="$("$SCRIPT_DIR/cli/api/validate.sh" "$B/final-items.json" 2>&1 || true)"
         final_validate="$(printf '%s\n' "$final_validate" | grep -oE '/[^ ]*/output/validate_[0-9_]+\.json' | tail -1 || true)"
     fi
+    # Заглушка для офлайн-тесту: файл відповіді validate можна підкласти.
+    test -n "${BDO_FINAL_VALIDATE_STUB:-}" && test -f "$BDO_FINAL_VALIDATE_STUB" && final_validate="$BDO_FINAL_VALIDATE_STUB"
+    # ПРОХІД ПО НАЗВАХ · один раз на пачку, лише з `ready_to_commit`.
+    #
+    # Відмова `glossary_violation` тут несе точний `expected`. Досі такий рядок
+    # ішов у модерацію, де сервер відмовляв тим самим правилом (D56), і рядок
+    # повертався в наступну пачку (D58). Дешевше дати repair один короткий
+    # прохід із єдиним наказом «ужий «X» для «Y»»: на синтетичній пробі модель
+    # виконала його 15 разів із 15, коли наказ не тонув у прозі QA.
+    if [ "$state" = ready_to_commit ] && [ -n "$final_validate" ] && [ ! -f "$B/names-pass.done" ] \
+       && [ "${BDO_NAMES_PASS:-on}" = on ]; then
+        "$SCRIPT_DIR/cli/prepare/names-payload.sh" "$B/rows.json" "$B/final-candidate.json" "$final_validate" \
+            > "$B/names-payload.json" 2>/dev/null || echo '[]' > "$B/names-payload.json"
+        names="$(php -r '$a=json_decode((string)file_get_contents($argv[1]),true);echo is_array($a)?count($a):0;' "$B/names-payload.json")"
+        if [ "${names:-0}" -gt 0 ]; then
+            hashes="$(php -r 'echo implode(",", array_column(json_decode((string)file_get_contents($argv[1]),true), "identity_hash"));' "$B/names-payload.json")"
+            "$SCRIPT_DIR/cli/batch/subset-rows.sh" "$B/rows.json" "$hashes" "$B/names-subset.json" >/dev/null
+            "$SCRIPT_DIR/cli/prepare/build-schema.sh" "$B/names-subset.json" >/dev/null
+            : > "$B/names-pass.done"
+            transition names_pass
+            child names_pass translation-repair "$B/names-payload.json" "$B/names-fixes.json"
+            exit 0
+        fi
+    fi
     key="$(php -r 'require $argv[1];$x=json_decode(file_get_contents($argv[5]),true,512,JSON_THROW_ON_ERROR);echo Bdo\Translate\Api\IdempotencyKey::forBatch($argv[2],$argv[3],$argv[4],$x);' "$SCRIPT_DIR/lib/autoload.php" "$BDO_ENV" "$(field channel)" "$(basename "$B")" "$B/final-items.json")"
     test "$state" = committing || transition committing
     judge_args=(); test -s "$B/judge-verdicts.json" && judge_args=(--judge "$B/judge-verdicts.json")
@@ -814,6 +860,31 @@ ready_to_commit|committing)
         envelope="$(completion)"; prune_verified_batch; auto_clean
         emit 1 verified "$envelope"
     else emit 0 committing '{"kind":"retry","reason":"api_write_failed"}'; exit 1; fi
+    ;;
+names_pass)
+    if [ ! -s "$B/names-fixes.json" ]; then
+        # Прохід по назвах не є ворітьми: вичерпані спроби повертають пачку до
+        # запису як є · рядок тоді піде звичайним шляхом до людини.
+        if retry_exceeded names_pass; then
+            transition ready_to_commit; emit 1 ready_to_commit '{"kind":"continue","reason":"names_pass_retry_exhausted"}'; exit 0
+        fi
+        "$SCRIPT_DIR/cli/prepare/build-schema.sh" "$B/names-subset.json" >/dev/null
+        child names_pass translation-repair "$B/names-payload.json" "$B/names-fixes.json"; exit 0
+    fi
+    if ! "$SCRIPT_DIR/cli/quality/merge-items.sh" "$B/final-candidate.json" "$B/names-fixes.json" "$B/final-candidate.named.json" >/dev/null 2>&1; then
+        mv "$B/names-fixes.json" "$B/names-fixes.invalid.$(date +%s).json"
+        if retry_exceeded names_pass; then
+            transition ready_to_commit; emit 1 ready_to_commit '{"kind":"continue","reason":"names_pass_answer_invalid"}'; exit 0
+        fi
+        "$SCRIPT_DIR/cli/prepare/build-schema.sh" "$B/names-subset.json" >/dev/null
+        child names_pass translation-repair "$B/names-payload.json" "$B/names-fixes.json"; exit 0
+    fi
+    # Виправлені назви стають фінальним текстом; далі та сама фінальна
+    # валідація й механіка на кожен рядок · рядок, який і тепер не пройде, іде
+    # до людини звичайним шляхом і рахується в журналі спроб.
+    mv "$B/final-candidate.named.json" "$B/final-candidate.json"
+    complete names "$B/final-candidate.json"
+    transition ready_to_commit; emit 1 ready_to_commit '{"kind":"continue","reason":"names_fixed"}'
     ;;
 verified)
     envelope="$(completion)"; prune_verified_batch; auto_clean

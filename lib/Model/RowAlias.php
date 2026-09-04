@@ -72,6 +72,20 @@ final class RowAlias
     }
 
     /**
+     * Чи відповідь ролі взагалі несе `identity_hash`.
+     *
+     * Підміна має сенс лише тоді, коли модель мусить ПОВЕРНУТИ хеш. Роль, чия
+     * схема хеша не має (термінологія, smoke), бачить payload як є: інакше вона
+     * могла б скопіювати короткий ключ у поле, де конвеєр чекає на щось інше.
+     *
+     * @param  array<string,mixed>  $schema
+     */
+    public static function schemaUsesHash(array $schema): bool
+    {
+        return isset($schema['properties']['items']['items']['properties'][self::HASH_KEY]);
+    }
+
+    /**
      * Payload для моделі: замість `identity_hash` · `id`.
      *
      * Порядок і решта полів не чіпаються, `id` стає ПЕРШИМ полем елемента ·

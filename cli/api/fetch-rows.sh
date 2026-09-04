@@ -56,29 +56,56 @@ esac
 echo "Завантажую $BATCH рядків..."
 TMP_DIR="$(mktemp -d "${TMPDIR:-/tmp}/bdo-fetch.XXXXXX")"
 trap 'rm -rf "$TMP_DIR"' EXIT
+# Рядки з вичерпаними спробами у вибірку не беруться (D58: один identity пройшов
+# конвеєр 21 раз, бо сервер віддавав його в кожну пачку). Виключене
+# записується в `state/run-excluded.json` під запитом цієї цілі: `run drive`
+# віднімає його від «лишилось рядків», інакше прогін ніколи не дійде до
+# `goal_complete`. Інший запит обнуляє список · це вже інша ціль.
+STATE_DIR="${BDO_STATE_DIR:-$SCRIPT_DIR/state}"
+EXCLUDED_FILE="$STATE_DIR/run-excluded.json"
+php -r '
+$file=$argv[1]; $query=$argv[2];
+$x=is_file($file)?(json_decode((string)file_get_contents($file),true)?:[]):[];
+if(($x["query"]??null)!==$query){ file_put_contents($file,json_encode(["query"=>$query,"identities"=>[]],JSON_UNESCAPED_SLASHES)); }
+' "$EXCLUDED_FILE" "$EXTRA"
+# Сторінок більше за потрібне: виключені рядки займають місця на початку
+# вибірки, і без добору пачка з 50 могла б стати пачкою з нуля.
+max_pages="${BDO_FETCH_MAX_PAGES:-10}"
 cursor=""
 remaining="$BATCH"
 page=0
-while (( remaining > 0 )); do
+while (( remaining > 0 && page < max_pages )); do
     page_limit=$(( remaining > 50 ? 50 : remaining ))
     page_url="${URL/limit=50/limit=$page_limit}"
     [ -n "$cursor" ] && page_url="${page_url}&cursor=${cursor}"
     page_file="$TMP_DIR/page_${page}.json"
     "$SCRIPT_DIR/cli/api/http-request.sh" -fsS -H "X-API-Key: $KEY" "$page_url" > "$page_file"
     php -r '
+        require $argv[3];
+        use Bdo\Translate\Pipeline\RowAttempts;
         $target = $argv[1];
         $page = json_decode((string) file_get_contents($argv[2]), true, 512, JSON_THROW_ON_ERROR);
         $aggregate = is_file($target) ? json_decode((string) file_get_contents($target), true, 512, JSON_THROW_ON_ERROR) : ["data" => ["rows" => []], "meta" => []];
-        $aggregate["data"]["rows"] = array_merge($aggregate["data"]["rows"] ?? [], $page["data"]["rows"] ?? []);
+        $filtered = (new RowAttempts($argv[4]))->filterRows($page["data"]["rows"] ?? [], RowAttempts::maxAttempts());
+        $aggregate["data"]["rows"] = array_merge($aggregate["data"]["rows"] ?? [], $filtered["kept"]);
         if (isset($page["meta"])) $aggregate["meta"] = $page["meta"];
         file_put_contents($target, json_encode($aggregate, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR));
-        echo json_encode(["count" => count($page["data"]["rows"] ?? []), "has_more" => (bool) ($page["meta"]["has_more"] ?? false), "next_cursor" => $page["meta"]["next_cursor"] ?? null], JSON_UNESCAPED_UNICODE), "\n";
-    ' "$OUT" "$page_file" > "$TMP_DIR/page_${page}.meta"
+        if ($filtered["dropped"] !== []) {
+            $x = json_decode((string) file_get_contents($argv[5]), true) ?: ["identities" => []];
+            $x["identities"] = array_values(array_unique(array_merge($x["identities"] ?? [], $filtered["dropped"])));
+            file_put_contents($argv[5], json_encode($x, JSON_UNESCAPED_SLASHES));
+            fwrite(STDERR, sprintf("Пропущено %d рядків із вичерпаними спробами (BDO_ROW_MAX_ATTEMPTS); вони чекають людину: ./bdo quarantine\n", count($filtered["dropped"])));
+        }
+        // `count` · лише ЗАЛИШЕНІ рядки: інакше виключені займали б місце в пачці.
+        echo json_encode(["count" => count($filtered["kept"]), "page_rows" => count($page["data"]["rows"] ?? []), "has_more" => (bool) ($page["meta"]["has_more"] ?? false), "next_cursor" => $page["meta"]["next_cursor"] ?? null], JSON_UNESCAPED_UNICODE), "\n";
+    ' "$OUT" "$page_file" "$SCRIPT_DIR/lib/autoload.php" "$STATE_DIR" "$EXCLUDED_FILE" > "$TMP_DIR/page_${page}.meta"
     got="$(php -r '$x=json_decode((string)file_get_contents($argv[1]),true); echo (int)($x["count"]??0);' "$TMP_DIR/page_${page}.meta")"
+    page_rows="$(php -r '$x=json_decode((string)file_get_contents($argv[1]),true); echo (int)($x["page_rows"]??0);' "$TMP_DIR/page_${page}.meta")"
     has_more="$(php -r '$x=json_decode((string)file_get_contents($argv[1]),true); echo !empty($x["has_more"]) ? "1" : "0";' "$TMP_DIR/page_${page}.meta")"
     cursor="$(php -r '$x=json_decode((string)file_get_contents($argv[1]),true); echo $x["next_cursor"] ?? "";' "$TMP_DIR/page_${page}.meta")"
     remaining=$(( remaining - got ))
-    (( got == 0 || has_more == 0 || remaining <= 0 )) && break
+    # Порожня СТОРІНКА зупиняє добір; сторінка, з якої все виключено, · ні.
+    (( page_rows == 0 || has_more == 0 || remaining <= 0 )) && break
     [[ -z "$cursor" ]] && break
     page=$(( page + 1 ))
 done

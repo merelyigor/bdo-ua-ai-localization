@@ -24,11 +24,15 @@ final class StateMachine
         'healing' => ['awaiting_control_qa', 'awaiting_judge', 'ready_to_commit', 'retry_scheduled', 'waiting_dependency', 'failed_terminal'],
         'awaiting_control_qa' => ['awaiting_judge', 'ready_to_commit', 'retry_scheduled', 'waiting_dependency', 'failed_terminal'],
         'awaiting_judge' => ['ready_to_commit', 'retry_scheduled', 'waiting_dependency', 'paused', 'failed_terminal'],
-        'ready_to_commit' => ['committing', 'waiting_dependency', 'failed_terminal'],
+        // `names_pass` додано 2026-09-04: фінальна валідація перед записом
+        // відхилила рядок кодом `glossary_violation` з точним `expected` · один
+        // короткий прохід repair саме по назвах, і назад у `ready_to_commit`.
+        'ready_to_commit' => ['names_pass', 'committing', 'waiting_dependency', 'failed_terminal'],
+        'names_pass' => ['ready_to_commit', 'retry_scheduled', 'waiting_dependency', 'failed_terminal'],
         'committing' => ['committed', 'waiting_dependency', 'failed_terminal'],
         'committed' => ['verified', 'waiting_dependency', 'failed_terminal'],
         'waiting_dependency' => ['retry_scheduled', 'paused', 'failed_terminal'],
-        'retry_scheduled' => ['awaiting_terminology', 'awaiting_worker', 'awaiting_qa', 'healing', 'awaiting_control_qa', 'awaiting_judge', 'ready_to_commit', 'waiting_dependency', 'failed_terminal'],
+        'retry_scheduled' => ['awaiting_terminology', 'awaiting_worker', 'awaiting_qa', 'healing', 'awaiting_control_qa', 'awaiting_judge', 'names_pass', 'ready_to_commit', 'waiting_dependency', 'failed_terminal'],
         'paused' => ['retry_scheduled', 'failed_terminal'],
         'verified' => [],
         'failed_terminal' => [],

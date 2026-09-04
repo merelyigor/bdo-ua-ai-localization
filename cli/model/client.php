@@ -111,6 +111,29 @@ if ($schemaPath !== null) {
 
 $payload = (string) file_get_contents($payloadPath);
 $prompt = (string) file_get_contents($promptPath);
+
+// Короткі ключі замість identity_hash · лише на межі виклику моделі.
+//
+// Хеш на 64 символи модель мусить прочитати й відтворити посимвольно на кожному
+// рядку: на QA з 49 рядків це ~2 000 із 6 447 токенів виходу, тобто третина
+// відповіді · копіювання, а не робота. Тут хеш стає `r1`, `r2`, …, схема
+// отримує enum цих ключів, а після відповіді хеші повертаються назад · решта
+// конвеєра підміни не бачить. `BDO_ROW_ALIAS=0` вимикає для порівняння.
+require_once $root.'/lib/autoload.php';
+$alias = null;
+// Лише для ролей, чия ВІДПОВІДЬ несе identity_hash (воркер, QA, ремонт, суддя):
+// термінологія й smoke бачать payload як є.
+if (getenv('BDO_ROW_ALIAS') !== '0' && $schema !== null && \Bdo\Translate\Model\RowAlias::schemaUsesHash($schema)) {
+    $payloadData = json_decode($payload, true);
+    if (is_array($payloadData)) {
+        $candidate = \Bdo\Translate\Model\RowAlias::fromPayload($payloadData);
+        if (! $candidate->isEmpty()) {
+            $alias = $candidate;
+            $payload = json_encode($alias->aliasPayload($payloadData), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR);
+            $schema = $alias->aliasSchema($schema);
+        }
+    }
+}
 $started = microtime(true);
 $callsFile = $stateDir.'/model-calls.jsonl';
 $stats = ['in' => null, 'out' => null];
@@ -221,6 +244,15 @@ if (! is_array($decoded)) {
 // перевіряє тест: один шлях для роботи й перевірки.
 require_once __DIR__.'/unwrap.php';
 $items = bdo_unwrap_child_json($decoded);
+if ($alias !== null) {
+    try {
+        $items = $alias->restore($items);
+    } catch (\RuntimeException $e) {
+        // Чужий ключ · відмова, а не здогад: підставити «найближчий» хеш означало
+        // б приписати переклад іншому рядку.
+        $fail('unknown_id', $e->getMessage());
+    }
+}
 
 $responseDir = dirname($responsePath);
 if (! is_dir($responseDir) && ! mkdir($responseDir, 0777, true) && ! is_dir($responseDir)) {

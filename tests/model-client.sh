@@ -22,6 +22,10 @@ trap cleanup EXIT
 cat > "$WORK/router.php" <<'PHP'
 <?php
 $mode = trim((string) @file_get_contents(getenv("SCENARIO_FILE")));
+if (str_contains($_SERVER["REQUEST_URI"], "/api/chat")) {
+    // Тіло запиту лишається на диску: тест дивиться, що саме побачила модель.
+    @file_put_contents(getenv("SCENARIO_FILE").".request", (string) file_get_contents("php://input"));
+}
 if (str_contains($_SERVER["REQUEST_URI"], "/api/ps")) {
     $window = $mode === "overflow" ? 1000 : 131072;
     header("Content-Type: application/json");
@@ -44,6 +48,10 @@ $answers = [
     "error" => ["error" => "model requires more system memory"],
     "overflow" => ["done_reason" => "stop", "prompt_eval_count" => 980, "eval_count" => 5,
              "message" => ["content" => '{"items":[{"identity_hash":"aa","text":"Меч"}]}']],
+    "alias" => ["done_reason" => "stop", "prompt_eval_count" => 10, "eval_count" => 5,
+             "message" => ["content" => '{"items":[{"id":"r2","text":"Щит"},{"id":"r1","text":"Меч"}]}']],
+    "alias_unknown" => ["done_reason" => "stop", "prompt_eval_count" => 10, "eval_count" => 5,
+             "message" => ["content" => '{"items":[{"id":"r9","text":"Меч"}]}']],
 ];
 header("Content-Type: application/json");
 echo json_encode($answers[$mode] ?? $answers["ok"], JSON_UNESCAPED_UNICODE);
@@ -127,4 +135,45 @@ set -e
 test "$CODE" = 1 || fail "мертвий endpoint дав код $CODE"
 printf '%s' "$STDERR" | grep -q 'model_unreachable' || fail "мертвий endpoint без причини: $STDERR"
 
-echo "OK: клієнт моделі падає з причиною на кожному шляху відмови."
+# 11. Хеші не виходять за межу клієнта: модель бачить `r1`, `r2`, а конвеєр ·
+#     повні identity_hash. Заміряно 2026-09-04: на QA з 49 рядків ~2 000 із
+#     6 447 токенів виходу були копіюванням 64-символьних хешів.
+H1="$(printf '%064d' 1)"; H2="$(printf '%064d' 2)"
+printf '{"terms":[],"items":[{"identity_hash":"%s","source_text":"Sword"},{"identity_hash":"%s","source_text":"Shield"}]}' "$H1" "$H2" > "$WORK/payload.json"
+php -r 'file_put_contents($argv[1], json_encode(["type"=>"object","properties"=>["items"=>["type"=>"array","items"=>[
+    "type"=>"object","properties"=>["identity_hash"=>["type"=>"string","enum"=>[$argv[2],$argv[3]]],"text"=>["type"=>"string"]],
+    "required"=>["identity_hash","text"],"additionalProperties"=>false]]],"required"=>["items"],"additionalProperties"=>false]));' \
+    "$WORK/schema.json" "$H1" "$H2"
+run alias
+test "$CODE" = 0 || fail "виклик з аліасами впав: $STDERR"
+request="$(cat "$SCENARIO_FILE.request")"
+printf '%s' "$request" | grep -q "$H1" && fail 'модель побачила повний identity_hash у payload'
+printf '%s' "$request" | grep -q '\\"id\\":\\"r1\\"' || fail "у payload для моделі немає короткого ключа r1: $request"
+printf '%s' "$request" | grep -q '"enum":\["r1","r2"\]' || fail "схема для моделі не обмежує id переліком r1,r2: $request"
+printf '%s' "$request" | grep -q '"required":\["id","text"\]' || fail "схема для моделі вимагає не id, а щось інше: $request"
+php -r '$a=json_decode(file_get_contents($argv[1]),true);
+    if (($a[0]["identity_hash"]??"")!==$argv[3] || ($a[0]["text"]??"")!=="Щит") { fwrite(STDERR, json_encode($a)); exit(1); }
+    if (($a[1]["identity_hash"]??"")!==$argv[2] || isset($a[1]["id"])) { fwrite(STDERR, json_encode($a)); exit(1); }' \
+    "$WORK/response.json" "$H1" "$H2" || fail 'відповідь не повернула повні identity_hash у порядку відповіді моделі'
+
+# 12. Чужий короткий ключ · відмова з причиною, а не здогад про «найближчий» хеш.
+run alias_unknown
+test "$CODE" = 1 || fail "чужий id мусив дати відмову, а дав код $CODE"
+printf '%s' "$STDERR" | grep -q '^unknown_id' || fail "чужий id без причини unknown_id: $STDERR"
+test ! -e "$WORK/response.json" || fail 'чужий id створив файл відповіді'
+
+# 12б. Роль, чия відповідь хеша не несе (термінологія, smoke), бачить payload як є:
+#      інакше модель скопіювала б `r1` у поле, де конвеєр чекає на інше.
+printf '{"type":"object","properties":{"items":{"type":"array","items":{"type":"object","properties":{"canonical_source":{"type":"string"}},"required":["canonical_source"],"additionalProperties":false}}},"required":["items"],"additionalProperties":false}' > "$WORK/schema-terms.json"
+printf '%s' ok > "$SCENARIO_FILE"; rm -f "$WORK/response.json"
+BDO_ROLES_CONFIG="$WORK/roles.json" BDO_STATE_DIR="$WORK/state" \
+    php "$ROOT/cli/model/client.php" translation-worker "$WORK/payload.json" "$WORK/response.json" --schema "$WORK/schema-terms.json" >/dev/null 2>&1 || true
+grep -q "$H1" "$SCENARIO_FILE.request" || fail 'схема без identity_hash усе одно дістала аліаси в payload'
+
+# 13. Вимикач для порівняння: BDO_ROW_ALIAS=0 повертає хеші моделі як є.
+printf '%s' ok > "$SCENARIO_FILE"; rm -f "$WORK/response.json"
+BDO_ROW_ALIAS=0 BDO_ROLES_CONFIG="$WORK/roles.json" BDO_STATE_DIR="$WORK/state" \
+    php "$ROOT/cli/model/client.php" translation-worker "$WORK/payload.json" "$WORK/response.json" --schema "$WORK/schema.json" >/dev/null 2>&1 || true
+grep -q "$H1" "$SCENARIO_FILE.request" || fail 'BDO_ROW_ALIAS=0 не вимкнув аліаси'
+
+echo "OK: клієнт моделі падає з причиною на кожному шляху відмови й ховає хеші за короткими ключами."

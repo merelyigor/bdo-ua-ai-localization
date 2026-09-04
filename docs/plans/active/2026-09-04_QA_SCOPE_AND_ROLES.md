@@ -81,7 +81,9 @@ auto_approve=false, items 12, written 8, rejected 4`, код `glossary_violation
 | A | зроблено | `cli/quality/mechanical-split.sh --memory`, `dispatch_qa`; регресія `tests/qa-scope.sh` (50 рядків, 45 у памʼяті → QA бачить 5) |
 | B | зроблено | `lib/Pipeline/RowAttempts.php`, запис у `write-translations.sh` і `batch-commit.sh`, фільтр у `fetch-rows.sh`, віднімання в `completion`; регресія `tests/row-attempts.sh` |
 | C | зроблено | стан `names_pass`, `cli/prepare/names-payload.sh`, обробник у `run-drive.sh`, промпт repair пояснює наказ «ужий»; регресія `tests/names-pass.sh` |
-| D | чекає сервера | промпт для серверного агента видано власнику 2026-09-04 (D56) |
+| D | чекає сервера | промпт видано 2026-09-04; серверний агент показав, що корінь глибше · `mandatory` стоїть на МАШИННИХ назвах (`firstFilled(target_phrase, machine_target_phrase)`), тому спершу пункт E |
+| E | чекає сервера | знеструмити машинні очікування: машинна назва не може давати `mandatory`-відмову. Наша перевірка: 131 391 запис із 136 022 у `state/glossary-full.json` має `ukrainian_layer: machine` + `mandatory`, `manual/mandatory` · 89 |
+| F | зроблено | межа на нашому боці, поки сервер не змінено: наказ «ужий «X»» віддається лише для назви, затвердженої людиною (`Row::glossaryLayers()`, `tests/names-pass.sh` п. 2б, D60) |
 | + | зроблено | короткі ключі `r1…rN` замість `identity_hash` на межі моделі · `lib/Model/RowAlias.php`, `tests/model-client.sh` п. 11-13 (D59) |
 
 Definition of Done лишається відкритим до живого прогону: частка часу QA і

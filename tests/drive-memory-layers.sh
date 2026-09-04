@@ -84,8 +84,12 @@ jq -e '.next.kind == "continue" and .state == "awaiting_worker"' "$TMP_PATCH/sta
 test "$(count_ready "$BATCH/candidate.json")" = 1 \
     || { echo 'FAIL: memory-candidate не став кандидатом без worker'; exit 1; }
 BDO_PIPELINE_OFFLINE=1 BDO_STATE_DIR="$TMP_PATCH/state" bash "$ROOT/cli/run/run-drive.sh" > "$TMP_PATCH/state/drive-next.json"
-jq -e '.next.kind == "child" and .next.role == "translation-qa"' "$TMP_PATCH/state/drive-next.json" >/dev/null \
-    || { echo 'FAIL: закрита памʼяттю пачка не перейшла до QA'; exit 1; }
+# Текст із памʼяті вже проходив цей конвеєр і вже прийнятий: QA його не дивиться
+# (D57 · 49 рядків у QA при 4 перекладених). Чистий рядок отримує PASS від коду.
+jq -e '.next.kind == "continue" and .next.reason == "memory_only"' "$TMP_PATCH/state/drive-next.json" >/dev/null \
+    || { echo "FAIL: закрита памʼяттю пачка мусила пройти QA без виклику моделі: $(cat "$TMP_PATCH/state/drive-next.json")"; exit 1; }
+jq -e --arg h "$HASH" '.[0].identity_hash == $h and .[0].status == "PASS"' "$BATCH/verdicts.json" >/dev/null \
+    || { echo 'FAIL: рядок із памʼяті не отримав PASS від коду'; exit 1; }
 
 # Source-equal machine memory не є перекладом: рядок обовʼязково йде worker.
 BATCH="$(make_batch "$TMP_SOURCE/state" patch all source-machine)"

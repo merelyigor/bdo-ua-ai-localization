@@ -299,7 +299,12 @@ if ($judgeLog !== []) {
 
 $stamp = date("c");
 $fh = fopen($quarantine, "a");
-foreach ($held as $h) fwrite($fh, json_encode($h + ["at" => $stamp, "env" => $env], JSON_UNESCAPED_UNICODE) . "\n");
+$attempts = new Bdo\Translate\Pipeline\RowAttempts(dirname($quarantine));
+foreach ($held as $h) {
+    fwrite($fh, json_encode($h + ["at" => $stamp, "env" => $env], JSON_UNESCAPED_UNICODE) . "\n");
+    // Блокування запису (no_run/env/quota) · не провина рядка, спробою не рахується.
+    if ($blocked === null) $attempts->record((string) ($h["identity_hash"] ?? ""), (string) ($h["reason"] ?? "held"), $argv[17], $argv[13]);
+}
 fclose($fh);
 file_put_contents($passOut, json_encode($pass, JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR));
 file_put_contents($argv[11], json_encode($moderation, JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR));

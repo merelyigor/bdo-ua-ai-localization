@@ -35,6 +35,7 @@ final class Labels
         'healing' => 'виправляє дефекти',
         'awaiting_control_qa' => 'чекає на контрольну перевірку',
         'awaiting_judge' => 'чекає на суддю',
+        'names_pass' => 'виправляє назви',
         'ready_to_commit' => 'готова до запису',
         'committing' => 'записує',
         'committed' => 'записано',

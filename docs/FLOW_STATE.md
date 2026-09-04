@@ -32,8 +32,26 @@
 selected → awaiting_terminology → prepared → awaiting_worker
         → candidate_valid → deterministic_valid → awaiting_qa
         → qa_valid → healing → awaiting_judge → ready_to_commit
-        → committing → committed → verified
+        → (names_pass → ready_to_commit) → committing → committed → verified
 ```
+
+`names_pass` · необовʼязковий крок: фінальна валідація відхилила рядок кодом
+`glossary_violation` з точним `expected`, і repair дістає один короткий прохід
+із єдиним наказом «ужий «X» для «Y»». Один раз на пачку (`names-pass.done`),
+вимикач `BDO_NAMES_PASS=off`.
+
+Три межі, які тримає код, а не промпт (2026-09-04):
+
+- **QA дивиться лише текст моделі.** Рядки, закриті памʼяттю, отримують `PASS`
+  від `cli/quality/mechanical-split.sh --memory` після механічних перевірок
+  (D57: пачка перекладала 4 рядки, а QA дивилась 49).
+- **Рядок має стелю спроб.** `state/row-attempts.jsonl` рахує відмови по
+  identity; після `BDO_ROW_MAX_ATTEMPTS` (типово 2) `fetch-rows.sh` рядок не
+  бере, `run drive` віднімає такі рядки від «лишилось», а `./bdo quarantine`
+  показує їх людині (D58: один рядок пройшов конвеєр 21 раз).
+- **Модель не бачить `identity_hash`.** `cli/model/client.php` підміняє хеш на
+  `r1…rN` у payload і схемі й повертає назад у відповіді
+  (`Bdo\Translate\Model\RowAlias`); чужий ключ · відмова `unknown_id`.
 
 Кожен перехід дозволяє `StateMachine::TRANSITIONS`. Драйвер не вигадує кроків:
 він виконує рівно те, що назвав рушій, і зупиняється на невідомому `kind`.
