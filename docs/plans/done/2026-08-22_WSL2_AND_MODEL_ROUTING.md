@@ -8,9 +8,9 @@
 
 - Windows використовує один Bash/PHP flow через WSL2; `./bdo platform` входить
   у preflight.
-- `.opencode/translation-models.json` задає маршрути окремо за ролями, ordered
+- `config/roles.json` задає маршрути окремо за ролями, ordered
   fallback, paid classification і явний `allow_paid`.
-- `./bdo profile` синхронізує policy, `opencode.json` і frontmatter та запускає
+- `./bdo profile` синхронізує policy, `config/roles.json` і frontmatter та запускає
   validator.
 - Plugin guard блокує чужий і неавторизований платний route; smoke має strict
   JSON schema. Child driver передає route явно й пише фактичну модель у receipt.

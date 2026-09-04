@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# Єдина точка, де набір скриптів вирішує, ДЕ лежать промпти субагентів, конфіг
-# OpenCode і проєкт, який цей набір обслуговує.
+# Єдина точка, де набір скриптів вирішує, ДЕ лежать промпти ролей і проєкт,
+# який цей набір обслуговує.
 #
 #   source "$SCRIPT_DIR/cli/system/paths.sh"   # у скрипті
 #   ./cli/system/paths.sh                      # показати, що куди вирішилось
 #
-# Навіщо. Раніше кожен скрипт писав "$SCRIPT_DIR/../.opencode/...", тобто
+# Навіщо. Раніше кожен скрипт писав власний відносний шлях, тобто
 # жорстко вимагав лежати підкаталогом одного конкретного проєкту. Перенести
 # набір в окремий репозиторій було неможливо без правки шести скриптів. Тут ці
 # шляхи розвʼязані: спочатку змінна оточення, потім автопошук у двох місцях -
@@ -13,9 +13,7 @@
 # Той самий код працює в обох розкладках, і жодна зі змінних не обовʼязкова.
 #
 # Змінні (кожна перебиває автопошук):
-#   TRANSLATE_AGENTS_DIR       каталог із translation-*.md (промпти субагентів)
-#   TRANSLATE_OPENCODE_CONFIG  opencode.json з .agent[...].model
-#   TRANSLATE_AGENT_VALIDATOR  validate-translation-agents.sh
+#   TRANSLATE_AGENTS_DIR       каталог із translation-*.md (промпти ролей)
 #   TRANSLATE_PROJECT_ROOT     корінь обслуговуваного проєкту (API, docs, artisan)
 #
 # Джерела значень за силою: оточення процесу > `.env` > автопошук. `.env`
@@ -57,8 +55,8 @@ unset _translate_env_file
 if [ -z "${TRANSLATE_AGENTS_DIR:-}" ]; then
     TRANSLATE_AGENTS_DIR=""
     for _translate_candidate in \
-        "$TRANSLATE_HOME/.opencode/agents" \
-        "$TRANSLATE_HOME/../.opencode/agents"
+        "$TRANSLATE_HOME/roles" \
+        "$TRANSLATE_HOME/../roles"
     do
         if [ -d "$_translate_candidate" ]; then
             TRANSLATE_AGENTS_DIR="$(cd "$_translate_candidate" && pwd)"
@@ -66,32 +64,6 @@ if [ -z "${TRANSLATE_AGENTS_DIR:-}" ]; then
         fi
     done
     unset _translate_candidate
-fi
-
-if [ -z "${TRANSLATE_OPENCODE_CONFIG:-}" ]; then
-    TRANSLATE_OPENCODE_CONFIG=""
-    for _translate_candidate in \
-        "$TRANSLATE_HOME/opencode.json" \
-        "$TRANSLATE_HOME/../opencode.json"
-    do
-        if [ -f "$_translate_candidate" ]; then
-            TRANSLATE_OPENCODE_CONFIG="$(cd "$(dirname "$_translate_candidate")" && pwd)/$(basename "$_translate_candidate")"
-            break
-        fi
-    done
-    unset _translate_candidate
-fi
-
-# Валідатор живе поруч із каталогом агентів: він частина того самого .opencode/.
-if [ -z "${TRANSLATE_AGENT_VALIDATOR:-}" ]; then
-    TRANSLATE_AGENT_VALIDATOR=""
-    if [ -n "$TRANSLATE_AGENTS_DIR" ]; then
-        _translate_candidate="$(dirname "$TRANSLATE_AGENTS_DIR")/validate-translation-agents.sh"
-        if [ -f "$_translate_candidate" ]; then
-            TRANSLATE_AGENT_VALIDATOR="$_translate_candidate"
-        fi
-        unset _translate_candidate
-    fi
 fi
 
 # Обслуговуваний проєкт шукається за маркером `artisan`, а не за "рівнем вище":
@@ -104,8 +76,6 @@ if [ -z "${TRANSLATE_PROJECT_ROOT:-}" ]; then
     fi
 fi
 
-export TRANSLATE_HOME TRANSLATE_AGENTS_DIR TRANSLATE_OPENCODE_CONFIG
-export TRANSLATE_AGENT_VALIDATOR TRANSLATE_PROJECT_ROOT
 
 # Перевірити один вирішений шлях перед використанням.
 #   translate_require_path <змінна> <опис> <шлях>
@@ -128,8 +98,6 @@ if [ "${BASH_SOURCE[0]}" = "${0}" ]; then
     printf '%-26s %s\n' 'TRANSLATE_HOME' "$TRANSLATE_HOME"
     for _translate_var in \
         TRANSLATE_AGENTS_DIR \
-        TRANSLATE_OPENCODE_CONFIG \
-        TRANSLATE_AGENT_VALIDATOR \
         TRANSLATE_PROJECT_ROOT
     do
         _translate_value="${!_translate_var}"

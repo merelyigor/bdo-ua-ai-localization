@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "endpoint": "http://127.0.0.1:11434",
+  "default_model": "qwen3.6:35b-a3b-mtp-q4_K_M",
+  "num_ctx": 131072,
+  "timeout_seconds": 900,
+  "roles": {
+    "translation-terminology": { "schema": "response", "temperature": 0.1 },
+    "translation-worker": { "schema": "response", "temperature": 0.1 },
+    "translation-qa": { "schema": "qa", "temperature": 0.1 },
+    "translation-repair": { "schema": "response", "temperature": 0.1 },
+    "translation-judge": { "schema": "qa", "temperature": 0.1 },
+    "translation-glossary": { "schema": "response", "temperature": 0.1 },
+    "translation-smoke": { "schema": "none", "temperature": 0.1 }
+  }
+}

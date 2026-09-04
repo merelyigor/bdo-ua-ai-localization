@@ -1,47 +1,42 @@
-# Маршрутизація правил агентів
+# Маршрутизація правил: хто що читає
 
-Це довідник для основного агента та власника. Він не є глобальною інструкцією
-OpenCode і не підключається через `opencode.json`.
+Довідник для агента-розробника (того, хто змінює цей код) і для власника. До
+самого конвеєра перекладу він не потрапляє: ролі отримують лише свій
+`roles/<роль>.md` і payload.
 
 ## Головний UX-контракт власника
 
-Власник не запускає bash/CLI-команди проєкту вручну й змінює лише локальний
-`.env`, після чого повідомляє primary людською мовою, що продовжити. Уся робота
-виконується через primary-режими `патч`, `ручний`, `пропозиції`, `покращення-ші`.
-Primary сам виконує `./bdo env`, preflight/smoke, `mode status/start`,
-`./bdo run drive`, аудит, gates і перед завершенням `./bdo gate full && ./bdo api`.
-Команди в цьому довіднику · внутрішні кроки flow або developer/diagnostics
-довідка, не завдання власнику.
+Власник не складає команд. Його інтерфейс · `./bdo` без аргументів. Вручну він
+змінює лише локальний `.env`. Команди в довідниках є внутрішніми кроками або
+діагностикою для розробника, а не завданнями власнику.
 
-## Рівні правил
+## Три різні читачі
 
-| Роль | Канонічне джерело | Що передається моделі |
+| Читач | Канонічне джерело | Що з нього бере |
 |---|---|---|
-| OpenCode primary | `.opencode/agents/патч.md`, `ручний.md`, `пропозиції.md`, `покращення-ші.md` | поточний режим, порядок `./bdo`, рішення диригента |
-| `translation-*` child | tracked `.opencode/agent-templates/translation-*.md` + generated/ignored `.opencode/agents/translation-*.md` + staged schema | вузька роль і її JSON-відповідь |
+| Власник | [`../WORKFLOW.md`](../WORKFLOW.md) | що робить кожен пункт меню |
+| Агент-розробник | [`../AGENTS.md`](../AGENTS.md) → [`AI_AGENT_RULES_REFERENCE.md`](AI_AGENT_RULES_REFERENCE.md) | правила зміни коду цього репозиторію |
+| Роль конвеєра | `roles/<роль>.md` + схема + payload | рівно одну вузьку задачу |
+
+`AGENTS.md` є КАРТОЮ правил: короткі формулювання й посилання на §-розділ
+довідника. Дзеркала `.cursorrules`, `CLAUDE.md`, `QWEN.md` мусять бути
+ідентичні йому до байта · це перевіряє `./bdo gate docs`.
 
 ## Документи за потребою
 
-Primary-режим звертається до документа лише коли його робочий крок цього
-потребує:
-
-- API-контракт: `API.md`, `API_WRITE_CONTRACT.md`;
-- flow і state: `FLOW_STATE.md`;
-- безпека та публічність: `SECURITY.md`;
-- моделі й OpenCode: tracked `.opencode/templates/translation-models.json`,
-  generated/ignored `.opencode/translation-models.json`,
-  `UI_SUBAGENT_WORKFLOW.md`;
-- плани: `plans/README.md`, `plans/BACKLOG.md`.
-
-Child-контракт повністю визначений власним prompt, staged payload і schema.
-Технічне обмеження tools забезпечують generated/ignored `opencode.json`
-(джерело · tracked `templates/opencode.json`),
-`translation-execution-guard` і `translation-routing-guard`; доставку payload у
-Task prompt і збереження результату Task робить механічно
-`translation-child-contract` (envelope у `state/next-child.json`).
+- контракт API: [`API.md`](API.md), [`API_WRITE_CONTRACT.md`](API_WRITE_CONTRACT.md);
+- фактичний стан флоу: [`FLOW_STATE.md`](FLOW_STATE.md);
+- що перевіряти після зміни: [`CHECKLIST.md`](CHECKLIST.md);
+- безпека й публічність: [`SECURITY.md`](SECURITY.md);
+- моделі ролей: `config/roles.json`;
+- команди: [`COMMANDS.md`](COMMANDS.md) (генерується з `cli/command-registry.json`);
+- плани й дефекти: [`plans/README.md`](plans/README.md), [`plans/DEFECTS.md`](plans/DEFECTS.md).
 
 ## Правило зміни
 
-Зміна формату відповіді, звіту або документації primary не вимагає змін у
-child-prompts, якщо JSON-контракт ролі не змінився. Зміна child-контракту
-оновлює тільки відповідний agent prompt, schema та його вузьку перевірку.
+- Зміна інтерфейсу або звіту не чіпає промпти ролей, якщо JSON-контракт ролі не
+  змінився.
+- Зміна контракту ролі оновлює три речі разом: `roles/<роль>.md`, схему в
+  `cli/prepare/build-schema.sh` і вузьку перевірку в `tests/`.
+- Промпт ролі мусить лишатися самодостатнім: жодних include й «прочитай інший
+  файл». Модель бачить рівно те, що в цьому файлі, плюс payload.

@@ -77,19 +77,22 @@ php -r 'require $argv[1];
     || fail 'машина станів не дозволяє переходів, які робить рушій після лікування'
 
 # 5. QA мусить повертати готовий текст, інакше злиття з repair не має сенсу.
-grep -Fq 'обовʼязковий для КОЖНОГО рядка зі статусом' "$ROOT/.opencode/agent-templates/translation-qa.md" \
+grep -Fq 'обовʼязковий для КОЖНОГО рядка зі статусом' "$ROOT/roles/translation-qa.md" \
     || fail 'QA і далі дає fix лише за бажанням'
 # Причини відмов FixPolicy мусить бачити не лише stderr пачки, яку зітре автоочистка.
 grep -Fq 'fix-policy.jsonl' "$ROOT/cli/quality/qa-fixes.sh" || fail 'відмови FixPolicy ніде не журналюються'
 
-# 6. Дебаг сесії мусить існувати як команда, а не як разовий SQL у голові.
+# 6. Дебаг прогону мусить існувати як команда, а не як разовий SQL у голові.
 #    2026-08-28 я дивився на стан пачки й лічильники токенів, побачив «нічого не
-#    рухається» і сказав «сесія мовчить». Насправді сесія двічі отримала відмову
-#    guard на спробі пропатчити код · ні стан, ні токени цього не показують.
-test -x "$ROOT/cli/audit/session-tail.sh" || fail 'немає інструмента для дебагу сесії'
-grep -Fq '"session ' "$ROOT/cli/command-registry.json" || fail 'команда session не в реєстрі'
-grep -Fq 'session)    sh_run cli/audit/session-tail.sh' "$ROOT/bdo" || fail 'dispatcher не знає команди session'
-grep -Fq 'state.error' "$ROOT/cli/audit/session-tail.sh" || fail 'дебаг сесії не показує причин відмов'
+#    рухається» і сказав «сесія мовчить». Насправді крок двічі отримав відмову ·
+#    ні стан пачки, ні лічильники цього не показують. Тепер таке видно в журналі
+#    викликів моделі, і в нього є своя команда.
+test -x "$ROOT/cli/audit/model-run.sh" || fail 'немає інструмента для дебагу прогону'
+grep -Fq 'model-calls.jsonl' "$ROOT/cli/audit/model-run.sh" \
+    || fail 'аудит прогону не читає журнал викликів моделі'
+grep -Fq '"models-run"' "$ROOT/cli/command-registry.json" || fail 'команда models-run не в реєстрі'
+grep -Fq 'models-run) sh_run cli/audit/model-run.sh' "$ROOT/bdo" || fail 'dispatcher не знає команди models-run'
+grep -Fq 'Збої (' "$ROOT/cli/audit/model-run.sh" || fail 'аудит прогону не показує збоїв окремо'
 
 # 7. Регістр затвердженого терміна виправляється КОДОМ, а не людиною.
 #    Заміряно на пачці 2026-08-28 (патч 7, `knowledge`): з 11 рядків у модерації

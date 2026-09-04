@@ -43,17 +43,17 @@ zip-архівом, TUI писати чистим bash без залежност
 - `tests/**`, `scripts/agent-check.sh` · gates лишаються умовою коміту.
 
 **Знімається:**
-- `.opencode/**` цілком (3679 файлів): плагіни execution-guard, child-contract,
+- `roles/**` цілком (3679 файлів): плагіни execution-guard, child-contract,
   routing-guard, result-writer, autopilot; чотири primary-промпти; агенти;
   `node_modules`;
 - restart-gate `WORKFLOW_FILES` і `OPENCODE_RUNTIME_INVALID` · без OpenCode
   немає сесії, яка тримає старий код;
 - профілі хмарних моделей у `translation-models.json` (session-free, -go,
   -luna, -omniroute) · лишається лише локальний реєстр ролей;
-- `cli/audit/verify-run.sh` у частині читання бази OpenCode · аудит переходить
+- `cli/audit/model-run.sh` у частині читання бази OpenCode · аудит переходить
   на ВЛАСНИЙ журнал викликів (`cli/audit/response-shape.php` лишається, він
   модель-незалежний);
-- `cli/runtime/sync-opencode-models.sh`, `custom-provider-models.php` ·
+- `cli/runtime/check-runtime.sh`, `custom-provider-models.php` ·
   оголошення моделей більше нікому не потрібне.
 
 ## 3. Архітектура
@@ -155,12 +155,12 @@ zip-архівом, TUI писати чистим bash без залежност
 
 | Фаза | Зміст | Доказ готовності |
 |---|---|---|
-| 0 | Консервація: анотований тег `v3.0.6-opencode`, гілка `legacy/opencode`, zip через `git archive` тега | zip розпаковується, `./bdo gate full` у ньому зелений, у файлі немає `.env`, `state/`, `output/` |
-| 1 | Зняття шару OpenCode | `./bdo gate full` зелений без `.opencode/**`; жоден тест не згадує плагінів |
-| 2 | Клієнт Ollama + журнал викликів | `tests/model-client.sh`: порожній `content`, обрив на стелі й чужа схема дають ПОМИЛКУ з причиною, а не тиху деградацію |
-| 3 | Драйвер `run-loop.sh` | пачка з 50 рядків проходить від `selected` до `verified` без жодного втручання людини; лог кроків збігається зі станами машини |
-| 4 | TUI | усі чотири режими запускаються з меню; `Ctrl-C` лишає стан, продовження з того самого кроку |
-| 5 | Аудит і метрики на власному журналі | `./bdo review` показує ті самі лічильники без бази OpenCode |
+| 0 | ✅ Консервація: тег `v3.0.6-opencode` на `af01fe4`, гілка `legacy/opencode`, `legacy/…-v3.0.8.zip` | zip побайтово дорівнює тегу (221 файл, 0 розбіжностей), відкривається штатним `unzip` разом із кириличними іменами, секретів і робочих даних не містить; у відновленому worktree `gate docs` і `gate shell` зелені, TS-тести плагінів вимагають `npm install` у `roles/` (залежності не vendored) |
+| 1 | ✅ Зняття шару OpenCode | Видалено `.opencode/**` (19 tracked-файлів), 12 тестів плагінів і профілів, 12 скриптів `cli/**`, `templates/opencode.json`, `lib/Runtime/ModelPolicy.php`. Переписано: `AGENTS.md` і три дзеркала, `README.md`, `WORKFLOW.md` (замість `UI_SUBAGENT_WORKFLOW.md`), `docs/FLOW_STATE.md` (старий → `docs/archive/`), `PROJECT_OVERVIEW.md`, `AGENT_RULE_ROUTING.md`, §8 нормативу, `WINDOWS_WSL2.md`, `.env` і три шаблони. `./bdo gate full` зелений; жодної згадки OpenCode поза `docs/archive/` і поясненнями причини переходу |
+| 2 | ✅ Клієнт Ollama + журнал викликів (`cli/model/client.php`, `config/roles.json`, `roles/*.md`) | `tests/model-client.sh` на підробленому endpoint: обрив, порожній content, думання, проза, помилка провайдера, переповнення вікна й мертвий endpoint дають РІЗНІ причини й код 1; журнал бачить кожен виклик. Перевірено трьома саботажами. Контракт Ollama знято емпірично: `format` дає чистий JSON без огорожі, `think:false` прибирає `thinking`, `done_reason` розрізняє норму й обрив |
+| 3 | ✅ Драйвер `cli/run/run-loop.sh` (`./bdo loop`) | `tests/driver-loop.sh`: порядок ролей, самостійний старт наступної пачки, відмова виконувати рядок `command` із конверта, зупинка на невідомому режимі / підозрілій категорії / `blocked` / нескінченному `retry` / відмові ролі / невідомому `kind`. Живий доказ · пачка `20260904_013556` пройшла worker → QA → repair → judge без жодного втручання |
+| 4 | ✅ TUI `bin/tui.sh` (`./bdo` без аргументів) | `tests/tui.sh`: ціль читається зі stderr (перша редакція показувала в полі «Ціль» рядок синхронізації профілю), стан береться з manifest, журнал не ховає збоїв, сміття в полях патча й категорії не доходить до командного рядка. Перевірено двома саботажами |
+| 5 | ✅ Аудит `cli/audit/model-run.sh` (`./bdo models-run`) | Підсумок по ролях, збої, швидкість генерації · усе з `state/model-calls.jsonl`, без бази OpenCode. На живому прогоні: 26.5 токенів/с у середньому по ролях |
 | 6 | Перевимір якості | ті самі пачки на локальній моделі; модерація й карантин порівняні з 3,5% на OmniRoute |
 
 ## Definition of Done

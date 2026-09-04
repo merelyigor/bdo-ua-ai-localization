@@ -38,10 +38,10 @@ payload, API response, state directory або session dump.
   лишається. Прибирання увімкнене за замовчуванням; `BDO_AUTO_CLEAN=0` ·
   аварійний вимикач. `quarantine.jsonl` і `write-log.jsonl` залишаються
   append-only.
-- OpenCode database/session dumps і model/runtime logs.
+- журнал викликів моделі `state/model-calls.jsonl` і будь-які логи рантайму.
 
 Ці дані не комітити, не додавати до issue/PR, не передавати remote/free моделям і
-не використовувати як публічний приклад. Translation children отримують лише
+не використовувати як публічний приклад. Ролі конвеєра отримують лише
 мінімальний payload, потрібний їхній ролі.
 
 ## Механічні controls

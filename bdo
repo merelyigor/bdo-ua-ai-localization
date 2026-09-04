@@ -97,7 +97,17 @@ TXT
 
 group="${1:-}"
 case "$group" in
-    ''|help|-h|--help)
+    # Без аргументів · термінальне меню.
+    #
+    # UX-контракт власника не змінився: він не складає команд руками. Раніше
+    # цю роль виконував диригент-модель у OpenCode; тепер · це вікно. Довідку
+    # видно так само, просто явно: `./bdo help`.
+    '') exec bash "$ROOT/bin/tui.sh" ;;
+    tui) exec bash "$ROOT/bin/tui.sh" "${@:2}" ;;
+    loop) sh_run cli/run/run-loop.sh "${@:2}" ;;
+    models-run) sh_run cli/audit/model-run.sh "${@:2}" ;;
+    timer)    sh_run cli/system/session-timer.sh "${@:2}" ;;
+    help|-h|--help)
         case "${2:-}" in
             '')      usage ;;
             flow)    flow ;;
@@ -109,11 +119,10 @@ case "$group" in
     # --- прогін і середовище -------------------------------------------------
     # `sh_run` використовує exec для односкриптових команд, тому тут потрібні
     # два звичайні виклики: спочатку ціль/API, потім синхронізація child-моделі.
-    env)      bash "$ROOT/cli/system/select-env.sh"; bash "$ROOT/cli/runtime/set-translation-profile.sh" env ;;
+    env)      sh_run cli/system/select-env.sh ;;
     sync)     sh_run cli/runtime/env-sync.sh ;;
     platform) sh_run cli/system/check-platform.sh "${@:2}" ;;
     runtime)  sh_run cli/runtime/check-runtime.sh "${@:2}" ;;
-    smoke)    sh_run cli/runtime/prepare-smoke.sh ;;
     gate)     sh_run scripts/agent-check.sh "${@:2}" ;;
     run)
         case "${2:-}" in
@@ -200,15 +209,12 @@ case "$group" in
     moderation) sh_run cli/write/moderation-queue.sh "${@:2}" ;;
 
     # --- обслуговування ------------------------------------------------------
-    audit)      sh_run cli/audit/verify-run.sh "${@:2}" ;;
+    audit)      sh_run cli/audit/model-run.sh "${@:2}" ;;
     inspect)    sh_run cli/system/ide-inspect.sh "${@:2}" ;;
     review)     sh_run cli/audit/project-review.sh "${@:2}" ;;
-    session)    sh_run cli/audit/session-tail.sh "${@:2}" ;;
     incidents)  sh_run cli/audit/flow-incidents.sh "${@:2}" ;;
     quarantine) sh_run cli/audit/quarantine-report.sh "${@:2}" ;;
     judge)      sh_run cli/audit/judge-report.sh "${@:2}" ;;
-    audit-dump) sh_run cli/audit/audit-dump.sh "${@:2}" ;;
-    profile)    sh_run cli/runtime/set-translation-profile.sh "${@:2}" ;;
     terms)
         case "${2:-}" in
             describe) sh_run cli/api/term-notes-describe.sh ;;
@@ -217,8 +223,6 @@ case "$group" in
         esac
         ;;
     concepts)   sh_run cli/api/glossary-concepts.sh "${@:2}" ;;
-    models)     sh_run cli/runtime/sync-opencode-models.sh "${@:2}" ;;
-    bench)      sh_run cli/runtime/model-ab.sh "${@:2}" ;;
     clean)      sh_run cli/batch/batch-clean.sh "${@:2}" ;;
     paths)      sh_run cli/system/paths.sh "${@:2}" ;;
     api)        sh_run cli/api/test-api.sh "${@:2}" ;;

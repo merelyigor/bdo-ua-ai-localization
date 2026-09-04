@@ -55,8 +55,8 @@ php -r '
 ' "$registry" "$help_output" "$flow_output" \
     || fail 'help/help flow не відповідають command registry'
 
-grep -Fq 'cli/command-registry.json' UI_SUBAGENT_WORKFLOW.md \
-    || fail 'UI_SUBAGENT_WORKFLOW.md не посилається на canonical registry'
+grep -Fq 'cli/command-registry.json' WORKFLOW.md \
+    || fail 'WORKFLOW.md не посилається на canonical registry'
 grep -Fq 'cli/command-registry.json' docs/FLOW_STATE.md \
     || fail 'docs/FLOW_STATE.md не посилається на canonical registry'
 

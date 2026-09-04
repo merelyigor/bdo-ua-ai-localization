@@ -19,19 +19,15 @@ readonly SCRIPT_DIR
 source "$SCRIPT_DIR/cli/system/paths.sh"
 readonly OLLAMA_URL="${OLLAMA_URL:-http://127.0.0.1:11434}"
 
-translate_require_path TRANSLATE_OPENCODE_CONFIG 'конфіг OpenCode' "$TRANSLATE_OPENCODE_CONFIG"
-MODEL_FULL="$(jq -r '.agent["translation-worker"].model // empty' "$TRANSLATE_OPENCODE_CONFIG")"
-test -n "$MODEL_FULL" || { echo "FAIL: у opencode.json немає моделі translation-worker" >&2; exit 1; }
-
-case "$MODEL_FULL" in
-ollama-local/*) MODEL="${MODEL_FULL#ollama-local/}" ;;
-*)
-    echo "Runtime route: $MODEL_FULL"
-    echo 'Зовнішній provider перевіряється child smoke у самому OpenCode; прямий HTTP probe навмисно не обходить OpenCode auth.'
-    echo 'Відкрий режим і попроси: «Запусти translation-smoke та покажи фактичний provider/model». '
-    exit 2
-    ;;
-esac
+# Модель ролі більше не живе в конфізі чужого застосунку: єдине джерело ·
+# `config/roles.json`. Перевіряємо саме ту, якою працює worker · він робить
+# найбільший обсяг і першим упирається в будь-яку ваду рантайму.
+MODEL="$(php -r '
+$c = json_decode((string) file_get_contents($argv[1]."/config/roles.json"), true);
+echo (string) ($c["roles"]["translation-worker"]["model"] ?? $c["default_model"] ?? "");
+' "$SCRIPT_DIR")"
+test -n "$MODEL" || { echo "FAIL: у config/roles.json немає моделі для translation-worker" >&2; exit 1; }
+MODEL_FULL="$MODEL"
 
 echo "Runtime check для: $MODEL_FULL"
 
@@ -41,7 +37,7 @@ curl -fsS -m 5 "$OLLAMA_URL/v1/models" 2>/dev/null \
     || {
         echo "FAIL: $OLLAMA_URL не відповідає або моделі $MODEL немає."
         if curl -fsS -m 5 "$OLLAMA_URL/v1/models" 2>/dev/null | jq -e '.data[] | select(.id == "gemma4:26b-a4b-it-mtp-q4_K_M")' >/dev/null; then
-            echo 'Наявна друга дозволена модель. Перемкни без завантаження 35B: TRANSLATE_MODEL=ollama-local/gemma4:26b-a4b-it-mtp-q4_K_M у .env, далі ./bdo env'
+            echo 'Наявна друга дозволена модель. Перемкни в config/roles.json: default_model = gemma4:26b-a4b-it-mtp-q4_K_M'
         else
             echo "Завантаж модель: ollama pull $MODEL"
         fi
@@ -58,61 +54,28 @@ echo "OK"
 echo -n "2. формат відповіді перевіряється кроком 4... "
 echo "OK"
 
-# Крок 3 бере ЕФЕКТИВНЕ значення з `.env`, а не зашите `none`.
+# Кроки 3-4 йдуть ТИМ САМИМ шляхом, що й робота.
 #
-# Раніше проба завжди слала `reasoning_effort: none` і завжди була зелена ·
-# зокрема тоді, коли в `.env` стояло `off`, і плагін не слав НІЧОГО. Для
-# думальної моделі «нічого» означає думати: 2026-08-28 `qwen3.6` віддавав усе в
-# `reasoning`, лишав `content` порожнім, і child «падав» без помилки, поки
-# перевірка показувала OK. Перевірка мусить іти тим самим шляхом, що й робота.
-EFFORT="$(php -r '
-$file = getenv("TRANSLATE_ENV_FILE") ?: $argv[1];
-$raw = null;
-foreach (@file($file) ?: [] as $line) {
-    if (preg_match("~^\s*(?:export\s+)?BDO_REASONING_EFFORT\s*=\s*(.*)$~", $line, $m)) $raw = $m[1];
-}
-$v = strtolower(trim(explode("#", (string) ($raw ?? "none"))[0], " \"\x27\t\n"));
-echo $v === "" ? "none" : $v;
-' "$SCRIPT_DIR/.env")"
-echo -n "3. thinking вимикається (BDO_REASONING_EFFORT=$EFFORT)... "
-php -r '
-$body = [
-    "model" => $argv[1],
-    "temperature" => 0,
-    "max_tokens" => 60,
-    "messages" => [["role" => "user", "content" => "Скажи одним словом: готово"]],
-];
-// `off` означає «поле не надсилати» · саме так і перевіряємо.
-if ($argv[3] !== "off") $body["reasoning_effort"] = $argv[3];
-$payload = json_encode($body);
-$ctx = stream_context_create(["http" => [
-    "method" => "POST", "header" => "Content-Type: application/json",
-    "content" => $payload, "timeout" => 120, "ignore_errors" => true,
-]]);
-$raw = file_get_contents($argv[2] . "/v1/chat/completions", false, $ctx);
-$d = json_decode((string) $raw, true);
-$m = $d["choices"][0]["message"] ?? [];
-$content = trim($m["content"] ?? "");
-$reasoning = $m["reasoning"] ?? $m["reasoning_content"] ?? null;
-if ($content === "") {
-    fwrite(STDERR, "FAIL: content порожній, thinking зʼїв відповідь\n");
-    if ($argv[3] === "off") fwrite(STDERR, "  BDO_REASONING_EFFORT=off НЕ надсилає нічого, тому модель думає. Постав none.\n");
-    exit(1);
-}
-if (is_string($reasoning) && trim($reasoning) !== "") {
-    fwrite(STDERR, "FAIL: у відповіді лишився reasoning\n");
-    if ($argv[3] === "off") fwrite(STDERR, "  Постав BDO_REASONING_EFFORT=none: `off` лишає поведінку провайдера.\n");
-    exit(1);
-}
-echo "OK\n";
-' "$MODEL" "$OLLAMA_URL" "$EFFORT"
-
-echo -n "4. constrained decoding тримається... "
+# Раніше вони били в `/v1/chat/completions` з `reasoning_effort` і
+# `response_format` · так робив OpenCode. Наш клієнт ходить у `/api/chat` з
+# `think` і `format`, а це інший код на боці Ollama. Перевірка іншим шляхом уже
+# коштувала прогону: 2026-08-28 проба завжди слала зашите `none` і завжди була
+# зелена, поки робота слала `off` і мовчки думала (D28). Тому тут викликається
+# САМЕ `cli/model/client.php` · той файл, який працює на пачці.
+echo -n "3. клієнт моделі дає структуровану відповідь... "
+PROBE="$(mktemp -d)"
+trap 'rm -rf "$PROBE"' EXIT
 php -r '
 $hashes = [hash("sha256", "runtime-check-a"), hash("sha256", "runtime-check-b")];
-$schema = [
-    "type" => "array", "minItems" => 2, "maxItems" => 2,
+file_put_contents($argv[1]."/payload.json", json_encode([
     "items" => [
+        ["identity_hash" => $hashes[0], "source_text" => "Ancient Spirit Dust"],
+        ["identity_hash" => $hashes[1], "source_text" => "Guild Wharf Manager"],
+    ],
+], JSON_UNESCAPED_UNICODE));
+file_put_contents($argv[1]."/schema.json", json_encode([
+    "type" => "object",
+    "properties" => ["items" => ["type" => "array", "items" => [
         "type" => "object",
         "properties" => [
             "identity_hash" => ["type" => "string", "enum" => $hashes],
@@ -120,57 +83,88 @@ $schema = [
         ],
         "required" => ["identity_hash", "text"],
         "additionalProperties" => false,
-    ],
-];
-$rows = [
-    ["identity_hash" => $hashes[0], "source_text" => "Ancient Spirit Dust"],
-    ["identity_hash" => $hashes[1], "source_text" => "Guild Wharf Manager"],
-];
-$payload = json_encode([
-    "model" => $argv[1],
-    "temperature" => 0,
-    "max_tokens" => 900,
-    "reasoning_effort" => "none",
-    "response_format" => ["type" => "json_schema", "json_schema" => ["name" => "t", "strict" => true, "schema" => $schema]],
-    "messages" => [
-        ["role" => "system", "content" => "Перекладай рядки гри англійською->українською."],
-        ["role" => "user", "content" => json_encode($rows, JSON_UNESCAPED_UNICODE)],
-    ],
-], JSON_UNESCAPED_UNICODE);
-$ctx = stream_context_create(["http" => [
-    "method" => "POST", "header" => "Content-Type: application/json",
-    "content" => $payload, "timeout" => 600, "ignore_errors" => true,
-]]);
-$raw = file_get_contents($argv[2] . "/v1/chat/completions", false, $ctx);
-$d = json_decode((string) $raw, true);
-$content = $d["choices"][0]["message"]["content"] ?? "";
-$out = json_decode($content, true);
-if (!is_array($out)) { fwrite(STDERR, "FAIL: вихід не JSON-масив: " . mb_substr($content, 0, 120) . "\n"); exit(1); }
-if (count($out) !== 2) { fwrite(STDERR, "FAIL: елементів " . count($out) . " замість 2\n"); exit(1); }
+    ]]],
+    "required" => ["items"], "additionalProperties" => false,
+]));
+file_put_contents($argv[1]."/hashes.json", json_encode($hashes));
+' "$PROBE"
+
+if ! php "$SCRIPT_DIR/cli/model/client.php" translation-worker \
+        "$PROBE/payload.json" "$PROBE/response.json" --schema "$PROBE/schema.json" 2>"$PROBE/err"; then
+    echo "FAIL"
+    cat "$PROBE/err" >&2
+    exit 1
+fi
+
+php -r '
+$hashes = json_decode((string) file_get_contents($argv[1]."/hashes.json"), true);
+$out = json_decode((string) file_get_contents($argv[1]."/response.json"), true);
+if (! is_array($out) || ! array_is_list($out)) {
+    fwrite(STDERR, "FAIL: відповідь не є JSON-масивом\n");
+    exit(1);
+}
+if (count($out) !== 2) {
+    fwrite(STDERR, "FAIL: елементів ".count($out)." замість 2\n");
+    exit(1);
+}
 foreach ($out as $i => $item) {
     $keys = array_keys($item);
     sort($keys);
     if ($keys !== ["identity_hash", "text"]) {
-        fwrite(STDERR, "FAIL: зайві або відсутні ключі (" . implode(",", $keys) . ") - схема не застосувалась (MLX?)\n");
+        fwrite(STDERR, "FAIL: ключі (".implode(",", $keys).") · схема не застосувалась\n");
         exit(1);
     }
-    if ($item["identity_hash"] !== $hashes[$i]) { fwrite(STDERR, "FAIL: хеш #$i не збігається\n"); exit(1); }
-    if (trim($item["text"]) === "") { fwrite(STDERR, "FAIL: порожній text #$i\n"); exit(1); }
+    if ($item["identity_hash"] !== $hashes[$i]) {
+        fwrite(STDERR, "FAIL: хеш #$i не збігається · enum схеми не тримається\n");
+        exit(1);
+    }
+    if (trim((string) $item["text"]) === "") {
+        fwrite(STDERR, "FAIL: порожній text #$i\n");
+        exit(1);
+    }
 }
 echo "OK\n";
-' "$MODEL" "$OLLAMA_URL"
+' "$PROBE" || exit 1
 
-echo -n "5. модель оголошена в конфізі OpenCode... "
-# Пункти 1-4 говорять із Ollama напряму й тому пропустили реальний збій: модель
-# працювала, а OpenCode не мав її в списку моделей провайдера й створював
-# порожні дочірні сесії - нуль токенів, жодної відповіді. Перевіряти рантайм
-# без цього пункту означає перевіряти не той шар.
-if "$SCRIPT_DIR/cli/runtime/sync-opencode-models.sh" >/dev/null 2>&1; then
-    echo "OK"
-else
-    echo "FAIL"
-    "$SCRIPT_DIR/cli/runtime/sync-opencode-models.sh" || true
-    exit 1
-fi
+echo -n "4. думання не зʼїдає відповідь... "
+# Клієнт шле `think: false` завжди, і порожній `content` для нього · помилка
+# `empty_content` з окремою згадкою про thinking. Крок 3 уже це довів: якби
+# модель думала, він упав би саме там. Лишаємо пункт видимим, бо саме через
+# нього прогін падав найдорожче.
+echo "OK (перевірено кроком 3: think=false у cli/model/client.php)"
+
+echo -n "5. кожна роль конвеєра має промпт і модель... "
+# Пункти 1-4 говорять із Ollama напряму й тому не бачать нашого власного шару.
+# Раніше тут перевірялось оголошення моделі в конфізі OpenCode (неоголошена
+# давала порожню дочірню сесію без помилки). OpenCode більше немає, але клас
+# дефекту лишився: роль без промпта або без моделі так само зупинить пачку · і
+# теж не на цьому кроці, а вже на прогоні.
+php -r '
+$root = $argv[1];
+$config = json_decode((string) file_get_contents($root."/config/roles.json"), true);
+if (! is_array($config["roles"] ?? null)) {
+    echo "FAIL\nconfig/roles.json не має переліку ролей.\n";
+    exit(1);
+}
+$installed = array_map(static fn (string $l): string => strtok(trim($l), " \t"),
+    array_slice(explode("\n", (string) shell_exec("ollama list 2>/dev/null")), 1));
+$problems = [];
+foreach ($config["roles"] as $role => $conf) {
+    if (! is_file($root."/roles/".$role.".md")) {
+        $problems[] = "немає промпта roles/$role.md";
+    }
+    $model = (string) ($conf["model"] ?? $config["default_model"] ?? "");
+    if ($model === "") {
+        $problems[] = "$role без моделі";
+    } elseif ($installed !== [] && ! in_array($model, $installed, true)) {
+        $problems[] = "$role: моделі $model немає в ollama list";
+    }
+}
+if ($problems !== []) {
+    echo "FAIL\n  ", implode("\n  ", $problems), "\n";
+    exit(1);
+}
+printf("OK (%d ролей)\n", count($config["roles"]));
+' "$SCRIPT_DIR" || exit 1
 
 echo "Runtime готовий: $MODEL_FULL"

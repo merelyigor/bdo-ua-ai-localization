@@ -339,7 +339,14 @@ MOD_WRITTEN=0 MOD_SKIPPED=0 MOD_REJECTED=0
 BATCH_DIR="$("$SCRIPT_DIR/cli/batch/batch-dir.sh" 2>/dev/null || true)"
 WORKER_RECEIPT="$BATCH_DIR/candidate.json.session.json"
 WORKER_MODEL="$(php -r '$d=is_file($argv[1])?json_decode(file_get_contents($argv[1]),true):[];echo $d["route"]??"";' "$WORKER_RECEIPT")"
-test -n "$WORKER_MODEL" || WORKER_MODEL="$(awk -F': ' '/^model: /{print $2; exit}' "$TRANSLATE_AGENTS_DIR/translation-worker.md" 2>/dev/null || echo 'unknown/agent')"
+# Запасне джерело · реєстр ролей. Раніше тут читався frontmatter промпта; його
+# більше немає, а вигадувати «unknown/agent» на кожній пачці означало б
+# записати в API брехню про те, чим зроблено переклад.
+test -n "$WORKER_MODEL" || WORKER_MODEL="$(php -r '
+$c = json_decode((string) @file_get_contents($argv[1]."/config/roles.json"), true);
+$model = (string) ($c["roles"]["translation-worker"]["model"] ?? $c["default_model"] ?? "");
+echo $model === "" ? "unknown/agent" : "ollama/".$model;
+' "$SCRIPT_DIR")"
 WORKER_PROVIDER="${WORKER_MODEL%%/*}"
 WORKER_MODEL_NAME="${WORKER_MODEL#*/}"
 if [ "$DO_WRITE" = "--write" ] && [ "$COUNT" -gt 0 ]; then

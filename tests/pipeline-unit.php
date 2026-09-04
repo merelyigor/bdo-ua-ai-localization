@@ -12,7 +12,6 @@ use Bdo\Translate\Batch\RowSet;
 use Bdo\Translate\Batch\Workspace;
 use Bdo\Translate\Pipeline\RunSpec;
 use Bdo\Translate\Pipeline\StateMachine;
-use Bdo\Translate\Runtime\ModelPolicy;
 use Bdo\Translate\Quality\VerdictSet;
 
 function expect(bool $condition, string $message): void
@@ -182,32 +181,21 @@ try {
     expect(ChannelRouter::route('proposal', 'PASS', 'none', true) === ChannelRouter::PASS, 'proposal-only mode did not retain its write path');
     expect(ChannelRouter::route('proposal', 'REJECT', 'critical', true) === ChannelRouter::PASS, 'proposal-only mode filtered a problematic non-empty row');
 
-    $policy = ModelPolicy::load(dirname(__DIR__).'/.opencode/templates/translation-models.json');
-    $activeProfile = $policy['active_profile'];
-    $expectedWorkerRoute = $policy['profiles'][$activeProfile]['routes']['translation-worker'][0] ?? null;
-    expect(is_string($expectedWorkerRoute) && $expectedWorkerRoute !== '', 'active worker route is absent');
-    expect(ModelPolicy::routes($policy, 'translation-worker')[0] === $expectedWorkerRoute, 'active worker route is wrong');
-    // Формат моделі більше не вгадується за назвою тега.
+    // Реєстр ролей замінив policy профілів OpenCode.
     //
-    // До 2026-08-28 будь-який `-mlx` відхилявся policy. Перевірено наново на
-    // Ollama 0.33.1: `gemma4:e4b-mlx` дотримав strict-схему в 4 прогонах із 4 і
-    // встояв проти промпта, який ПРЯМО вимагав зайві поля. Отже підстава
-    // заборони зникла, а поведінку однаково доводить `./bdo runtime`.
-    $mlx = $policy;
-    foreach ($mlx['profiles']['ollama-local']['routes'] as $role => $routes) {
-        $mlx['profiles']['ollama-local']['routes'][$role] = ['ollama-local/gemma4:26b-mlx'];
-        $mlx['profiles']['ollama-local']['default_routes'][$role] = ['ollama-local/gemma4:26b-mlx'];
+    // Перевіряємо те саме, що й раніше: маршрут ролі існує, він однозначний, а
+    // зламаний запис відхиляється. Тільки джерело тепер наше · `config/roles.json`,
+    // і воно не залежить від чужого застосунку.
+    $roles = json_decode((string) file_get_contents(dirname(__DIR__).'/config/roles.json'), true, 512, JSON_THROW_ON_ERROR);
+    expect(is_array($roles['roles'] ?? null) && $roles['roles'] !== [], 'config/roles.json has no roles');
+    expect(is_string($roles['default_model'] ?? null) && $roles['default_model'] !== '', 'config/roles.json has no default model');
+    foreach ($roles['roles'] as $role => $conf) {
+        expect(is_file(dirname(__DIR__).'/roles/'.$role.'.md'), "role $role has no prompt");
+        expect(in_array($conf['schema'] ?? 'none', ['response', 'qa', 'none'], true), "role $role has unknown schema kind");
+        $model = (string) ($conf['model'] ?? $roles['default_model']);
+        expect($model !== '' && !str_contains($model, '/'), "role $role model must be a bare Ollama tag, got $model");
     }
-    ModelPolicy::validate($mlx);
-    // А от зламаний маршрут policy мусить відхиляти й далі.
-    $broken = $policy;
-    $broken['profiles']['ollama-local']['routes']['translation-worker'] = ['без-слеша'];
-    try {
-        ModelPolicy::validate($broken);
-        throw new RuntimeException('broken route was accepted');
-    } catch (RuntimeException $error) {
-        expect(str_contains($error->getMessage(), 'Invalid or forbidden route'), 'wrong route policy error');
-    }
+    expect(isset($roles['roles']['translation-worker']), 'translation-worker is missing from the role registry');
 
 // Машиночитні `details` мусять доходити до repair як ІНСТРУКЦІЯ.
 //

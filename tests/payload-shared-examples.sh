@@ -252,9 +252,9 @@ grep -Fq 'max_context_rows' "$ROOT/cli/prepare/worker-payload.sh" || fail 'лі�
 
 # Обидва промпти мусять знати нову форму, інакше слабка модель шукатиме масив.
 for role in worker qa; do
-    grep -Fq '`items` · масив рядків' "$ROOT/.opencode/agent-templates/translation-$role.md" \
+    grep -Fq '`items` · масив рядків' "$ROOT/roles/translation-$role.md" \
         || fail "child $role не знає, що payload має ключі examples та items"
-    grep -Fq '`terms` · терміни цієї пачки' "$ROOT/.opencode/agent-templates/translation-$role.md" \
+    grep -Fq '`terms` · терміни цієї пачки' "$ROOT/roles/translation-$role.md" \
         || fail "child $role не знає блоку terms"
 done
 
@@ -290,9 +290,9 @@ printf '%s' "$out" | jq -e '[.concepts[] | has("definition")] | any | not' >/dev
     || fail 'повний definition потрапив у payload'
 # Обидва промпти мусять пояснювати блок і його СИЛУ: підказка, не закон.
 for role in worker qa; do
-    grep -Fq '`concepts` · поняття гри' "$ROOT/.opencode/agent-templates/translation-$role.md" \
+    grep -Fq '`concepts` · поняття гри' "$ROOT/roles/translation-$role.md" \
         || fail "child $role не знає блоку concepts"
-    grep -Fq 'СИЛЬНОЮ ПІДКАЗКОЮ, а не затвердженим відповідником' "$ROOT/.opencode/agent-templates/translation-$role.md" \
+    grep -Fq 'СИЛЬНОЮ ПІДКАЗКОЮ, а не затвердженим відповідником' "$ROOT/roles/translation-$role.md" \
         || fail "child $role вважає поняття затвердженим відповідником"
 done
 # Перелік тягнеться ОДИН раз на прогін, а не на кожну пачку.

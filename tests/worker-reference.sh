@@ -44,7 +44,7 @@ build --with-reference | has reference_ru && fail 'порожня RU-довід�
 # узагалі (виявлено 2026-08-29 аудитом режимів без прогону), тобто суддя бачив
 # дані, про які йому ніхто не сказав. Payload і промпт мусять описувати той
 # самий контракт.
-grep -Fq 'current' "$ROOT/.opencode/agent-templates/translation-qa.md" \
+grep -Fq 'current' "$ROOT/roles/translation-qa.md" \
     || fail 'QA-промпт не знає про поле current, яке приходить у режимі improve'
 grep -Fq '"current"' "$ROOT/cli/prepare/qa-payload.sh" \
     || fail 'qa-payload більше не кладе current · перевірку треба переглянути'

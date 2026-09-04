@@ -137,16 +137,15 @@ php_version="$(php -r 'echo PHP_MAJOR_VERSION.".".PHP_MINOR_VERSION;' 2>/dev/nul
 php -r 'exit(PHP_VERSION_ID >= 80300 ? 0 : 1);' 2>/dev/null || { echo "FAIL: потрібен PHP 8.3+, знайдено ${php_version:-невідому версію}." >&2; exit 1; }
 echo "PHP: $php_version"
 
-# Дані OpenCode можуть лежати по інший бік межі WSL: сам застосунок · native
-# Windows, а цей скрипт · Linux. Тут це WARN, а не FAIL: пачку можна прогнати й
-# без аудиту, а от мовчки дізнатись про це в кінці · не можна.
-# shellcheck source=/dev/null
-source "$(cd "$(dirname "$0")/../.." && pwd)/cli/system/opencode-home.sh"
-if [ -n "$OPENCODE_DB" ]; then
-    echo "База OpenCode: $OPENCODE_DB"
+# Локальна Ollama · єдиний рантайм моделей. Тут це WARN, а не FAIL: набір
+# уміє показувати стан і плани без моделі, а от мовчки дізнатись про недоступний
+# endpoint уже на пачці · не можна.
+ollama_url="${OLLAMA_URL:-http://127.0.0.1:11434}"
+if curl -fsS -m 3 "$ollama_url/api/tags" >/dev/null 2>&1; then
+    echo "Ollama: $ollama_url"
 else
-    echo 'WARN: бази OpenCode не видно, ./bdo audit і models не працюватимуть. Перевірено:' >&2
-    printf '%s' "$OPENCODE_TRIED" >&2
-    echo 'Native Windows OpenCode із набором у WSL: додай у .env BDO_OPENCODE_HOME=/mnt/c/Users/<user>' >&2
+    echo "WARN: Ollama не відповідає на $ollama_url · переклад не запуститься." >&2
+    echo '      Перевірити детально: ./bdo runtime' >&2
 fi
+
 echo 'Platform preflight: OK'

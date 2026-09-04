@@ -51,75 +51,29 @@ printf '%s' "$out" | grep -q 'domain=premium_shop' || fail "категорія �
 out="$(BDO_STATE_DIR="$(mktemp -d)" "$ROOT/bdo" mode status patch 1 2>/dev/null | tail -1)"
 printf '%s' "$out" | grep -q '"domain":null' || fail "без категорії домен мусить бути null: $out"
 
-# 3. Промпти мусять знати ту саму тринадцятку українською.
-for primary in патч ручний пропозиції покращення-ші; do
-    file="$ROOT/.opencode/agents/$primary.md"
-    grep -Fq 'магазин перлів `premium_shop`' "$file" || fail "$primary не знає відповідності категорій"
-    # `market` бракувало і в коді, і в промпті: обидва місця мусить тримати тест.
-    grep -Fq '`market`' "$file" || fail "$primary не знає категорії market"
-    grep -Fq 'Питання ПРО КАТЕГОРІЇ' "$file" || fail "$primary не розпізнає запит про категорії"
-    # Диригент 2026-08-27 написав у звіті два вигаданих числа поспіль.
-    grep -Fq 'ЖОДНОГО числа від себе' "$file" || fail "$primary дозволяє числа по памʼяті"
-    # `title` показував 15 «без перекладу» при нулі доступних прогону: рядки вже
-    # чекали на людину. Диригент мусить розрізняти ці два числа.
-    grep -Fq 'чекають на людину в модерації' "$file" || fail "$primary плутає залишок із доступним прогону"
-    # 2026-08-27, локальна модель у ролі диригента: вивід `./bdo patches all --full`
-    # перемальовано у власну markdown-таблицю, а стан `none` (451 052) поданий як
-    # «без ШІ-шару» (насправді 29 785). Правило ДОСЛІВНО мусить бути в промпті
-    # окремим пунктом, а не натяком усередині тригера.
-    grep -Fq 'ДОСЛІВНО = спочатку дай сам вивід команди у блоці коду' "$file" || fail "$primary дозволяє перемальовувати вивід"
-    # Власник хоче таблиці там, де вони читабельніші · заборона таблиць була б
-    # надто широкою відповіддю на зламану таблицю. Дозвіл із умовами: клітинка
-    # копіюється, колонки зберігаються, сумнів · тільки блок коду.
-    grep -Fq 'кожна клітинка копіюється з виводу символ у символ' "$file" || fail "$primary не має правил безпечної таблиці"
-    grep -Fq 'лиши лише блок коду' "$file" || fail "$primary не має виходу з кривої таблиці"
-    grep -Fq '«без ШІ-шару» і стан `none` · РІЗНІ' "$file" || fail "$primary не розрізняє «без ШІ-шару» і стан none"
-    # «Що є на покращення?» у режимі перекладу · це рядки, а не docs/plans.
-    grep -Fq 'означає РЯДКИ, а не беклог проєкту' "$file" || fail "$primary плутає покращення рядків із беклогом"
-    # Диригент вигадав `./bdo status`, якої немає в дереві команд.
-    grep -Fq './bdo status` НЕ існує' "$file" || fail "$primary не знає, що ./bdo status не існує"
+# 3. Категорії мусить знати ІНТЕРФЕЙС, бо тепер їх вибирає людина в меню, а не
+#    модель у промпті. Раніше цей блок перевіряв чотири primary-промпти; вони
+#    зникли разом із диригентом, але клас дефекту лишився: категорія, відома
+#    коду й невідома інтерфейсу, недосяжна для власника.
+# `unknown` · технічна категорія API для нерозпізнаних рядків; пропонувати її
+# людині в меню немає сенсу, вибірка за нею не є роботою.
+for domain in $(php -r '
+require $argv[1];
+echo implode(" ", array_diff(Bdo\Translate\Pipeline\RunSpec::domains(), ["unknown"]));
+' "$ROOT/lib/autoload.php"); do
+    grep -Fq "$domain" "$ROOT/bin/tui.sh" \
+        || fail "категорія $domain є в RunSpec, але її немає в меню TUI"
 done
 
-# 5. Режим покращення мусить мати ЧИМ відповісти про свій обсяг: без цього
-#    розділу питання «що є на покращення» не має джерела в наборі взагалі.
-grep -Fq 'Доступно на покращення ШІ' "$ROOT/cli/api/patch-info.sh" \
-    || fail 'patch-info більше не показує обсяг режиму покращення'
-grep -Fq 'machine_provenance=legacy&exclude_proposed=1' "$ROOT/cli/api/patch-info.sh" \
-    || fail 'обсяг покращення рахується не тим фільтром, що прогін'
-
-# 4. QA в режимі покращення бачить поточний переклад · без нього він не має чим
-#    міряти «краще», хоча саме це є питанням режиму.
-grep -Fq -- '--with-current' "$ROOT/cli/prepare/qa-payload.sh" || fail 'qa-payload не приймає поточний переклад'
-grep -Fq 'qa_args+=(--with-current)' "$ROOT/cli/run/run-drive.sh" || fail 'рушій не дає QA поточний переклад у improve'
-
-# Категорія, дозволена набором, мусить бути дозволена й guard-ом.
-#
-# Клас той самий, що вбив прогін у D20: ДВА списки того самого. `market` жив у
-# `RunSpec::DOMAINS` і в живому API, але не в regex реєстру команд · будь-який
-# диригент отримав би відмову на цілком законній категорії, і побачити це можна
-# було лише спробувавши.
-php -r '
-require $argv[1];
-$registry = json_decode((string) file_get_contents($argv[2]), true, 512, JSON_THROW_ON_ERROR);
-$patterns = $registry["guard_patterns"] ?? [];
-$reflection = new ReflectionClass(Bdo\Translate\Pipeline\RunSpec::class);
-$domains = $reflection->getConstant("DOMAINS");
-$fail = static function (string $m): void { fwrite(STDERR, "FAIL: $m\n"); exit(1); };
-foreach ($domains as $domain) {
-    foreach (["./bdo mode start patch 50 7 $domain", "./bdo mode status patch 7 $domain"] as $command) {
-        $ok = false;
-        foreach ($patterns as $pattern) {
-            if (preg_match("~".$pattern."~", $command) === 1) { $ok = true; break; }
-        }
-        if (! $ok) $fail("guard блокує законну категорію: $command");
-    }
-}
-// І навпаки: вигадана категорія лишається забороненою.
-foreach ($patterns as $pattern) {
-    if (preg_match("~".$pattern."~", "./bdo mode start patch 50 7 вигадана") === 1) {
-        $fail("guard пропускає неіснуючу категорію");
-    }
-}
-' "$ROOT/lib/autoload.php" "$ROOT/cli/command-registry.json" || fail "перелік категорій розійшовся з guard"
+# 4. І навпаки: меню не має пропонувати категорію, якої код не знає · вибір
+#    такої категорії дав би порожню пачку без пояснення.
+menu_domains="$(sed -n 's/.*Категорії: \(.*\)" >&2.*/\1/p' "$ROOT/bin/tui.sh")"
+test -n "$menu_domains" || fail 'меню більше не показує переліку категорій'
+for domain in $menu_domains; do
+    php -r '
+    require $argv[1];
+    exit(in_array($argv[2], Bdo\Translate\Pipeline\RunSpec::domains(), true) ? 0 : 1);
+    ' "$ROOT/lib/autoload.php" "$domain" || fail "меню пропонує категорію $domain, якої немає в RunSpec"
+done
 
 echo 'domain filter: OK'

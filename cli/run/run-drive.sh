@@ -30,9 +30,8 @@ complete() {
 emit() {
     php -r '$n=json_decode($argv[3],true,512,JSON_THROW_ON_ERROR);echo json_encode(["ok"=>$argv[1]==="1","state"=>$argv[2],"next"=>$n],JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES),"\n";' "$1" "$2" "$3"
 }
-# Envelope дублюється у state/next-child.json: плагін translation-child-contract
-# читає його звідти, підставляє точний вміст payload у Task prompt і зберігає
-# результат Task у response_path механічно, без копіювання диригентом.
+# Envelope дублюється у state/next-child.json: драйвер `cli/run/run-loop.sh`
+# читає його звідти й передає payload у роль ФАЙЛОМ, не переказуючи вміст.
 #
 # Поле `prompt` · готовий рядок, який диригент КОПІЮЄ в аргумент Task.
 #

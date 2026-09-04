@@ -110,21 +110,26 @@ if BDO_STATE_DIR="$TMP/state" bash "$ROOT/cli/quality/build-items.sh" \
     fail 'неповна відповідь пройшла гейт items'
 fi
 
-# 4. Плагін розгортає обгортку назад у масив, тому решта флоу її не бачить.
-node --experimental-strip-types -e '
-const { unwrapChildJson } = await import(process.argv[1] + "/.opencode/lib/child-response.ts");
-const check = (input, want, why) => {
-    const got = unwrapChildJson(input);
-    if (got !== want) { console.error(`FAIL: ${why}: ${got}`); process.exit(1); }
-};
-check("{\"items\":[{\"a\":1},{\"a\":2}]}", "[{\"a\":1},{\"a\":2}]", "items не розгорнувся");
-// Форма `row_N` лишається прийнятною: локальна модель за старим промптом і
-// стара незавершена пачка не мають упасти на першому ж кроці.
-check("{\"row_1\":{\"x\":1},\"row_2\":{\"x\":2}}", "[{\"x\":1},{\"x\":2}]", "row_N не розгорнувся");
-check("{\"row_10\":{\"x\":10},\"row_2\":{\"x\":2}}", "[{\"x\":2},{\"x\":10}]", "row_N упорядкований як рядок, не число");
-check("{\"items\":[{\"a\":1}]}", "[{\"a\":1}]", "items не розгорнувся");
-check("[{\"a\":1}]", "[{\"a\":1}]", "чистий масив зіпсовано");
-check("{\"ok\":true,\"text\":\"готово\"}", "{\"ok\":true,\"text\":\"готово\"}", "smoke-відповідь зіпсована");
-' "$ROOT" || fail 'розгортання відповіді зламане'
+# 4. Клієнт розгортає конверт назад у масив, тому решта флоу його не бачить.
+#
+# Перевіряємо САМЕ той файл, який кличе `cli/model/client.php`. Раніше ця
+# функція жила в `.opencode/lib/child-response.ts` і вміла ще форму `row_N` ·
+# спадок промпта, який писав відповідь по одному полю на рядок. Її більше
+# немає: `format` у Ollama є constrained decoding, тому модель фізично не може
+# віддати нічого, крім схеми запиту.
+unwrap() { printf '%s' "$1" | php "$ROOT/cli/model/unwrap.php"; }
+check() {
+    local got
+    got="$(unwrap "$1")"
+    test "$got" = "$2" || fail "$3: маємо $got"
+}
+check '{"items":[{"a":1},{"a":2}]}' '[{"a":1},{"a":2}]' 'items не розгорнувся'
+check '{"items":[{"a":1}]}' '[{"a":1}]' 'items з одного елемента не розгорнувся'
+check '[{"a":1}]' '[{"a":1}]' 'чистий масив зіпсовано'
+check '{"ok":true,"text":"готово"}' '{"ok":true,"text":"готово"}' 'smoke-відповідь зіпсована'
+check '{"items":{"a":1}}' '{"items":{"a":1}}' 'обʼєкт під ключем items прийнято за список'
+# І доводимо, що робота користується САМЕ цим файлом.
+grep -Fq "require_once __DIR__.'/unwrap.php'" "$ROOT/cli/model/client.php" \
+    || fail 'клієнт моделі не використовує cli/model/unwrap.php'
 
 echo 'schema provider compat: OK'

@@ -60,99 +60,37 @@ check_rules() {
     # має права тихо зникнути при наступному переписуванні карти правил.
     grep -Fq 'git push` робить ВИКЛЮЧНО власник' AGENTS.md \
         || fail 'у AGENTS.md немає правила «git push робить виключно власник»'
-    grep -Fq 'git push` робить ТІЛЬКИ власник' .opencode/critical-rules.md \
-        || fail 'у .opencode/critical-rules.md немає правила про push'
     grep -Fq '§4.2 `git push` виконує ВИКЛЮЧНО власник' "$RULE_REFERENCE" \
         || fail "у $RULE_REFERENCE немає §4.2 про push"
-    # Переклад робиться в OpenCode через готові primary-режими.
-    # Це не стилістика: передавання payload у субагента текстом дало чотири
-    # прогони підряд із нулем записаних рядків. Правило не має права зникнути з
-    # промпта диригента при наступному переписуванні.
-    grep -Fq 'ПЕРЕКЛАД РОБИТЬСЯ В OPENCODE' bdo \
-        || fail 'у `bdo help flow` немає рядка «ПЕРЕКЛАД РОБИТЬСЯ В OPENCODE»'
-    # Джерело правди про діапазон · сам валідатор, а не друга копія числа тут.
-    local fetch_min fetch_max primary
+    # Порядок кроків тримає код, а не модель · це головне рішення переходу
+    # 2026-09-04, і воно не має права зникнути з правил при переписуванні.
+    grep -Fq 'ПОРЯДОК КРОКІВ ТРИМАЄ КОД, А НЕ МОДЕЛЬ' AGENTS.md \
+        || fail 'AGENTS.md не фіксує, що порядок кроків тримає драйвер, а не модель'
+    grep -Fq 'Payload роль отримує ФАЙЛОМ' AGENTS.md \
+        || fail 'AGENTS.md не забороняє переказувати payload'
+    grep -Fq 'Переклад запускається ЛИШЕ через' AGENTS.md \
+        || fail 'AGENTS.md не забороняє обхідні шляхи запуску перекладу'
+    # Розмір пачки зафіксовано на 50 (рішення власника 2026-08-28) і це стеля
+    # запису API (`/me` -> `max_items`). Джерело правди · валідатор fetch.
+    local fetch_min fetch_max tui_size
     fetch_min="$(sed -n 's/.*BATCH < \([0-9]\{1,3\}\).*/\1/p' cli/api/fetch-rows.sh | sed -n '1p')"
     fetch_max="$(sed -n 's/.*BATCH > \([0-9]\{1,3\}\).*/\1/p' cli/api/fetch-rows.sh | sed -n '1p')"
     test -n "$fetch_min" && test -n "$fetch_max" \
         || fail 'не вдалося прочитати діапазон розміру пачки з cli/api/fetch-rows.sh'
-    for primary in патч ручний пропозиції покращення-ші; do
-        test -f ".opencode/agents/$primary.md" || fail "немає primary-режиму $primary"
-        grep -Fq 'Виконай `./bdo platform` до будь-якого іншого `./bdo`' ".opencode/agents/$primary.md" \
-            || fail "$primary не має обовʼязкового platform preflight"
-        grep -Fq 'Виконай `./bdo env`.' ".opencode/agents/$primary.md" \
-            || fail "$primary не має обовʼязкового env preflight"
-        # Власний префікс запуску ламає WSL-міст: перехід у WSL робить guard.
-        grep -Fq 'Ніколи не дописуй' ".opencode/agents/$primary.md" \
-            || fail "$primary не забороняє власний wsl/bash/cd префікс перед ./bdo"
-        grep -Fq 'Перед кожним `mode start` повтори `./bdo env`.' ".opencode/agents/$primary.md" \
-            || fail "$primary не оновлює ціль перед mode start"
-        grep -Fq './bdo run drive' ".opencode/agents/$primary.md" \
-            || fail "$primary не використовує run drive"
-        # Розмір пачки в промпті vs діапазон, який реально приймає fetch.
-        #
-        # 2026-08-25 промпти лишились на `15` після того, як `fetch-rows.sh`
-        # звузився до 20-100. Кожна НОВА пачка вмирала, і мовчки. Розбіжність
-        # між промптом і валідатором має падати тут, а не на живому прогоні.
-        local prompt_size
-        prompt_size="$(sed -n 's/.*`\.\/bdo mode start [a-z]* \([0-9]\{1,3\}\) [^`]*`.*/\1/p' ".opencode/agents/$primary.md" | sed -n '1p')"
-        test -n "$prompt_size" || fail "$primary не називає розміру пачки в mode start"
-        test "$prompt_size" -ge "$fetch_min" && test "$prompt_size" -le "$fetch_max" \
-            || fail "$primary радить пачку $prompt_size поза діапазоном fetch $fetch_min-$fetch_max"
-        # Розмір пачки зафіксовано на 50 (рішення власника 2026-08-28).
-        # Менша пачка НЕ економить: диригент коштує ~фіксовано за пачку
-        # ($1,218 за девʼять пачок ≈ $0,135 незалежно від рядків), тому 20
-        # рядків замість 50 множать саме платну частину в 2,5 раза. 50 · це
-        # також стеля запису API (`/me` -> `max_items`).
-        test "$prompt_size" -eq 50 \
-            || fail "$primary радить пачку $prompt_size; зафіксовано рівно 50"
-        grep -Fq 'Власник змінює лише `.env`; CLI виконуй сам' ".opencode/agents/$primary.md" \
-            || fail "$primary не містить UX-контракт власника"
-        grep -Fq 'СПОЧАТКУ ВИЗНАЧ ТИП ЗАПИТУ' ".opencode/agents/$primary.md" \
-            || fail "$primary не має простого маршрутизатора запитів"
-        grep -Fq '«скільки рядків без ШІ-перекладу» -> `./bdo patches all machine`' ".opencode/agents/$primary.md" \
-            || fail "$primary не маршрутизує запит про доступні рядки через API"
-        # Модель перемальовувала таблицю патчів у власну і губила колонки
-        # `№ у грі` та `опубліковано` · саме ті, за якими власник упізнає патч.
-        grep -Fq 'Віддай вивід ДОСЛІВНО в блоці коду' ".opencode/agents/$primary.md" \
-            || fail "$primary дозволяє перемальовувати вивід ./bdo своїми словами"
-        # 2026-08-27 диригент написав «29 805 (було 29 822)», тоді як команда
-        # надрукувала 29 803 і 29 820. Обидва числа вигадані, обидва у звіті.
-        grep -Fq 'ЖОДНОГО числа від себе' ".opencode/agents/$primary.md" \
-            || fail "$primary дозволяє називати числа по памʼяті замість виводу"
-        grep -Fq 'Друга колонка · номер у грі; не передавай її як snapshot.' ".opencode/agents/$primary.md" \
-            || fail "$primary плутає номер патча у грі зі snapshot_id"
-        grep -Fq 'Явне «перекладай патч N» уже є підтвердженням; не перепитуй.' ".opencode/agents/$primary.md" \
-            || fail "$primary повторно просить уже надане підтвердження"
-        # Диригент мусить КОПІЮВАТИ готовий рядок, а не складати його сам:
-        # на складанні він зривався двічі за дві доби.
-        grep -Fq 'значення `next.prompt`, скопійоване ДОСЛІВНО' ".opencode/agents/$primary.md" \
-            || fail "$primary складає рядок prompt сам замість копіювання next.prompt"
-        # Власник не має випрошувати звіт: 2026-08-28 він тричі писав «напиши
-        # текстом», щоб дізнатись, чому пачка стала.
-        grep -Fq 'ЗВІТ ПРО ПРОБЛЕМУ пиши САМ' ".opencode/agents/$primary.md" \
-            || fail "$primary не зобовʼязаний сам звітувати про відмову"
-        # Диригент двічі намагався пропатчити StateMachine.php через `php -r`.
-        grep -Fq 'Код набору НЕ лагодь' ".opencode/agents/$primary.md" \
-            || fail "$primary не має заборони лагодити код набору"
-        grep -Fq 'reason=child_retry_budget_exhausted' ".opencode/agents/$primary.md" \
-            || fail "$primary не знає terminal retry budget"
-        grep -Fq 'власника не питай' ".opencode/agents/$primary.md" \
-            || fail "$primary перекладає provider retry на власника"
-        grep -Fq 'МЕЖА ПРОЄКТУ' ".opencode/agents/$primary.md" \
-            || fail "$primary не обмежує доступ до серверного проєкту"
-        grep -Fq 'docs/API_CHANGE_HANDOFF.md' ".opencode/agents/$primary.md" \
-            || fail "$primary не має handoff для зміни API"
-    done
+    tui_size="$(sed -n 's/.*mode start "\$mode" \([0-9]\{1,3\}\).*/\1/p' bin/tui.sh | sed -n '1p')"
+    test -n "$tui_size" || fail 'bin/tui.sh не називає розміру пачки'
+    test "$tui_size" -ge "$fetch_min" && test "$tui_size" -le "$fetch_max" \
+        || fail "TUI бере пачку $tui_size поза діапазоном fetch $fetch_min-$fetch_max"
+    test "$tui_size" -eq 50 || fail "TUI бере пачку $tui_size; зафіксовано рівно 50"
+    # Драйвер мусить починати наступну пачку САМ: зупинка з питанням «продовжити?»
+    # була найдорожчою звичкою диригента (D25, D34).
+    grep -Fq 'Наступну пачку відкриваємо САМІ' cli/run/run-loop.sh \
+        || fail 'драйвер більше не починає наступну пачку самостійно'
     local prompt_include
     prompt_include="$(rg -n '^[[:space:]]*(@include|!include|include:)|[Пп]рочитай .*\.md' \
-        .opencode/agents .opencode/agent-templates | sed -n '1p' || true)"
+        roles | sed -n '1p' || true)"
     test -z "$prompt_include" \
-        || fail "runtime prompt залежить від зовнішнього include/read: $prompt_include"
-    grep -Fq 'Переклад робиться В OPENCODE' .opencode/critical-rules.md \
-        || fail 'у critical-rules.md немає правила «переклад робиться в OpenCode»'
-    grep -Fq 'Межа серверного проєкту' .opencode/critical-rules.md \
-        || fail 'critical-rules не обмежує серверний проєкт режимом read-only'
+        || fail "prompt ролі залежить від зовнішнього include/read: $prompt_include"
     grep -Fq 'API_CHANGE_HANDOFF.md' docs/AI_AGENT_RULES_REFERENCE.md \
         || fail 'норматив не визначає handoff серверної API-зміни'
     grep -Fq 'найслабшу дозволену модель' AGENTS.md \
@@ -168,67 +106,59 @@ check_rules() {
         || fail 'чекліст не називає інспекцію IDE'
     grep -Fq 'офіційна українська локалізація Black Desert Online' AGENTS.md \
         || fail 'AGENTS.md не фіксує рамку задачі для child'
-    grep -Fq '§8.13 Child-prompt задає рамку задачі' docs/AI_AGENT_RULES_REFERENCE.md \
-        || fail 'норматив не фіксує рамку задачі child'
-    grep -Fq 'Prompts сумісні зі слабкою моделлю' .opencode/critical-rules.md \
-        || fail 'critical-rules не має контракту prompt compatibility'
-    grep -Fq '§8.8 Primary і child prompts' docs/AI_AGENT_RULES_REFERENCE.md \
+    grep -Fq '§8.14 Prompt ролі задає рамку задачі' docs/AI_AGENT_RULES_REFERENCE.md \
+        || fail 'норматив не фіксує рамку задачі ролі'
+    grep -Fq '§8.11 Prompts ролей розраховувати' docs/AI_AGENT_RULES_REFERENCE.md \
         || fail 'норматив не визначає prompt design для слабких моделей'
     grep -Fq 'Не винось спільні правила prompt-ів у runtime include' AGENTS.md \
         || fail 'AGENTS.md не вимагає самодостатніх runtime prompts'
     # 2026-08-27: власник зафіксував курс на локальні моделі. Еталон мусить бути
     # НАЗВАНИЙ, інакше «найслабша модель» щоразу означає ту, яка зараз під рукою.
-    grep -Fq 'ollama-local`, типова `qwen3.6:35b-a3b-mtp-q4_K_M`' AGENTS.md \
+    grep -Fq 'config/roles.json`, типова `qwen3.6:35b-a3b-mtp-q4_K_M`' AGENTS.md \
         || fail 'AGENTS.md не називає еталонну локальну модель для промптів'
-    grep -Fq '§8.12 Еталонна «найслабша модель» названа' docs/AI_AGENT_RULES_REFERENCE.md \
+    grep -Fq '§8.13 Еталонна «найслабша модель» названа' docs/AI_AGENT_RULES_REFERENCE.md \
         || fail 'норматив не фіксує еталонну модель промптів'
-    grep -Fq 'мусить збігатися до символу' AGENTS.md \
-        || fail 'AGENTS.md не вимагає однакового спільного блоку primary-промптів'
-    grep -Fq 'Runtime prompt самодостатній' .opencode/critical-rules.md \
-        || fail 'critical-rules дозволяє ненадійну runtime-композицію prompts'
+    grep -Fq 'Режим більше не є промптом' AGENTS.md \
+        || fail 'AGENTS.md не фіксує, що режим став конфігурацією прогону'
     # Клас відмови «тихий збій і фіктивна перевірка» коштував двох діб розбору
     # 2026-08-25…27. Норма не має права зникнути при наступному переписуванні.
-    grep -Fq 'Тихий збій заборонений' .opencode/critical-rules.md \
-        || fail 'critical-rules не забороняє тихий збій'
-    grep -Fq 'Перевірка мусить іти тим самим шляхом, що й робота' .opencode/critical-rules.md \
-        || fail 'critical-rules не вимагає, щоб перевірка йшла шляхом роботи'
+    grep -Fq 'Тихий збій і фіктивна перевірка' AGENTS.md \
+        || fail 'AGENTS.md не забороняє тихий збій'
+    grep -Fq 'самим шляхом, що й робота' AGENTS.md \
+        || fail 'AGENTS.md не вимагає, щоб перевірка йшла шляхом роботи'
     grep -Fq '§12 Клас відмови' docs/AI_AGENT_RULES_REFERENCE.md \
         || fail 'норматив не описує клас тихого збою'
     grep -Fq '§12 довідника' AGENTS.md \
         || fail 'карта правил не веде до §12'
-    grep -Fq '§8.9 Кожен runtime primary/child prompt' docs/AI_AGENT_RULES_REFERENCE.md \
+    grep -Fq '§8.12 Кожен `roles/<роль>.md` є повним' docs/AI_AGENT_RULES_REFERENCE.md \
         || fail 'норматив не забороняє runtime include prompts'
-    local forbidden_server_command
-    for forbidden_server_command in docker artisan mysql psql sqlite3; do
-        grep -Fq "\"*$forbidden_server_command*\": \"deny\"" opencode.json \
-            || fail "opencode.json не блокує $forbidden_server_command"
-        grep -Fq "\"*$forbidden_server_command*\": \"deny\"" templates/opencode.json \
-            || fail "templates/opencode.json не блокує $forbidden_server_command"
-    done
+    # Межа серверного проєкту: раніше її тримали `deny`-правила в конфізі
+    # OpenCode (docker, artisan, mysql, psql, sqlite3). Конфігу більше немає, і
+    # заміняти його текстом у промпті було б слабшою межею · тому перевіряємо
+    # ІНШЕ й сильніше: у конвеєрі взагалі немає поверхні для довільної команди.
+    #
+    # Драйвер виконує лише `./bdo` і `cli/model/client.php`; рядок `command` із
+    # конверта він НЕ виконує (це перевірено `tests/driver-loop.sh`). Модель
+    # інструментів не має: `cli/model/client.php` шле повідомлення й читає
+    # відповідь, і нічого більше.
+    grep -qE '\b(eval|source|bash -c|sh -c)\b' cli/run/run-loop.sh \
+        && fail 'драйвер отримав спосіб виконати довільний рядок'
+    grep -qE '\b(exec|shell_exec|system|passthru|popen|proc_open)\s*\(' cli/model/client.php \
+        && fail 'клієнт моделі отримав спосіб виконати довільну команду'
+    grep -Fq 'Зовнішній серверний проєкт · лише read-only довідник' AGENTS.md \
+        || fail 'AGENTS.md не обмежує серверний проєкт режимом read-only'
     test -f docs/WINDOWS_WSL2.md || fail 'немає канонічної Windows/WSL2 інструкції'
     # Native Windows flow лишається забороненим і після появи WSL-моста: у WSL
     # виконується САМ toolkit, а міст лише доставляє туди вже дозволену команду.
-    grep -Fq 'На Windows toolkit виконується ТІЛЬКИ всередині WSL2' .opencode/critical-rules.md \
-        || fail 'critical-rules не забороняє native Windows flow'
-    grep -Fq 'wsl.exe --cd' .opencode/plugin/translation-execution-guard.ts \
-        || fail 'execution-guard втратив WSL-міст, описаний у critical-rules'
-    # Staged payload не має лишатись у транскрипті платної моделі: виміряно
-    # 2026-08-26, це було 61% контексту диригента, і витрата росла квадратично.
-    grep -Fq 'restorePromptReference(input, output, next.payload_path)' .opencode/plugin/translation-child-contract.ts \
-        || fail 'child-contract лишає staged payload у контексті диригента'
     grep -Fq '[WINDOWS_WSL2.md](WINDOWS_WSL2.md)' docs/README.md \
         || fail 'docs/README.md не посилається на Windows/WSL2 інструкцію'
-    grep -Fq 'Переклад робиться В OPENCODE' AGENTS.md \
-        || fail 'у AGENTS.md немає правила «переклад робиться в OpenCode»'
-    grep -Fq 'Власник НЕ запускає bash/CLI-команди' AGENTS.md \
+    grep -Fq 'Власник НЕ складає команд' AGENTS.md \
         || fail 'у AGENTS.md немає UX-контракту власника'
     grep -Fq 'gate full && ./bdo api' AGENTS.md \
         || fail 'у AGENTS.md немає фінальної gate full/API-перевірки'
-    grep -Fq 'Головний UX-контракт власника' .opencode/critical-rules.md \
-        || fail 'у critical-rules.md немає UX-контракту власника'
     note "4 дзеркала ідентичні; AGENTS.md: $lines/$RULE_MAP_MAX_LINES рядків"
-    note 'чотири OpenCode-режими, UX-контракт і run drive присутні в prompts, правилах і help flow'
-    note 'правило про push присутнє в карті, критичних правилах і нормативі'
+    note 'UX-контракт, драйвер і межа payload присутні в правилах'
+    note 'правило про push присутнє в карті правил і нормативі'
 }
 
 # Документи й промпти, посилання в яких мусять вести на наявний файл.
@@ -300,8 +230,7 @@ check_references() {
     # (2026-08-22) виклик його скрипта звідси означав би команду до файла, якого
     # в репозиторії немає · тобто інструкцію, що гарантовано впаде.
     for instruction in README.md AGENTS.md .cursorrules CLAUDE.md QWEN.md \
-        UI_SUBAGENT_WORKFLOW.md docs/PROJECT_OVERVIEW.md docs/README.md \
-        .opencode/critical-rules.md .opencode/agents/*.md
+        docs/PROJECT_OVERVIEW.md docs/README.md roles/*.md
     do
         test -f "$instruction" || continue
         for frozen in translate-patch.sh translate-menu.sh agent-call.sh merge-verdicts.sh; do
@@ -467,8 +396,6 @@ check_shell() {
     run php tests/pipeline-unit.php
     run php tests/pipeline-faults.php
     run bash tests/batch-summary.sh
-    run bash tests/model-runtime-materialization.sh
-    run bash tests/smoke-envelope.sh
     run bash tests/drive-memory-layers.sh
     run bash tests/judge-flow.sh
     run bash tests/patch-argument.sh
@@ -484,29 +411,58 @@ check_shell() {
     run bash tests/schema-provider-compat.sh
     run bash tests/mechanical-final-check.sh
     run bash tests/domain-filter.sh
-    run bash tests/local-model-routes.sh
-    run bash tests/custom-provider-routes.sh
     run bash tests/audit-response-shape.sh
-    run bash tests/primary-prompt-drift.sh
     run bash tests/mechanical-before-qa.sh
     run bash tests/payload-shared-examples.sh
     run bash tests/registry-hygiene.sh
     run bash tests/glossary-listing.sh
-    run bash tests/opencode-output-limit.sh
     run bash tests/write-channel-rights.sh
 }
 
+# Ролі й драйвер · те, що замінило шар OpenCode.
+#
+# Раніше тут перевірялись плагіни, промпти диригента й конфіг чужого застосунку.
+# Нічого з цього більше немає: порядок кроків тримає `cli/run/run-loop.sh`,
+# моделі викликає `cli/model/client.php`, а ролі описані в `config/roles.json`
+# і `roles/*.md`. Перевіряємо саме цей контракт · роль без промпта або без
+# схеми зупинить пачку так само мовчки, як колись неоголошена модель.
 check_agents() {
-    step 'OpenCode agents і routing guard'
+    step 'Ролі конвеєра й драйвер'
     have jq || fail 'jq недоступний'
-    run bash .opencode/validate-translation-agents.sh
-    jq -e . opencode.json >/dev/null || fail 'opencode.json невалідний JSON'
-    run node --experimental-strip-types tests/routing-guard.mjs
-    run node --experimental-strip-types tests/execution-guard.mjs
-    run node --experimental-strip-types tests/runtime-state-reader.mjs
-    run node --experimental-strip-types tests/result-writer.mjs
-    run node --experimental-strip-types tests/child-contract.mjs
-    run node --experimental-strip-types tests/autopilot.mjs
+    jq -e . config/roles.json >/dev/null || fail 'config/roles.json невалідний JSON'
+    local role schema
+    for role in $(jq -r '.roles | keys[]' config/roles.json); do
+        test -f "roles/$role.md" || fail "роль $role не має промпта roles/$role.md"
+        test -s "roles/$role.md" || fail "промпт roles/$role.md порожній"
+        schema="$(jq -r --arg r "$role" '.roles[$r].schema // "none"' config/roles.json)"
+        case "$schema" in
+            response|qa|none) ;;
+            *) fail "роль $role має невідомий тип схеми: $schema" ;;
+        esac
+        # Рамка «офіційна українська локалізація BDO» · рішення власника
+        # 2026-08-28. Без неї модель бере відповідник із памʼяті про чужу
+        # локалізацію, і саме звідти беруться русизми.
+        grep -Fq 'Black Desert Online' "roles/$role.md" \
+            || fail "промпт $role втратив рамку «офіційна українська локалізація Black Desert Online»"
+    done
+    note "ролей: $(jq -r '.roles | length' config/roles.json), у кожної є промпт і схема"
+    # Кожна роль, яку вміє віддати рушій, мусить бути в реєстрі · інакше драйвер
+    # зупиниться на живій пачці з «unknown_role».
+    local engine_roles missing
+    # Беремо аргумент функції `child <стан> <роль> …`, а не будь-яку згадку
+    # рядка `translation-*`: інакше коментар про давно видалений плагін валить
+    # gate як «невідому роль».
+    engine_roles="$(grep -oE '^[[:space:]]*(child|transition [a-z_]+; child) [a-z_]+ translation-[a-z]+' cli/run/run-drive.sh \
+        | grep -oE 'translation-[a-z]+' | sort -u)"
+    test -n "$engine_roles" || fail 'у cli/run/run-drive.sh не знайдено жодної ролі'
+    missing=""
+    for role in $engine_roles; do
+        jq -e --arg r "$role" '.roles[$r]' config/roles.json >/dev/null || missing="$missing $role"
+    done
+    test -z "$missing" || fail "рушій кличе ролі, яких немає в config/roles.json:$missing"
+    run bash tests/model-client.sh
+    run bash tests/driver-loop.sh
+    run bash tests/tui.sh
 }
 
 check_runtime() { run ./bdo runtime; }

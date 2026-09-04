@@ -33,11 +33,11 @@
 | Зміна | Файл | Доказ |
 |---|---|---|
 | Розділ «Доступно на покращення ШІ» тим самим фільтром, що й прогін | `cli/api/patch-info.sh` | `./bdo patch 1` друкує 934 662 |
-| Пункти `1в` (рядки проти беклогу) і `1г` (ДОСЛІВНО, колонки, `./bdo status`) у чотирьох промптах | `.opencode/agents/*.md` | `tests/domain-filter.sh` |
-| Спільний блок чотирьох промптів звіряється до символу | `tests/primary-prompt-drift.sh` | падає на мутації одного файла з чотирьох |
+| Пункти `1в` (рядки проти беклогу) і `1г` (ДОСЛІВНО, колонки, `./bdo status`) у чотирьох промптах | `roles/*.md` | `tests/domain-filter.sh` |
+| Спільний блок чотирьох промптів звіряється до символу | `tests/driver-loop.sh` | падає на мутації одного файла з чотирьох |
 | Еталонна модель названа в правилах і нормативі | `AGENTS.md` + 3 дзеркала, `docs/AI_AGENT_RULES_REFERENCE.md` §8.12 | `./bdo gate docs` |
 | Детектор чужої писемності (ієрогліфи, кана, хангиль, арабиця…) у механічних дефектах | `lib/Quality/ForeignScript.php`, `lib/Quality/Defects.php` | `tests/mechanical-final-check.sh`, розділ 3 |
-| Заборона чужої писемності в child-промптах worker і repair | `.opencode/agent-templates/translation-{worker,repair}.md` | `./bdo gate agents` |
+| Заборона чужої писемності в child-промптах worker і repair | `roles/translation-{worker,repair}.md` | `./bdo gate agents` |
 
 ## Етапи
 
@@ -54,7 +54,7 @@
    чужої писемності. Без виміру посилення промптів буде здогадом.
    Перетинається з J2 («аналітика дефектів за моделями») у
    [2026-08-24_JUDGE_CALIBRATION_AND_MODEL_ANALYTICS.md](../backlog/2026-08-24_JUDGE_CALIBRATION_AND_MODEL_ANALYTICS.md).
-3. **Build-time генерація спільного блоку.** `tests/primary-prompt-drift.sh`
+3. **Build-time генерація спільного блоку.** `tests/driver-loop.sh`
    ловить розбіжність, але правку все одно треба вносити чотири рази. §8.9
    дозволяє генерацію, якщо результат · повний автономний `.md`, а gate звіряє
    його з джерелом. Робити ПІСЛЯ етапу 1: доки правила ще активно змінюються,

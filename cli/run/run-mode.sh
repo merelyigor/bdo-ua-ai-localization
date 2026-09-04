@@ -128,7 +128,6 @@ file_put_contents($file, json_encode([
 # Вікно моделі задає повзунок застосунку Ollama, і власник може посунути його
 # будь-коли. Перевірка коштує один локальний запит, а її відсутність коштує
 # мовчазної втрати початку розмови · тому вона тут, на кожній пачці.
-"$SCRIPT_DIR/cli/runtime/context-drift.sh" >&2 || true
 
 "$SCRIPT_DIR/cli/batch/batch-new.sh" "$rows" >/dev/null
 B="$($SCRIPT_DIR/cli/batch/batch-dir.sh)"

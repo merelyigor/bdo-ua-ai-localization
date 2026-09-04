@@ -4,7 +4,7 @@
 винесена в окремий lifecycle планів.
 
 Власник не запускає project bash/CLI вручну: він змінює лише локальний `.env` і
-передає роботу одному з primary-режимів OpenCode. Primary сам матеріалізує
+працює через меню `./bdo`. Набір сам матеріалізує
 runtime, веде flow та виконує перевірки; command snippets у документації є
 внутрішнім agent flow або developer/diagnostics довідником.
 
@@ -19,7 +19,7 @@ runtime, веде flow та виконує перевірки; command snippets 
 | Повний норматив для агентів | [AI_AGENT_RULES_REFERENCE.md](AI_AGENT_RULES_REFERENCE.md) |
 | Маршрутизація правил агентів | [AGENT_RULE_ROUTING.md](AGENT_RULE_ROUTING.md) |
 | Стан, виміри та дорогі знахідки flow | [FLOW_STATE.md](FLOW_STATE.md) |
-| Супервізований OpenCode flow | [UI_SUBAGENT_WORKFLOW.md](../UI_SUBAGENT_WORKFLOW.md) |
+| Як перекладати цим набором | [../WORKFLOW.md](../WORKFLOW.md) |
 | Ендпоінти й параметри Agent API | [API.md](API.md) |
 | Контракт запису через Agent API | [API_WRITE_CONTRACT.md](../API_WRITE_CONTRACT.md) |
 | Плани, реєстр і черга | [plans/README.md](plans/README.md), [plans/BACKLOG.md](plans/BACKLOG.md) |

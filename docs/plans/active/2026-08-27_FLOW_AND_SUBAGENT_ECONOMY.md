@@ -155,7 +155,7 @@ status, severity, case_sensitive, whole_word, **notes**),
 
 Правило вже є в CHILD-КОНТРАКТІ всіх чотирьох промптів, і плагін
 `translation-child-contract` однаково перезаписує `prompt` вмістом staged
-payload ([translation-child-contract.ts:102](../../../.opencode/plugin/translation-child-contract.ts)),
+payload ([translation-child-contract.ts:102](../../../cli/run/run-loop.sh)),
 тобто переписування не дає нічого, крім поламаного виклику. Правило без
 перевірки знову не втрималось · рівно той клас, що описаний у §8.12.
 
@@ -165,7 +165,7 @@ payload ([translation-child-contract.ts:102](../../../.opencode/plugin/translati
 відносний, лише імʼя файла) не має значення · значення має лише те, що це не
 власна копія байтів. Перевірка стоїть ПІСЛЯ перевірок самого payload, щоб
 зламаний staged файл давав свою помилку, а не претензію до форми виклику.
-Регресія: `tests/child-contract.mjs` (переписаний payload, порожній prompt,
+Регресія: `tests/driver-loop.sh` (переписаний payload, порожній prompt,
 довільний текст, чужий payload, три легальні написання шляху).
 
 Обмеження методу закрито 2026-08-28. Випадок стався того ж вечора: диригент
@@ -175,7 +175,7 @@ payload ([translation-child-contract.ts:102](../../../.opencode/plugin/translati
 замість «зламані аргументи», і повторював те саме, доки прогін не став.
 `unparsableTaskHint()` у виконавчому guard тепер розпізнає саме цей випадок і
 віддає точну причину разом із готовим рядком `payload:<шлях>` зі staged
-envelope. Регресія · `tests/execution-guard.mjs`.
+envelope. Регресія · `tests/driver-loop.sh`.
 
 **Метрика:** кількість `task` із prompt довшим за посилання · зараз невідома,
 бо ніде не фіксується; після зміни це відмова guard у журналі інцидентів.
@@ -200,7 +200,7 @@ CHILD-КОНТРАКТ усіх чотирьох промптів вимагає
 зміна прибирає крок, на якому модель помилялась. Регресія:
 `tests/drive-memory-layers.sh` (поле в envelope і у виводі `run drive`),
 `scripts/agent-check.sh` (формулювання в чотирьох промптах),
-`.opencode/validate-translation-agents.sh`.
+`scripts/agent-check.sh`.
 
 **Метрика:** відмов guard через переписаний payload · зараз 2 за сесію плюс
 дві зупинки прогону, які власник розбирав вручну.
@@ -273,7 +273,7 @@ payload приходив як ВИХІД інструмента в дитячі�
 дало б десятки пачок в одній сесії.
 
 **Не робимо.** Дослід у проєкті вже проводили 2026-08-20, і результат
-зафіксований у `.opencode/validate-translation-agents.sh`: будь-який
+зафіксований у `scripts/agent-check.sh`: будь-який
 увімкнений інструмент знімає constrained decoding, і схема пачки перестає
 діяти. Замір · QA-сесія `ses_fe11de584ffeLjGxtFaJkIuDzp`: чотири виклики
 `read`, на виході 20 обʼєктів лише з 11 унікальними `identity_hash`, хоча схема

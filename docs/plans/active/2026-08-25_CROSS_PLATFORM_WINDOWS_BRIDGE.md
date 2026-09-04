@@ -17,12 +17,12 @@
 
 | Зміна | Файл | Доказ |
 |---|---|---|
-| Guard переписує вже ДОЗВОЛЕНУ команду в `wsl.exe --cd <root> bash -lc "<команда>"` на Windows; `auto` вмикає це лише при `process.platform === "win32"` | `.opencode/plugin/translation-execution-guard.ts` | `tests/execution-guard.mjs`, блоки «Windows-міст» і «Міст працює ПІСЛЯ whitelist» |
+| Guard переписує вже ДОЗВОЛЕНУ команду в `wsl.exe --cd <root> bash -lc "<команда>"` на Windows; `auto` вмикає це лише при `process.platform === "win32"` | `cli/run/run-loop.sh` | `tests/driver-loop.sh`, блоки «Windows-міст» і «Міст працює ПІСЛЯ whitelist» |
 | `.gitattributes` з `eol=lf` | `.gitattributes` | `git ls-files --eol`: 149 файлів `i/lf w/lf`, 13 PNG як `-text` |
-| Резолвер даних OpenCode по інший бік межі WSL | `cli/system/opencode-home.sh` | `BDO_OPENCODE_HOME=/tmp/no-such-home ./bdo audit` друкує перевірені шляхи й підказку замість глухого падіння |
-| `audit`, `audit-dump`, `models` більше не прибиті до `$HOME` | `cli/audit/verify-run.sh`, `cli/audit/audit-dump.sh`, `cli/runtime/sync-opencode-models.sh` | `./bdo audit` на macOS працює як раніше |
+| Резолвер даних OpenCode по інший бік межі WSL | `cli/model/client.php` | `BDO_OPENCODE_HOME=/tmp/no-such-home ./bdo audit` друкує перевірені шляхи й підказку замість глухого падіння |
+| `audit`, `audit-dump`, `models` більше не прибиті до `$HOME` | `cli/audit/model-run.sh`, `cli/audit/model-run.sh`, `cli/runtime/check-runtime.sh` | `./bdo audit` на macOS працює як раніше |
 | `sqlite3` у preflight + рядок про базу OpenCode | `cli/system/check-platform.sh` | `./bdo platform` друкує `База OpenCode: …` |
-| Норматив і документація режиму B | `.opencode/critical-rules.md`, `docs/WINDOWS_WSL2.md`, `.env.example` | `./bdo gate full` passed |
+| Норматив і документація режиму B | `AGENTS.md`, `docs/WINDOWS_WSL2.md`, `.env.example` | `./bdo gate full` passed |
 
 Лишилось підтвердити на живій машині: чи виконує native Windows OpenCode
 переписану команду. Це єдина частина, яку неможливо перевірити з macOS.
@@ -50,7 +50,7 @@ WSL справжній Linux, тож немає ні підміни шляхів
 Що саме треба зробити, і чому без цього не працює:
 
 1. **Guard.** Whitelist зіставляє сирий рядок і вимагає, щоб він ПОЧИНАВСЯ з
-   `./bdo` (`.opencode/plugin/translation-execution-guard.ts:36`). Рядок
+   `./bdo` (`cli/run/run-loop.sh:36`). Рядок
    `wsl bash ./bdo env` буде відхилений, а три відмови вбивають сесію. Потрібна
    та сама нормалізація форми виклику, що описана нижче: зняти launcher-префікс
    (`wsl`, `wsl bash -c`, `./`, `php bdo.php`) ПЕРЕД зіставленням.
@@ -61,13 +61,13 @@ WSL справжній Linux, тож немає ні підміни шляхів
    `core.autocrlf=true` отримує CRLF у КОЖНОМУ `.sh`. Усередині WSL це дає
    `\r: command not found` і падіння на першому ж рядку. `.gitattributes`
    (етап 0) є передумовою, а не гігієною.
-3. **Дані самого OpenCode лежать по інший бік межі.** `cli/audit/verify-run.sh:36`
-   і `cli/audit/audit-dump.sh:16` читають `$HOME/.local/share/opencode/opencode.db`,
-   а `cli/runtime/sync-opencode-models.sh:33` · `$HOME/.config/opencode/`. Під
+3. **Дані самого OpenCode лежать по інший бік межі.** `cli/audit/model-run.sh:36`
+   і `cli/audit/model-run.sh:16` читають `$HOME/.local/share/opencode/opencode.db`,
+   а `cli/runtime/check-runtime.sh:33` · `$HOME/.config/opencode/`. Під
    WSL `$HOME` це `/home/<user>`, тоді як native OpenCode пише в
    `C:\Users\<user>\AppData\...`. Тому `./bdo audit`, `./bdo audit-dump` і
    `./bdo models` зламаються, а `audit` є ЄДИНИМ джерелом правди про субагентів
-   (`.opencode/critical-rules.md`). Потрібні змінні на кшталт
+   (`AGENTS.md`). Потрібні змінні на кшталт
    `OPENCODE_DATA_DIR` / `OPENCODE_CONFIG_DIR` з дефолтом на `$HOME`.
 4. **`sqlite3` усередині WSL.** Аудит вимагає його, але preflight
    `cli/system/check-platform.sh:21` перевіряє лише `bash php jq curl git`.
@@ -79,7 +79,7 @@ WSL справжній Linux, тож немає ні підміни шляхів
 
 ### Шлях 2 заборонений без доказу
 
-`.opencode/critical-rules.md:19` забороняє Git Bash. Заборону внесено одним
+`AGENTS.md:19` забороняє Git Bash. Заборону внесено одним
 комітом `602d429` разом із самою інструкцією WSL2; ні в `docs/FLOW_STATE.md`, ні
 в планах, ні в історії немає жодного заміру, який показав би, що Git Bash
 пробували і він зламався. Це декларація, а не результат.
@@ -109,7 +109,7 @@ Git for Windows постачає `bash`, `curl`, `sed`, `awk`, `grep`, `perl`, `
 | Варіант | Чому відкинуто |
 |---|---|
 | Порт на TypeScript/Bun | `bun` не є окремим виконуваним файлом на машині власника (перевірено 2026-08-25: `which bun` порожній) · це рантайм усередині OpenCode. Плюс `lib/**` це 2266 рядків протестованої доменної логіки на PHP, яку довелось би переписати. |
-| Вендорені PHP-бінарники в репо | 5 збірок (win-x64, mac-arm64, mac-x64, linux-x64, linux-arm64) по десятки МБ назавжди осідають в історії ПУБЛІЧНОГО репо, де force-push заборонено (`.opencode/critical-rules.md:3`). Ліміт GitHub 100 МБ на файл, плюс власник стає розповсюджувачем PHP і відповідає за його CVE. |
+| Вендорені PHP-бінарники в репо | 5 збірок (win-x64, mac-arm64, mac-x64, linux-x64, linux-arm64) по десятки МБ назавжди осідають в історії ПУБЛІЧНОГО репо, де force-push заборонено (`AGENTS.md:3`). Ліміт GitHub 100 МБ на файл, плюс власник стає розповсюджувачем PHP і відповідає за його CVE. |
 | Docker | Ще одна важка залежність, складні шляхи між контейнером і OpenCode, і той самий Linux усередині. |
 
 Компроміс для «нічого не встановлювати» на шляху 3: код шукає інтерпретатор у
@@ -127,7 +127,7 @@ Git for Windows постачає `bash`, `curl`, `sed`, `awk`, `grep`, `perl`, `
 | `cli/api/http-request.sh` | 1 файл | Єдиний чокпоінт `curl`; переїзд дає весь HTTP одразу |
 | `jq` | 9 входжень | `json_decode` вже вжито 84 рази · заміна тривіальна |
 | `perl` | 4 входження | Локальні заміни тексту |
-| Whitelist guard | 17 регулярок, усі прив'язані до `^\./bdo ` | `.opencode/plugin/translation-execution-guard.ts:36` |
+| Whitelist guard | 17 регулярок, усі прив'язані до `^\./bdo ` | `cli/run/run-loop.sh:36` |
 | Primary prompts | 4 файли | Рядок команди зашитий у текст промпта |
 | Тести | 11 bash, 2 php, 4 node (`scripts/agent-check.sh:367`) | Bash-тести не запустяться на Windows |
 | Gate `shell` | `shellcheck` обов'язковий (`scripts/agent-check.sh:350`) | Профіль зникає разом із bash |

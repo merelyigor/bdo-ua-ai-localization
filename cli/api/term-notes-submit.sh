@@ -89,7 +89,14 @@ foreach ($items as $item) {
             "source_snapshot_id" => (int) $byName[$name]["snapshot_id"],
         ],
         "provider" => "opencode",
-        "model" => getenv("TRANSLATE_MODEL") ?: "unknown",
+        "model" => (static function (): string {
+            // Модель ролі живе в реєстрі, а не в змінній оточення: сервер має
+            // бачити ту саму назву, якою насправді працював термінолог.
+            $config = json_decode((string) @file_get_contents(__DIR__."/../../config/roles.json"), true);
+            $role = $config["roles"]["translation-terminology"] ?? [];
+
+            return (string) ($role["model"] ?? $config["default_model"] ?? "unknown");
+        })(),
     ];
     if ($gist !== "") $body["gist"] = mb_substr($gist, 0, 200);
     if ($definition !== "") $body["definition"] = mb_substr($definition, 0, 4000);

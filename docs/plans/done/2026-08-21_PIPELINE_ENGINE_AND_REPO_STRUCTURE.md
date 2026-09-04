@@ -39,14 +39,14 @@
 |---|---|---|
 | Скриптів `*.sh` у корені | 43 (4321 рядок) | `wc -l *.sh` |
 | Викликів сусідніх скриптів через `$SCRIPT_DIR/*.sh` | 98 | `git grep -E '\$SCRIPT_DIR/[a-z-]+\.sh'` |
-| Промпт диригента | 441 рядок | `wc -l .opencode/agents/translation.md` |
-| Промпти пʼятьох дітей разом | 314 рядків | `wc -l .opencode/agents/translation-*.md` |
+| Промпт диригента | 441 рядок | `wc -l roles/translation.md` |
+| Промпти пʼятьох дітей разом | 314 рядків | `wc -l roles/translation-*.md` |
 | Скриптів із вбудованим `php -r` | 36 | `git grep -l 'php -r'` |
 | Helper-ів із машинно-читним виводом (`--json`) | 0 | `git grep -l -- '--json'` |
 | Полів стану в `manifest.json` | 4 (`id`, `identity_key`, `rows`, `created_at`) | `lib/Batch/Workspace.php:53` |
 
 Що з цього справді працює й не переглядається цим планом: пʼять незалежних
-механічних шарів маршрутизації (`opencode.json`, frontmatter, плагін,
+механічних шарів маршрутизації (`config/roles.json`, frontmatter, плагін,
 `subagent_depth`, `tools: {"*": false}`), `lib/` як єдине місце identity й
 quality logic, детерміновані гейти перед записом, ізоляція пачки маніфестом,
 курсор після завершення пачки, єдиний gate `scripts/agent-check.sh`.
@@ -184,13 +184,13 @@ cli/audit/              verify-run, audit-dump
 sh/                     спільні bash-функції: env, http, json, log, lock
 lib/Pipeline/           кроки, політика, маніфест як машина станів
 lib/{Api,Batch,Quality}/  без змін
-.opencode/              agents, plugin, critical-rules
+roles/              agents, plugin, critical-rules
 docs/                   довідники, decisions/, measurements.md, incidents.md
 scripts/agent-check.sh  єдиний gate
 state/ state-auto/ output/
 ```
 
-У корені лишаються `bdo`, чотири дзеркала правил, `README.md`, `opencode.json`,
+У корені лишаються `bdo`, чотири дзеркала правил, `README.md`, `config/roles.json`,
 `cli/system/paths.sh`, `.env.example`, `LICENSE`.
 
 ## Документація: розділити журнал за призначенням
@@ -213,7 +213,7 @@ state/ state-auto/ output/
 
 | Що | Де |
 |---|---|
-| Посилання на відсутній `AI_LAYER_RETRANSLATION_FROM_ENGLISH.md` | `.opencode/agents/translation.md:393` |
+| Посилання на відсутній `AI_LAYER_RETRANSLATION_FROM_ENGLISH.md` | `roles/translation.md:393` |
 | Посилання на `docs/AGENT_TRANSLATION_API.md`, якого в цьому repo немає (він серверний) | `docs/FLOW_STATE.md:419`, `lib/Api/ErrorCodes.php:10` |
 | Порожні backticks від старого рефакторингу шляхів | `UI_SUBAGENT_WORKFLOW.md:39`, `docs/FLOW_STATE.md:363` |
 | Перевірка посилань у gate охоплює лише `AGENTS.md` | `scripts/agent-check.sh:64-80` |
@@ -225,7 +225,7 @@ state/ state-auto/ output/
 ### Етап 0 · гниль і охоплення gate
 
 Виправити чотири пункти вище; розширити `check_references` на всі tracked `*.md`
-і промпти `.opencode/agents/*.md` з явним allowlist для серверних документів.
+і промпти `roles/*.md` з явним allowlist для серверних документів.
 DoD: `agent-check.sh docs` exit 0; спеціально зламане посилання дає FAIL.
 
 ### Етап 1 · `bdo` як єдиний вхід, без переміщення файлів
