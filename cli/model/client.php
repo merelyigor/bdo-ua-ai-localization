@@ -152,6 +152,8 @@ $journal = static function (string $verdict) use ($callsFile, $role, $model, $st
         'ms' => (int) round((microtime(true) - $started) * 1000),
         'in' => $stats['in'],
         'out' => $stats['out'],
+        'think' => getenv('BDO_MODEL_THINK') === '1',
+        'stream' => getenv('BDO_MODEL_STREAM') !== '0',
     ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)."\n", FILE_APPEND);
 };
 
@@ -170,10 +172,34 @@ $loadedWindow = static function () use ($endpoint, $model): int {
     return 0;
 };
 
+// ПОТІК І ДУМАННЯ · переміряно 2026-09-04 на Ollama 0.33.3.
+//
+// Обидва прапорці колись стояли жорстко `false`, і причина була записана як
+// «думання дає порожній content» (D28). Вимір 2026-08-29 це справді показував.
+// Сьогоднішній перевимір на тій самій моделі й тому самому constrained
+// decoding показав ІНШЕ:
+//   think=false · 7.6 с, content 150 символів, валідний JSON;
+//   think=true  · 44.8 с, content 96 символів, ТЕЖ валідний JSON, і роздуми
+//                 приходять окремим полем `thinking` (6 544 символи).
+// Тобто несумісності більше немає · є ціна в шість разів. Тому думання стало
+// ВИБОРОМ (`BDO_MODEL_THINK=1`), а не забороною, і за замовчуванням вимкнене.
+//
+// Потік вимірено окремо: 721 чанк (703 з `thinking`, 17 з `content`), зібраний
+// `content` валідний, `done_reason=stop`. Тобто `stream` не конфліктує ні зі
+// схемою, ні з думанням, і КОШТУЄ нуль · загальний час той самий. Через це він
+// увімкнений за замовчуванням: власник бачить роботу токен за токеном, а не
+// німий екран на хвилину. `BDO_MODEL_STREAM=0` повертає одноразову відповідь.
+//
+// Межа не змінилась: усі перевірки (`done_reason`, порожній `content`,
+// `not_json`, вікно, схема) робляться на ЗІБРАНІЙ відповіді, тобто там само,
+// де й раніше. Потік змінює лише спосіб доставки байтів.
+$stream = getenv('BDO_MODEL_STREAM') !== '0';
+$think = getenv('BDO_MODEL_THINK') === '1';
+
 $body = [
     'model' => $model,
-    'stream' => false,
-    'think' => false,
+    'stream' => $stream,
+    'think' => $think,
     'messages' => [
         ['role' => 'system', 'content' => $prompt],
         ['role' => 'user', 'content' => $payload],
@@ -194,13 +220,81 @@ $context = stream_context_create(['http' => [
     'timeout' => $timeout,
     'ignore_errors' => true,
 ]]);
-$raw = @file_get_contents($endpoint.'/api/chat', false, $context);
-if ($raw === false) {
-    $fail('model_unreachable', $endpoint.' не відповідає');
-}
-$answer = json_decode((string) $raw, true);
-if (! is_array($answer)) {
-    $fail('bad_response', 'відповідь не є JSON: '.substr((string) $raw, 0, 200));
+/**
+ * Живий показ роботи моделі.
+ *
+ * Пише в stderr, і саме тому видно в панелі `tmux`: stdout клієнта лишається
+ * чистим (там нічого й немає · відповідь іде у файл), а драйвер не перехоплює
+ * stderr. Роздуми показуються тьмяно, відповідь · звичайним текстом, тому
+ * плутанини «це вже переклад чи ще міркування» не буває.
+ *
+ * Без термінала показ вимикається сам: у gate і тестах потік байтів у журнал
+ * нічого не додає, крім шуму.
+ */
+$show = (getenv('BDO_MODEL_SHOW') !== '0') && stream_isatty(STDERR);
+$dim = ($show && getenv('NO_COLOR') === false) ? "\033[2m" : '';
+$off = $dim !== '' ? "\033[0m" : '';
+$live = static function (string $text, bool $isThinking) use ($show, $dim, $off): void {
+    if (! $show || $text === '') {
+        return;
+    }
+    fwrite(STDERR, $isThinking ? $dim.$text.$off : $text);
+};
+
+if ($stream) {
+    // Читаємо NDJSON рядок за рядком. `file_get_contents` тут не годиться: він
+    // буферизує все до кінця, і сенс потоку зникає.
+    $handle = @fopen($endpoint.'/api/chat', 'r', false, $context);
+    if ($handle === false) {
+        $fail('model_unreachable', $endpoint.' не відповідає');
+    }
+    $content = '';
+    $thinking = '';
+    $answer = [];
+    $chunks = 0;
+    while (($line = fgets($handle)) !== false) {
+        $line = trim($line);
+        if ($line === '') {
+            continue;
+        }
+        $chunk = json_decode($line, true);
+        if (! is_array($chunk)) {
+            continue;
+        }
+        if (isset($chunk['error'])) {
+            fclose($handle);
+            $fail('model_error', (string) $chunk['error']);
+        }
+        $chunks++;
+        $piece = (string) ($chunk['message']['content'] ?? '');
+        $reason = (string) ($chunk['message']['thinking'] ?? '');
+        $content .= $piece;
+        $thinking .= $reason;
+        $live($piece, false);
+        $live($reason, true);
+        if (! empty($chunk['done'])) {
+            $answer = $chunk;
+        }
+    }
+    fclose($handle);
+    if ($show && $chunks > 0) {
+        fwrite(STDERR, "\n");
+    }
+    if ($answer === []) {
+        $fail('stream_incomplete', "потік обірвався без завершального чанка (отримано $chunks)");
+    }
+    // Зібране кладемо туди, де його чекають наступні перевірки · далі код
+    // однаковий для обох шляхів.
+    $answer['message'] = ['content' => $content, 'thinking' => $thinking];
+} else {
+    $raw = @file_get_contents($endpoint.'/api/chat', false, $context);
+    if ($raw === false) {
+        $fail('model_unreachable', $endpoint.' не відповідає');
+    }
+    $answer = json_decode((string) $raw, true);
+    if (! is_array($answer)) {
+        $fail('bad_response', 'відповідь не є JSON: '.substr((string) $raw, 0, 200));
+    }
 }
 if (isset($answer['error'])) {
     $fail('model_error', (string) $answer['error']);

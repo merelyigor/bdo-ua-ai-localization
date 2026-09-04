@@ -52,9 +52,52 @@ $answers = [
              "message" => ["content" => '{"items":[{"id":"r2","text":"Щит"},{"id":"r1","text":"Меч"}]}']],
     "alias_unknown" => ["done_reason" => "stop", "prompt_eval_count" => 10, "eval_count" => 5,
              "message" => ["content" => '{"items":[{"id":"r9","text":"Меч"}]}']],
+    // Потік обірвався без завершального чанка: сервер помер, мережа впала,
+    // проксі закрив зʼєднання. Мовчазно вважати це успіхом не можна · зібраний
+    // JSON може бути валідним, а відповідь · неповною.
+    "stream_cut" => ["done_reason" => "stop", "prompt_eval_count" => 10, "eval_count" => 5,
+             "message" => ["content" => '{"items":[{"identity_hash":"aa","text":"Меч"}]}']],
+    // Роздуми приходять окремим полем і НЕ є відповіддю: якщо `content`
+    // порожній, це відмова, скільки б роздумів не було (переміряно 2026-09-04).
+    "think_only" => ["done_reason" => "stop", "prompt_eval_count" => 10, "eval_count" => 900,
+             "message" => ["content" => "", "thinking" => "Спершу подумаю дуже довго…"]],
 ];
+$answer = $answers[$mode] ?? $answers["ok"];
 header("Content-Type: application/json");
-echo json_encode($answers[$mode] ?? $answers["ok"], JSON_UNESCAPED_UNICODE);
+
+// Клієнт просить ПОТІК, тому підробка мусить віддавати NDJSON · інакше тест
+// міряв би шлях, якого в роботі немає. Форма чанків та сама, що в Ollama
+// 0.33.3: кожен чанк несе шматок `message.content` або `message.thinking`, а
+// завершальний · `done:true` разом із `done_reason` і лічильниками.
+$body = (string) file_get_contents("php://input");
+$wantsStream = str_contains($body, '"stream":true');
+if (! $wantsStream || isset($answer["error"])) {
+    echo json_encode($answer, JSON_UNESCAPED_UNICODE);
+    return true;
+}
+
+$content = (string) ($answer["message"]["content"] ?? "");
+$thinking = (string) ($answer["message"]["thinking"] ?? "");
+$emit = static function (array $chunk): void {
+    echo json_encode($chunk, JSON_UNESCAPED_UNICODE), "\n";
+};
+foreach (mb_str_split($thinking, 5) as $piece) {
+    $emit(["message" => ["thinking" => $piece], "done" => false]);
+}
+foreach (mb_str_split($content, 4) as $piece) {
+    $emit(["message" => ["content" => $piece], "done" => false]);
+}
+// Обрив ПІСЛЯ шматків і БЕЗ завершального чанка · окремий клас відмови.
+if ($mode === "stream_cut") {
+    return true;
+}
+$emit([
+    "message" => ["content" => ""],
+    "done" => true,
+    "done_reason" => $answer["done_reason"] ?? "stop",
+    "prompt_eval_count" => $answer["prompt_eval_count"] ?? 10,
+    "eval_count" => $answer["eval_count"] ?? 5,
+]);
 return true;
 PHP
 
@@ -169,6 +212,45 @@ printf '%s' ok > "$SCENARIO_FILE"; rm -f "$WORK/response.json"
 BDO_ROLES_CONFIG="$WORK/roles.json" BDO_STATE_DIR="$WORK/state" \
     php "$ROOT/cli/model/client.php" translation-worker "$WORK/payload.json" "$WORK/response.json" --schema "$WORK/schema-terms.json" >/dev/null 2>&1 || true
 grep -q "$H1" "$SCENARIO_FILE.request" || fail 'схема без identity_hash усе одно дістала аліаси в payload'
+
+# 12в. ПОТІК · те, чим клієнт ходить за замовчуванням.
+#
+#      Переміряно 2026-09-04 на Ollama 0.33.3: потік не конфліктує ні зі
+#      схемою, ні з думанням (721 чанк, зібраний JSON валідний), і коштує нуль.
+#      Тому перевіряється саме він, а одноразова відповідь · як запасний шлях.
+run ok
+test "$CODE" = 0 || fail "потоковий виклик упав: $STDERR"
+php -r 'exit(json_decode(file_get_contents($argv[1]), true) === [["identity_hash" => "aa", "text" => "Меч"]] ? 0 : 1);' \
+    "$WORK/response.json" || fail 'зібрана з чанків відповідь не збіглася з очікуваною'
+grep -q '"stream":true' "$SCENARIO_FILE.request" || fail 'клієнт не просив потоку'
+grep -q '"think":false' "$SCENARIO_FILE.request" || fail 'думання мусить бути вимкнене за замовчуванням'
+
+# 12г. Обрив потоку без завершального чанка · названа відмова, а не «успіх».
+#      Зібраний JSON тут ВАЛІДНИЙ, тому спокуса вважати це успіхом реальна.
+run stream_cut
+test "$CODE" = 1 || fail "обірваний потік дав код $CODE замість відмови"
+printf '%s' "$STDERR" | grep -q '^stream_incomplete' || fail "обрив потоку без причини: $STDERR"
+test ! -e "$WORK/response.json" || fail 'обірваний потік створив файл відповіді'
+
+# 12д. Роздуми не є відповіддю: порожній `content` лишається відмовою.
+run think_only
+test "$CODE" = 1 || fail "порожній content при довгих роздумах мусив упасти"
+printf '%s' "$STDERR" | grep -q '^empty_content' || fail "роздуми підмінили відповідь: $STDERR"
+
+# 12е. Думання ВКЛЮЧАЄТЬСЯ явно й тільки явно.
+printf '%s' ok > "$SCENARIO_FILE"; rm -f "$WORK/response.json"
+BDO_MODEL_THINK=1 BDO_ROLES_CONFIG="$WORK/roles.json" BDO_STATE_DIR="$WORK/state" \
+    php "$ROOT/cli/model/client.php" translation-worker "$WORK/payload.json" "$WORK/response.json" --schema "$WORK/schema.json" >/dev/null 2>&1 || true
+grep -q '"think":true' "$SCENARIO_FILE.request" || fail 'BDO_MODEL_THINK=1 не ввімкнув думання'
+grep -q '"think":true' "$WORK/state/model-calls.jsonl" || fail 'журнал не записав, що виклик був із думанням'
+
+# 12ж. Запасний шлях: BDO_MODEL_STREAM=0 повертає одноразову відповідь.
+printf '%s' ok > "$SCENARIO_FILE"; rm -f "$WORK/response.json"
+BDO_MODEL_STREAM=0 BDO_ROLES_CONFIG="$WORK/roles.json" BDO_STATE_DIR="$WORK/state" \
+    php "$ROOT/cli/model/client.php" translation-worker "$WORK/payload.json" "$WORK/response.json" --schema "$WORK/schema.json" >/dev/null 2>&1 \
+    || fail 'без потоку клієнт мусить працювати старим шляхом'
+grep -q '"stream":false' "$SCENARIO_FILE.request" || fail 'BDO_MODEL_STREAM=0 не вимкнув потік'
+test -s "$WORK/response.json" || fail 'без потоку відповідь не записано'
 
 # 13. Вимикач для порівняння: BDO_ROW_ALIAS=0 повертає хеші моделі як є.
 printf '%s' ok > "$SCENARIO_FILE"; rm -f "$WORK/response.json"
