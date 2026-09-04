@@ -7,8 +7,18 @@ declare(strict_types=1);
  *
  *   php custom-provider-models.php opencode.jsonc provider/model [provider/model ...]
  *
- * Друкує по одному нерозвʼязаному маршруту в рядок; порожній вивід означає, що
- * все оголошено. Код виходу завжди 0: це довідка, рішення ухвалює викликач.
+ * Друкує по одному нерозвʼязаному маршруту в рядок у вигляді `маршрут|причина`;
+ * порожній вивід означає, що все гаразд. Код виходу завжди 0: це довідка,
+ * рішення ухвалює викликач. Причини:
+ *   missing   · моделі немає в конфізі взагалі · дочірня сесія буде порожня;
+ *   no-limit  · модель є, але не оголошує `limit.context` · OpenCode не знає
+ *               межі й не стискає розмову вчасно.
+ *
+ * Друга причина коштувала прогону 2026-09-04: маршрут диригента
+ * `auto/best-coding` був оголошений БЕЗ `limit`, сесія набрала 2,42 млн
+ * вхідних токенів за 11 пачок, і шлюз відмовив · `Input exceeds context window
+ * for opencode-zen/big-pickle: estimated 211204 input tokens, limit 200000`.
+ * Кожне «продовжуй» після цього давало ту саму помилку.
  *
  * Навіщо окремий файл, а не гілка всередині `sync-opencode-models.sh`. Правило
  * тут одне: провайдер із власним `options.baseURL` не має в OpenCode каталогу
@@ -46,7 +56,14 @@ foreach (array_slice($argv, 2) as $route) {
     if (! $custom) {
         continue;
     }
-    if (! isset($parsed['provider'][$provider]['models'][$model])) {
-        echo $route, "\n";
+    $entry = $parsed['provider'][$provider]['models'][$model] ?? null;
+    if (! is_array($entry)) {
+        echo $route, "|missing\n";
+        continue;
+    }
+    // Оголошення без межі гірше за відсутнє: сесія стартує, працює годину й
+    // помирає рівно тоді, коли роботи накопичилось найбільше.
+    if ((int) ($entry['limit']['context'] ?? 0) <= 0) {
+        echo $route, "|no-limit\n";
     }
 }

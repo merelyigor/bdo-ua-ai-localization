@@ -141,11 +141,17 @@ $problems = 0;
 // Чи є провайдер кастомним endpoint-ом · питаємо ту саму реалізацію, яку
 // перевіряє tests/custom-provider-routes.sh. Довідник відповідає переліком
 // нерозвʼязаних маршрутів, тому «жодного рядка» тут і означає «оголошено».
-$isCustom = static function (string $provider) use ($config, $helper): bool {
-    $probe = $provider."/__перевірка-кастомності__";
-    exec(sprintf("php %s %s %s", escapeshellarg($helper), escapeshellarg($config), escapeshellarg($probe)), $out);
+$ask = static function (string $route) use ($config, $helper): string {
+    $out = [];
+    exec(sprintf("php %s %s %s", escapeshellarg($helper), escapeshellarg($config), escapeshellarg($route)), $out);
+    $line = trim(implode("", $out));
 
-    return trim(implode("", $out)) === $probe;
+    return $line === "" ? "" : (string) (explode("|", $line, 2)[1] ?? "");
+};
+$isCustom = static function (string $provider) use ($ask): bool {
+    // Неіснуюча модель кастомного провайдера дає `missing`; для провайдера з
+    // каталогом OpenCode довідник мовчить.
+    return $ask($provider."/__перевірка-кастомності__") === "missing";
 };
 // printf("%-22s") рахує байти, а стани тут кириличні: без mb-вирівнювання
 // колонка зʼїжджала й звіт читався як каша.
@@ -162,9 +168,16 @@ foreach ($required as $route) {
     // Умову тримає cli/runtime/custom-provider-models.php · один шлях і для
     // роботи, і для тесту.
     if ($isCustom($provider)) {
-        $declared = isset($parsed["provider"][$provider]["models"][$model]);
-        if (!$declared) { $problems++; $missing[$provider][] = $model; }
-        printf("%s %s/%s\n", $pad($declared ? "OK" : "НЕ ОГОЛОШЕНА В КОНФІЗІ"), $provider, $model);
+        $reason = $ask($route);
+        if ($reason !== "") { $problems++; $missing[$provider][] = [$model, $reason]; }
+        printf("%s %s/%s\n", $pad(match ($reason) {
+            "" => "OK",
+            "no-limit" => "БЕЗ МЕЖІ КОНТЕКСТУ",
+            default => "НЕ ОГОЛОШЕНА В КОНФІЗІ",
+        }), $provider, $model);
+        if ($reason === "no-limit") {
+            printf("  %s\n", "OpenCode не знає межі й не стисне розмову · сесія помре на середині прогону");
+        }
         continue;
     }
     // Хмарний provider не має бути в `ollama list`, і його відсутність там не є
@@ -305,7 +318,25 @@ copy($config, $backup) || exit(1);
 
 foreach ($missing as $provider => $models) {
     $custom = $isCustom($provider);
-    foreach ($models as $model) {
+    foreach ($models as $item) {
+        [$model, $reason] = is_array($item) ? $item : [$item, "missing"];
+        if ($custom && $reason === "no-limit") {
+            // Запис є, бракує лише межі · доливаємо її в наявний обʼєкт, щоб не
+            // зачепити інші поля власника (`reasoning`, `tool_call`).
+            $limit = "\n          \"limit\": {\n            \"context\": 200000,\n            \"output\": 64000\n          },";
+            // Ключ у конфізі може бути записаний і як "auto/cheap", і як
+            // "auto\/cheap" · шукаємо обидві форми.
+            $key = preg_quote(json_encode($model, JSON_UNESCAPED_SLASHES), "~");
+            $pattern = "~(" . str_replace("/", "\\\\?/", $key) . "\s*:\s*\{)~";
+            $updated = preg_replace($pattern, "\${1}" . str_replace("\\", "\\\\", $limit), $raw, 1, $count);
+            if ($count !== 1 || $updated === null) {
+                fwrite(STDERR, "Не знайшов запис $model, щоб долити межу. Файл не змінено.\n");
+                exit(1);
+            }
+            $raw = $updated;
+            printf("Долито межу: %s/%s (context 200000, output 64000)\n", $provider, $model);
+            continue;
+        }
         if ($custom) {
             // Шлюз обіцяє 1 000 000 токенів КОЖНОМУ `auto/*` маршруту, хоча
             // модель за маршрутом обирається на кожен запит окремо й реально
@@ -318,8 +349,8 @@ foreach ($missing as $provider => $models) {
             $output = 64000;
             $entry = sprintf(
                 "\n        %s: {\n          \"name\": %s,\n          \"limit\": {\n            \"context\": %d,\n            \"output\": %d\n          }\n        },",
-                json_encode($model),
-                json_encode($model . " (OmniRoute)"),
+                json_encode($model, JSON_UNESCAPED_SLASHES),
+                json_encode($model . " (OmniRoute)", JSON_UNESCAPED_SLASHES),
                 $context,
                 $output
             );

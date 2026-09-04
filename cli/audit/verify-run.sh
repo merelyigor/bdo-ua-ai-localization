@@ -115,38 +115,9 @@ while IFS='|' read -r sid agent; do
           AND json_extract(p.data,'\$.type') = 'text'
           AND json_extract(m.data,'\$.role') = 'assistant'
         ORDER BY length(COALESCE(json_extract(p.data,'\$.text'),'')) DESC LIMIT 1;" 2>/dev/null || true)"
-    verdict="$(printf '%s' "$answer" | php -r '
-    $agent = $argv[1] ?? "";
-    $raw = stream_get_contents(STDIN);
-    if (trim($raw) === "") { echo "SHAPE відповіді немає в базі"; exit; }
-    $d = json_decode($raw, true);
-    if ($agent === "translation-smoke") {
-        if (! is_array($d) || array_is_list($d)
-            || ($d["ok"] ?? null) !== true
-            || ($d["text"] ?? null) !== "готово"
-            || count($d) !== 2) {
-            echo "SHAPE smoke не дорівнює точному {ok:true,text:готово}";
-            exit;
-        }
-        echo "OK точний smoke capability object";
-        exit;
-    }
-    if (! is_array($d) || ! array_is_list($d)) { echo "SHAPE не JSON-масив (проза або обірвано)"; exit; }
-    $ids = array_map(static fn ($x) => is_array($x) ? ($x["identity_hash"] ?? null) : null, $d);
-    $ids = array_filter($ids, static fn ($x) => is_string($x) && $x !== "");
-    if (count($ids) !== count($d)) { echo "SHAPE не в усіх обʼєктах є identity_hash"; exit; }
-    if (count(array_unique($ids)) !== count($ids)) {
-        printf("SHAPE повторений identity_hash (%d обʼєктів, %d унікальних)", count($ids), count(array_unique($ids)));
-        exit;
-    }
-    $empty = 0;
-    foreach ($d as $x) {
-        $t = $x["text"] ?? ($x["status"] ?? null);
-        if (! is_string($t) || trim($t) === "") { $empty++; }
-    }
-    if ($empty > 0) { printf("SHAPE порожній текст у %d обʼєктах", $empty); exit; }
-    printf("OK %d обʼєктів, усі identity різні", count($d));
-    ' "$agent")"
+    # Вирок про форму виносить cli/audit/response-shape.php · один шлях і для
+    # аудиту, і для tests/audit-response-shape.sh.
+    verdict="$(printf '%s' "$answer" | php "$SCRIPT_DIR/cli/audit/response-shape.php" "$agent")"
     case "$verdict" in
         SHAPE*) printf "FAIL %-22s %s\n" "$agent" "$verdict"; shape_fail=1 ;;
         *)      printf "OK   %-22s %s\n" "$agent" "$verdict" ;;

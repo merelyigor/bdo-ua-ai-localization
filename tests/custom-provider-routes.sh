@@ -59,7 +59,8 @@ cat > "$work/opencode.jsonc" <<'JSON'
     "custom-gateway": {
       "options": { "baseURL": "https://example.invalid/v1" },
       "models": {
-        "auto/declared": { "name": "declared", "limit": { "context": 200000, "output": 64000 } }
+        "auto/declared": { "name": "declared", "limit": { "context": 200000, "output": 64000 } },
+        "auto/no-limit": { "name": "no-limit", "reasoning": true, "tool_call": true }
       }
     }
   }
@@ -67,15 +68,24 @@ cat > "$work/opencode.jsonc" <<'JSON'
 JSON
 HELPER="$ROOT/cli/runtime/custom-provider-models.php"
 report="$(php "$HELPER" "$work/opencode.jsonc" \
-    custom-gateway/auto/declared custom-gateway/auto/missing \
+    custom-gateway/auto/declared custom-gateway/auto/missing custom-gateway/auto/no-limit \
     opencode/big-pickle ollama-local/qwen3.6:35b-a3b-mtp-q4_K_M)"
 
 # Оголошений маршрут кастомного провайдера мовчить.
-printf '%s\n' "$report" | grep -qx 'custom-gateway/auto/declared' \
+printf '%s\n' "$report" | grep -q '^custom-gateway/auto/declared|' \
     && fail "оголошений маршрут кастомного провайдера позначено проблемою: $report"
 # Неоголошений · називається. Це і є той дефект, що давав порожню сесію.
-printf '%s\n' "$report" | grep -qx 'custom-gateway/auto/missing' \
+printf '%s\n' "$report" | grep -qx 'custom-gateway/auto/missing|missing' \
     || fail "неоголошений маршрут кастомного провайдера НЕ позначено проблемою: $report"
+# Оголошення БЕЗ `limit.context` · окремий і найдорожчий випадок.
+#
+# 2026-09-04 маршрут диригента `auto/best-coding` був оголошений без межі:
+# OpenCode не знав, коли стискати, сесія набрала 2,42 млн вхідних токенів за
+# 11 пачок, і шлюз відмовив · `Input exceeds context window ... estimated
+# 211204 input tokens, limit 200000`. Кожне «продовжуй» після цього давало ту
+# саму помилку, а стара перевірка бачила лише НАЯВНІСТЬ ключа й друкувала OK.
+printf '%s\n' "$report" | grep -qx 'custom-gateway/auto/no-limit|no-limit' \
+    || fail "оголошення без limit.context НЕ позначено проблемою: $report"
 # Провайдер без власного endpoint (каталог у OpenCode) і Ollama · не наша справа.
 printf '%s\n' "$report" | grep -q 'opencode/big-pickle' \
     && fail "маршрут провайдера з каталогом OpenCode помилково вимагає оголошення"
@@ -88,5 +98,7 @@ grep -q 'custom-provider-models.php' "$ROOT/cli/runtime/sync-opencode-models.sh"
     || fail "sync-opencode-models.sh не викликає custom-provider-models.php"
 grep -q 'НЕ ОГОЛОШЕНА В КОНФІЗІ' "$ROOT/cli/runtime/sync-opencode-models.sh" \
     || fail "sync-opencode-models.sh не повідомляє про неоголошений маршрут"
+grep -q 'БЕЗ МЕЖІ КОНТЕКСТУ' "$ROOT/cli/runtime/sync-opencode-models.sh" \
+    || fail "sync-opencode-models.sh не повідомляє про оголошення без межі контексту"
 
 echo "OK: маршрути кастомних провайдерів оголошуються, шаблони .env копійовні."
