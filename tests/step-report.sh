@@ -85,6 +85,23 @@ out="$(BDO_STEP_REPORT_ROWS=3 report --before translation-worker "$TMP/big.json"
 test "$(printf '%s' "$out" | grep -c 'Row ')" = 3 || fail "стеля рядків не діє: $out"
 printf '%s' "$out" | grep -Fq 'і ще 27 рядків' || fail "приховане не названо числом: $out"
 
+# 7а. Стеля рахує НАПЕЧАТАНІ рядки, а не переглянуті.
+#
+#     На живому прогоні 2026-09-04 QA дала `PASS 34 | REVIEW 2`, і жодного
+#     `REVIEW` на екрані не було: лічильник збільшувався на кожну відповідь, і
+#     після шести `PASS` цікаве вже не друкувалось. Звіт про прозорість
+#     приховував рівно те, на що дивляться.
+php -r '$items = [];
+for ($i = 0; $i < 8; $i++) { $items[] = ["identity_hash" => str_pad((string) $i, 64, "0", STR_PAD_LEFT), "status" => "PASS", "severity" => "none", "issue" => "", "fix" => ""]; }
+$items[] = ["identity_hash" => str_repeat("f", 64), "status" => "REVIEW", "severity" => "minor", "issue" => "русизм: тревожні", "fix" => "тривожні"];
+file_put_contents($argv[1], json_encode($items, JSON_UNESCAPED_UNICODE));' "$TMP/late-review.json"
+out="$(BDO_STEP_REPORT_ROWS=3 report --after translation-qa "$TMP/payload.json" "$TMP/late-review.json")" \
+    || fail 'звіт про пізній REVIEW упав'
+printf '%s' "$out" | grep -Fq 'русизм: тревожні' \
+    || fail "єдиний REVIEW після восьми PASS не показано · стеля рахує не те: $out"
+printf '%s' "$out" | grep -Fq 'PASS/none 8 | REVIEW/minor 1' \
+    || fail "розкладка мусить рахувати ВСІ відповіді: $out"
+
 # 7б. Без керуючого термінала звіт працює, а не падає.
 #
 #     `stty size < /dev/tty` без tty віддає ненульовий код, `pipefail` робить це

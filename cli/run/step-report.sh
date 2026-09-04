@@ -159,6 +159,12 @@ foreach ($rows as $row) {
 }
 
 printf("  ├─ %s повернув %d\n", $label, count($answers));
+// Стеля рахує НАПЕЧАТАНІ рядки, а не переглянуті.
+//
+// Спершу лічильник збільшувався на кожну відповідь, і для QA це ховало саму
+// суть: якщо перші шість вердиктів були `PASS`, два `REVIEW` за ними не
+// друкувались узагалі · на екрані лишалась тілька розкладка. Тобто звіт про
+// прозорість приховував рівно те, на що дивляться.
 $shown = 0;
 $counts = [];
 foreach ($answers as $answer) {
@@ -169,14 +175,15 @@ foreach ($answers as $answer) {
     // Кожна роль має власну форму відповіді · показуємо саме її, а не JSON.
     if (isset($answer["text"])) {                       // worker, repair
         if ($shown < $limit) {
-            printf("  │  %2d. %s\n", $shown + 1, $source !== "" ? $source : substr($hash, 0, 12));
+            printf("  │  %2d. %s\n", ++$shown, $source !== "" ? $source : substr($hash, 0, 12));
             printf("  │      → %s\n", $one($answer["text"], $width));
         }
     } elseif (isset($answer["status"], $answer["severity"])) {   // qa
         $key = $answer["status"]."/".$answer["severity"];
         $counts[$key] = ($counts[$key] ?? 0) + 1;
+        // `PASS` не друкуємо: цікаве · саме те, що не пройшло.
         if ($answer["status"] !== "PASS" && $shown < $limit) {
-            printf("  │  %2d. %s\n", $shown + 1, $source !== "" ? $source : substr($hash, 0, 12));
+            printf("  │  %2d. %s\n", ++$shown, $source !== "" ? $source : substr($hash, 0, 12));
             printf("  │      %s · %s\n", $key, $one($answer["issue"] ?? "", $width - 8));
             if (trim((string) ($answer["fix"] ?? "")) !== "") {
                 printf("  │      виправлення: %s\n", $one($answer["fix"], $width - 16));
@@ -185,18 +192,17 @@ foreach ($answers as $answer) {
     } elseif (isset($answer["destination"])) {           // judge
         $counts[(string) $answer["destination"]] = ($counts[(string) $answer["destination"]] ?? 0) + 1;
         if ($shown < $limit) {
-            printf("  │  %2d. %s\n", $shown + 1, $source !== "" ? $source : substr($hash, 0, 12));
+            printf("  │  %2d. %s\n", ++$shown, $source !== "" ? $source : substr($hash, 0, 12));
             printf("  │      %s (%d%%) · %s\n", Labels::judge($answer["destination"]),
                 (int) ($answer["confidence"] ?? 0), $one($answer["reason"] ?? "", $width - 16));
         }
     } elseif (isset($answer["canonical_source"])) {      // terminology, glossary
         $counts[(string) ($answer["status"] ?? "?")] = ($counts[(string) ($answer["status"] ?? "?")] ?? 0) + 1;
         if ($shown < $limit) {
-            printf("  │  %2d. %s → %s (%s)\n", $shown + 1, $one($answer["canonical_source"], 40),
+            printf("  │  %2d. %s → %s (%s)\n", ++$shown, $one($answer["canonical_source"], 40),
                 $one($answer["ukrainian_proposal"] ?? "—", 40), (string) ($answer["status"] ?? "?"));
         }
     }
-    $shown++;
 }
 if ($counts !== []) {
     $parts = [];
