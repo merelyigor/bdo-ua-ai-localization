@@ -1,6 +1,6 @@
 # Обсяг QA і структура ролей: пачка перевіряє 49 рядків, щоб перекласти 4
 
-- **Статус:** backlog
+- **Статус:** active
 - **Створено:** 2026-09-04
 - **Реєстр:** [docs/plans/README.md](../README.md)
 
@@ -73,6 +73,19 @@ auto_approve=false, items 12, written 8, rejected 4`, код `glossary_violation
    2026-08-26 (`cli/run/run-mode.sh:76-92`) · але прибрали його за те, що він
    ЗУПИНЯВ прогін станом `no_progress`, а не за те, що задача зникла. Задача
    повернулась у гіршому вигляді: 21 прохід на одному рядку.
+
+## Стан виконання (2026-09-04)
+
+| # | Стан | Доказ |
+|---|---|---|
+| A | зроблено | `cli/quality/mechanical-split.sh --memory`, `dispatch_qa`; регресія `tests/qa-scope.sh` (50 рядків, 45 у памʼяті → QA бачить 5) |
+| B | зроблено | `lib/Pipeline/RowAttempts.php`, запис у `write-translations.sh` і `batch-commit.sh`, фільтр у `fetch-rows.sh`, віднімання в `completion`; регресія `tests/row-attempts.sh` |
+| C | зроблено | стан `names_pass`, `cli/prepare/names-payload.sh`, обробник у `run-drive.sh`, промпт repair пояснює наказ «ужий»; регресія `tests/names-pass.sh` |
+| D | чекає сервера | промпт для серверного агента видано власнику 2026-09-04 (D56) |
+| + | зроблено | короткі ключі `r1…rN` замість `identity_hash` на межі моделі · `lib/Model/RowAlias.php`, `tests/model-client.sh` п. 11-13 (D59) |
+
+Definition of Done лишається відкритим до живого прогону: частка часу QA і
+`child_dispatch:translation-qa:<N>` треба зняти з реальної пачки.
 
 ## Пропозиція
 

@@ -5,6 +5,10 @@
 `docs/AGENT_TRANSLATION_API.md` від `TRANSLATE_PROJECT_ROOT`. Тут не
 дублюється: при розбіжності діє серверна документація.
 
+**Звірено з живим PROD API 2026-09-04.** Перевірялися конверт відповіді, склад
+полів кожного ендпоінта, дозволені значення параметрів і форма помилки ·
+запитами, а не читанням. Знайдені тоді розбіжності виправлені в цьому файлі.
+
 Це технічна довідка для розробника та діагностики, **не основний
 користувацький workflow**. Власник не запускає наведені CLI-команди вручну:
 набір виконує їх усередині флоу.
@@ -15,8 +19,8 @@
 |---|---|
 | База | `BDO_ENV=PROD` · `BDO_API_BASE_PROD` або production default; `BDO_ENV=DEV` · `BDO_API_BASE_DEV`; застарілий `BDO_API_BASE` ігнорується |
 | Автентифікація | заголовок `X-API-Key: <ключ>` |
-| Формат | JSON; відповідь у конверті `data` / `meta` / `error` |
-| Ліміти | 120 запитів/хв; денна квота ЗАПИСАНИХ рядків · з `GET /me` |
+| Формат | JSON. Успіх: `success: true` + `data`, у частини ендпоінтів ще `meta`. Помилка: `success: false` + `error` (код), `message`, `hint`, `details` |
+| Ліміти | `GET /me` → `limits`: `requests_per_minute`, `rows_per_day`, `rows_written_today`, `rows_remaining_today`, `quota_resets_at`. Цифри не зашивати в документацію · вони залежать від ключа |
 | Середовище | одна константа `BDO_ENV=PROD\|DEV`, див. [PROJECT_OVERVIEW.md](PROJECT_OVERVIEW.md) |
 | Мережеві збої | усі штатні BDO API-виклики йдуть через `cli/api/http-request.sh`: backoff, `Retry-After`, максимум 10 хвилин на операцію; далі прогін зупиняється |
 
@@ -32,8 +36,15 @@
 Хто ми, що можемо, скільки лишилось квоти. Викликається перед кожним записом і
 першим у smoke-перевірці.
 
-Важливі поля: роль, `effective_abilities` (для машинного шару потрібне
-`translations:write-machine`), `rows_remaining_today`.
+Блоки відповіді: `user` (`id`, `name`, `email`, `role`), `key` (`prefix`,
+`name`, `abilities`, `last_used_at`), `limits`, `batch` (`max_items`,
+`max_rows_per_page`, `max_context_rows`), `writes` і `effective_abilities`.
+
+`writes.channels` · СПИСОК обʼєктів `{layer, mode, allowed, result}`, а не мапа
+за назвою каналу. Саме цю форму читає `cli/write/write-translations.sh`: 2026-08-29
+вигадана мапа заблокувала кожен коміт із `api_write_failed` (D33).
+
+Для машинного шару потрібне `translations:write-machine` у `effective_abilities`.
 
     ./bdo api
 
@@ -55,8 +66,9 @@
 
 Перелік знімків: `snapshot_id`, `patch_number` (номер патча в грі), `is_active`,
 `status`, `source_kind`, дати `published_at`/`imported_at`/`activated_at`/
-`accepted_at`, блок `changes` (added, changed, removed) і `rows`
-(total, translatable, untranslated, states). Додано на сервері 2026-08-24.
+`accepted_at`, блок `changes` (`added`, `changed`, `removed`, `reactivated`,
+`source_records`) і `rows` (`total`, `translatable`, `untranslated`, `states`).
+Додано на сервері 2026-08-24, поля звірені з живим API 2026-09-04.
 
 Кількість рядків, доступних для конкретного ШАРУ, звідси не береться:
 `rows.states` рахує рядок за найвищим наявним шаром, тому рядок із manual і без
@@ -97,7 +109,7 @@ machine-перекладу, у патчі 5 · два, у патчі 3 · 442, �
 | `domain=`, `semantic_type=` | категорія за `GET /taxonomy` |
 | `diff=added` | лише нові рядки патча |
 | `include_total=1` | додати загальну кількість у `meta` |
-| `fields=` | які блоки віддавати |
+| `fields=` | які блоки віддавати: `core`, `coordinates`, `classification`, `layers`, `reference`, `tokens`, `constraints`, `glossary`, `patch`, `entity_identity`. Джерело правди · `GET /taxonomy` → `field_groups`; чуже значення дає `invalid_request` з переліком дозволених у `details.allowed` |
 
 `missing=machine` критичний: без нього вибірка щоразу віддає ТІ САМІ перші рядки
 патча, бо заливка ШІ навмисно не рухає лічильник «опрацьовано». `./bdo fetch`
@@ -126,6 +138,33 @@ machine-перекладу, у патчі 5 · два, у патчі 3 · 442, �
     ./bdo context <identity_hash>
     ./bdo payload worker rows.json               # приклади типово
     ./bdo payload worker rows.json --no-context  # без прикладів і без запитів
+
+### `POST /rows/context`
+
+Те саме, що `GET /rows/{identity_hash}/context`, але ПАЧКОЮ. Тіло ·
+`{"identity_hashes": [...]}`, відповідь · `data.contexts` і `meta`
+(`requested`, `found`).
+
+Саме цей ендпоінт вживає `cli/prepare/worker-payload.sh`: одиничний GET на 50
+рядків коштував 50 запитів, і на цьому крок деградував мовчки. Одиничний
+лишається для ручної перевірки одного рядка.
+
+    ./bdo context <identity_hash>    # один рядок, GET-форма
+
+### `GET /glossary/concepts`
+
+Поняття гри для payload: `term`, `ua`, `gist`, `definition`,
+`definition_source`, `wiki_url`, `term_id`, `case_sensitive`. Це пояснення
+СЕНСУ («AP» · сила атаки), а не джерело відповідника: відповідник дає лише
+глосарій. `meta` містить `count`, `complete` і `note`.
+
+Кешується локально на `BDO_CONCEPTS_TTL_HOURS` годин · поняття змінюються рідко.
+
+### `GET /glossary/terms/list`
+
+Повний перелік термінів для аудиту: `data.terms`, `meta` з `count`,
+`total_matching`, `has_more`, `next_cursor`, `fields`. Курсорна пагінація;
+`fields=core|full`. Використовує `./bdo suspects` для пошуку підозрілих записів.
 
 ### `POST /translations/memory`
 
@@ -175,8 +214,16 @@ resolve по кожному терміну пачки сам, включно з 
 
 `manual + direct` і `machine + proposal` сервер відхиляє. Прямий машинний запис
 вимагає ролі `admin`/`super_admin` і здатності `translations:write-machine` ·
-перевіряється через `GET /me` ДО побудови payload. Деталі й обґрунтування ·
-[API_WRITE_CONTRACT.md](../API_WRITE_CONTRACT.md).
+перевіряється через `GET /me` ДО побудови payload.
+
+Що саме дозволено ЦЬОМУ ключу, не вгадується: `GET /me` → `writes.channels`
+віддає список фактично дозволених пар. Звірено 2026-09-04: там рівно дві ·
+`{layer: machine, mode: direct, allowed: true, result: machine}` і
+`{layer: manual, mode: proposal, allowed: true, result: manual, auto_approve: true}`.
+Третій канал (`proposal`) відрізняється від другого не дозволом сервера, а нашим
+власним `auto_approve: false` у запиті.
+
+Деталі й обґрунтування · [API_WRITE_CONTRACT.md](../API_WRITE_CONTRACT.md).
 
 Запис не обходить перевірок: сервер зберігає `validation_result`, походження
 `ai_api`, provider, model і ревізію.

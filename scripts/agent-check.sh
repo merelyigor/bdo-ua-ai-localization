@@ -468,6 +468,7 @@ check_shell() {
     run bash tests/heal-attempts.sh
     run bash tests/payload-shared-examples.sh
     run bash tests/registry-hygiene.sh
+    run bash tests/api-doc-contract.sh
     run bash tests/glossary-listing.sh
     run bash tests/write-channel-rights.sh
 }
@@ -518,6 +519,9 @@ check_agents() {
     run bash tests/model-client.sh
     run bash tests/driver-loop.sh
     run bash tests/tui.sh
+    run bash tests/qa-scope.sh
+    run bash tests/row-attempts.sh
+    run bash tests/names-pass.sh
 }
 
 check_runtime() { run ./bdo runtime; }
