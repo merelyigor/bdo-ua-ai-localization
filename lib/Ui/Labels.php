@@ -57,6 +57,19 @@ final class Labels
         'translation-smoke' => 'дим-тест',
     ];
 
+    /** @var array<string,string> маршрути вироку судді */
+    private const JUDGE = [
+        'ai_layer' => 'у ШІ-шар',
+        'moderation' => 'до людини',
+    ];
+
+    public static function judge(?string $key): string
+    {
+        $key = trim((string) $key);
+
+        return self::JUDGE[$key] ?? ($key === '' ? '—' : $key);
+    }
+
     public static function state(?string $key): string
     {
         $key = trim((string) $key);

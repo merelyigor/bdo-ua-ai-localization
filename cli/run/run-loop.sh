@@ -38,7 +38,33 @@ done
 readonly SPIN_LIMIT="${BDO_LOOP_SPIN_LIMIT:-12}"
 readonly DRIVE="$SCRIPT_DIR/bdo"
 
-log() { printf '[%s] %s\n' "$(date +%H:%M:%S)" "$1"; }
+STATE_DIR="${BDO_STATE_DIR:-$SCRIPT_DIR/state}"
+TRANSCRIPT="$STATE_DIR/run-transcript.log"
+# Тека стану може ще не існувати (перший прогін, тест у пісочниці), а `tee` у
+# відсутній шлях убив би драйвер під `set -e` на першому ж рядку журналу.
+mkdir -p "$STATE_DIR"
+
+log() { printf '[%s] %s\n' "$(date +%H:%M:%S)" "$1" | tee -a "$TRANSCRIPT"; }
+
+# Крок показується ЗМІСТОМ, а не назвою.
+#
+# Один рядок «awaiting_qa · роль translation-qa» означав для власника десять
+# хвилин німого екрана: не видно ні що пішло в модель, ні що вона відповіла.
+# Рендерер читає ті самі файли, якими ходить робота, тому нічого не
+# переказує · чого у файлі немає, того й на екрані немає.
+#
+# Вивід дублюється в `state/run-transcript.log`: тека пачки після `verified`
+# прибирається разом із payload, і без журналу прогону подивитись «що саме
+# сказала модель» після завершення було б нізвідки. Файл старіє за
+# `BDO_KEEP_DAYS`, як і решта дампів.
+#
+# `BDO_STEP_REPORT=0` вимикає · для gate і тестів, які читають рівно рядки
+# драйвера. Збій рендерера НЕ валить прогін: це звіт, а не крок конвеєра.
+report() {
+    test "${BDO_STEP_REPORT:-1}" = 0 && return 0
+    "$SCRIPT_DIR/cli/run/step-report.sh" "$@" 2>/dev/null | tee -a "$TRANSCRIPT" || true
+    return 0
+}
 
 batches_done=0
 spin=0
@@ -102,10 +128,12 @@ EOF
     case "$kind" in
         child)
             log "$state · роль $role"
+            report --before "$role" "$payload"
             if ! php "$SCRIPT_DIR/cli/model/client.php" "$role" "$payload" "$response"; then
                 echo "ЗУПИНКА: роль $role не дала відповіді (причина вище)." >&2
                 exit 1
             fi
+            report --after "$role" "$payload" "$response"
             ;;
         continue)
             log "$state · далі: $reason"

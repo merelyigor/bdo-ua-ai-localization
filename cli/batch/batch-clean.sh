@@ -155,13 +155,14 @@ done
 # `./bdo quarantine --clear`, щоб дозвіл на очищення не коштував доказів, і
 # після `BDO_KEEP_DAYS` він уже нічого не доводить.
 archives=0
-archive="$STATE_DIR/quarantine.jsonl.archived"
-if [ -s "$archive" ] && find "$archive" -mtime "+$DAYS" -print -quit | grep -q .; then
+for archive in "$STATE_DIR/quarantine.jsonl.archived" "$STATE_DIR/run-transcript.log"; do
+    test -s "$archive" || continue
+    find "$archive" -mtime "+$DAYS" -print -quit | grep -q . || continue
     archive_kb="$(du -sk "$archive" | cut -f1)"
     if [ "$APPLY" = 1 ]; then rm -f "$archive"; fi
-    say "  архів карантину старший за $DAYS дн.: $(basename "$archive") (${archive_kb} КБ)"
+    say "  журнал старший за $DAYS дн.: $(basename "$archive") (${archive_kb} КБ)"
     archives=$((archives + 1)); freed=$((freed + archive_kb))
-fi
+done
 
 if [ -d "$OUTPUT_DIR" ]; then
     while IFS= read -r file; do
