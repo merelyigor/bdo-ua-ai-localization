@@ -165,6 +165,22 @@ file_put_contents($mergedFile, json_encode(
 $payload = [];
 foreach ($forRepair as $hash => $why) {
     $row = $rows->getOrEmpty($hash);
+    // НАКАЗОВА вказівка йде ПЕРШОЮ.
+    //
+    // `defects` збирає все підряд: вирок QA прозою, механіку й відмову API. У
+    // реальній пачці вирок QA буває на 400 символів («Candidate використовує
+    // ... що є повною помилкою ...»), і точна вказівка «ужий «Галеон Еферії:
+    // Баланс» для «Epheria Carrack: Balance»» опиняється в кінці абзацу.
+    //
+    // Заміряно 2026-09-04: на синтетичній пробі, де вказівка була ЄДИНОЮ,
+    // локальна модель виконала її 15 разів із 15; на живих пачках, де вона
+    // тонула серед прози, з 17 відремонтованих рядків 15-18 однаково падали в
+    // карантин. Порядок · єдине, чим тут можна керувати безкоштовно.
+    usort($why, static function (string $a, string $b): int {
+        $rank = static fn (string $d): int => str_contains($d, "ужий «") || str_contains($d, "збережи токен «") ? 0 : 1;
+
+        return $rank($a) <=> $rank($b);
+    });
     $item = [
         "identity_hash" => $hash,
         "source_text" => $row->sourceText(),

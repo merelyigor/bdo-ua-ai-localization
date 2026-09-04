@@ -22,25 +22,29 @@ trap 'rm -rf "$WORK"' EXIT
 
 H_TASTE='1111111111111111111111111111111111111111111111111111111111111111'
 H_API='2222222222222222222222222222222222222222222222222222222222222222'
+H_BOTH='3333333333333333333333333333333333333333333333333333333333333333'
 
 # Форма rows.json · та сама, що віддає API: `data.rows`.
 cat > "$WORK/rows.json" <<JSON
 {"data": {"rows": [
   {"identity_hash": "$H_TASTE", "source_text": "Iron Sword", "record_id": 1, "key0": "a", "key1": "b", "source_language": "en"},
-  {"identity_hash": "$H_API", "source_text": "Ship of Chorong Merchant Guild", "record_id": 2, "key0": "a", "key1": "c", "source_language": "en"}
+  {"identity_hash": "$H_API", "source_text": "Ship of Chorong Merchant Guild", "record_id": 2, "key0": "a", "key1": "c", "source_language": "en"},
+  {"identity_hash": "$H_BOTH", "source_text": "Epheria Carrack: Balance", "record_id": 3, "key0": "a", "key1": "d", "source_language": "en"}
 ]}}
 JSON
 cat > "$WORK/candidate.json" <<JSON
 [
   {"identity_hash": "$H_TASTE", "text": "Залізний меч"},
-  {"identity_hash": "$H_API", "text": "Корабель гільдії"}
+  {"identity_hash": "$H_API", "text": "Корабель гільдії"},
+  {"identity_hash": "$H_BOTH", "text": "Корвет Еферії: Щільні вітрила"}
 ]
 JSON
 # QA дала смаковий REVIEW першому рядку; другий QA пропустила.
 cat > "$WORK/verdicts.json" <<JSON
 [
   {"identity_hash": "$H_TASTE", "status": "REVIEW", "severity": "minor", "issue": "звучить сухо", "fix": ""},
-  {"identity_hash": "$H_API", "status": "PASS", "severity": "none", "issue": "", "fix": ""}
+  {"identity_hash": "$H_API", "status": "PASS", "severity": "none", "issue": "", "fix": ""},
+  {"identity_hash": "$H_BOTH", "status": "REJECT", "severity": "critical", "issue": "Candidate використовує «Корвет Еферії: Щільні вітрила», що є повною помилкою: неправильний тип корабля, неправильна друга частина назви, і взагалі рядок не відповідає джерелу за змістом", "fix": ""}
 ]
 JSON
 # Відмова API з наказовою підказкою · саме та форма, яку віддає живий сервер.
@@ -51,6 +55,11 @@ cat > "$WORK/validate.json" <<JSON
    "details": {"glossary": [
      {"termId": 1, "canonical": "Ship", "expected": "Човен", "issue": "missing_translation", "severity": "mandatory"},
      {"termId": 2, "canonical": "Chorong Merchant Guild", "expected": "Торговець з ліхтарем", "issue": "missing_translation", "severity": "mandatory"}
+   ]}},
+  {"identity_hash": "$H_BOTH", "status": "rejected", "code": "glossary_violation",
+   "message": "Текст розходиться з глосарієм",
+   "details": {"glossary": [
+     {"termId": 3, "canonical": "Epheria Carrack: Balance", "expected": "Галеон Еферії: Баланс", "issue": "missing_translation", "severity": "mandatory"}
    ]}}
 ]}}
 JSON
@@ -97,6 +106,26 @@ foreach ($p as $item) {
 }
 fwrite(STDERR, "рядка немає в payload\n"); exit(1);' "$REPAIR" "$H_API" \
     || fail 'відмова API дійшла до ремонту без поля expected'
+
+# 2б. Наказова вказівка мусить бути ПЕРШОЮ в списку дефектів.
+#
+#     У реальній пачці вирок QA буває на 400 символів прози, і точна вказівка
+#     тоне в кінці абзацу. Заміряно 2026-09-04: коли вказівка була єдиною,
+#     локальна модель виконала її 15 разів із 15; у живих пачках, де вона йшла
+#     після прози, рядки однаково падали в карантин.
+php -r '
+$p = json_decode((string) file_get_contents($argv[1]), true) ?: [];
+foreach ($p as $item) {
+    if (($item["identity_hash"] ?? "") !== $argv[2]) { continue; }
+    $defects = (array) ($item["defects"] ?? []);
+    if ($defects === [] || ! str_contains((string) $defects[0], "ужий «")) {
+        fwrite(STDERR, "перший дефект не є наказовою вказівкою: ".json_encode($defects, JSON_UNESCAPED_UNICODE)."\n");
+        exit(1);
+    }
+    exit(0);
+}
+fwrite(STDERR, "рядка немає в payload\n"); exit(1);' "$REPAIR" "$H_BOTH" \
+    || fail 'наказова вказівка не стоїть першою серед дефектів'
 
 # 3. Друге коло: смаковий рядок вичерпав спробу, рядок із наказовою підказкою · ні.
 out="$(plan)" || fail "друге коло впало: $out"
