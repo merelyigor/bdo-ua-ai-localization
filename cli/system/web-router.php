@@ -15,8 +15,9 @@ declare(strict_types=1);
  *    неможливі не тому, що заборонені, а тому що такого коду немає. Функція
  *    ніколи не повертає `false`, отже вбудований сервер PHP не отримує шансу
  *    віддати щось із теки самотужки.
- * 2. ЛИШЕ GET. Дії зʼявляться окремим етапом і з окремою перевіркою; поки їх
- *    немає, будь-який інший метод є або помилкою, або спробою.
+ * 2. ЧИТАННЯ · GET, ДІЇ · ТІЛЬКИ POST на два названі шляхи. Будь-який інший
+ *    метод або POST на інший шлях є або помилкою, або спробою. Дія ніколи не
+ *    буває GET: посилання можна відкрити з чужої сторінки, картинки, історії.
  * 3. ТОКЕН НА КОЖЕН ЗАПИТ, включно зі сторінкою. Будь-яка чужа вкладка може
  *    постукати на `127.0.0.1` · це не теорія, а звичайна поведінка браузера.
  *    Токен видає `./bdo web` на запуск і вшиває в надруковане посилання.
@@ -30,6 +31,8 @@ declare(strict_types=1);
 require __DIR__.'/../../lib/autoload.php';
 
 use Bdo\Translate\Session\Ledger;
+use Bdo\Translate\Web\Actions;
+use Bdo\Translate\Web\Runner;
 use Bdo\Translate\Web\Snapshot;
 
 $stateDir = getenv('BDO_STATE_DIR') ?: dirname(__DIR__, 2).'/state';
@@ -60,10 +63,20 @@ $json = static function (array $data): void {
 $method = strtoupper((string) ($_SERVER['REQUEST_METHOD'] ?? 'GET'));
 $path = (string) parse_url((string) ($_SERVER['REQUEST_URI'] ?? '/'), PHP_URL_PATH);
 
-// 2. Лише читання.
-if ($method !== 'GET' && $method !== 'HEAD') {
+// Дії живуть рівно на двох шляхах і рівно під POST.
+$actionPaths = ['/api/action', '/api/client-error'];
+$isAction = in_array($path, $actionPaths, true);
+
+// 2. Метод. Читання · GET/HEAD, дія · POST і тільки на свій шлях.
+if ($isAction && $method !== 'POST') {
+    header('Allow: POST');
+    $fail(405, 'action_needs_post', 'дія виконується лише методом POST · GET-посилання відкриває будь-хто');
+
+    return;
+}
+if (! $isAction && $method !== 'GET' && $method !== 'HEAD') {
     header('Allow: GET, HEAD');
-    $fail(405, 'method_not_allowed', 'ця версія сервера лише читає; дії зʼявляться окремим етапом');
+    $fail(405, 'method_not_allowed', 'читання лише GET; дії · POST на /api/action');
 
     return;
 }
@@ -84,6 +97,14 @@ if ($origin !== '') {
 }
 if (strtolower((string) ($_SERVER['HTTP_SEC_FETCH_SITE'] ?? '')) === 'cross-site') {
     $fail(403, 'cross_site', 'браузер позначив запит як міжсайтовий');
+
+    return;
+}
+// Для ДІЇ походження обовʼязкове, а не «якщо надіслали». Браузер завжди дає
+// `Origin` для POST, тому його відсутність означає не браузер · а такому
+// клієнту дії не належать.
+if ($isAction && $origin === '') {
+    $fail(403, 'origin_required', 'дія потребує заголовка Origin · її надсилає сторінка, а не сторонній клієнт');
 
     return;
 }
@@ -147,8 +168,66 @@ switch ($path) {
 
         return;
 
+    case '/api/moderation':
+        // Читання, але не з файла: черга живе на сервері. Тому окремий шлях,
+        // який сторінка викликає НА ЗАПИТ, а не в такті потоку · інакше
+        // кожні 200 мс ішов би запит у PROD.
+        $json((new Runner(dirname(__DIR__, 2), $stateDir))->moderationQueue(
+            (int) ($_GET['limit'] ?? 20)
+        ));
+
+        return;
+
+    case '/api/actions':
+        // Що сторінка МОЖЕ попросити · перелік із коду, а не з розмітки.
+        $json([
+            'actions' => Actions::names(),
+            'modes' => Actions::MODES,
+            'domains' => Actions::DOMAINS,
+            'batch_size' => Actions::BATCH_SIZE,
+        ]);
+
+        return;
+
+    case '/api/action':
+        $body = json_decode((string) file_get_contents('php://input'), true);
+        if (! is_array($body)) {
+            $fail(400, 'bad_json', 'тіло запиту мусить бути обʼєктом JSON');
+
+            return;
+        }
+        $name = (string) ($body['action'] ?? '');
+        $payload = is_array($body['payload'] ?? null) ? $body['payload'] : [];
+        try {
+            $runner = new Runner(dirname(__DIR__, 2), $stateDir);
+            $result = $runner->execute($name, $payload, ($body['confirm'] ?? false) === true);
+        } catch (Throwable $e) {
+            // 422, а не 500: причина в запиті або в стані, і вона названа.
+            $fail(422, 'action_refused', $e->getMessage());
+
+            return;
+        }
+        if (! $result['ok']) {
+            http_response_code(500);
+        }
+        $json($result);
+
+        return;
+
+    case '/api/client-error':
+        $body = json_decode((string) file_get_contents('php://input'), true);
+        if (! is_array($body)) {
+            $fail(400, 'bad_json', 'тіло запиту мусить бути обʼєктом JSON');
+
+            return;
+        }
+        $path = (new Runner(dirname(__DIR__, 2), $stateDir))->logClientError($body);
+        $json(['ok' => true, 'log' => basename($path)]);
+
+        return;
+
     default:
-        $fail(404, 'unknown_path', 'сервер віддає лише /, /api/health, /api/state, /api/sessions, /api/stream');
+        $fail(404, 'unknown_path', 'сервер віддає лише /, /api/health, /api/state, /api/sessions, /api/stream, /api/actions, а дії · POST на /api/action і /api/client-error');
 
         return;
 }

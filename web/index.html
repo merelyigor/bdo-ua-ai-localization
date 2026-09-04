@@ -90,6 +90,36 @@ td.num,th.num{text-align:right;font-family:var(--mono)}
   </div>
 
   <div id="app" style="display:none">
+    <div class="panel" id="startPanel">
+      <div class="bar" style="margin-bottom:8px">
+        <span style="font-size:13px;font-weight:500">почати прогін</span>
+        <span class="empty" id="startHint"></span>
+        <button id="stopBtn" style="margin-left:auto;color:var(--dn-tx)">зупинити прогін</button>
+      </div>
+      <div class="bar" style="margin-bottom:6px">
+        <span class="empty">режим</span>
+        <span id="modes"></span>
+      </div>
+      <div class="bar" style="margin-bottom:6px">
+        <label class="empty" for="patch">патч</label>
+        <input id="patch" value="active" style="width:90px">
+        <label class="empty" for="domain">категорія</label>
+        <select id="domain"><option value="">усі</option></select>
+        <label class="empty" for="batches">пачок</label>
+        <input id="batches" type="number" min="1" max="200" value="1" style="width:70px">
+      </div>
+      <div class="box mono" id="preview" style="margin-top:0">—</div>
+      <label class="bar" style="margin:8px 0 6px;font-size:13px;cursor:pointer">
+        <input type="checkbox" id="confirm">
+        <span>Запис піде в <b id="confirmEnv" style="font-weight:500">PROD</b>, і це незворотно. Розумію.</span>
+      </label>
+      <div class="bar">
+        <button id="startBtn">почати прогін</button>
+        <span id="actionMsg" class="empty"></span>
+      </div>
+      <pre class="log" id="actionLog" style="display:none;max-height:220px;margin-top:8px"></pre>
+    </div>
+
     <div class="panel">
       <div class="bar">
         <span class="pill" id="env">—</span>
@@ -123,10 +153,34 @@ td.num,th.num{text-align:right;font-family:var(--mono)}
 
     <div class="panel">
       <div class="bar" style="margin-bottom:8px">
+        <span style="font-size:13px;font-weight:500">черга до людини</span>
+        <span class="empty" id="modMeta">не завантажено</span>
+        <button id="modLoad" style="margin-left:auto">показати чергу</button>
+        <button id="modApprove" style="display:none">схвалити вибрані <span id="modCount">0</span></button>
+      </div>
+      <div id="moderation"><div class="empty">Черга живе на сервері, тому вантажиться на запит · кнопка вище.</div></div>
+    </div>
+
+    <div class="panel">
+      <div class="bar" style="margin-bottom:8px">
         <span style="font-size:13px;font-weight:500">сесії роботи</span>
         <span class="empty" id="sessMeta"></span>
+        <button id="sessNew" style="margin-left:auto">нова сесія</button>
+        <button id="sessClose">закрити сесію</button>
       </div>
       <div id="sessions"></div>
+      <div id="closeDialog" style="display:none;margin-top:10px;border:.5px solid var(--bda);border-radius:10px;padding:12px;background:var(--s2)">
+        <div style="font-weight:500;margin-bottom:4px">Закрити сесію?</div>
+        <div class="empty" style="margin-bottom:6px">Підсумок і перелік пачок лишаються назавжди. Питання лише про журнали.</div>
+        <label class="bar" style="cursor:pointer"><input type="radio" name="keep" value="keep" checked>
+          <span>Тримати журнали 7 днів</span></label>
+        <label class="bar" style="cursor:pointer"><input type="radio" name="keep" value="drop">
+          <span>Видалити журнали зараз</span></label>
+        <div class="bar" style="margin-top:6px">
+          <button id="closeOk">закрити сесію</button>
+          <button id="closeCancel">скасувати</button>
+        </div>
+      </div>
     </div>
   </div>
 </div>
@@ -184,6 +238,7 @@ td.num,th.num{text-align:right;font-family:var(--mono)}
 
   // --- малювання -----------------------------------------------------------
   var lastCallsKey = '';
+  var lastState = { env: '', running: false };
   var streamText = '';
 
   function render(s) {
@@ -226,6 +281,17 @@ td.num,th.num{text-align:right;font-family:var(--mono)}
       return '<div class="card"><div class="l">' + esc(c[0]) + '</div>'
         + '<div class="v"' + (c[2] ? ' style="color:' + c[2] + '"' : '') + '>' + v + '</div></div>';
     }).join('');
+
+    // Форма старту читає стан звідси, а не зі своїх припущень: кнопка
+    // «почати» під живим прогоном мусить бути мертвою, бо сервер її однаково
+    // відхилить, і краще сказати це до кліку.
+    lastState.env = s.env || '';
+    lastState.running = s.running === true;
+    el('confirmEnv').textContent = (s.env || 'ціль').toUpperCase();
+    el('startBtn').disabled = lastState.running;
+    el('startHint').textContent = lastState.running
+      ? 'прогін уже працює · старт заблокований'
+      : 'кнопка виконує ті самі команди, що й термінал';
 
     var meta = [];
     meta.push(s.running ? 'драйвер працює' : 'драйвер не працює');
@@ -369,6 +435,194 @@ td.num,th.num{text-align:right;font-family:var(--mono)}
       setLink('poll', 'потік перепідключається');
     });
   }
+
+  // --- журнал помилок сторінки у файл --------------------------------------
+  // Навіщо. Зламаний обробник не видно на скріншоті: сторінка виглядає цілою,
+  // а кнопка нічого не робить. Тому кожна помилка JavaScript іде в
+  // `state/web-client.log`, і на неї можна показати рядком, а не «здається,
+  // щось не працює». Власник просто користується вікном · слід лишається сам.
+  var reported = 0;
+  function reportError(message, source, line, stack) {
+    if (reported > 20) { return; }   // журнал не має права рости від циклу
+    reported++;
+    try {
+      fetch(q('/api/client-error'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Bdo-Token': token },
+        body: JSON.stringify({ message: message, source: source, line: line, stack: stack })
+      }).catch(function () {});
+    } catch (e) {}
+  }
+  window.onerror = function (message, source, line, col, error) {
+    reportError(message, source, line, error && error.stack ? error.stack : '');
+  };
+  window.addEventListener('unhandledrejection', function (ev) {
+    var r = ev.reason;
+    reportError('unhandledrejection: ' + (r && r.message ? r.message : String(r)), location.pathname, 0, r && r.stack ? r.stack : '');
+  });
+
+  // --- дії -----------------------------------------------------------------
+  var startMode = 'patch';
+
+  function act(name, payload, confirm) {
+    var msg = el('actionMsg');
+    msg.textContent = 'виконую…';
+    msg.style.color = 'var(--ts)';
+    return fetch(q('/api/action'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Bdo-Token': token },
+      body: JSON.stringify({ action: name, payload: payload || {}, confirm: confirm === true })
+    }).then(function (r) {
+      return r.json().then(function (d) { return { status: r.status, body: d }; });
+    }).then(function (res) {
+      var log = el('actionLog');
+      if (res.status >= 400) {
+        msg.textContent = (res.body && res.body.hint) ? res.body.hint : ('відмова, код ' + res.status);
+        msg.style.color = 'var(--dn-tx)';
+        log.style.display = 'none';
+        return false;
+      }
+      var steps = (res.body && res.body.steps) || [];
+      log.style.display = steps.length ? 'block' : 'none';
+      log.textContent = steps.map(function (s) {
+        return '$ ' + s.command + '  → код ' + s.code + (s.output ? '\n' + s.output : '');
+      }).join('\n\n');
+      msg.textContent = res.body.ok ? (res.body.label + ' · готово') : (res.body.label + ' · крок не вдався, дивись вивід');
+      msg.style.color = res.body.ok ? 'var(--ok-tx)' : 'var(--dn-tx)';
+      loadSessions();
+      return res.body.ok === true;
+    }).catch(function (e) {
+      msg.textContent = 'сервер не відповів: ' + (e && e.message ? e.message : 'невідомо');
+      msg.style.color = 'var(--dn-tx)';
+      return false;
+    });
+  }
+
+  function startPayload() {
+    var batches = el('batches').value;
+    var p = { mode: startMode, patch: el('patch').value.trim() || 'active' };
+    var domain = el('domain').value;
+    if (domain) { p.domain = domain; }
+    if (batches) { p.batches = batches; }
+    return p;
+  }
+
+  // Показуємо САМУ команду, а не «запустити»: власник бачить, що піде в роботу,
+  // тим самим текстом, який виконав би в терміналі (макет 04).
+  function previewStart() {
+    var p = startPayload();
+    var cmd = './bdo mode start ' + p.mode + ' 50 ' + p.patch + (p.domain ? ' ' + p.domain : '');
+    cmd += '\n./bdo watch loop' + (p.batches ? ' --batches ' + p.batches : '');
+    el('preview').textContent = cmd;
+  }
+
+  function renderModes(list) {
+    var names = { patch: 'патч', manual: 'ручний', proposal: 'пропозиції', improve: 'покращення ШІ' };
+    el('modes').innerHTML = list.map(function (m) {
+      return '<button class="chip" data-mode="' + m + '" aria-pressed="' + (m === startMode) + '">'
+        + esc(names[m] || m) + '</button>';
+    }).join(' ');
+    Array.prototype.forEach.call(el('modes').querySelectorAll('button'), function (b) {
+      b.onclick = function () {
+        startMode = b.getAttribute('data-mode');
+        renderModes(list);
+        previewStart();
+      };
+    });
+  }
+
+  function renderDomains(list) {
+    var sel = el('domain');
+    sel.innerHTML = '<option value="">усі</option>' + list.map(function (d) {
+      return '<option value="' + esc(d) + '">' + esc(d) + '</option>';
+    }).join('');
+  }
+
+  fetch(q('/api/actions'), { headers: { 'X-Bdo-Token': token } })
+    .then(function (r) { return r.json(); })
+    .then(function (d) {
+      renderModes(d.modes || ['patch']);
+      renderDomains(d.domains || []);
+      previewStart();
+    })
+    .catch(function () { renderModes(['patch', 'manual', 'proposal', 'improve']); previewStart(); });
+
+  ['patch', 'domain', 'batches'].forEach(function (id) {
+    el(id).oninput = previewStart;
+    el(id).onchange = previewStart;
+  });
+
+  el('startBtn').onclick = function () {
+    if (!el('confirm').checked) {
+      el('actionMsg').textContent = 'спершу підтверди запис у ' + (lastState.env || 'ціль').toUpperCase();
+      el('actionMsg').style.color = 'var(--dn-tx)';
+      return;
+    }
+    act('run.start', startPayload(), true);
+  };
+  el('stopBtn').onclick = function () { act('run.stop', {}, false); };
+  el('sessNew').onclick = function () { act('session.new', {}, false); };
+  el('sessClose').onclick = function () { el('closeDialog').style.display = 'block'; };
+  el('closeCancel').onclick = function () { el('closeDialog').style.display = 'none'; };
+  el('closeOk').onclick = function () {
+    var drop = document.querySelector('input[name="keep"]:checked').value === 'drop';
+    el('closeDialog').style.display = 'none';
+    act('session.close', { drop_journals: drop }, false);
+  };
+
+  // --- черга до людини -----------------------------------------------------
+  function modCount() {
+    var n = document.querySelectorAll('#moderation input.sel:checked').length;
+    el('modCount').textContent = n;
+    el('modApprove').style.display = n ? '' : 'none';
+    return n;
+  }
+
+  function renderModeration(d) {
+    if (d.error) {
+      el('moderation').innerHTML = '<div class="empty" style="color:var(--dn-tx)">' + esc(d.error) + '</div>';
+      el('modMeta').textContent = 'не вдалося';
+      return;
+    }
+    var rows = d.rows || [];
+    el('modMeta').textContent = 'чекають ' + num(d.total) + ' · показано ' + rows.length + (d.cached ? ' · з кешу' : '');
+    if (!rows.length) {
+      el('moderation').innerHTML = '<div class="empty">Черга порожня.</div>';
+      return;
+    }
+    el('moderation').innerHTML = rows.map(function (r) {
+      return '<div class="row"><input type="checkbox" class="sel" data-id="' + r.id + '">'
+        + '<div style="flex:1;min-width:0">'
+        + '<div class="mono" style="color:var(--tm)">#' + r.id + (r.domain ? ' · ' + esc(r.domain) : '') + '</div>'
+        + '<div class="mono" style="color:var(--tm)">' + esc(r.source_text) + '</div>'
+        + '<div class="mono">' + esc(r.text) + '</div></div></div>';
+    }).join('');
+    Array.prototype.forEach.call(document.querySelectorAll('#moderation input.sel'), function (c) {
+      c.onchange = modCount;
+    });
+    modCount();
+  }
+
+  function loadModeration() {
+    el('modMeta').textContent = 'вантажу…';
+    fetch(q('/api/moderation?limit=20'), { headers: { 'X-Bdo-Token': token } })
+      .then(function (r) { return r.json(); })
+      .then(renderModeration)
+      .catch(function (e) {
+        el('modMeta').textContent = 'не вдалося: ' + (e && e.message ? e.message : '');
+      });
+  }
+  el('modLoad').onclick = loadModeration;
+  el('modApprove').onclick = function () {
+    var ids = Array.prototype.map.call(
+      document.querySelectorAll('#moderation input.sel:checked'),
+      function (c) { return Number(c.getAttribute('data-id')); }
+    );
+    if (!ids.length) { return; }
+    act('moderation.approve', { ids: ids }, true).then(function (ok) {
+      if (ok) { loadModeration(); }
+    });
+  };
 
   startStream();
   loadSessions();

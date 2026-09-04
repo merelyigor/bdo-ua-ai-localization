@@ -74,6 +74,15 @@ selected → awaiting_terminology → prepared → awaiting_worker
   показує той самий текст `run-transcript.log`. Межі: лише GET, лише
   перелічені шляхи, токен на кожен запит, перевірка `Origin`; регресія ·
   `tests/web-server.sh`.
+- **Кнопка сторінки є командою набору.** `POST /api/action` перекладає дію в
+  рівно ту команду, яку дозволяє `cli/command-registry.json`
+  (`Bdo\Translate\Web\Actions` будує план, `Web\Runner` виконує його
+  `proc_open` МАСИВОМ, без оболонки, під замком однієї дії). Прогін іде через
+  `./bdo watch loop`, тому та сама робота видна в терміналі (`tmux attach -t
+  bdo`), а сервер можна перезапустити без її втрати. Запис у PROD вимагає
+  `confirm` у КОДІ, а не галочки в розмітці. Помилки JavaScript сторінка пише
+  в `state/web-client.log`: зламану кнопку на скріншоті не видно, а в журналі
+  видно рядком. Регресія · `tests/web-actions.sh`.
 - **Пачка належить сесії роботи.** `batch-new.sh` відкриває сесію сам, якщо її
   немає, і пише в неї пачку В МОМЕНТ створення (`Bdo\Translate\Session\Ledger`,
   `state/sessions/<id>/batches.jsonl`). Тому підсумок сесії не залежить від

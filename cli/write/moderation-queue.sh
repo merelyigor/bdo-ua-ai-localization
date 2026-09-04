@@ -8,6 +8,7 @@
 #   ./moderation-queue.sh --reject 12,15 --reason "калька"
 #   ./bdo moderation --approve-batch 20       # схвалити перші N з черги
 #   ./bdo moderation --approve-batch 20 --dry # показати, кого б схвалив
+#   ./bdo moderation --limit 20 --json        # черга як JSON (для інтерфейсу)
 #
 # Навіщо: прогін пачками відправляє в чергу десятки рядків, і розбирати їх у
 # адмінці кліками неможливо. Скрипт ходить у ті самі маршрути, що й UI-модератор
@@ -35,6 +36,7 @@ REJECT_IDS=""
 REASON=""
 BATCH=0
 DRY=0
+JSON=0
 
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -45,6 +47,11 @@ while [ $# -gt 0 ]; do
         --reason) REASON="${2:?--reason потребує текст}"; shift 2 ;;
         --approve-batch) BATCH="${2:?--approve-batch потребує число}"; shift 2 ;;
         --dry) DRY=1; shift ;;
+        # `--json` віддає чергу як є, без людського форматування. Потрібен
+        # сторінці інтерфейсу (`GET /api/moderation`): вона малює ті самі рядки
+        # сама, і другий парсер людського тексту тут був би зайвим шаром, який
+        # ламається від зміни відступу.
+        --json) JSON=1; shift ;;
         -h|--help) sed -n '2,20p' "$0"; exit 0 ;;
         *) echo "Невідомий аргумент: $1" >&2; exit 1 ;;
     esac
@@ -122,6 +129,10 @@ fi
 # і навіть з `pipefail` php встигав упасти на порожньому вході раніше, ніж
 # спрацьовував наш зрозумілий вихід.
 QUEUE_JSON="$(fetch_queue "$LIMIT")"
+if [ "$JSON" = 1 ]; then
+    printf '%s' "$QUEUE_JSON"
+    exit 0
+fi
 printf '%s' "$QUEUE_JSON" | php -r '
 $d = json_decode((string) file_get_contents("php://stdin"), true, 512, JSON_THROW_ON_ERROR);
 $rows = $d["data"]["proposals"] ?? [];
