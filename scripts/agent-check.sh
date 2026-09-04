@@ -556,6 +556,7 @@ check_agents() {
     run bash tests/tui-live.sh
     run bash tests/watch-session.sh
     run bash tests/step-report.sh
+    run bash tests/glossary-provenance.sh
     run bash tests/qa-scope.sh
     run bash tests/row-attempts.sh
     run bash tests/names-pass.sh

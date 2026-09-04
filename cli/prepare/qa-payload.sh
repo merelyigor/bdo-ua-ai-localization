@@ -169,8 +169,17 @@ foreach ($rows as $row) {
         "candidate" => $candidate->text($hash),
     ];
     if ($row->semanticType() !== null) $item["semantic_type"] = $row->semanticType();
-    $glossary = $row->glossary();
-    if ($glossary !== []) { $item["glossary"] = $glossary; $stats["glossary"]++; }
+    // Глосарій рядка · ДВА блоки за походженням відповідника.
+    //
+    // `glossary` · затверджене людиною, тобто закон. `glossary_hint` · машинна
+    // назва: чинний стандарт корпусу, який тримає пачку узгодженою, але його
+    // відсутність дефектом не є. Заміряно 2026-09-04: людських записів у
+    // каталозі 172 із 136 022, і без цього поділу промпт називав законом
+    // машинну здогадку · QA знижувала вердикт за невживання «Час» для
+    // `Timing`, сама ж визнаючи candidate допустимим.
+    $glossary = $row->glossaryByLayer();
+    if ($glossary["human"] !== []) { $item["glossary"] = $glossary["human"]; $stats["glossary"]++; }
+    if ($glossary["machine"] !== []) { $item["glossary_hint"] = $glossary["machine"]; }
     $keep = $row->keepTokens();
     if ($keep !== []) $item["keep"] = $keep;
     // Ті самі сигнали, що бачив воркер: інакше QA судить у гірших умовах,
