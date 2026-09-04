@@ -95,4 +95,25 @@ printf '1\n7\nquest\n2\ny\n\nq\n' | tui >/dev/null 2>&1 || true
 grep -q '^mode start patch 50 7 quest$' "$WORK/state/calls.log" \
     || fail "чистий ввід не дійшов до команди: $(cat "$WORK/state/calls.log")"
 
-echo "OK: TUI показує факти й фільтрує ввід."
+# 8. Екран не залежить від локалі терміналу.
+#
+#    2026-09-04 власник відкрив «стан» і побачив `sed: RE error: illegal byte
+#    sequence` замість цілі: BSD `sed` розбирає кириличний шаблон за поточною
+#    `LC_CTYPE`. Вікно · єдине, що бачить власник, тому воно мусить працювати
+#    в будь-якій локалі, а не лише в тій, що стоїть у розробника.
+for locale in C POSIX en_US.US-ASCII; do
+    out="$(cd "$WORK" && LC_ALL="$locale" LC_CTYPE="$locale" NO_COLOR=1 \
+        bash bin/tui.sh --status 2>&1 < /dev/null)"
+    printf '%s' "$out" | grep -q 'illegal byte' \
+        && fail "локаль $locale ламає екран стану: $out"
+    printf '%s' "$out" | grep -q 'Ціль: PROD' \
+        || fail "локаль $locale: екран стану не показав цілі"
+done
+
+# 9. Кириличних шаблонів у `sed`/`grep -E` не лишилось узагалі · це і є межа
+#    класу, а не окремого рядка.
+if grep -nE "sed -n .*[^\x00-\x7F]" "$ROOT/bin/tui.sh"; then
+    fail 'у TUI знову зʼявився sed із не-ASCII шаблоном'
+fi
+
+echo "OK: TUI показує факти, фільтрує ввід і не залежить від локалі."

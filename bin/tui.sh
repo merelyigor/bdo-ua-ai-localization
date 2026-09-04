@@ -38,10 +38,37 @@ pause() { printf '\n%s' "${C_DIM}Enter · назад${C_RESET}"; read -r _ || tr
 # і показувала в полі «Ціль» рядок «Профіль синхронізовано» · тобто вікно
 # впевнено брехало про те, куди піде запис. Тому читаємо обидва потоки й беремо
 # саме рядок цілі.
+# ЖОДНОГО `sed` із кириличним шаблоном.
+#
+# BSD `sed` розбирає шаблон за поточною `LC_CTYPE`, і в терміналі власника з
+# іншою локаллю той самий рядок дав `sed: RE error: illegal byte sequence` ·
+# екран стану замість цілі показав помилку. Розбір рядків у bash побайтовий і
+# від локалі не залежить взагалі.
 target() {
-    local found
-    found="$("$BDO" env 2>&1 | sed -n 's/^Ціль: //p' | head -1)"
+    local line found=""
+    while IFS= read -r line; do
+        case "$line" in
+            "Ціль: "*) found="${line#Ціль: }"; break ;;
+        esac
+    done < <("$BDO" env 2>&1)
     printf '%s' "${found:-невідома · виконай ./bdo env}"
+}
+
+# Вирізати ділянку виводу між двома маркерами · теж без `sed`.
+#
+#   between "Останні пачки" "---" < вивід
+between() {
+    local start="$1" stop="$2" line inside=0
+    while IFS= read -r line; do
+        case "$line" in
+            *"$start"*) inside=1 ;;
+        esac
+        test "$inside" = 1 || continue
+        case "$line" in
+            "$stop"*) printf '%s\n' "$line"; return 0 ;;
+        esac
+        printf '%s\n' "$line"
+    done
 }
 
 current_batch() {
@@ -84,7 +111,7 @@ screen_status() {
     printf '%s\n' "${C_BOLD}Останні виклики моделі${C_RESET}"
     recent_calls
     line
-    "$BDO" review 2>/dev/null | sed -n '/Останні пачки/,/^---/p' | head -12
+    "$BDO" review 2>/dev/null | between "Останні пачки" "---" | head -12
     pause
 }
 
