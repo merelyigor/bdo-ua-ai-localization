@@ -31,7 +31,14 @@ else
     echo "  немає docs/plans/README.md"
 fi
 echo
-ACTIVE_PLANS="$(ls "$SCRIPT_DIR"/docs/plans/active/*.md 2>/dev/null | wc -l | tr -d ' ')"
+# `ls` на ПОРОЖНІЙ теці повертає ненульовий код, і під `set -euo pipefail` це
+# вбивало весь екран стану після рядка «Плани в роботі: немає». Тобто варто
+# було закрити всі плани · і `./bdo review` мовчки обривався. Порожня тека є
+# нормальним станом, а не аварією.
+ACTIVE_PLANS=0
+for _plan in "$SCRIPT_DIR"/docs/plans/active/*.md; do
+    test -e "$_plan" && ACTIVE_PLANS=$((ACTIVE_PLANS + 1))
+done
 echo "  файлів у active/: $ACTIVE_PLANS"
 line
 
