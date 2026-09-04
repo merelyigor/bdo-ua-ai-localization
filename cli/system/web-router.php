@@ -292,10 +292,22 @@ function stream(Snapshot $snapshot): void
         if (connection_aborted() === 1) {
             return;
         }
+        // Віддаємо ЗІБРАНИЙ текст, а не сирі рядки журналу: складання живе в
+        // одному місці (`Snapshot::assemble`), інакше сторінка показувала б
+        // NDJSON замість тексту моделі · так і сталося на живому прогоні (D67).
+        // Неповний останній рядок лишається в файлі до наступного такту, тому
+        // зсув рухаємо рівно на спожите.
         $chunk = $snapshot->streamFrom($offset);
         if ($chunk !== '') {
-            $offset += strlen($chunk);
-            $send('tokens', (string) json_encode(['text' => $chunk], JSON_UNESCAPED_UNICODE));
+            $assembled = $snapshot->assemble($chunk, $offset);
+            $offset = $assembled['offset'];
+            if ($assembled['text'] !== '' || $assembled['thinking'] !== '' || $assembled['restarted']) {
+                $send('tokens', (string) json_encode([
+                    'text' => $assembled['text'],
+                    'thinking' => $assembled['thinking'],
+                    'restarted' => $assembled['restarted'],
+                ], JSON_UNESCAPED_UNICODE));
+            }
         }
         // Знімок стану · раз на такт, але лише коли він СПРАВДІ змінився:
         // інакше сторінка перемальовувалась би двічі на секунду без причини.

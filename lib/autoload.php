@@ -27,9 +27,27 @@ spl_autoload_register(static function (string $class): void {
  * Тому назовні йде тільки повідомлення. Повне трасування вмикає BDO_DEBUG=1.
  */
 set_exception_handler(static function (Throwable $e): void {
-    fwrite(STDERR, 'ПОМИЛКА: '.$e->getMessage()."\n");
+    $message = 'ПОМИЛКА: '.$e->getMessage()."\n";
     if (getenv('BDO_DEBUG') === '1') {
-        fwrite(STDERR, $e->getTraceAsString()."\n");
+        $message .= $e->getTraceAsString()."\n";
+    }
+    // `STDERR` існує лише в CLI. Під вбудованим сервером (сторінка `./bdo web`)
+    // ця константа не визначена, і сам обробник падав із «Undefined constant
+    // STDERR» · тобто ХОВАВ справжню причину за собою: 2026-09-05 через це
+    // `/api/state` віддавав HTML-помилку замість стану, а сторінка мовчки
+    // показувала застарілий знімок (D70).
+    if (defined('STDERR')) {
+        fwrite(STDERR, $message);
+    } else {
+        error_log(rtrim($message));
+        if (! headers_sent()) {
+            http_response_code(500);
+            header('Content-Type: application/json; charset=utf-8');
+        }
+        echo json_encode(
+            ['error' => 'internal_error', 'hint' => $e->getMessage()],
+            JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES
+        );
     }
     exit(1);
 });

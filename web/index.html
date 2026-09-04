@@ -424,6 +424,10 @@ td.num,th.num{text-align:right;font-family:var(--mono)}
     es.addEventListener('tokens', function (ev) {
       try {
         var d = JSON.parse(ev.data);
+        // Сервер уже склав текст із рядків журналу · сторінка нічого не
+        // розбирає. `restarted` означає новий виклик ролі: попередню відповідь
+        // показувати далі не можна, вона вже не та.
+        if (d.restarted) { streamText = ''; }
         streamText += d.text || '';
         if (streamText.length > 20000) { streamText = streamText.slice(-8000); }
         paintStream();

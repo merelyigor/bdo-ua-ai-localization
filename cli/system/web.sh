@@ -34,17 +34,22 @@
 # 0.02 с). Змінна документована як експериментальна й діє лише на POSIX;
 # на Windows конвеєр однаково живе у WSL2.
 #
-# ЗУПИНКА ВБИВАЄ ГРУПУ, А НЕ МАЙСТРА. `PHP_CLI_SERVER_WORKERS` створює процеси,
-# які тримають ТОЙ САМИЙ слухаючий сокет, тому вбитий майстер не звільняє порт:
-# власник читає «Сервер зупинено», а сторінка далі відповідає старим токеном
-# (D65, спіймано 2026-09-04 на власному тесті · лишилось 4 живі воркери).
-# Тому сервер запускається в окремій групі процесів (`set -m`), зупинка йде по
-# групі, і лише ПІСЛЯ звільнення порту команда каже, що зупинила.
+# ЗУПИНКА ЦІЛИТЬСЯ В ТИХ, ХТО ТРИМАЄ ПОРТ, І БІЛЬШЕ НІ В КОГО.
+#
+# Два уроки, обидва з живих прогонів, і вони тягнуть у різні боки.
+#
+# 1. Мало вбити майстра. `PHP_CLI_SERVER_WORKERS` створює воркери на ТОМУ
+#    САМОМУ сокеті, тому після смерті майстра порт лишається зайнятим і
+#    сторінка далі відповідає старим токеном, поки команда каже «зупинено»
+#    (D65).
+# 2. Не можна вбивати групу процесів. Дія «почати прогін» породжує роботу з
+#    цього ж сервера, і при `kill -- -PGID` вона гине разом із ним: 2026-09-05
+#    перезапуск сервера вбив живу пачку на кроці `awaiting_worker` (D68) ·
+#    рівно те, що обіцяно навпаки («сервер можна перезапустити, робота триває»).
+#
+# Тому ціль зупинки визначає СОКЕТ: власники слухаючого порту (`lsof -ti`) плюс
+# записаний pid. Прогін порту не тримає, отже переживає зупинку за побудовою.
 set -euo pipefail
-# Job control: кожна фонова задача отримує власну групу процесів, а її PGID
-# дорівнює PID задачі. Без цього воркери лишаються в групі оболонки, і вбити
-# їх однією командою неможливо.
-set -m
 
 SCRIPT_DIR="$(cd "$(dirname "$0")/../.." && pwd)"
 STATE_DIR="${BDO_STATE_DIR:-$SCRIPT_DIR/state}"
@@ -107,18 +112,30 @@ port_busy() {
     ' "$port"
 }
 
-# Зупинити групу процесів сервера й ДОВЕСТИ, що порт звільнився.
-stop_group() {
-    local pgid="$1" pid="$2" port="${3:-}" waited=0 self_pgid=""
-    # ВЛАСНУ групу не вбиваємо ніколи. Якщо в записі лежить група оболонки
-    # (сервер підняли без job control або запис зробила стара версія),
-    # `kill -- -PGID` вбив би термінал власника разом із сервером · перевірено
-    # на собі: саме так упала сесія, коли `set -m` прибрали для фальсифікації.
-    self_pgid="$(ps -o pgid= -p $$ 2>/dev/null | tr -d ' ' || true)"
-    if [ -n "$pgid" ] && [ "$pgid" != "$self_pgid" ]; then
-        kill -- -"$pgid" 2>/dev/null || true
+# Хто саме слухає цей порт. Це і є вичерпний перелік процесів сервера: майстер
+# і воркери ділять один сокет, а більше його ніхто не тримає.
+port_owners() {
+    local port="$1"
+    command -v lsof >/dev/null 2>&1 || return 0
+    lsof -ti "tcp:${port}" -sTCP:LISTEN 2>/dev/null || true
+}
+
+# Зупинити сервер і ДОВЕСТИ, що порт звільнився.
+stop_server() {
+    local pid="$1" port="${2:-}" waited=0 owner children
+    # Спершу ті, хто тримає порт · разом, поки живий майстер їх не відновив.
+    if [ -n "$port" ]; then
+        for owner in $(port_owners "$port"); do
+            kill "$owner" 2>/dev/null || true
+        done
     fi
     if [ -n "$pid" ]; then
+        # Прямі діти записаного процесу · це воркери (їх не буде в lsof лише
+        # на системі без lsof). Онуків не чіпаємо: там живе робота.
+        children="$(ps -o pid=,ppid= -ax 2>/dev/null | awk -v p="$pid" '$2 == p { print $1 }' || true)"
+        for owner in $children; do
+            kill "$owner" 2>/dev/null || true
+        done
         kill "$pid" 2>/dev/null || true
     fi
     test -n "$port" || return 0
@@ -127,15 +144,12 @@ stop_group() {
         sleep 0.1
         waited=$((waited + 1))
     done
-    # Група не спрацювала (сервер запустили інакше, стара версія web.json):
-    # добираємо власників порту явно, і лише потім здаємось.
-    if command -v lsof >/dev/null 2>&1; then
-        lsof -ti "tcp:${port}" -sTCP:LISTEN 2>/dev/null | while IFS= read -r owner; do
-            test -n "$owner" && kill -9 "$owner" 2>/dev/null || true
-        done
-        sleep 0.3
-        port_busy "$port" || return 0
-    fi
+    # Не здаємось мовчки: добиваємо власників порту жорстко й перевіряємо ще раз.
+    for owner in $(port_owners "$port"); do
+        kill -9 "$owner" 2>/dev/null || true
+    done
+    sleep 0.3
+    port_busy "$port" || return 0
 
     return 1
 }
@@ -176,10 +190,8 @@ case "${1:-}" in
     --stop)
         test -s "$INFO" || { echo 'Зупиняти нічого: сервер не запущено.'; exit 0; }
         pid="$(info_field pid || true)"
-        pgid="$(info_field pgid || true)"
         port="$(info_field port || true)"
-        test -n "$pgid" || pgid="$pid"
-        if stop_group "$pgid" "$pid" "$port"; then
+        if stop_server "$pid" "$port"; then
             rm -f "$INFO"
             printf 'Сервер зупинено, порт %s вільний.\n' "${port:-?}"
             exit 0
@@ -237,7 +249,7 @@ fi
 SERVER_PID=""
 cleanup() {
     if [ -n "$SERVER_PID" ]; then
-        stop_group "$SERVER_PID" "$SERVER_PID" "${BOUND_PORT:-}" || true
+        stop_server "$SERVER_PID" "${BOUND_PORT:-}" || true
     fi
     if [ "$BACKGROUND" != 1 ]; then
         rm -f "$INFO"
@@ -295,21 +307,16 @@ for _ in 1 2 3 4 5 6 7 8 9 10; do
 done
 test "$CODE" = 200 || die "сервер слухає порт ${PORT}, але /api/health відповів ${CODE} · дивись $LOG"
 
-# Група процесів пишеться в запис окремо від pid: зупиняти треба саме групу,
-# а обчислити її після смерті майстра вже неможливо.
-PGID="$(ps -o pgid= -p "$SERVER_PID" 2>/dev/null | tr -d ' ' || true)"
-test -n "$PGID" || PGID="$SERVER_PID"
 php -r '
     file_put_contents($argv[1], json_encode([
         "pid" => (int) $argv[2],
-        "pgid" => (int) $argv[6],
         "port" => (int) $argv[3],
         "token" => $argv[4],
         "started_at" => gmdate("c"),
         "workers" => (int) $argv[5],
     ], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES)."\n");
     chmod($argv[1], 0600);
-' "$INFO" "$SERVER_PID" "$PORT" "$TOKEN" "$WORKERS" "$PGID"
+' "$INFO" "$SERVER_PID" "$PORT" "$TOKEN" "$WORKERS"
 
 TARGET="$(cat "$STATE_DIR/run-target" 2>/dev/null || echo '—')"
 cat <<INFO_TXT

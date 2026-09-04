@@ -68,7 +68,17 @@ final class Snapshot
         return is_file($path) ? strtolower(trim((string) file_get_contents($path))) : '';
     }
 
-    /** Чи працює драйвер зараз · живий `drive.lock` тієї ж природи, що в run-drive. */
+    /**
+     * Чи йде прогін ЗАРАЗ.
+     *
+     * Замок `drive.lock` для цього недостатній, і це показав живий прогін
+     * 2026-09-05: замок існує лише поки триває сам крок `run drive`, а
+     * найдовше в пачці · виклик моделі, коли замка вже немає. Сторінка через
+     * це писала «драйвер не працює» посеред роботи, кнопка старту лишалась
+     * живою, і другий прогін на тому самому стані ставав можливим (D69).
+     *
+     * Тому дивимось ще й на живий процес драйвера · саме він і є прогін.
+     */
     public function running(): bool
     {
         foreach (glob($this->path('batches').'/*/drive.lock') ?: [] as $lock) {
@@ -81,10 +91,87 @@ final class Snapshot
             }
         }
 
+        return $this->recentActivity();
+    }
+
+    /**
+     * Чи був рух у ЦЬОМУ стані за останні секунди.
+     *
+     * Сканувати процеси не можна: на машині може йти інший прогін з іншої
+     * теки стану, і сторінка показувала б чужу роботу як свою (спіймано
+     * власним тестом 2026-09-05). Тому ознака береться з файлів саме цього
+     * `state/`: журнал токенів росте кілька разів на секунду під час
+     * генерації, а журнал кроків · на кожному переході.
+     *
+     * Довга тиша означає «не працює» свідомо: якщо прогін завис, це і треба
+     * показати, а не малювати роботу. Вік останнього руху видно поруч.
+     */
+    private function recentActivity(int $seconds = 120): bool
+    {
+        $now = time();
+        foreach (['run-stream.log', 'run-transcript.log'] as $name) {
+            $path = $this->path($name);
+            if (is_file($path) && ($now - (int) @filemtime($path)) <= $seconds) {
+                return true;
+            }
+        }
+
         return false;
     }
 
-    /** Розмір і позиція журналу токенів · для докачування потоком. */
+    /**
+     * Зібрати текст із рядків журналу токенів.
+     *
+     * Журнал пише `cli/model/client.php` по одному JSON-рядку на чанк
+     * (`{"content":"…"}` або `{"thinking":"…"}`), бо саме так приходить потік.
+     * СКЛАДАЄ його сервер, а не сторінка: інакше кожна поверхня мала б власний
+     * розбір, і сторінка показувала б сирий NDJSON замість тексту моделі ·
+     * саме це й сталося на живому прогоні 2026-09-05 (D67).
+     *
+     * Неповний останній рядок НЕ споживається: файл росте під час читання, і
+     * половина рядка не є ні текстом, ні JSON. Тому повертаємо разом із
+     * текстом позицію, до якої дочитано.
+     *
+     * @return array{text:string,thinking:string,offset:int,restarted:bool}
+     */
+    public function assemble(string $raw, int $from): array
+    {
+        $text = '';
+        $thinking = '';
+        $restarted = false;
+        $consumed = 0;
+        $parts = explode("\n", $raw);
+        array_pop($parts);   // хвіст без переводу рядка · неповний
+        foreach ($parts as $line) {
+            $consumed += strlen($line) + 1;
+            $line = trim($line);
+            if ($line === '') {
+                continue;
+            }
+            $entry = json_decode($line, true);
+            if (! is_array($entry)) {
+                continue;
+            }
+            if (($entry['event'] ?? '') === 'start') {
+                // Новий виклик ролі · попередній текст більше не показуємо.
+                $text = '';
+                $thinking = '';
+                $restarted = true;
+
+                continue;
+            }
+            if (isset($entry['content'])) {
+                $text .= (string) $entry['content'];
+            }
+            if (isset($entry['thinking'])) {
+                $thinking .= (string) $entry['thinking'];
+            }
+        }
+
+        return ['text' => $text, 'thinking' => $thinking, 'offset' => $from + $consumed, 'restarted' => $restarted];
+    }
+
+    /** Розмір журналу токенів · позиція, від якої докачувати потік. */
     public function streamSize(): int
     {
         $path = $this->path('run-stream.log');
@@ -103,7 +190,7 @@ final class Snapshot
         if ($offset >= $size) {
             return '';
         }
-        // Файл перезаписали (новий прогін) · читаємо з початку, інакше
+        // Файл перезаписали (новий виклик ролі) · читаємо з початку, інакше
         // сторінка назавжди застрягла б на позиції минулого прогону.
         if ($offset > $size) {
             $offset = 0;
@@ -248,15 +335,27 @@ final class Snapshot
         return $this->tailLines($this->path('run-transcript.log'), self::TRANSCRIPT_LINES);
     }
 
-    /** @return array{size:int,text:string} */
+    /** @return array{size:int,text:string,thinking:string} */
     private function stream(): array
     {
         $size = $this->streamSize();
-        // Останні 4 КБ: сторінці потрібен видимий хвіст генерації, а не весь
-        // журнал прогону · він може важити мегабайти.
-        $from = max(0, $size - 4096);
+        // Останні 24 КБ сирого журналу: після складання це кілька тисяч
+        // символів тексту · рівно видимий хвіст генерації, а не весь прогін.
+        $from = max(0, $size - 24576);
+        $raw = $this->streamFrom($from);
+        // Обрізаний перший рядок відкидаємо: половина JSON не є ні текстом, ні
+        // записом. Саме тому беремо все ПІСЛЯ першого переводу рядка.
+        if ($from > 0) {
+            $cut = strpos($raw, "\n");
+            $raw = $cut === false ? '' : substr($raw, $cut + 1);
+        }
+        $assembled = $this->assemble($raw, $from);
 
-        return ['size' => $size, 'text' => $this->streamFrom($from)];
+        return [
+            'size' => $size,
+            'text' => $assembled['text'],
+            'thinking' => $assembled['thinking'],
+        ];
     }
 
     /** Скільки рядків лишилось за журналом прогону. */
