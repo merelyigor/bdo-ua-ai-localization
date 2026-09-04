@@ -413,6 +413,7 @@ check_shell() {
     run bash tests/domain-filter.sh
     run bash tests/audit-response-shape.sh
     run bash tests/mechanical-before-qa.sh
+    run bash tests/heal-attempts.sh
     run bash tests/payload-shared-examples.sh
     run bash tests/registry-hygiene.sh
     run bash tests/glossary-listing.sh
