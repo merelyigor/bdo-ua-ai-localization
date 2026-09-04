@@ -26,6 +26,12 @@
 # 23 (3 801 КБ). Решта 14 · покинуті на півдорозі пачки (`awaiting_qa`,
 # `selected`, пошкоджений manifest) · не прибиралися НІКОЛИ й росли назавжди.
 #
+# Прострочені КЕШІ прибираються теж, і це не дрібниця. `state/glossary-full.json`
+# важив 41 МБ із 43 МБ усього стану (заміряно 2026-09-04) при віці 160 годин і
+# TTL 24: як кеш він більше не використається НІКОЛИ · споживач
+# (`./bdo suspects`) однаково перезавантажить каталог. Тобто це не «швидша
+# правда», а просто найважчий файл у наборі. Свіжий кеш не чіпається.
+#
 # Що НЕ прибирається за жодних умов:
 #   - `state/quarantine.jsonl` · перелік рядків, які не доїхали в жоден шар;
 #   - `state/write-log.jsonl` · незнищенний слід того, що і куди записано;
@@ -122,6 +128,29 @@ if [ -d "$STATE_DIR/batches" ]; then
     done < <(find "$STATE_DIR/batches" -mindepth 1 -maxdepth 1 -type d | sort -r)
 fi
 
+# Кеші з власним TTL: файл, спожитий за TTL, після його спливу є лише вагою.
+# Пара «файл + змінна TTL» береться з того самого місця, де кеш і пишеться, щоб
+# правило не розійшлося з реальним споживачем.
+caches=0
+for entry in \
+    "glossary-full.json:${BDO_GLOSSARY_TTL_HOURS:-24}" \
+    "game-concepts.json:${BDO_CONCEPTS_TTL_HOURS:-24}"
+do
+    cache_name="${entry%%:*}"
+    cache_ttl="${entry##*:}"
+    cache_path="$STATE_DIR/$cache_name"
+    test -s "$cache_path" || continue
+    if php -r '
+        $age = (time() - (int) filemtime($argv[1])) / 3600;
+        exit($age > (float) $argv[2] ? 0 : 1);
+    ' "$cache_path" "$cache_ttl"; then
+        cache_kb="$(du -sk "$cache_path" | cut -f1)"
+        if [ "$APPLY" = 1 ]; then rm -f "$cache_path"; fi
+        say "  прострочений кеш (TTL ${cache_ttl} год): $cache_name (${cache_kb} КБ)"
+        caches=$((caches + 1)); freed=$((freed + cache_kb))
+    fi
+done
+
 if [ -d "$OUTPUT_DIR" ]; then
     while IFS= read -r file; do
         if [ "$APPLY" = 1 ]; then rm -f "$file"; fi
@@ -136,11 +165,11 @@ fi
 
 say ""
 if [ "$QUIET" != 1 ]; then
-    printf 'Пачок стиснуто до квитанції: %d | тек видалено цілком: %d | дампів output: %d | звільниться ~%d КБ\n' \
-        "$pruned" "$dropped" "$files" "$freed"
+    printf 'Пачок стиснуто до квитанції: %d | тек видалено цілком: %d | дампів output: %d | прострочених кешів: %d | звільниться ~%d КБ\n' \
+        "$pruned" "$dropped" "$files" "$caches" "$freed"
     if [ "$APPLY" = 1 ]; then
-        echo 'ВИРОК: прибрано. Поточна пачка, карантин і write-log недоторкані.'
-    elif [ $((pruned + dropped + files)) -eq 0 ]; then
+        echo 'ВИРОК: прибрано. Поточна пачка, карантин, журнал спроб і write-log недоторкані.'
+    elif [ $((pruned + dropped + files + caches)) -eq 0 ]; then
         echo 'ВИРОК: прибирати нічого.'
     else
         echo "ВИРОК: це лише показ. Прибрати: ./bdo clean --days $DAYS --apply"

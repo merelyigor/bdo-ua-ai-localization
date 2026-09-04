@@ -71,4 +71,42 @@ kept="$(find "$TMP/state/batches" -mindepth 1 -maxdepth 1 -type d | wc -l | tr -
 test "$kept" = 2 || fail "очікували поточну + 1 квитанцію, лишилось $kept тек"
 test -d "$TMP/state/batches/20260101_000001_current" || fail 'ліміт квитанцій зачепив поточну пачку'
 
+# 6. Прострочений КЕШ прибирається, свіжий · ні.
+#
+#    Заміряно 2026-09-04: `state/glossary-full.json` важив 41 МБ із 43 МБ усього
+#    стану при віці 160 годин і TTL 24. Як кеш він більше не використовувався
+#    (споживач однаково перезавантажує каталог), тобто це була просто найважча
+#    вага в наборі, якої не чіпало жодне прибирання.
+printf 'stale\n' > "$TMP/state/glossary-full.json"
+printf 'fresh\n' > "$TMP/state/game-concepts.json"
+# Вік задаємо часом файла, а не очікуванням: тест мусить бути швидким і точним.
+touch -t 202601010000 "$TMP/state/glossary-full.json"
+run --apply >/dev/null
+test ! -e "$TMP/state/glossary-full.json" || fail 'прострочений кеш глосарія лишився'
+test -s "$TMP/state/game-concepts.json" || fail 'свіжий кеш понять прибрано · це не сміття'
+
+# 6б. TTL з оточення сильніший за дефолт, і в БІК ЗБЕРЕЖЕННЯ теж: той самий
+#     старий файл при великому TTL лишається. Інакше «прибирання кешів» тихо
+#     перетворилось би на «прибирання кешів завжди».
+printf 'stale\n' > "$TMP/state/glossary-full.json"
+touch -t 202601010000 "$TMP/state/glossary-full.json"
+BDO_GLOSSARY_TTL_HOURS=999999 run --apply >/dev/null
+test -s "$TMP/state/glossary-full.json" \
+    || fail 'великий BDO_GLOSSARY_TTL_HOURS не врятував кеш · змінну не читають'
+
+# 6в. Показ без --apply нічого не видаляє, але кеш НАЗИВАЄ.
+printf 'stale\n' > "$TMP/state/glossary-full.json"
+touch -t 202601010000 "$TMP/state/glossary-full.json"
+out="$(run)"
+printf '%s' "$out" | grep -Fq 'прострочений кеш' || fail "показ не назвав простроченого кеша: $out"
+test -s "$TMP/state/glossary-full.json" || fail 'показ без --apply видалив кеш'
+
+# 6г. Журнал спроб і карантин прибирання не чіпає НІКОЛИ: їх чистить лише
+#     власник свідомо через ./bdo quarantine --clear.
+printf '{"identity_hash":"x"}\n' > "$TMP/state/row-attempts.jsonl"
+printf '{"identity_hash":"x"}\n' > "$TMP/state/quarantine.jsonl"
+run --days 0 --keep 0 --apply >/dev/null
+test -s "$TMP/state/row-attempts.jsonl" || fail 'прибирання знищило журнал спроб'
+test -s "$TMP/state/quarantine.jsonl" || fail 'прибирання знищило карантин'
+
 echo 'rotation: OK'

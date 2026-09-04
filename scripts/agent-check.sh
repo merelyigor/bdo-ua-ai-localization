@@ -426,6 +426,30 @@ check_shell() {
     done
     note 'root *.sh: 0; cli/** категорії: 10'
 
+    # Makefile не має права стати другою копією дерева команд.
+    #
+    # Він уже нею був і був видалений 2026-09-04 (4.4.0). Повернутий того ж дня
+    # з ОДНИМ призначенням: власник одним кліком підключається до термінальної
+    # сесії, у якій працює агент (`make attach`). Підкомандою `./bdo` це не
+    # робиться · роботу запускає агент, а підключається людина зі свого
+    # терміналу. Тому перелік цілей закритий, і жодна не кличе `./bdo` крім
+    # `watch`: інакше дерево команд знову розійдеться з
+    # `cli/command-registry.json` (§9 довідника).
+    if [ -f Makefile ]; then
+        local targets bad_bdo
+        targets="$(grep -oE '^[a-z][a-z-]*:' Makefile | tr -d ':' | sort -u | tr '\n' ' ')"
+        test "$targets" = 'attach help screen stop ' \
+            || fail "Makefile має інші цілі, ніж attach/help/screen/stop: [$targets]"
+        # `./bdo help` і `./bdo review` у ПІДКАЗЦІ дозволені: це вказівник для
+        # людини, а не виконання команди. Заборонено саме виконання чогось,
+        # крім `watch`, тобто рецепт без `printf`/`@printf`.
+        bad_bdo="$(grep -nE '\./bdo ' Makefile | grep -v 'watch --' | grep -v 'printf' | grep -v '^[0-9]*:#' || true)"
+        test -z "$bad_bdo" || fail "Makefile дублює команду набору замість посилання на ./bdo help: $bad_bdo"
+        grep -Fq 'cli/command-registry.json' Makefile \
+            || fail 'Makefile не називає єдине джерело дерева команд'
+        note 'Makefile: 4 цілі видимості, дерева команд не дублює'
+    fi
+
     step 'Bash syntax'
     local file count=0
     while IFS= read -r file; do
