@@ -26,6 +26,8 @@ printf '%s\n' "$*" >> "$HERE/state/calls.log"
 if [ "$1 $2" = "run drive" ]; then
     step="$(head -1 "$HERE/state/scenario")"
     sed -i.bak '1d' "$HERE/state/scenario" && rm -f "$HERE/state/scenario.bak"
+    # Рушій законно друкує людські звіти перед конвертом.
+    test -f "$HERE/state/noise" && cat "$HERE/state/noise"
     printf '%s\n' "$step"
     exit 0
 fi
@@ -89,6 +91,28 @@ printf '%s' "$out" | grep -q 'невідомий режим' || fail "зупин
 scenario '{"ok":true,"state":"verified","next":{"kind":"continue_run","remaining":10,"goal":{"mode":"patch","patch":"7","domain":"quest;rm"}}}'
 out="$(loop)" && fail 'драйвер прийняв категорію зі стороннім символом'
 printf '%s' "$out" | grep -q 'підозріла категорія' || fail "зупинка без причини: $out"
+
+# 4б. Звіт рушія перед конвертом не має ламати драйвер.
+#
+#     2026-09-04 друга пачка прогону зупинилась «невідомий крок «-» у стані -»:
+#     `run drive` надрукував `payload QA: 50 рядків | глосарій 26 | …` перед
+#     JSON, а драйвер декодував увесь вивід разом. Повідомлення назвало
+#     наслідок замість причини · найгірший вид зупинки.
+printf 'payload QA: 50 рядків | глосарій 26 | без відповідника 0\nще один людський рядок\n' > "$WORK/state/noise"
+scenario \
+    '{"ok":true,"state":"awaiting_qa","next":{"kind":"child","role":"translation-qa","payload_path":"p","response_path":"r"}}' \
+    '{"ok":true,"state":"verified","next":{"kind":"complete"}}'
+out="$(loop)" || fail "звіт перед конвертом зупинив драйвер: $out"
+roles="$(tr '\n' ' ' < "$WORK/state/roles.log")"
+test "$roles" = "translation-qa " || fail "після звіту роль не викликано: «${roles}»"
+rm -f "$WORK/state/noise"
+
+# 4в. Якщо конверта немає ЗОВСІМ · зупинка з причиною, а не з «невідомий крок».
+printf 'самий лише людський текст без JSON\n' > "$WORK/state/noise"
+scenario 'ще один рядок без конверта'
+out="$(loop)" && fail 'драйвер пішов далі без конверта'
+printf '%s' "$out" | grep -q 'немає конверта' || fail "відсутній конверт без причини: $out"
+rm -f "$WORK/state/noise"
 
 # 5. `blocked` зупиняє негайно й називає причину.
 scenario '{"ok":false,"state":"no_batch","next":{"kind":"blocked","reason":"no_current_batch"}}'

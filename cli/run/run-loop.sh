@@ -52,7 +52,30 @@ while :; do
     fi
     read -r state kind role payload response reason mode patch domain remaining <<EOF
 $(printf '%s' "$envelope" | php -r '
-$d = json_decode((string) stream_get_contents(STDIN), true);
+// Конверт беремо з ОСТАННЬОГО рядка, який розбирається як JSON.
+//
+// Рушій законно друкує людські звіти в stdout · наприклад
+// `payload QA: 50 рядків | глосарій 26 | …` під час підготовки кроку. Перша
+// редакція драйвера декодувала весь вивід разом і на такій пачці зупинилась
+// із `невідомий крок «-» у стані -`: тобто повідомила не причину, а наслідок.
+$raw = (string) stream_get_contents(STDIN);
+$d = null;
+foreach (array_reverse(preg_split("~\r?\n~", trim($raw)) ?: []) as $line) {
+    $line = trim($line);
+    if ($line === "" || $line[0] !== "{") {
+        continue;
+    }
+    $try = json_decode($line, true);
+    if (is_array($try) && isset($try["next"])) {
+        $d = $try;
+        break;
+    }
+}
+if ($d === null) {
+    fwrite(STDERR, "ЗУПИНКА: у виводі run drive немає конверта. Останні рядки:\n"
+        .implode("\n", array_slice(preg_split("~\r?\n~", trim($raw)) ?: [], -3))."\n");
+    exit(1);
+}
 $n = $d["next"] ?? [];
 // Порожнє поле друкуємо як "-", щоб read не зсунув колонки.
 $f = static fn (?string $v): string => ($v === null || $v === "") ? "-" : $v;
@@ -64,6 +87,11 @@ printf("%s %s %s %s %s %s %s %s %s %s\n",
     $f(isset($n["remaining"]) ? (string) $n["remaining"] : null));
 ')
 EOF
+
+    if [ -z "${kind:-}" ] || [ "$kind" = "-" ]; then
+        echo "ЗУПИНКА: конверт run drive не розібрано (див. причину вище)." >&2
+        exit 1
+    fi
 
     # Стан зрушив · лічильник холостих обертів обнуляється.
     if [ "$state" != "$last_state" ]; then
