@@ -17,6 +17,10 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 STATE_DIR="${BDO_STATE_DIR:-$ROOT/state}"
 BDO="$ROOT/bdo"
+# Час на екрані переводить `Bdo\Translate\Ui\Clock`: журнали пишуть UTC, а
+# ідентифікатор пачки складає bash у поясі системи, і без переведення екран
+# показував розрив у три години на живому прогоні.
+LIB="$ROOT/lib/autoload.php"
 
 # Кольори вимикаються самі, коли вивід не в термінал: інакше журнал і CI
 # наповнюються керуючими послідовностями.
@@ -71,32 +75,47 @@ between() {
     done
 }
 
+# Четверте поле · вік останнього руху пачки словами. Пачка в стані
+# `awaiting_worker` виглядає однаково і через хвилину, і через добу, тому без
+# віку екран не відрізняє роботу від зупинки.
 current_batch() {
     local batch manifest
     batch="$(cat "$STATE_DIR/current-batch" 2>/dev/null || true)"
-    test -n "$batch" || { echo "—|—|0"; return; }
+    test -n "$batch" || { echo "—|—|0|—|—"; return; }
     manifest="$STATE_DIR/batches/$batch/manifest.json"
-    test -f "$manifest" || { echo "$batch|—|0"; return; }
+    test -f "$manifest" || { echo "$batch|—|0|—|—"; return; }
     php -r '
+    require $argv[3];
+    use Bdo\Translate\Ui\Clock;
+    use Bdo\Translate\Ui\Labels;
     $m = json_decode((string) file_get_contents($argv[1]), true);
-    printf("%s|%s|%d", $argv[2], $m["state"] ?? "—", (int) ($m["rows"] ?? 0));
-    ' "$manifest" "$batch"
+    $state = (string) ($m["state"] ?? "—");
+    // Ключ і підпис їдуть окремими полями: `case` і порівняння працюють із
+    // ключем, вікно показує підпис. Змішати їх · це знову D50.
+    printf("%s|%s|%d|%s|%s", $argv[2], $state, (int) ($m["rows"] ?? 0),
+        Clock::ago($m["updated_at"] ?? null), Labels::state($state));
+    ' "$manifest" "$batch" "$LIB"
 }
 
 # Останні виклики моделі · це і є «що зараз відбувається».
 recent_calls() {
     test -f "$STATE_DIR/model-calls.jsonl" || { printf '%s\n' "  ${C_DIM}викликів ще не було${C_RESET}"; return; }
     tail -6 "$STATE_DIR/model-calls.jsonl" | php -r '
+    require $argv[1];
+    use Bdo\Translate\Ui\Clock;
+    use Bdo\Translate\Ui\Labels;
+    use Bdo\Translate\Ui\Text;
     while (($line = fgets(STDIN)) !== false) {
         $d = json_decode($line, true);
         if (! is_array($d)) continue;
-        printf("  %s  %-24s %-8s %5.1f с  вх %-6s вих %-6s\n",
-            substr((string) ($d["at"] ?? ""), 11, 8),
-            (string) ($d["role"] ?? "?"),
+        printf("  %s  %s %-8s %5.1f с  вх %-6s вих %-6s %s\n",
+            Clock::hms($d["at"] ?? null),
+            Text::pad(Labels::role($d["role"] ?? null), 24),
             (string) ($d["verdict"] ?? "?"),
             ((int) ($d["ms"] ?? 0)) / 1000,
-            (string) ($d["in"] ?? "-"), (string) ($d["out"] ?? "-"));
-    }'
+            (string) ($d["in"] ?? "-"), (string) ($d["out"] ?? "-"),
+            Clock::ago($d["at"] ?? null));
+    }' "$LIB"
 }
 
 # --- екрани -----------------------------------------------------------------
@@ -104,9 +123,9 @@ recent_calls() {
 screen_status() {
     title "стан"
     printf '  Ціль: %s\n' "$(target)"
-    IFS='|' read -r batch state rows <<< "$(current_batch)"
-    printf '  Пачка: %s\n  Стан:  %s%s%s   рядків: %s\n' \
-        "$batch" "$C_ACC" "$state" "$C_RESET" "$rows"
+    IFS='|' read -r batch state rows moved label <<< "$(current_batch)"
+    printf '  Пачка: %s\n  Стан:  %s%s%s   рядків: %s   останній рух: %s\n' \
+        "$batch" "$C_ACC" "$label" "$C_RESET" "$rows" "$moved"
     line
     printf '%s\n' "${C_BOLD}Останні виклики моделі${C_RESET}"
     recent_calls
@@ -119,6 +138,9 @@ screen_journal() {
     title "журнал викликів моделі"
     if [ -f "$STATE_DIR/model-calls.jsonl" ]; then
         php -r '
+        require $argv[2];
+        use Bdo\Translate\Ui\Labels;
+        use Bdo\Translate\Ui\Text;
         $rows = array_filter(array_map("json_decode",
             file($argv[1]), array_fill(0, count(file($argv[1])), true)));
         $byRole = [];
@@ -130,21 +152,25 @@ screen_journal() {
             $verdict = (string) ($r["verdict"] ?? "?");
             if ($verdict !== "ok") $byRole[$role]["bad"] = ($byRole[$role]["bad"] ?? 0) + 1;
         }
-        printf("  %-24s %6s %8s %10s %8s\n", "роль", "разів", "збоїв", "сек разом", "токенів");
+        printf("  %s %6s %8s %10s %8s\n", Text::pad("роль", 24), "разів", "збоїв", "сек разом", "токенів");
         foreach ($byRole as $role => $s) {
-            printf("  %-24s %6d %8d %10.1f %8d\n",
-                $role, $s["n"], $s["bad"] ?? 0, $s["ms"] / 1000, $s["out"]);
+            printf("  %s %6d %8d %10.1f %8d\n",
+                Text::pad(Labels::role($role), 24), $s["n"], $s["bad"] ?? 0, $s["ms"] / 1000, $s["out"]);
         }
-        ' "$STATE_DIR/model-calls.jsonl"
+        ' "$STATE_DIR/model-calls.jsonl" "$LIB"
         line
         printf '%s\n' "${C_BOLD}Останні 12 викликів${C_RESET}"
         tail -12 "$STATE_DIR/model-calls.jsonl" | php -r '
+        require $argv[1];
+        use Bdo\Translate\Ui\Clock;
+        use Bdo\Translate\Ui\Labels;
+        use Bdo\Translate\Ui\Text;
         while (($l = fgets(STDIN)) !== false) {
             $d = json_decode($l, true);
             if (! is_array($d)) continue;
-            printf("  %s %-24s %s\n", substr((string) ($d["at"] ?? ""), 0, 19),
-                (string) ($d["role"] ?? "?"), (string) ($d["verdict"] ?? "?"));
-        }'
+            printf("  %s %s %s\n", Clock::stamp($d["at"] ?? null),
+                Text::pad(Labels::role($d["role"] ?? null), 24), (string) ($d["verdict"] ?? "?"));
+        }' "$LIB"
     else
         printf '  %s\n' "${C_DIM}журнал порожній · моделі ще не викликали${C_RESET}"
     fi
@@ -231,13 +257,14 @@ run_mode() {
 
 screen_resume() {
     title "продовжити незавершену пачку"
-    IFS='|' read -r batch state rows <<< "$(current_batch)"
+    IFS='|' read -r batch state rows moved label <<< "$(current_batch)"
     if [ "$batch" = "—" ]; then
         printf '  %s\n' "${C_DIM}Незавершеної пачки немає.${C_RESET}"
         pause
         return
     fi
-    printf '  Пачка %s у стані %s%s%s, рядків %s\n\n' "$batch" "$C_ACC" "$state" "$C_RESET" "$rows"
+    printf '  Пачка %s · %s%s%s, рядків %s, останній рух %s\n\n' \
+        "$batch" "$C_ACC" "$label" "$C_RESET" "$rows" "$moved"
     printf '%s' "Довести до кінця? [y/N] "
     read -r yes || true
     case "$yes" in y|Y|так|Т|т) ;; *) return ;; esac
@@ -248,10 +275,11 @@ screen_resume() {
 main_menu() {
     while :; do
         title "головне меню"
-        IFS='|' read -r batch state rows <<< "$(current_batch)"
+        IFS='|' read -r batch state rows moved label <<< "$(current_batch)"
         printf '  Ціль: %s\n' "$(target)"
         if [ "$batch" != "—" ] && [ "$state" != "verified" ]; then
-            printf '  %sНезавершена пачка:%s %s · %s (рядків %s)\n' "$C_WARN" "$C_RESET" "$batch" "$state" "$rows"
+            printf '  %sНезавершена пачка:%s %s · %s (рядків %s, останній рух %s)\n' \
+                "$C_WARN" "$C_RESET" "$batch" "$label" "$rows" "$moved"
         fi
         line
         cat <<MENU

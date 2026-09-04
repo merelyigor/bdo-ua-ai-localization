@@ -18,6 +18,8 @@ WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
 mkdir -p "$WORK/bin" "$WORK/state/batches/20260101_000001" "$WORK/cli/run"
 cp "$ROOT/bin/tui.sh" "$WORK/bin/tui.sh"
+# Вікно переводить час через `Bdo\Translate\Ui\Clock`, тому пісочниця несе бібліотеку.
+cp -R "$ROOT/lib" "$WORK/lib"
 
 # Підроблений `./bdo`: ціль у stderr (як у справжнього), решта · у stdout.
 cat > "$WORK/bdo" <<'SH'
@@ -40,7 +42,8 @@ printf '#!/usr/bin/env bash\necho "цикл виконано" \n' > "$WORK/cli/r
 chmod +x "$WORK/cli/run/run-loop.sh"
 
 echo 20260101_000001 > "$WORK/state/current-batch"
-printf '{"state":"awaiting_qa","rows":50}' > "$WORK/state/batches/20260101_000001/manifest.json"
+printf '{"state":"awaiting_qa","rows":50,"updated_at":"2026-01-01T10:01:00+00:00"}' \
+    > "$WORK/state/batches/20260101_000001/manifest.json"
 printf '%s\n' '{"at":"2026-01-01T10:00:00+00:00","role":"translation-qa","model":"m","verdict":"ok","ms":1500,"in":10,"out":20}' \
     '{"at":"2026-01-01T10:01:00+00:00","role":"translation-worker","model":"m","verdict":"truncated","ms":900,"in":10,"out":0}' \
     > "$WORK/state/model-calls.jsonl"
@@ -53,16 +56,22 @@ printf '%s' "$out" | grep -q 'Ціль: PROD' || fail "екран стану н�
 printf '%s' "$out" | grep -q 'Профіль синхронізовано' \
     && fail 'у полі «Ціль» опинився рядок синхронізації профілю'
 
-# 2. Стан пачки береться з manifest, а не вигадується.
-printf '%s' "$out" | grep -q 'awaiting_qa' || fail "екран стану не показав стан пачки: $out"
+# 2. Стан пачки береться з manifest, а не вигадується, і показується
+#    УКРАЇНСЬКОЮ: `awaiting_qa` не каже власникові, чого пачка чекає.
+printf '%s' "$out" | grep -q 'чекає на перевірку якості' \
+    || fail "екран стану не показав стан пачки українською: $out"
+printf '%s' "$out" | grep -q 'awaiting_qa' \
+    && fail "екран стану показав власникові англійський ключ стану: $out"
 printf '%s' "$out" | grep -q 'рядків: 50' || fail "екран стану не показав кількість рядків: $out"
 
 # 3. Журнал рахує збої окремо: виклик із вердиктом `truncated` мусить бути
 #    видимим, інакше екран показує лише хороші новини.
 out="$(printf '\n' | tui --journal)"
 printf '%s' "$out" | grep -q 'truncated' || fail "журнал сховав невдалий виклик: $out"
-printf '%s' "$out" | grep -qE 'translation-worker +1 +1' \
+printf '%s' "$out" | grep -qE 'перекладач +1 +1' \
     || fail "журнал не порахував збій ролі: $out"
+printf '%s' "$out" | grep -q 'translation-worker' \
+    && fail "журнал показав власникові англійський ключ ролі: $out"
 
 # 4. Порожній журнал не ламає екран.
 rm "$WORK/state/model-calls.jsonl"
@@ -116,4 +125,85 @@ if grep -nE "sed -n .*[^\x00-\x7F]" "$ROOT/bin/tui.sh"; then
     fail 'у TUI знову зʼявився sed із не-ASCII шаблоном'
 fi
 
-echo "OK: TUI показує факти, фільтрує ввід і не залежить від локалі."
+# 10. Час на екрані · у поясі власника, а не в UTC журналу (D54).
+#
+#     2026-09-04 власник відкрив «стан» на ЖИВОМУ прогоні й побачив «Пачка:
+#     20260904_110133» поруч із «останній виклик 08:02»: ідентифікатор пачки
+#     складає bash у поясі системи, а `at` у журналі · UTC, і PHP тут стоїть із
+#     `date.timezone=UTC`. Розрив у три години читається як «прогін стоїть».
+printf '%s\n' '{"at":"2026-01-01T10:00:00+00:00","role":"translation-qa","model":"m","verdict":"ok","ms":1500,"in":10,"out":20}' \
+    > "$WORK/state/model-calls.jsonl"
+out="$(cd "$WORK" && BDO_TZ=Europe/Kiev NO_COLOR=1 bash bin/tui.sh --status < /dev/null 2>&1)"
+printf '%s' "$out" | grep -q '12:00:00' \
+    || fail "екран стану не перевів UTC 10:00 у київські 12:00: $out"
+printf '%s' "$out" | grep -q '10:00:00' \
+    && fail "екран стану лишив UTC-годинник як локальний: $out"
+printf '%s' "$out" | grep -q 'останній рух' \
+    || fail "екран стану не показав вік останнього руху пачки: $out"
+
+# Пояс беремо саме з оточення, тому UTC мусить лишатись UTC.
+out="$(cd "$WORK" && BDO_TZ=UTC NO_COLOR=1 bash bin/tui.sh --status < /dev/null 2>&1)"
+printf '%s' "$out" | grep -q '10:00:00' || fail "з BDO_TZ=UTC екран мусив показати 10:00:00: $out"
+
+# 11. Межа класу: жодне місце більше не друкує `at` підрядком.
+if grep -rnE 'substr\(\(string\) \(\$[a-z]+\["at"\]' "$ROOT/bin" "$ROOT/cli"; then
+    fail 'мітку часу знову друкують підрядком UTC замість Bdo\Translate\Ui\Clock'
+fi
+
+# 12. Сам переклад часу перевіряємо окремо · включно з віком події.
+php -r '
+require $argv[1];
+use Bdo\Translate\Ui\Clock;
+putenv("BDO_TZ=Europe/Kiev");
+$at = "2026-01-01T10:00:00+00:00";
+$checks = [
+    ["12:00:00", Clock::hms($at)],
+    ["2026-01-01 12:00:00", Clock::stamp($at)],
+    ["щойно", Clock::ago($at, strtotime($at) + 30)],
+    ["39 хв тому", Clock::ago($at, strtotime($at) + 39 * 60)],
+    ["3 год 12 хв тому", Clock::ago($at, strtotime($at) + (3 * 60 + 12) * 60)],
+    ["2 дн тому", Clock::ago($at, strtotime($at) + 2 * 86400)],
+    ["--:--:--", Clock::hms(null)],
+    ["невідомо коли", Clock::ago("")],
+];
+foreach ($checks as [$want, $got]) {
+    if ($want !== $got) {
+        fwrite(STDERR, "Clock: очікували «$want», отримали «$got»\n");
+        exit(1);
+    }
+}
+' "$ROOT/lib/autoload.php" || fail 'Clock рахує локальний час або вік події неправильно'
+
+# 13. Підпис мусить бути в КОЖНОГО стану машини й кожної ролі з конфігу.
+#
+#     Інакше правило «в TUI українською» тримається на пам'яті: новий стан або
+#     нова роль тихо виїдуть на екран англійським ключем. Перевіряє це не око,
+#     а звірка переліків.
+php -r '
+require $argv[1];
+use Bdo\Translate\Ui\Labels;
+$states = Labels::missingStates();
+if ($states !== []) {
+    fwrite(STDERR, "Стани без українського підпису: ".implode(", ", $states)."\n");
+    exit(1);
+}
+$config = json_decode((string) file_get_contents($argv[2]), true);
+$roles = Labels::missingRoles(array_keys($config["roles"] ?? []));
+if ($roles !== []) {
+    fwrite(STDERR, "Ролі без українського підпису: ".implode(", ", $roles)."\n");
+    exit(1);
+}
+// Логіка мусить лишатись на ключах: підпис не має права стати ключем.
+if (Labels::state("awaiting_worker") === "awaiting_worker") {
+    fwrite(STDERR, "Підпис стану не відрізняється від ключа\n");
+    exit(1);
+}
+// Невідомий ключ показуємо як є · стан не має права зникнути з екрана.
+if (Labels::state("нововведений_стан") !== "нововведений_стан") {
+    fwrite(STDERR, "Невідомий стан зник з екрана замість того, щоб показатись як є\n");
+    exit(1);
+}
+' "$ROOT/lib/autoload.php" "$ROOT/config/roles.json" \
+    || fail 'перелік українських підписів розійшовся зі станами машини або ролями'
+
+echo "OK: TUI показує факти українською, фільтрує ввід, не залежить від локалі й показує час власника."

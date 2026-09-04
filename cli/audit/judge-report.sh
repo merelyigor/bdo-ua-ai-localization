@@ -28,15 +28,17 @@ case "$MODE" in
         ;;
     --list)
         php -r '
+        require $argv[2];
+        use Bdo\Translate\Ui\Clock;
         foreach (file($argv[1], FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) as $line) {
             $e = json_decode($line, true);
             if (! is_array($e)) continue;
             printf("%s  %s  %3d%%  вирок=%-10s застосовано=%-10s QA=%s/%s\n    %s\n",
-                $e["at"] ?? "?", substr((string) ($e["identity_hash"] ?? ""), 0, 12),
+                Clock::stamp($e["at"] ?? null), substr((string) ($e["identity_hash"] ?? ""), 0, 12),
                 $e["confidence"] ?? 0, $e["verdict"] ?? "?", $e["applied"] ?? "?",
                 $e["qa_status"] ?? "?", $e["qa_severity"] ?? "?",
                 str_replace("\n", " ", substr((string) ($e["reason"] ?? ""), 0, 160)));
-        }' "$LOG"
+        }' "$LOG" "$SCRIPT_DIR/lib/autoload.php"
         ;;
     summary)
         php -r '

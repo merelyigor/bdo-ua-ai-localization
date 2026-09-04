@@ -36,6 +36,8 @@ if [ -f "$STATE_DIR/run-started-at" ]; then
 fi
 
 php -r '
+require $argv[4];
+use Bdo\Translate\Ui\Clock;
 $calls = $argv[1];
 $since = (int) $argv[2];          // мітка старту в мілісекундах, 0 · уся історія
 $limit = (int) $argv[3];
@@ -98,7 +100,7 @@ $bad = array_values(array_filter($rows, static fn (array $r): bool => ($r["verdi
 if ($bad !== []) {
     printf("\nЗбої (%d):\n", count($bad));
     foreach (array_slice($bad, -10) as $r) {
-        printf("  %s %s %s\n", substr((string) ($r["at"] ?? ""), 0, 19),
+        printf("  %s %s %s\n", Clock::stamp($r["at"] ?? null),
             $pad((string) ($r["role"] ?? "?"), 24), (string) ($r["verdict"] ?? "?"));
     }
 }
@@ -106,7 +108,7 @@ if ($bad !== []) {
 if ($limit > 0) {
     printf("\nОстанні %d викликів:\n", $limit);
     foreach (array_slice($rows, -$limit) as $r) {
-        printf("  %s %s %s %6.1f с\n", substr((string) ($r["at"] ?? ""), 0, 19),
+        printf("  %s %s %s %6.1f с\n", Clock::stamp($r["at"] ?? null),
             $pad((string) ($r["role"] ?? "?"), 24), $pad((string) ($r["verdict"] ?? "?"), 16),
             ((int) ($r["ms"] ?? 0)) / 1000);
     }
@@ -115,4 +117,4 @@ if ($limit > 0) {
 echo "\n", $bad === [] ? "ВИРОК: усі виклики моделей завершились нормально.\n"
     : sprintf("ВИРОК: %d викликів зі збоєм · причина в тому ж рядку журналу.\n", count($bad));
 exit($bad === [] ? 0 : 1);
-' "$CALLS" "${SINCE:-0}" "$LIMIT"
+' "$CALLS" "${SINCE:-0}" "$LIMIT" "$SCRIPT_DIR/lib/autoload.php"
