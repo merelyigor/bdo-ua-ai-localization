@@ -1,0 +1,379 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<title>bdo · прогін</title>
+<!--
+  Сторінка локального інтерфейсу. Один файл, жодного CDN, працює офлайн ·
+  інакше вікно власника залежало б від інтернету рівно в момент, коли він
+  дивиться на локальний прогін.
+
+  Дані беруться ЛИШЕ з /api/state і /api/stream. Жодного власного обліку тут
+  немає: те, що показує це вікно, показує й термінал, бо джерело одне ·
+  файли `state/**`, які пише сам конвеєр.
+
+  Зміст кроку (запит і відповідь ролі) НЕ перемальовується тут заново: його вже
+  зібрав `cli/run/step-report.sh`, і блок «журнал кроків» показує саме цей
+  текст. Другий рендер розійшовся б із першим при першій зміні payload.
+-->
+<style>
+:root{
+  --s0:#faf9f7; --s1:#f1efe8; --s2:#ffffff;
+  --tp:#2c2c2a; --ts:#5f5e5a; --tm:#888780;
+  --bd:rgba(0,0,0,.12); --bda:#185fa5;
+  --acc-bg:#e6f1fb; --acc-tx:#0c447c;
+  --ok-bg:#eaf3de; --ok-tx:#3b6d11;
+  --wr-bg:#faeeda; --wr-tx:#854f0b;
+  --dn-bg:#fcebeb; --dn-tx:#a32d2d;
+  --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+}
+@media (prefers-color-scheme:dark){
+  :root{
+    --s0:#1a1a19; --s1:#232322; --s2:#2b2b29;
+    --tp:#eceae4; --ts:#b4b2a9; --tm:#888780;
+    --bd:rgba(255,255,255,.14); --bda:#85b7eb;
+    --acc-bg:#0c447c; --acc-tx:#b5d4f4;
+    --ok-bg:#27500a; --ok-tx:#c0dd97;
+    --wr-bg:#633806; --wr-tx:#fac775;
+    --dn-bg:#791f1f; --dn-tx:#f7c1c1;
+  }
+}
+*{box-sizing:border-box}
+body{margin:0;padding:24px;background:var(--s0);color:var(--tp);font-family:var(--sans);font-size:15px;line-height:1.6}
+.wrap{max-width:980px;margin:0 auto}
+h1{font-size:20px;font-weight:500;margin:0 0 4px}
+.sub{font-size:13px;color:var(--ts);margin:0 0 16px}
+.panel{background:var(--s1);border-radius:12px;padding:16px;margin-bottom:14px}
+.bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px}
+.pill{font-size:12px;padding:3px 9px;border-radius:6px}
+.mono{font-family:var(--mono);font-size:12.5px;line-height:1.55}
+button{font-family:inherit;font-size:13px;padding:4px 10px;border-radius:8px;border:.5px solid var(--bd);background:transparent;color:var(--tp);cursor:pointer}
+button:hover{background:var(--s2)}
+.steps{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:14px;font-size:12px;color:var(--tm)}
+.steps .done{color:var(--ok-tx)}
+.steps .now{color:var(--acc-tx);font-weight:500}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin-bottom:4px}
+.card{background:var(--s2);border-radius:8px;padding:10px}
+.card .l{font-size:12px;color:var(--ts)}
+.card .v{font-size:22px;font-weight:500}
+.msg{border:.5px solid var(--bd);border-radius:12px;background:var(--s2);padding:10px 13px;margin-bottom:8px}
+.msg.active{border-color:var(--bda)}
+.mh{display:flex;align-items:center;gap:8px;font-size:13px}
+.mh .meta{font-size:12px;color:var(--tm)}
+.box{background:var(--s1);border-radius:8px;padding:8px 10px;margin-top:8px;white-space:pre-wrap;word-break:break-word;max-height:220px;overflow:auto}
+.caret{display:inline-block;width:7px;height:14px;background:var(--bda);vertical-align:-2px;animation:b 1s steps(2) infinite}
+@keyframes b{50%{opacity:0}}
+pre.log{margin:0;background:var(--s2);border-radius:8px;padding:10px 12px;max-height:420px;overflow:auto;font-family:var(--mono);font-size:12px;line-height:1.5;white-space:pre-wrap;word-break:break-word}
+.empty{font-size:13px;color:var(--ts)}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th{text-align:left;font-weight:400;color:var(--ts);font-size:12px;padding:4px 8px}
+td{padding:4px 8px;border-top:.5px solid var(--bd)}
+td.num,th.num{text-align:right;font-family:var(--mono)}
+.dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--tm)}
+.dot.live{background:#3b6d11}
+.dot.poll{background:#854f0b}
+.dot.dead{background:#a32d2d}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>bdo · прогін</h1>
+  <p class="sub" id="sub">локальний інтерфейс · читає той самий стан, що й термінал</p>
+
+  <div id="gate" class="panel" style="display:none">
+    <div style="font-weight:500;margin-bottom:4px">Немає токена</div>
+    <div class="empty">Відкрий посилання, яке надрукувала команда <span class="mono">./bdo web</span>.
+      Сторінка без токена нічого не читає · будь-яка чужа вкладка теж може постукати на 127.0.0.1.</div>
+  </div>
+
+  <div id="app" style="display:none">
+    <div class="panel">
+      <div class="bar">
+        <span class="pill" id="env">—</span>
+        <span class="mono" id="batch" style="color:var(--ts)">прогону немає</span>
+        <span class="pill" id="state" style="background:var(--acc-bg);color:var(--acc-tx)">—</span>
+        <span style="margin-left:auto;display:flex;align-items:center;gap:6px;font-size:12px;color:var(--tm)">
+          <span class="dot" id="dot"></span><span id="link">зʼєднання…</span>
+        </span>
+      </div>
+      <div class="steps" id="steps"></div>
+      <div class="cards" id="cards"></div>
+      <div class="empty" id="meta" style="margin-top:8px"></div>
+    </div>
+
+    <div class="panel">
+      <div class="bar" style="margin-bottom:8px">
+        <span style="font-size:13px;font-weight:500">виклики моделі</span>
+        <span class="empty" id="callsMeta"></span>
+      </div>
+      <div id="calls"></div>
+    </div>
+
+    <div class="panel">
+      <div class="bar" style="margin-bottom:8px">
+        <span style="font-size:13px;font-weight:500">журнал кроків</span>
+        <span class="empty">запит і відповідь кожної ролі · так само, як у терміналі</span>
+        <button id="follow" style="margin-left:auto" aria-pressed="true">слідувати за хвостом</button>
+      </div>
+      <pre class="log" id="log">журнал порожній</pre>
+    </div>
+
+    <div class="panel">
+      <div class="bar" style="margin-bottom:8px">
+        <span style="font-size:13px;font-weight:500">сесії роботи</span>
+        <span class="empty" id="sessMeta"></span>
+      </div>
+      <div id="sessions"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  'use strict';
+
+  // --- токен ---------------------------------------------------------------
+  // Токен приходить у посиланні один раз, далі живе в sessionStorage, а з
+  // адреси прибирається: інакше він лишався б в історії браузера й у
+  // заголовку Referer при кожному переході.
+  var url = new URL(window.location.href);
+  var fromUrl = url.searchParams.get('t');
+  if (fromUrl) {
+    try { sessionStorage.setItem('bdo_token', fromUrl); } catch (e) {}
+    url.searchParams.delete('t');
+    history.replaceState(null, '', url.pathname + (url.search || '') + url.hash);
+  }
+  var token = '';
+  try { token = sessionStorage.getItem('bdo_token') || ''; } catch (e) {}
+  if (!token) { token = fromUrl || ''; }
+  if (!token) {
+    document.getElementById('gate').style.display = 'block';
+    return;
+  }
+  document.getElementById('app').style.display = 'block';
+
+  var q = function (path) { return path + (path.indexOf('?') < 0 ? '?' : '&') + 't=' + encodeURIComponent(token); };
+
+  // --- дрібні помічники ----------------------------------------------------
+  var el = function (id) { return document.getElementById(id); };
+  var esc = function (s) {
+    return String(s === null || s === undefined ? '' : s)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  };
+  var num = function (n) { return (Number(n) || 0).toLocaleString('uk-UA'); };
+  var secs = function (ms) {
+    var s = (Number(ms) || 0) / 1000;
+    return s >= 10 ? Math.round(s) + ' с' : s.toFixed(1) + ' с';
+  };
+
+  var follow = true;
+  el('follow').onclick = function () {
+    follow = !follow;
+    this.setAttribute('aria-pressed', follow ? 'true' : 'false');
+    this.textContent = follow ? 'слідувати за хвостом' : 'не слідувати';
+    if (follow) { var l = el('log'); l.scrollTop = l.scrollHeight; }
+  };
+
+  function setLink(kind, text) {
+    el('dot').className = 'dot ' + kind;
+    el('link').textContent = text;
+  }
+
+  // --- малювання -----------------------------------------------------------
+  var lastCallsKey = '';
+  var streamText = '';
+
+  function render(s) {
+    var target = (s.env || '').toUpperCase() || '—';
+    var envEl = el('env');
+    envEl.textContent = target;
+    envEl.style.background = target === 'PROD' ? 'var(--dn-bg)' : 'var(--s2)';
+    envEl.style.color = target === 'PROD' ? 'var(--dn-tx)' : 'var(--ts)';
+
+    var b = s.batch || {};
+    if (b.id) {
+      var bits = [b.id];
+      if (b.patch) { bits.push('патч ' + b.patch); }
+      bits.push(num(b.rows) + ' рядків');
+      if (b.domain) { bits.push(b.domain); }
+      el('batch').textContent = bits.join(' · ');
+      el('state').textContent = b.state_label || '—';
+      el('state').style.display = '';
+    } else {
+      el('batch').textContent = 'прогону немає · сторінка чекає';
+      el('state').style.display = 'none';
+    }
+
+    var steps = s.steps || [];
+    el('steps').innerHTML = steps.map(function (st, i) {
+      var cls = st.now ? 'now' : (st.done ? 'done' : '');
+      return (i ? '<span>›</span>' : '') + '<span class="' + cls + '">' + esc(st.label) + '</span>';
+    }).join('');
+
+    var sum = s.summary || {};
+    var calls = s.calls || [];
+    var cards = [
+      ['у шар', sum.to_layer, 'var(--ok-tx)'],
+      ['до людини', sum.to_human, ''],
+      ['карантин', sum.quarantine, (sum.quarantine ? 'var(--dn-tx)' : '')],
+      ['викликів моделі', calls.length, '']
+    ];
+    el('cards').innerHTML = cards.map(function (c) {
+      var v = (c[1] === undefined || c[1] === null) ? '—' : num(c[1]);
+      return '<div class="card"><div class="l">' + esc(c[0]) + '</div>'
+        + '<div class="v"' + (c[2] ? ' style="color:' + c[2] + '"' : '') + '>' + v + '</div></div>';
+    }).join('');
+
+    var meta = [];
+    meta.push(s.running ? 'драйвер працює' : 'драйвер не працює');
+    if (b.updated_ago) { meta.push('останній рух ' + b.updated_ago); }
+    if (s.session && s.session.id) { meta.push('сесія ' + s.session.id + ' · пачок ' + num(s.session.batches)); }
+    if (s.remaining !== null && s.remaining !== undefined) { meta.push('лишилось рядків ' + num(s.remaining)); }
+    if (s.goal && s.goal.query) { meta.push('вибірка ' + s.goal.query); }
+    el('meta').textContent = meta.join(' | ');
+
+    // Виклики моделі. Перемальовуємо лише коли перелік справді змінився:
+    // інакше блок сіпався б на кожному такті потоку.
+    var key = calls.map(function (c) { return c.at + c.role + c.verdict + c.ms; }).join('|');
+    if (key !== lastCallsKey) {
+      lastCallsKey = key;
+      if (!calls.length) {
+        el('calls').innerHTML = '<div class="empty">Викликів ще не було. Журнал заповнює сам прогін.</div>';
+      } else {
+        el('calls').innerHTML = calls.map(function (c, i) {
+          var last = i === calls.length - 1;
+          var okColor = c.verdict === 'ok' ? 'var(--ok-tx)' : 'var(--dn-tx)';
+          var bits = [];
+          if (c.in || c.out) { bits.push(num(c.in) + '→' + num(c.out) + ' ток.'); }
+          if (c.ms) { bits.push(secs(c.ms)); }
+          if (c.think) { bits.push('роздуми'); }
+          if (c.stream) { bits.push('потоком'); }
+          return '<div class="msg' + (last && s.running ? ' active' : '') + '"' + (last ? ' id="lastmsg"' : '') + '>'
+            + '<div class="mh"><span style="font-weight:500">' + esc(c.role_label) + '</span>'
+            + '<span class="meta">' + esc(bits.join(' · ')) + '</span>'
+            + '<span style="margin-left:auto;font-size:12px;color:' + okColor + '">' + esc(c.verdict || '—') + '</span>'
+            + '<span class="meta" style="margin-left:8px">' + esc(c.hms) + '</span></div>'
+            + (last ? '<div class="box mono" id="streambox" style="display:none"></div>' : '')
+            + '</div>';
+        }).join('');
+      }
+      el('callsMeta').textContent = calls.length ? 'останні ' + calls.length : '';
+      paintStream();
+    }
+
+    var lines = s.transcript || [];
+    var log = el('log');
+    log.textContent = lines.length ? lines.join('\n') : 'журнал порожній';
+    if (follow) { log.scrollTop = log.scrollHeight; }
+
+    if (s.stream && typeof s.stream.text === 'string' && !streamText) {
+      streamText = s.stream.text;
+      paintStream();
+    }
+  }
+
+  function paintStream() {
+    var box = el('streambox');
+    if (!box) { return; }
+    if (!streamText) { box.style.display = 'none'; return; }
+    box.style.display = 'block';
+    // Хвіст, а не весь потік: далі в буфері нічого корисного для ока немає.
+    var tail = streamText.length > 4000 ? streamText.slice(-4000) : streamText;
+    box.innerHTML = esc(tail) + '<span class="caret"></span>';
+    box.scrollTop = box.scrollHeight;
+  }
+
+  function renderSessions(data) {
+    var list = (data && data.sessions) || [];
+    if (!list.length) {
+      el('sessions').innerHTML = '<div class="empty">Сесій ще немає. Перша відкриється сама з першою пачкою.</div>';
+      return;
+    }
+    var label = { open: 'відкрита', closed: 'закрита', abandoned: 'покинута' };
+    el('sessions').innerHTML = '<table><thead><tr><th>сесія</th><th>стан</th>'
+      + '<th class="num">пачок</th><th class="num">у шар</th><th class="num">до людини</th>'
+      + '<th class="num">карантин</th></tr></thead><tbody>'
+      + list.map(function (s) {
+        return '<tr><td class="mono">' + esc(s.id) + '</td>'
+          + '<td>' + esc(label[s.status] || s.status) + '</td>'
+          + '<td class="num">' + num(s.batches) + '</td>'
+          + '<td class="num">' + num(s.to_layer) + '</td>'
+          + '<td class="num">' + num(s.to_human) + '</td>'
+          + '<td class="num">' + num(s.quarantine) + '</td></tr>';
+      }).join('') + '</tbody></table>';
+    el('sessMeta').textContent = 'останні ' + list.length;
+  }
+
+  function loadSessions() {
+    fetch(q('/api/sessions'), { headers: { 'X-Bdo-Token': token } })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (d) { if (d) { renderSessions(d); } })
+      .catch(function () {});
+  }
+
+  // --- потік із відкатом на опитування ------------------------------------
+  // SSE тримає одне зʼєднання на вкладку. Якщо воно не піднялось за 2 с ·
+  // переходимо на опитування: вбудований сервер PHP тримає SSE лише з
+  // PHP_CLI_SERVER_WORKERS, і покладатись на цю змінну без відкату означало б
+  // порожній екран замість вікна.
+  var polling = null;
+
+  function startPolling(reason) {
+    if (polling) { return; }
+    setLink('poll', 'опитування' + (reason ? ' · ' + reason : ''));
+    var tick = function () {
+      fetch(q('/api/state'), { headers: { 'X-Bdo-Token': token } })
+        .then(function (r) {
+          if (r.status === 403) { throw new Error('bad_token'); }
+          return r.json();
+        })
+        .then(function (s) {
+          if (s && s.stream && typeof s.stream.text === 'string') { streamText = s.stream.text; }
+          render(s);
+          paintStream();
+        })
+        .catch(function (e) {
+          setLink('dead', e && e.message === 'bad_token' ? 'токен відкинуто' : 'сервер не відповідає');
+        });
+    };
+    tick();
+    polling = setInterval(tick, 500);
+  }
+
+  function startStream() {
+    if (typeof EventSource === 'undefined') { startPolling('немає EventSource'); return; }
+    var es;
+    try { es = new EventSource(q('/api/stream')); } catch (e) { startPolling('SSE не відкрився'); return; }
+    var opened = false;
+    var guard = setTimeout(function () { if (!opened) { try { es.close(); } catch (e) {} startPolling('SSE не піднявся за 2 с'); } }, 2000);
+
+    es.addEventListener('open', function () { opened = true; clearTimeout(guard); setLink('live', 'потік'); });
+    es.addEventListener('state', function (ev) {
+      opened = true; clearTimeout(guard); setLink('live', 'потік');
+      try { render(JSON.parse(ev.data)); } catch (e) {}
+    });
+    es.addEventListener('tokens', function (ev) {
+      try {
+        var d = JSON.parse(ev.data);
+        streamText += d.text || '';
+        if (streamText.length > 20000) { streamText = streamText.slice(-8000); }
+        paintStream();
+      } catch (e) {}
+    });
+    es.addEventListener('bye', function () { /* сервер закрив сам · EventSource перепідключиться */ });
+    es.addEventListener('error', function () {
+      if (!opened) { clearTimeout(guard); try { es.close(); } catch (e) {} startPolling('SSE обірвався'); return; }
+      setLink('poll', 'потік перепідключається');
+    });
+  }
+
+  startStream();
+  loadSessions();
+  setInterval(loadSessions, 15000);
+})();
+</script>
+</body>
+</html>

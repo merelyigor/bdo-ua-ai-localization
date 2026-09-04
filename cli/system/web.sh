@@ -1,0 +1,341 @@
+#!/usr/bin/env bash
+# Локальний інтерфейс у браузері: одна команда, вільний порт, посилання в терміналі.
+#
+#   ./web.sh                 # запустити й тримати; Ctrl-C зупиняє
+#   ./web.sh --background    # запустити й відпустити термінал
+#   ./web.sh --status        # чи працює, на якому порту, чи відповідає
+#   ./web.sh --stop          # зупинити фоновий сервер
+#   ./web.sh --no-open       # не відкривати браузер самому
+#
+# Навіщо. Власник просив рівно це: «запускаю команду в терміналі і воно
+# доступно по 127.0.0.1:вільний порт та показує посилання» (2026-09-04).
+# Сервер лише ЧИТАЄ `state/**`, тому прогін, запущений із термінала, видно в
+# браузері так само, як запущений кнопкою · джерело правди одне.
+#
+# ПОРТ ВИБИРАЄ ЯДРО, А НЕ СКАНУВАННЯ. Спершу пробуємо 7654 (або `BDO_WEB_PORT`).
+# Якщо він зайнятий · передаємо `:0`, і PHP друкує обраний порт сам. Перевірка
+# «а чи вільно тут» окремим сокетом має щілину: між перевіркою й запуском порт
+# займає інший процес, і власник отримує посилання в нікуди. Заміряно на
+# PHP 8.5.4: `:0` дає порт у рядку `Development Server (http://127.0.0.1:62458)
+# started`, а зайнятий порт · `Failed to listen … (Address already in use)`
+# і код 1.
+#
+# ЯВНИЙ `BDO_WEB_PORT` НЕ ПЕРЕЇЖДЖАЄ. Якщо власник назвав порт, у нього була
+# причина (закладка в браузері), і тихий переїзд на інший порт зробив би цю
+# закладку мертвою без жодного слова.
+#
+# ПОСИЛАННЯ ДРУКУЄМО ЛИШЕ ПІСЛЯ ЖИВОЇ ВІДПОВІДІ. Порожній вивід не є
+# відповіддю (§12): сервер може стартувати й одразу впасти на помилці в
+# маршрутизаторі, і надруковане наперед посилання було б брехнею. Тому перед
+# друком робимо справжній запит на `/api/health`.
+#
+# PHP_CLI_SERVER_WORKERS робить вбудований сервер багатопроцесним · без цього
+# одне відкрите SSE-зʼєднання блокує всі інші запити (заміряно: 2.6 с проти
+# 0.02 с). Змінна документована як експериментальна й діє лише на POSIX;
+# на Windows конвеєр однаково живе у WSL2.
+#
+# ЗУПИНКА ВБИВАЄ ГРУПУ, А НЕ МАЙСТРА. `PHP_CLI_SERVER_WORKERS` створює процеси,
+# які тримають ТОЙ САМИЙ слухаючий сокет, тому вбитий майстер не звільняє порт:
+# власник читає «Сервер зупинено», а сторінка далі відповідає старим токеном
+# (D65, спіймано 2026-09-04 на власному тесті · лишилось 4 живі воркери).
+# Тому сервер запускається в окремій групі процесів (`set -m`), зупинка йде по
+# групі, і лише ПІСЛЯ звільнення порту команда каже, що зупинила.
+set -euo pipefail
+# Job control: кожна фонова задача отримує власну групу процесів, а її PGID
+# дорівнює PID задачі. Без цього воркери лишаються в групі оболонки, і вбити
+# їх однією командою неможливо.
+set -m
+
+SCRIPT_DIR="$(cd "$(dirname "$0")/../.." && pwd)"
+STATE_DIR="${BDO_STATE_DIR:-$SCRIPT_DIR/state}"
+ROUTER="$SCRIPT_DIR/cli/system/web-router.php"
+PAGE="$SCRIPT_DIR/web/index.html"
+INFO="$STATE_DIR/web.json"
+LOG="$STATE_DIR/web.log"
+WORKERS="${BDO_WEB_WORKERS:-4}"
+# Типовий порт має шов лише для тестів: перевірка «типовий зайнятий -> беремо
+# вільний» мусить бути детермінованою, а займати справжній 7654 власника під
+# час прогону тестів не можна.
+DEFAULT_PORT="${BDO_WEB_DEFAULT_PORT:-7654}"
+
+die() { printf 'web: %s\n' "$1" >&2; exit 1; }
+
+mkdir -p "$STATE_DIR"
+test -f "$ROUTER" || die "немає маршрутизатора: $ROUTER"
+test -f "$PAGE" || die "немає сторінки: $PAGE"
+command -v php >/dev/null 2>&1 || die 'немає php'
+
+# --- дрібні помічники -------------------------------------------------------
+
+info_field() {
+    test -s "$INFO" || return 1
+    php -r '
+        $d = json_decode((string) file_get_contents($argv[1]), true);
+        if (! is_array($d) || ! isset($d[$argv[2]])) { exit(1); }
+        echo $d[$argv[2]];
+    ' "$INFO" "$1"
+}
+
+# Чи відповідає сервер на цьому порту НАШИМ токеном. Код HTTP, а не «щось є».
+health_code() {
+    local port="$1" token="$2"
+    if command -v curl >/dev/null 2>&1; then
+        curl -s -o /dev/null -m 3 -w '%{http_code}' \
+            "http://127.0.0.1:${port}/api/health?t=${token}" 2>/dev/null || echo 000
+        return 0
+    fi
+    php -r '
+        $ctx = stream_context_create(["http" => ["timeout" => 3, "ignore_errors" => true]]);
+        $body = @file_get_contents("http://127.0.0.1:".$argv[1]."/api/health?t=".$argv[2], false, $ctx);
+        if ($body === false) { echo "000"; exit(0); }
+        foreach ($http_response_header ?? [] as $line) {
+            if (preg_match("~^HTTP/\S+\s+(\d{3})~", $line, $m)) { echo $m[1]; exit(0); }
+        }
+        echo "000";
+    ' "$port" "$token"
+}
+
+# Чи слухає хтось цей порт. Саме це, а не «процес зник», є доказом зупинки:
+# воркери переживають смерть майстра й тримають сокет далі.
+port_busy() {
+    local port="$1"
+    php -r '
+        $s = @stream_socket_client("tcp://127.0.0.1:".$argv[1], $errno, $err, 0.4);
+        if ($s === false) { exit(1); }
+        fclose($s);
+        exit(0);
+    ' "$port"
+}
+
+# Зупинити групу процесів сервера й ДОВЕСТИ, що порт звільнився.
+stop_group() {
+    local pgid="$1" pid="$2" port="${3:-}" waited=0 self_pgid=""
+    # ВЛАСНУ групу не вбиваємо ніколи. Якщо в записі лежить група оболонки
+    # (сервер підняли без job control або запис зробила стара версія),
+    # `kill -- -PGID` вбив би термінал власника разом із сервером · перевірено
+    # на собі: саме так упала сесія, коли `set -m` прибрали для фальсифікації.
+    self_pgid="$(ps -o pgid= -p $$ 2>/dev/null | tr -d ' ' || true)"
+    if [ -n "$pgid" ] && [ "$pgid" != "$self_pgid" ]; then
+        kill -- -"$pgid" 2>/dev/null || true
+    fi
+    if [ -n "$pid" ]; then
+        kill "$pid" 2>/dev/null || true
+    fi
+    test -n "$port" || return 0
+    while [ "$waited" -lt 20 ]; do
+        port_busy "$port" || return 0
+        sleep 0.1
+        waited=$((waited + 1))
+    done
+    # Група не спрацювала (сервер запустили інакше, стара версія web.json):
+    # добираємо власників порту явно, і лише потім здаємось.
+    if command -v lsof >/dev/null 2>&1; then
+        lsof -ti "tcp:${port}" -sTCP:LISTEN 2>/dev/null | while IFS= read -r owner; do
+            test -n "$owner" && kill -9 "$owner" 2>/dev/null || true
+        done
+        sleep 0.3
+        port_busy "$port" || return 0
+    fi
+
+    return 1
+}
+
+open_browser() {
+    local url="$1"
+    if command -v open >/dev/null 2>&1; then
+        open "$url" >/dev/null 2>&1 || true
+    elif grep -qi microsoft /proc/version 2>/dev/null && command -v explorer.exe >/dev/null 2>&1; then
+        # WSL2: браузер живе на самому Windows, а loopback пробрасується.
+        explorer.exe "$url" >/dev/null 2>&1 || true
+    elif command -v xdg-open >/dev/null 2>&1; then
+        xdg-open "$url" >/dev/null 2>&1 || true
+    else
+        printf 'web: браузер сам не відкриється · немає open/xdg-open. Відкрий посилання вручну.\n' >&2
+    fi
+}
+
+# --- --status / --stop ------------------------------------------------------
+
+case "${1:-}" in
+    --status)
+        test -s "$INFO" || { echo 'Сервер не запущено (немає state/web.json).'; exit 0; }
+        pid="$(info_field pid || true)"
+        port="$(info_field port || true)"
+        token="$(info_field token || true)"
+        test -n "$pid" && test -n "$port" || die "пошкоджений $INFO · зупини через --stop і запусти заново"
+        if ! kill -0 "$pid" 2>/dev/null; then
+            echo "Записаний процес $pid не живий · сервер упав або його вбили. Прибери запис: ./bdo web --stop"
+            exit 1
+        fi
+        code="$(health_code "$port" "$token")"
+        printf 'Сервер працює: pid %s, порт %s, /api/health -> %s\n' "$pid" "$port" "$code"
+        printf 'Інтерфейс: http://127.0.0.1:%s/?t=%s\n' "$port" "$token"
+        test "$code" = 200 || die 'процес живий, але не відповідає 200 · дивись state/web.log'
+        exit 0
+        ;;
+    --stop)
+        test -s "$INFO" || { echo 'Зупиняти нічого: сервер не запущено.'; exit 0; }
+        pid="$(info_field pid || true)"
+        pgid="$(info_field pgid || true)"
+        port="$(info_field port || true)"
+        test -n "$pgid" || pgid="$pid"
+        if stop_group "$pgid" "$pid" "$port"; then
+            rm -f "$INFO"
+            printf 'Сервер зупинено, порт %s вільний.\n' "${port:-?}"
+            exit 0
+        fi
+        # Запис НЕ прибираємо: інакше наступний запуск вважав би, що чисто, а
+        # порт лишався б зайнятим · саме так і виглядає тихий збій.
+        die "порт ${port} досі зайнятий після зупинки · подивись, хто його тримає (lsof -i tcp:${port})"
+        ;;
+esac
+
+# --- запуск -----------------------------------------------------------------
+
+BACKGROUND=0
+OPEN=1
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --background) BACKGROUND=1; shift ;;
+        --no-open) OPEN=0; shift ;;
+        *) die "дозволено лише --background, --no-open, --status і --stop, отримано «${1}»" ;;
+    esac
+done
+
+# Уже запущений сервер не дублюємо: два сервери на одному стані · два різні
+# посилання й два токени, і власник не знатиме, яке з них живе.
+if [ -s "$INFO" ]; then
+    old_pid="$(info_field pid || true)"
+    if [ -n "$old_pid" ] && kill -0 "$old_pid" 2>/dev/null; then
+        old_port="$(info_field port || true)"
+        old_token="$(info_field token || true)"
+        printf 'Сервер уже працює: http://127.0.0.1:%s/?t=%s\n' "$old_port" "$old_token"
+        printf 'Зупинити: ./bdo web --stop\n'
+        exit 0
+    fi
+    rm -f "$INFO"
+fi
+
+if [ -n "${BDO_WEB_TOKEN:-}" ]; then
+    TOKEN="$BDO_WEB_TOKEN"
+elif command -v openssl >/dev/null 2>&1; then
+    TOKEN="$(openssl rand -hex 16)"
+else
+    TOKEN="$(php -r 'echo bin2hex(random_bytes(16));')"
+fi
+
+EXPLICIT_PORT=0
+PORT="$DEFAULT_PORT"
+if [ -n "${BDO_WEB_PORT:-}" ]; then
+    case "$BDO_WEB_PORT" in
+        ''|*[!0-9]*) die "BDO_WEB_PORT мусить бути числом, отримано «${BDO_WEB_PORT}»" ;;
+    esac
+    PORT="$BDO_WEB_PORT"
+    EXPLICIT_PORT=1
+fi
+
+SERVER_PID=""
+cleanup() {
+    if [ -n "$SERVER_PID" ]; then
+        stop_group "$SERVER_PID" "$SERVER_PID" "${BOUND_PORT:-}" || true
+    fi
+    if [ "$BACKGROUND" != 1 ]; then
+        rm -f "$INFO"
+    fi
+}
+
+# Запустити сервер на заданому порту й дочекатися його ВЛАСНОГО рядка про
+# старт. Код 0 · слухає (порт друкує в $BOUND_PORT), 1 · порт зайнятий.
+BOUND_PORT=""
+start_server() {
+    local want="$1" line=""
+    : >"$LOG"
+    PHP_CLI_SERVER_WORKERS="$WORKERS" BDO_WEB_TOKEN="$TOKEN" BDO_STATE_DIR="$STATE_DIR" \
+        php -S "127.0.0.1:${want}" -t "$SCRIPT_DIR/web" "$ROUTER" >>"$LOG" 2>&1 &
+    SERVER_PID=$!
+    local waited=0
+    while [ "$waited" -lt 60 ]; do
+        if grep -q 'Failed to listen' "$LOG" 2>/dev/null; then
+            wait "$SERVER_PID" 2>/dev/null || true
+            SERVER_PID=""
+            return 1
+        fi
+        line="$(sed -n 's~.*Development Server (http://127\.0\.0\.1:\([0-9]*\)).*~\1~p' "$LOG" 2>/dev/null | head -1)"
+        if [ -n "$line" ]; then
+            BOUND_PORT="$line"
+            return 0
+        fi
+        if ! kill -0 "$SERVER_PID" 2>/dev/null; then
+            die "сервер упав одразу після запуску · дивись $LOG"
+        fi
+        sleep 0.1
+        waited=$((waited + 1))
+    done
+    die "сервер не сказав, що слухає, за 6 с · дивись $LOG"
+}
+
+trap cleanup EXIT INT TERM
+
+if ! start_server "$PORT"; then
+    if [ "$EXPLICIT_PORT" = 1 ]; then
+        die "порт ${PORT} зайнятий, а його задано явно через BDO_WEB_PORT · звільни порт або прибери змінну (тихо переїжджати не буду)"
+    fi
+    printf 'web: порт %s зайнятий · беру вільний у системи\n' "$PORT" >&2
+    start_server 0 || die 'вільного порту не знайшлось навіть у системи'
+fi
+PORT="$BOUND_PORT"
+URL="http://127.0.0.1:${PORT}/?t=${TOKEN}"
+
+# Жива перевірка ПЕРЕД друком посилання.
+CODE=""
+for _ in 1 2 3 4 5 6 7 8 9 10; do
+    CODE="$(health_code "$PORT" "$TOKEN")"
+    test "$CODE" = 200 && break
+    sleep 0.2
+done
+test "$CODE" = 200 || die "сервер слухає порт ${PORT}, але /api/health відповів ${CODE} · дивись $LOG"
+
+# Група процесів пишеться в запис окремо від pid: зупиняти треба саме групу,
+# а обчислити її після смерті майстра вже неможливо.
+PGID="$(ps -o pgid= -p "$SERVER_PID" 2>/dev/null | tr -d ' ' || true)"
+test -n "$PGID" || PGID="$SERVER_PID"
+php -r '
+    file_put_contents($argv[1], json_encode([
+        "pid" => (int) $argv[2],
+        "pgid" => (int) $argv[6],
+        "port" => (int) $argv[3],
+        "token" => $argv[4],
+        "started_at" => gmdate("c"),
+        "workers" => (int) $argv[5],
+    ], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES)."\n");
+    chmod($argv[1], 0600);
+' "$INFO" "$SERVER_PID" "$PORT" "$TOKEN" "$WORKERS" "$PGID"
+
+TARGET="$(cat "$STATE_DIR/run-target" 2>/dev/null || echo '—')"
+cat <<INFO_TXT
+
+  Інтерфейс:  ${URL}
+  Порт:       ${PORT}$([ "$PORT" = "$DEFAULT_PORT" ] && echo '' || echo ' (типовий був зайнятий)')
+  Ціль:       $(printf '%s' "$TARGET" | tr '[:lower:]' '[:upper:]')
+  Журнал:     ${LOG}
+INFO_TXT
+
+if [ "$OPEN" = 1 ]; then
+    open_browser "$URL"
+fi
+
+if [ "$BACKGROUND" = 1 ]; then
+    printf '  Зупинити:   ./bdo web --stop\n\n'
+    trap - EXIT INT TERM
+    exit 0
+fi
+
+printf '  Зупинити:   Ctrl-C\n\n'
+tail -f "$LOG" &
+TAIL_PID=$!
+cleanup_fg() {
+    kill "$TAIL_PID" 2>/dev/null || true
+    cleanup
+}
+trap cleanup_fg EXIT INT TERM
+wait "$SERVER_PID" 2>/dev/null || true
