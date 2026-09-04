@@ -24,7 +24,7 @@
 
 ## Документи за потребою
 
-- контракт API: [`API.md`](API.md), [`API_WRITE_CONTRACT.md`](API_WRITE_CONTRACT.md);
+- контракт API: [`API.md`](API.md), [`API_WRITE_CONTRACT.md`](../API_WRITE_CONTRACT.md);
 - фактичний стан флоу: [`FLOW_STATE.md`](FLOW_STATE.md);
 - що перевіряти після зміни: [`CHECKLIST.md`](CHECKLIST.md);
 - безпека й публічність: [`SECURITY.md`](SECURITY.md);

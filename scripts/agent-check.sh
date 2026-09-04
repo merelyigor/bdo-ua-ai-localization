@@ -37,7 +37,7 @@ public_files() {
     {
         git ls-files
         git ls-files --others --exclude-standard
-    } | awk '!/(^|\/)(output|state|state-auto|node_modules)(\/|$)/ && !/(^|\/)\.env($|\.)/' | sort -u
+    } | awk '!/(^|\/)(output|state|legacy|node_modules)(\/|$)/ && !/(^|\/)\.env($|\.)/' | sort -u
 }
 
 check_rules() {
@@ -189,8 +189,7 @@ resolve_reference() {
     local ref="$1" dir="$2" candidate
     for candidate in \
         "$ref" "$dir/$ref" "$dir/plans/$ref" \
-        ".opencode/$ref" ".opencode/agents/$ref" \
-        "docs/$ref" "docs/plans/$ref" "scripts/$ref"
+        "docs/$ref" "docs/plans/$ref" "scripts/$ref" "roles/$ref"
     do
         test -e "$candidate" && return 0
     done
@@ -232,6 +231,30 @@ check_references() {
         done < <(perl -ne 'while (/`([A-Za-z0-9_.\/-]+\.(?:md|sh|ts|php))`/g) { print "$1\n" }' "$doc" | sort -u)
     done < <(linked_docs)
     note "перевірено $checked посилань у документах і промптах"
+
+    # Markdown-посилання `[текст](шлях.md)` мусить вести туди, КУДИ вказує.
+    #
+    # Перевірка вище звіряє лише імʼя файла в зворотних лапках, тому
+    # `](active/план.md)` на план, який переїхав у `done/`, лишався зеленим:
+    # файл із таким іменем у репозиторії є. Для людини це битий клік, для
+    # агента · шлях, за яким нічого немає. 2026-09-04 таких було пʼять.
+    local broken
+    broken="$(php -r '
+    $bad = [];
+    foreach (explode("\n", trim(shell_exec("git ls-files \"*.md\""))) as $doc) {
+        if ($doc === "" || str_starts_with($doc, "docs/archive/")) { continue; }
+        $dir = dirname($doc);
+        preg_match_all("~\]\(([^)#][^)]*\.md)\)~", (string) file_get_contents($doc), $m);
+        foreach ($m[1] as $target) {
+            if (str_starts_with($target, "http")) { continue; }
+            $full = $dir === "." ? $target : $dir."/".$target;
+            if (! file_exists($full)) { $bad[] = $doc." -> ".$target; }
+        }
+    }
+    echo implode("\n", $bad);
+    ')"
+    test -z "$broken" || fail "markdown-посилання ведуть у нікуди: $broken"
+    note 'markdown-посилання ведуть на наявні файли'
 
     step 'Видалений скриптовий флоу не подається як робочий шлях'
     local instruction frozen hit
