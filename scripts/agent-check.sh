@@ -139,6 +139,16 @@ check_rules() {
         || fail 'норматив не описує клас тихого збою'
     grep -Fq '§12 довідника' AGENTS.md \
         || fail 'карта правил не веде до §12'
+    # Термінал як інструмент: правило про PTY мусить бути в карті й у нормативі,
+    # інакше наступна сесія знову шукатиме MCP для термінала (§13.2).
+    grep -Fq '§13 довідника' AGENTS.md \
+        || fail 'карта правил не веде до §13 (термінал, PTY, запис екрана)'
+    grep -Fq 'tests/tui-live.sh' AGENTS.md \
+        || fail 'карта правил не називає живу перевірку вікна в PTY'
+    grep -Fq '§13.1 Вікно перевіряється в справжньому PTY' docs/AI_AGENT_RULES_REFERENCE.md \
+        || fail 'норматив не вимагає перевірки вікна в справжньому PTY'
+    grep -Fq '§13.6 GIF є документацією, а не доказом' docs/AI_AGENT_RULES_REFERENCE.md \
+        || fail 'норматив не відділяє запис екрана від доказу'
     grep -Fq '§8.12 Кожен `roles/<роль>.md` є повним' docs/AI_AGENT_RULES_REFERENCE.md \
         || fail 'норматив не забороняє runtime include prompts'
     # Межа серверного проєкту: раніше її тримали `deny`-правила в конфізі
@@ -520,6 +530,7 @@ check_agents() {
     run bash tests/driver-loop.sh
     run bash tests/tui.sh
     run bash tests/tui-live.sh
+    run bash tests/watch-session.sh
     run bash tests/qa-scope.sh
     run bash tests/row-attempts.sh
     run bash tests/names-pass.sh

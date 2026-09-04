@@ -111,6 +111,10 @@ case "$group" in
     # видно так само, просто явно: `./bdo help`.
     '') exec bash "$ROOT/bin/tui.sh" ;;
     tui) exec bash "$ROOT/bin/tui.sh" "${@:2}" ;;
+    # Довга робота в спільному PTY: агент читає екран через `watch --show`,
+    # власник бачить те саме через `tmux attach -t bdo`.
+    watch)    sh_run cli/system/watch.sh "${@:2}" ;;
+    gif)      sh_run cli/system/tui-gif.sh "${@:2}" ;;
     loop) sh_run cli/run/run-loop.sh "${@:2}" ;;
     models-run) sh_run cli/audit/model-run.sh "${@:2}" ;;
     timer)    sh_run cli/system/session-timer.sh "${@:2}" ;;
