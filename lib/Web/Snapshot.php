@@ -463,15 +463,22 @@ final class Snapshot
                 continue;
             }
             $role = (string) ($entry['role'] ?? '');
+            // Крок конвеєра · те, чого журналу бракувало: одна роль працює в
+            // кількох кроках, і без цього поля екран показував дві однакові
+            // картки «ремонтник» на одну пачку.
+            $state = (string) ($entry['state'] ?? '');
             $out[] = [
                 'at' => (string) ($entry['at'] ?? ''),
                 'hms' => Clock::hms($entry['at'] ?? null),
                 'role' => $role,
+                'state' => $state,
+                'rows' => isset($entry['rows']) ? (int) $entry['rows'] : null,
+                'payload_bytes' => isset($entry['payload_bytes']) ? (int) $entry['payload_bytes'] : null,
                 // Приналежність до пачки · щоб перелік і стрічка кроків
                 // говорили про одне й те саме. Порожньо · запис старіший за
                 // 2026-09-05, і це видно на екрані як «сесія», а не пачка.
                 'batch' => (string) ($entry['batch'] ?? ''),
-                'role_label' => Labels::role($role),
+                'role_label' => Labels::roleInState($role, $state),
                 'model' => (string) ($entry['model'] ?? ''),
                 'verdict' => (string) ($entry['verdict'] ?? ''),
                 'ms' => (int) ($entry['ms'] ?? 0),

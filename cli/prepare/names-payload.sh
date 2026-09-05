@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Payload для короткого проходу САМЕ ПО НАЗВАХ · для translation-repair.
+# Payload для короткого проходу САМЕ ПО НАЗВАХ · для translation-names.
 #
 #   ./names-payload.sh rows.json final-candidate.json validate.json > names-payload.json
 #
@@ -69,17 +69,41 @@ foreach ($validate?->results() ?? [] as $result) {
         "identity_hash" => $hash,
         "source_text" => $row->sourceText(),
         "current" => $candidate->text($hash),
-        "defects" => array_values(array_unique($orders)),
+        // Поле зветься `orders`, а не `defects`: тут не перелік дефектів для
+        // розбору, а перелік наказів для виконання. Роль `translation-names`
+        // знає рівно цю форму й нічого більше не переписує.
+        "orders" => array_values(array_unique($orders)),
     ];
+    // Що саме перед моделлю · від цього залежить, відмінювати назву чи лишити
+    // дослівно. Промпт це поле називав завжди, payload не ніс жодного разу (D79).
+    if ($row->semanticType() !== null) $item["semantic_type"] = $row->semanticType();
+    if ($row->domain() !== null) $item["domain"] = $row->domain();
+    // `keep` і `limits` лишаються: вони захищають плейсхолдери й довжину, а
+    // без них підстановка назви могла б зламати рядок беззвучно.
     $keep = $row->keepTokens();
     if ($keep !== []) $item["keep"] = $keep;
-    $glossary = $row->glossary();
-    if ($glossary !== []) $item["glossary"] = $glossary;
     $limits = $row->limits();
     if ($limits !== null) $item["limits"] = $limits;
+    // ПОВНОГО глосарія рядка тут БІЛЬШЕ НЕМАЄ, і це головна економія проходу.
+    // Заміряно 2026-09-05 на трьох живих пачках: вхід 5 200 токенів, вихід
+    // 2 251, 53 секунди · на задачу, весь зміст якої в одному рядку «ужий «X»
+    // для «Y»». Власний коментар цього ж файла обіцяв «нічого, крім рядка й
+    // наказу», а код клав ще й глосарій. Назва, потрібна для виконання, уже
+    // стоїть у наказі; решта затверджених назв рядка захищена інакше · після
+    // цього проходу знову йде фінальна валідація, і зіпсований рядок піде до
+    // людини, а не в запис.
     $payload[] = $item;
 }
-echo json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR), "\n";
+// ПОНЯТЬ ГРИ ТУТ НЕМАЄ · і це рішення за виміром, а не за смаком.
+//
+// Заміряно 2026-09-05 на живій пачці `20260905_210828` (3 рядки): блок
+// `concepts` важив 1 450 байт із 11 572, тобто 12,9% payload · більше, ніж
+// увесь глосарій рядків, який звідси прибрано (19 термінів, ~540 байт).
+// І він тут не працює: поняття пояснюють СЕНС («що таке MAP»), а ця роль
+// сенсу не перекладає · вона підставляє вже затверджену назву й узгоджує її
+// форму. Для форми потрібні `semantic_type` і `domain`, які коштують 56 байт.
+// Поняття лишаються там, де роль справді переписує текст · у `healing`.
+echo json_encode(["items" => $payload], JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR), "\n";
 fwrite(STDERR, sprintf("прохід по назвах: %d рядків із наказом «ужий»\n", count($payload)));
 // Пропущене називається вголос: мовчазний пропуск читався б як «вимог не було».
 if ($machine !== []) {

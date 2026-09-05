@@ -673,7 +673,7 @@ awaiting_qa)
     complete qa "$B/verdicts.json"; transition qa_valid
     vf=""; test -f "$B/validate-path" && vf="$(cat "$B/validate-path")"
     BDO_HEAL_MAX_ATTEMPTS="${BDO_HEAL_MAX_ATTEMPTS:-1}" "$SCRIPT_DIR/cli/heal/heal-plan.sh" "$B/rows.json" "$B/clean.json" "$B/verdicts.json" "$vf" > "$B/heal-report.txt" 2>&1 || true
-    repairs="$(php -r '$a=is_file($argv[1])?json_decode(file_get_contents($argv[1]),true):[];echo is_array($a)?count($a):0;' "$B/heal-repair-payload.json")"
+    repairs="$(php -r 'require $argv[2]; echo Bdo\Translate\Payload\Items::count($argv[1]);' "$B/heal-repair-payload.json" "$SCRIPT_DIR/lib/autoload.php")"
     if [ "$repairs" -gt 0 ]; then transition healing; child healing translation-repair "$B/heal-repair-payload.json" "$B/fixes.json"
     else
         cp "$B/heal-merged.json" "$B/final-candidate.json"; cp "$B/verdicts.json" "$B/final-verdicts.json"
@@ -770,14 +770,14 @@ ready_to_commit|committing)
        && [ "${BDO_NAMES_PASS:-on}" = on ]; then
         "$SCRIPT_DIR/cli/prepare/names-payload.sh" "$B/rows.json" "$B/final-candidate.json" "$final_validate" \
             > "$B/names-payload.json" 2>/dev/null || echo '[]' > "$B/names-payload.json"
-        names="$(php -r '$a=json_decode((string)file_get_contents($argv[1]),true);echo is_array($a)?count($a):0;' "$B/names-payload.json")"
+        names="$(php -r 'require $argv[2]; echo Bdo\Translate\Payload\Items::count($argv[1]);' "$B/names-payload.json" "$SCRIPT_DIR/lib/autoload.php")"
         if [ "${names:-0}" -gt 0 ]; then
-            hashes="$(php -r 'echo implode(",", array_column(json_decode((string)file_get_contents($argv[1]),true), "identity_hash"));' "$B/names-payload.json")"
+            hashes="$(php -r 'require $argv[2]; echo implode(",", Bdo\Translate\Payload\Items::hashes($argv[1]));' "$B/names-payload.json" "$SCRIPT_DIR/lib/autoload.php")"
             "$SCRIPT_DIR/cli/batch/subset-rows.sh" "$B/rows.json" "$hashes" "$B/names-subset.json" >/dev/null
             "$SCRIPT_DIR/cli/prepare/build-schema.sh" "$B/names-subset.json" >/dev/null
             : > "$B/names-pass.done"
             transition names_pass
-            child names_pass translation-repair "$B/names-payload.json" "$B/names-fixes.json"
+            child names_pass translation-names "$B/names-payload.json" "$B/names-fixes.json"
             exit 0
         fi
     fi
@@ -801,7 +801,7 @@ names_pass)
             transition ready_to_commit; emit 1 ready_to_commit '{"kind":"continue","reason":"names_pass_retry_exhausted"}'; exit 0
         fi
         "$SCRIPT_DIR/cli/prepare/build-schema.sh" "$B/names-subset.json" >/dev/null
-        child names_pass translation-repair "$B/names-payload.json" "$B/names-fixes.json"; exit 0
+        child names_pass translation-names "$B/names-payload.json" "$B/names-fixes.json"; exit 0
     fi
     if ! "$SCRIPT_DIR/cli/quality/merge-items.sh" "$B/final-candidate.json" "$B/names-fixes.json" "$B/final-candidate.named.json" >/dev/null 2>&1; then
         mv "$B/names-fixes.json" "$B/names-fixes.invalid.$(date +%s).json"
@@ -809,7 +809,7 @@ names_pass)
             transition ready_to_commit; emit 1 ready_to_commit '{"kind":"continue","reason":"names_pass_answer_invalid"}'; exit 0
         fi
         "$SCRIPT_DIR/cli/prepare/build-schema.sh" "$B/names-subset.json" >/dev/null
-        child names_pass translation-repair "$B/names-payload.json" "$B/names-fixes.json"; exit 0
+        child names_pass translation-names "$B/names-payload.json" "$B/names-fixes.json"; exit 0
     fi
     # Виправлені назви стають фінальним текстом; далі та сама фінальна
     # валідація й механіка на кожен рядок · рядок, який і тепер не пройде, іде

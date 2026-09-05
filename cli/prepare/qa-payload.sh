@@ -131,32 +131,13 @@ if ($budget > 0) {
 // У payload іде лише `term`, `ua` і короткий `gist` (до 200 символів).
 // `definition` НЕ кладеться свідомо: він написаний для людини й важить до 4000
 // символів. Обрізати його теж не можна · модель прочитає обрізане як повне.
-$conceptsFile = getenv("BDO_STATE_DIR") ?: dirname(__DIR__, 2)."/state";
-$conceptsFile .= "/game-concepts.json";
-$sharedConcepts = [];
-if (is_file($conceptsFile)) {
-    $all = json_decode((string) file_get_contents($conceptsFile), true)["concepts"] ?? [];
-    $haystack = "";
-    foreach ($rows as $row) $haystack .= $row->sourceText()."\n";
-    $limit = (int) (getenv("BDO_CONCEPTS_MAX") ?: 25);
-    $skipped = 0;
-    foreach ($all as $concept) {
-        $term = (string) ($concept["term"] ?? "");
-        if ($term === "") continue;
-        $flags = "u".(empty($concept["case_sensitive"]) ? "i" : "");
-        if (preg_match("/(?<![\p{L}\p{N}])".preg_quote($term, "/")."(?![\p{L}\p{N}])/".$flags, $haystack) !== 1) {
-            continue;
-        }
-        if (count($sharedConcepts) >= $limit) { $skipped++; continue; }
-        $entry = ["term" => $term];
-        foreach (["ua", "gist"] as $field) {
-            if (isset($concept[$field]) && $concept[$field] !== "") $entry[$field] = $concept[$field];
-        }
-        $sharedConcepts[] = $entry;
-    }
-    if ($skipped > 0) {
-        fwrite(STDERR, sprintf("Поняття: у тексті знайдено на %d більше за стелю %d (BDO_CONCEPTS_MAX)\n", $skipped, $limit));
-    }
+$sourceTexts = [];
+foreach ($rows as $row) $sourceTexts[] = $row->sourceText();
+$conceptsPicked = Bdo\Translate\Payload\Concepts::forTexts($sourceTexts);
+$sharedConcepts = $conceptsPicked["concepts"];
+if ($conceptsPicked["skipped"] > 0) {
+    fwrite(STDERR, sprintf("Поняття: у тексті знайдено на %d більше за стелю %d (BDO_CONCEPTS_MAX)\n",
+        $conceptsPicked["skipped"], (int) (getenv("BDO_CONCEPTS_MAX") ?: Bdo\Translate\Payload\Concepts::DEFAULT_LIMIT)));
 }
 
 $stats = ["current" => 0, "glossary" => 0, "pending" => 0, "unresolved" => 0, "examples" => 0, "limits" => 0];
@@ -169,6 +150,11 @@ foreach ($rows as $row) {
         "candidate" => $candidate->text($hash),
     ];
     if ($row->semanticType() !== null) $item["semantic_type"] = $row->semanticType();
+    // `domain` промпти всіх ролей називали з самого початку («`semantic_type` і
+    // `domain` кажуть, що саме перед тобою»), а не клав його НІХТО · знайдено
+    // gate-ом `tests/prompt-payload-contract.sh` 2026-09-05 разом із D79.
+    // Коштує три токени на рядок і відрізняє репліку квесту від назви предмета.
+    if ($row->domain() !== null) $item["domain"] = $row->domain();
     // Глосарій рядка · ДВА блоки за походженням відповідника.
     //
     // `glossary` · затверджене людиною, тобто закон. `glossary_hint` · машинна

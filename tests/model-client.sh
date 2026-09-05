@@ -166,6 +166,45 @@ test "$lines" -ge 9 || fail "журнал має $lines рядків, а вик�
 grep -q '"verdict":"ok"' "$WORK/state/model-calls.jsonl" || fail 'журнал не знає успішних викликів'
 grep -q '"verdict":"truncated"' "$WORK/state/model-calls.jsonl" || fail 'журнал не знає обриву на стелі'
 
+# 9б. Журнал мусить знати КРОК і СКІЛЬКИ РЯДКІВ пішло в модель.
+#
+# Одна роль працює в кількох кроках: `translation-repair` викликається і в
+# `healing`, і в `names_pass`, тому два різні проходи лягали в журнал
+# однаковими рядками. Питання «чому ремонт двічі на пачку» закрити даними було
+# НЕМОЖЛИВО, а «53 секунди» без числа рядків не має знаменника (2026-09-05).
+: > "$WORK/state/model-calls.jsonl"
+printf '%s' ok > "$SCENARIO_FILE"
+rm -f "$WORK/response.json"
+BDO_RUN_STATE=names_pass BDO_ROLES_CONFIG="$WORK/roles.json" BDO_STATE_DIR="$WORK/state" \
+    php "$ROOT/cli/model/client.php" translation-worker "$WORK/payload.json" \
+    "$WORK/response.json" --schema "$WORK/schema.json" >/dev/null 2>&1 || true
+grep -q '"state":"names_pass"' "$WORK/state/model-calls.jsonl" \
+    || fail "журнал не записав кроку конвеєра: $(cat "$WORK/state/model-calls.jsonl")"
+grep -q '"rows":1' "$WORK/state/model-calls.jsonl" \
+    || fail "журнал не записав числа рядків payload: $(cat "$WORK/state/model-calls.jsonl")"
+grep -qE '"payload_bytes":[0-9]+' "$WORK/state/model-calls.jsonl" \
+    || fail "журнал не записав ваги payload · питання «чи полегшав JSON» лишиться без відповіді"
+
+# Чуже значення в журнал не потрапляє: поле читає екран власника.
+: > "$WORK/state/model-calls.jsonl"
+rm -f "$WORK/response.json"
+BDO_RUN_STATE='{"зле":1}' BDO_ROLES_CONFIG="$WORK/roles.json" BDO_STATE_DIR="$WORK/state" \
+    php "$ROOT/cli/model/client.php" translation-worker "$WORK/payload.json" \
+    "$WORK/response.json" --schema "$WORK/schema.json" >/dev/null 2>&1 || true
+grep -q '"state":""' "$WORK/state/model-calls.jsonl" \
+    || fail "у журнал пустили довільний рядок як крок: $(cat "$WORK/state/model-calls.jsonl")"
+
+# Голий список рядків рахується так само, як конверт `{"items":[…]}`: форму
+# payload читає рівно один клас, і саме тому лічильник не залежить від неї.
+: > "$WORK/state/model-calls.jsonl"
+printf '[{"identity_hash":"aa"},{"identity_hash":"bb"},{"identity_hash":"cc"}]' > "$WORK/list-payload.json"
+rm -f "$WORK/response.json"
+BDO_RUN_STATE=healing BDO_ROLES_CONFIG="$WORK/roles.json" BDO_STATE_DIR="$WORK/state" \
+    php "$ROOT/cli/model/client.php" translation-worker "$WORK/list-payload.json" \
+    "$WORK/response.json" --schema "$WORK/schema.json" >/dev/null 2>&1 || true
+grep -q '"rows":3' "$WORK/state/model-calls.jsonl" \
+    || fail "голий список рядків порахований неправильно: $(cat "$WORK/state/model-calls.jsonl")"
+
 # 10. Недоступний endpoint · теж причина, а не мовчання.
 printf '{ "version":1, "endpoint":"http://127.0.0.1:1", "default_model":"тест-модель",
   "num_ctx":4096, "timeout_seconds":2, "roles":{"translation-worker":{"schema":"response"}} }' > "$WORK/dead.json"

@@ -166,7 +166,14 @@
       var html = calls.length ? calls.map(function (c) {
         var okColor = c.verdict === 'ok' ? 'var(--ok-tx)' : 'var(--dn-tx)';
         var bits = [];
+        // Скільки рядків пішло в модель · без цього «53 с» не має знаменника:
+        // незрозуміло, це один важкий рядок чи десять легких.
+        if (c.rows) { bits.push(B.num(c.rows) + ' ' + (c.rows === 1 ? 'рядок' : 'рядків')); }
         if (c.in || c.out) { bits.push(B.num(c.in) + '→' + B.num(c.out) + ' ток.'); }
+        // Вага самого payload · це «навантаження JSON», яке готує рушій.
+        // Токени рахуються ПІСЛЯ підміни хешів на короткі ключі, тому два
+        // числа поруч показують, скільки важать службові поля.
+        if (c.payload_bytes) { bits.push(Math.round(c.payload_bytes / 1024) + ' КБ payload'); }
         if (c.ms) { bits.push(B.secs(c.ms)); }
         if (c.think) { bits.push('роздуми'); }
         return '<div class="msg"><div class="mh">'

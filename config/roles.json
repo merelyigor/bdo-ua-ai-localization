@@ -34,6 +34,10 @@
       "schema": "response",
       "temperature": 0.1
     },
+    "translation-names": {
+      "schema": "response",
+      "temperature": 0.1
+    },
     "translation-judge": {
       "schema": "file:roles/schema/translation-judge.json",
       "temperature": 0.1

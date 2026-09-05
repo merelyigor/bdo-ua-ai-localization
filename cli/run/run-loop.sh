@@ -129,7 +129,10 @@ EOF
         child)
             log "$state · роль $role"
             report --before "$role" "$payload"
-            if ! php "$SCRIPT_DIR/cli/model/client.php" "$role" "$payload" "$response"; then
+            # Крок конвеєра йде в журнал викликів разом із роллю: одна роль
+            # працює в кількох кроках (`translation-repair` · і `healing`, і
+            # `names_pass`), і без цього поля два різні проходи не відрізнити.
+            if ! BDO_RUN_STATE="$state" php "$SCRIPT_DIR/cli/model/client.php" "$role" "$payload" "$response"; then
                 echo "ЗУПИНКА: роль $role не дала відповіді (причина вище)." >&2
                 exit 1
             fi

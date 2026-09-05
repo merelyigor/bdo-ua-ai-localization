@@ -173,7 +173,28 @@ $currentBatch = static function () use ($stateDir): string {
     return preg_match('/^[0-9]{8}_[0-9]{6}_[0-9a-f]+$/', $id) === 1 ? $id : '';
 };
 
-$journal = static function (string $verdict) use ($callsFile, $role, $model, $provider, $started, $currentBatch, &$stats): void {
+// Крок конвеєра, у якому зроблено виклик. Драйвер знає його завжди
+// (`child <стан> <роль> …`), а журнал досі не знав: `translation-repair`
+// працює і в `healing`, і в `names_pass`, тому два різні проходи лягали в
+// журнал однаковими рядками. Питання «чому ремонт двічі на пачку» закрити
+// даними було НЕМОЖЛИВО, а екран прогону показував дві однакові картки
+// (зауваження власника 2026-09-05).
+$runState = (string) (getenv('BDO_RUN_STATE') ?: '');
+if (preg_match('/^[a-z_]{0,32}$/', $runState) !== 1) {
+    $runState = '';   // чуже значення в журнал не пускаємо
+}
+
+// Скільки рядків пішло в модель. Без цього «55 секунд» не має знаменника:
+// незрозуміло, це один важкий рядок чи десять легких. Рахуємо тут, а не в
+// драйвері, бо тут payload уже прочитаний і правило одне на всі ролі.
+$rows = \Bdo\Translate\Payload\Items::count($payloadPath);
+// Вага payload у байтах · те, що власник називає «навантаженням JSON».
+// Токени показують, скільки модель прочитала ПІСЛЯ підміни хешів на `r1…rN`,
+// а байти · скільки важив сам файл, який приготував рушій. Різниця між ними і
+// є ціною службових полів, тому в журналі стоять обидва числа.
+$payloadBytes = is_file($payloadPath) ? (int) filesize($payloadPath) : null;
+
+$journal = static function (string $verdict) use ($callsFile, $role, $model, $provider, $started, $currentBatch, $runState, $rows, $payloadBytes, &$stats): void {
     $dir = dirname($callsFile);
     if (! is_dir($dir) && ! mkdir($dir, 0777, true) && ! is_dir($dir)) {
         return;
@@ -181,6 +202,9 @@ $journal = static function (string $verdict) use ($callsFile, $role, $model, $pr
     @file_put_contents($callsFile, json_encode([
         'at' => gmdate('c'),
         'role' => $role,
+        'state' => $runState,
+        'rows' => $rows,
+        'payload_bytes' => $payloadBytes,
         'batch' => $currentBatch(),
         'model' => $model,
         'provider' => $provider,

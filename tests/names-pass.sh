@@ -26,6 +26,9 @@ H1="$(printf 1 | shasum -a 256 | awk '{print $1}')"
 H2="$(printf 2 | shasum -a 256 | awk '{print $1}')"
 php -r 'file_put_contents($argv[1], json_encode(["data" => ["rows" => [
     ["identity_hash" => $argv[2], "source_hash" => hash("sha256", "Move"), "source_text" => "Move",
+     // Класифікація є в кожному живому рядку, тому вона є й у фікстурі: без неї
+     // перевірка «прохід знає, що перед ним» доводила б лише порожнечу.
+     "classification" => ["domain" => "ui", "semantic_type" => "label"],
      "glossary" => ["terms" => [["canonical_source" => "Move", "ukrainian" => "Переміщення", "ukrainian_layer" => "manual", "severity" => "mandatory"]]]],
     ["identity_hash" => $argv[3], "source_hash" => hash("sha256", "Iron Sword"), "source_text" => "Iron Sword"],
 ]]], JSON_THROW_ON_ERROR));' "$STATE/rows.json" "$H1" "$H2"
@@ -42,9 +45,39 @@ php -r 'file_put_contents($argv[1], json_encode(["success" => true, "data" => ["
 php -r 'file_put_contents($argv[1], json_encode([["identity_hash" => $argv[2], "text" => "Рух"], ["identity_hash" => $argv[3], "text" => "Залізний меч"]], JSON_THROW_ON_ERROR));' \
     "$STATE/final-candidate.json" "$H1" "$H2"
 payload="$(bash "$ROOT/cli/prepare/names-payload.sh" "$STATE/rows.json" "$STATE/final-candidate.json" "$STATE/validate.json" 2>/dev/null)"
-test "$(jq 'length' <<<"$payload")" = 1 || fail "у payload мусив бути 1 рядок: $payload"
-jq -e --arg h "$H1" '.[0].identity_hash == $h and .[0].current == "Рух" and .[0].defects == ["ужий «Переміщення» для «Move»"]' <<<"$payload" >/dev/null \
+test "$(jq '.items | length' <<<"$payload")" = 1 || fail "у payload мусив бути 1 рядок: $payload"
+jq -e --arg h "$H1" '.items[0].identity_hash == $h and .items[0].current == "Рух" and .items[0].orders == ["ужий «Переміщення» для «Move»"]' <<<"$payload" >/dev/null \
     || fail "payload не несе єдиного наказу: $payload"
+
+# ПРОХІД МУСИТЬ ЛИШАТИСЬ ВУЗЬКИМ · перевіряється на ДАНИХ, а не на коді.
+#
+# Заміряно 2026-09-05 на трьох живих пачках: вхід 5 200 токенів, вихід 2 251,
+# 53 секунди · на задачу, весь зміст якої в рядку «ужий «X» для «Y»». Причина
+# була в повному глосарії рядка, який лежав у payload усупереч комментарю
+# самого файла. Назва, потрібна для виконання, стоїть у наказі; решту захищає
+# фінальна валідація ПІСЛЯ проходу.
+jq -e '[.items[] | has("glossary")] | any | not' <<<"$payload" >/dev/null \
+    || fail "у прохід по назвах повернувся глосарій рядка: $payload"
+jq -e '.items[0] | has("semantic_type") and has("domain")' <<<"$payload" >/dev/null \
+    || fail "прохід не знає, що саме перед ним · промпт ці поля називає (D79): $payload"
+
+# Довгі хеші до моделі НЕ доходять: на межі виклику вони стають `r1…rN` (D59).
+# Форма payload проходу змінилась (конверт `items` замість голого списку), тому
+# підміна перевіряється саме на ній · інакше вона мовчки перестала б діяти й
+# модель знову передруковувала б по 64 символи на рядок.
+php -r '
+require $argv[1];
+use Bdo\Translate\Model\RowAlias;
+$payload = json_decode($argv[2], true);
+$alias = RowAlias::fromPayload($payload);
+if ($alias->isEmpty()) { fwrite(STDERR, "підміна хешів не впізнала payload проходу\n"); exit(1); }
+$out = json_encode($alias->aliasPayload($payload), JSON_UNESCAPED_UNICODE);
+if (preg_match("/[0-9a-f]{64}/", $out) === 1) {
+    fwrite(STDERR, "у payload для моделі лишився повний хеш: $out\n"); exit(1);
+}
+if (! str_contains($out, "\"id\":\"r1\"")) {
+    fwrite(STDERR, "короткого ключа r1 немає: $out\n"); exit(1);
+}' "$ROOT/lib/autoload.php" "$payload" || fail 'модель бачитиме довгі хеші у проході по назвах (D59)'
 
 # 2б. МЕЖА: наказ віддається лише для назви, затвердженої ЛЮДИНОЮ.
 #
@@ -60,14 +93,14 @@ for layer in machine ''; do
         $d["data"]["rows"][0]["glossary"]["terms"]=[$t];
         file_put_contents($argv[1],json_encode($d,JSON_THROW_ON_ERROR|JSON_UNESCAPED_UNICODE));' "$STATE/rows.json" "$layer"
     out="$(bash "$ROOT/cli/prepare/names-payload.sh" "$STATE/rows.json" "$STATE/final-candidate.json" "$STATE/validate.json" 2>"$TMP/err")"
-    test "$(jq 'length' <<<"$out")" = 0         || fail "походження назви «${layer:-невідоме}» мусило пропустити наказ: $out"
+    test "$(jq '.items | length' <<<"$out")" = 0 || fail "походження назви «${layer:-невідоме}» мусило пропустити наказ: $out"
     grep -q 'пропущено 1' "$TMP/err" || fail "пропуск не названо вголос (${layer:-невідоме}): $(cat "$TMP/err")"
 done
 # Людська назва наказ дає · інакше межа перетворилась би на глухий вимикач.
 php -r '$d=json_decode(file_get_contents($argv[1]),true);
     $d["data"]["rows"][0]["glossary"]["terms"]=[["canonical_source"=>"Move","ukrainian"=>"Переміщення","ukrainian_layer"=>"manual","severity"=>"mandatory"]];
     file_put_contents($argv[1],json_encode($d,JSON_THROW_ON_ERROR|JSON_UNESCAPED_UNICODE));' "$STATE/rows.json"
-test "$(bash "$ROOT/cli/prepare/names-payload.sh" "$STATE/rows.json" "$STATE/final-candidate.json" "$STATE/validate.json" 2>/dev/null | jq 'length')" = 1     || fail 'людська назва не дала наказу'
+test "$(bash "$ROOT/cli/prepare/names-payload.sh" "$STATE/rows.json" "$STATE/final-candidate.json" "$STATE/validate.json" 2>/dev/null | jq '.items | length')" = 1 || fail 'людська назва не дала наказу'
 
 # 3. Рушій: із ready_to_commit пачка іде в names_pass до repair, і лише раз.
 cat > "$TMP/.env" <<ENV
@@ -88,10 +121,14 @@ drive() { TRANSLATE_ENV_FILE="$TMP/.env" BDO_PIPELINE_OFFLINE=1 BDO_AUTO_CLEAN=0
     BDO_STATE_DIR="$STATE" bash "$ROOT/cli/run/run-drive.sh" 2>/dev/null | tail -1; }
 
 out="$(drive)"
-jq -e '.state == "names_pass" and .next.kind == "child" and .next.role == "translation-repair"' <<<"$out" >/dev/null \
-    || fail "пачка не пішла в прохід по назвах: $out"
-test "$(jq 'length' "$B/names-payload.json")" = 1 || fail 'payload проходу має не 1 рядок'
-grep -q '"child_dispatch:translation-repair:1"' "$B/journal.jsonl" || fail 'журнал не бачить проходу по назвах'
+# Прохід по назвах виконує ОКРЕМА роль (рішення 2026-09-05): у неї свій вузький
+# промпт «підстав назву», тоді як `translation-repair` вільно переписує текст.
+# Одна роль на дві різні задачі й дала роздутий payload і дві однакові картки
+# на екрані.
+jq -e '.state == "names_pass" and .next.kind == "child" and .next.role == "translation-names"' <<<"$out" >/dev/null \
+    || fail "пачка не пішла в прохід по назвах окремою роллю: $out"
+test "$(jq '.items | length' "$B/names-payload.json")" = 1 || fail 'payload проходу має не 1 рядок'
+grep -q '"child_dispatch:translation-names:1"' "$B/journal.jsonl" || fail 'журнал не бачить проходу по назвах'
 # Схема під ПІДМНОЖИНУ: один рядок, а не вся пачка.
 test "$(jq '.properties.items.items.properties.identity_hash.enum | length' "$STATE/current-response-schema.json")" = 1 \
     || fail 'схема repair побудована не під підмножину проходу'

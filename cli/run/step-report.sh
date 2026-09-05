@@ -126,6 +126,11 @@ if ($mode === "--before") {
         if (! empty($row["defects"])) {
             printf("  │      дефект: %s\n", $one(implode("; ", (array) $row["defects"]), $width - 6));
         }
+        // Прохід по назвах несе НАКАЗИ, а не дефекти: там нема чого діагностувати,
+        // є що виконати. Без цього рядка екран показував би порожній крок.
+        if (! empty($row["orders"])) {
+            printf("  │      наказ: %s\n", $one(implode("; ", (array) $row["orders"]), $width - 6));
+        }
         if (! empty($row["candidate"])) {
             printf("  │      кандидат: %s\n", $one($row["candidate"], $width - 8));
         }

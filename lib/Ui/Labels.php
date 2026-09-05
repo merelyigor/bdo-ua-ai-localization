@@ -52,10 +52,33 @@ final class Labels
         'translation-worker' => 'перекладач',
         'translation-qa' => 'контроль якості',
         'translation-repair' => 'ремонтник',
+        'translation-names' => 'підстановка назв',
         'translation-judge' => 'суддя',
         'translation-glossary' => 'глосарій',
         'translation-smoke' => 'дим-тест',
     ];
+
+    /**
+     * Підпис виклику, коли роль сама по собі не пояснює, ЩО вона зараз робить.
+     *
+     * `translation-repair` працює в двох різних кроках, і на екрані це були дві
+     * однакові картки «ремонтник» · власник питав, чому ремонт двічі на пачку.
+     * Ключ · крок конвеєра з журналу викликів; невідомий крок лишає звичайний
+     * підпис ролі, а не вигаданий.
+     *
+     * @var array<string,array<string,string>>
+     */
+    private const ROLE_IN_STATE = [
+        'translation-repair' => [
+            'healing' => 'ремонт після якості',
+        ],
+    ];
+
+    /** Підпис ролі з урахуванням кроку, у якому її викликали. */
+    public static function roleInState(string $role, string $state): string
+    {
+        return self::ROLE_IN_STATE[$role][$state] ?? self::role($role);
+    }
 
     /** @var array<string,string> маршрути вироку судді */
     private const JUDGE = [

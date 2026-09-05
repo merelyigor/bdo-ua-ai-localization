@@ -187,6 +187,12 @@ foreach ($forRepair as $hash => $why) {
         "current" => $candidate->text($hash),
         "defects" => $why,
     ];
+    // Ремонт переписує ПОВНИЙ текст рядка, тому мусить знати, що це за рядок.
+    // Промпт ролі й досі казав «`semantic_type` і `domain` кажуть, що саме
+    // перед тобою», а payload їх не ніс жодного разу (D79): роль правила назву
+    // предмета й репліку квесту з однаковим знанням про них · тобто без нього.
+    if ($row->semanticType() !== null) $item["semantic_type"] = $row->semanticType();
+    if ($row->domain() !== null) $item["domain"] = $row->domain();
     $keep = $row->keepTokens();
     if ($keep !== []) $item["keep"] = $keep;
     $terms = $row->glossary();
@@ -196,7 +202,17 @@ foreach ($forRepair as $hash => $why) {
     $payload[] = $item;
     $attempts[$hash] = (int) ($attempts[$hash] ?? 0) + 1;
 }
-file_put_contents($repairFile, json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT));
+// Поняття гри · той самий добір, що у воркера й QA (спільний клас, не третя
+// копія): у payload ідуть лише ті поняття, чий термін СПРАВДІ є в джерелах
+// рядків, які ремонтуються. Пачка з двох рядків не тягне 83 картки.
+$repairOut = $payload;
+if ($payload !== []) {
+    $picked = Bdo\Translate\Payload\Concepts::forTexts(array_column($payload, "source_text"));
+    if ($picked["concepts"] !== []) {
+        $repairOut = ["concepts" => $picked["concepts"], "items" => $payload];
+    }
+}
+file_put_contents($repairFile, json_encode($repairOut, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT));
 file_put_contents($attemptsFile, json_encode(
     ["batch" => $batchKey, "attempts" => $attempts],
     JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT
@@ -238,9 +254,9 @@ if ($forRepair !== []) {
 REPAIR_PAYLOAD="$BATCH_DIR/heal-repair-payload.json"
 if [ -s "$REPAIR_PAYLOAD" ]; then
     HASHES="$(php -r '
-        $rows = json_decode((string) file_get_contents($argv[1]), true, 512, JSON_THROW_ON_ERROR);
-        echo implode(",", array_column(is_array($rows) ? $rows : [], "identity_hash"));
-    ' "$REPAIR_PAYLOAD" 2>/dev/null || true)"
+        require $argv[2];
+        echo implode(",", Bdo\Translate\Payload\Items::hashes($argv[1]));
+    ' "$REPAIR_PAYLOAD" "$SCRIPT_DIR/lib/autoload.php" 2>/dev/null || true)"
     if [ -n "$HASHES" ]; then
         SUBSET="$BATCH_DIR/heal-repair-subset.json"
         # cli/batch/subset-rows.sh лишає формат API (`data.rows`), якого чекає RowSet;
