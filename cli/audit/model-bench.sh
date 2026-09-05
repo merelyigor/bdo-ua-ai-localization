@@ -45,6 +45,40 @@ if [ "${1:-}" = --capture ]; then
         if [ -f "$STATE_DIR/$s" ]; then cp "$STATE_DIR/$s" "$FIXTURES/$s"; fi
     done
     test "$saved" -gt 0 || die "у теці пачки не знайшлось жодного payload · пачка ще на початку?"
+
+    # ФІКСТУРА МУСИТЬ БУТИ РОБОЧОГО РОЗМІРУ · інакше бенчмарка сліпа.
+    #
+    # 2026-09-06 (D82) `qwen3.6:35b-mlx` повертав 44 вироки на 50 рядків і вбивав
+    # живі пачки, а бенчмарка на тій самій моделі показувала 6 із 6 повних
+    # відповідей: знята фікстура мала payload на 5 рядків, бо воркер того разу
+    # перекладав лише 5. На такому розмірі дефект не відтворюється взагалі.
+    # Тому знімок із замалим payload · відмова, а не тихе «знято».
+    php -r '
+    require $argv[1];
+    use Bdo\Translate\Payload\Items;
+    $need = (int) $argv[3];
+    $max = 0; $lines = [];
+    foreach (["terminology-payload.json", "worker-payload.json", "qa-payload.json"] as $f) {
+        $path = $argv[2]."/".$f;
+        if (! is_file($path)) { continue; }
+        $n = Items::count($path);
+        $max = max($max, $n);
+        $lines[] = sprintf("  %-26s %3d рядків", $f, $n);
+    }
+    echo implode("\n", $lines), "\n";
+    if ($max < $need) {
+        fwrite(STDERR, sprintf(
+            "\nЗАМАЛА ФІКСТУРА: найбільший payload має %d рядків, а треба щонайменше %d.\n"
+            ."На такому розмірі бенчмарка НЕ бачить головного дефекту моделей · неповної\n"
+            ."відповіді (D82: 44 вироки на 50 рядків убивали пачку, а бенчмарка давала 6/6).\n"
+            ."Зніми фікстуру, коли пачка стоїть на кроці QA: там payload несе всі рядки.\n", $max, $need));
+        exit(1);
+    }
+    ' "$SCRIPT_DIR/lib/autoload.php" "$FIXTURES" "${BDO_BENCH_MIN_ROWS:-25}" || {
+        rm -f "$FIXTURES"/*.json
+        die 'фікстуру не збережено · знімок замалий (див. причину вище)'
+    }
+
     printf 'Знято %d файлів у %s\n' "$saved" "$FIXTURES"
     exit 0
 fi
@@ -61,6 +95,19 @@ done
 case "$REPEAT" in ''|*[!0-9]*) die "--repeat потребує число, отримано «${REPEAT}»" ;; esac
 test "${#MODELS[@]}" -ge 1 || die 'потрібна хоча б одна модель: ./bdo bench <тег> [<тег>…]'
 test -d "$FIXTURES" || die "немає фікстури $FIXTURES · зніми її: ./bdo bench --capture під час пачки"
+
+# Замала фікстура · відмова й тут, а не лише при знятті: знімок міг бути
+# зроблений старою версією або підкладений руками (D82).
+php -r '
+require $argv[1];
+use Bdo\Translate\Payload\Items;
+$max = 0;
+foreach (glob($argv[2]."/*-payload.json") as $f) { $max = max($max, Items::count($f)); }
+if ($max < (int) $argv[3]) {
+    fwrite(STDERR, sprintf("найбільший payload фікстури · %d рядків, треба щонайменше %s\n", $max, $argv[3]));
+    exit(1);
+}' "$SCRIPT_DIR/lib/autoload.php" "$FIXTURES" "${BDO_BENCH_MIN_ROWS:-25}" \
+    || die 'фікстура замала: на такому розмірі бенчмарка не бачить неповної відповіді (D82) · зніми її на кроці QA'
 
 # Модель мусить БУТИ на машині. Інакше перший виклик тягнув би 24 ГБ мовчки, і
 # час завантаження ліг би у вимір швидкості.

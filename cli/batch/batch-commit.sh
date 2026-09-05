@@ -133,13 +133,39 @@ $apiRejected = [];
 if ($argv[18] !== "" && is_file($argv[18])) {
     $apiRejected = Bdo\Translate\Api\Response::fromFile($argv[18])->rejections();
 }
+// ПРОГАЛИНА QA КОШТУЄ РЯДКИ, А НЕ ПАЧКУ.
+//
+// Досі неповний масив вироків відправляв у карантин ВСЮ пачку · разом із
+// рядками, на які вирок був. Ціна виміряна 2026-09-06 на `qwen3.6:35b-mlx`:
+// QA повернула 44 вироки на 50 рядків, і дві пачки поспіль дали НУЛЬ
+// записаних рядків із 50 (D82). 88% готової роботи викидалось через 12%
+// прогалини.
+//
+// Тепер рядок без вироку отримує ЧЕСНИЙ `REVIEW/major`, і далі маршрут
+// вирішує та сама `ChannelRouter`, що й для решти:
+//   `machine`  · рядок пишеться, як і будь-який інший рядок із текстом (це
+//                свідоме рішення каналу: гейт «замість запису до людини» вже
+//                давав прогони з нулем записаних рядків), а механічні дефекти
+//                ловляться окремо й сильніші за канал;
+//   `manual` / `proposal` · `major` НЕ проходить у шар, і рядок бачить ЛЮДИНА.
+// `PASS` тут не вигадується НІКОЛИ · ми не бачили вироку, тому й не свідчимо.
 if ($missing !== []) {
-    foreach ($rowByHash as $hash => $row) {
-        $held[] = ["identity_hash" => $hash, "reason" => "qa_incomplete",
-                   "detail" => "QA повернув " . count($verdicts) . " вердиктів на " . count($rowByHash) . " рядків",
-                   "source_text" => $row["source_text"] ?? null, "candidate" => $textByHash[$hash] ?? null];
+    fwrite(STDERR, sprintf(
+        "QA повернула %d вироків на %d рядків · %d без вироку йдуть до людини (REVIEW/minor)\n",
+        count($verdicts), count($rowByHash), count($missing)));
+    foreach ($missing as $hash) {
+        $verdicts[] = [
+            "identity_hash" => $hash,
+            "status" => "REVIEW",
+            "severity" => "major",
+            "issue" => sprintf(
+                "QA не винесла вирок для цього рядка (повернула %d із %d) · дивиться людина",
+                count($seen), count($rowByHash)),
+            "fix" => "",
+        ];
     }
-} else {
+}
+{
     foreach ($verdicts as $v) {
         $hash = $v["identity_hash"];
         $status = $v["status"] ?? "REJECT";

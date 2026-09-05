@@ -657,6 +657,7 @@ check_agents() {
     run bash tests/names-pass.sh
     run bash tests/prompt-payload-contract.sh
     run bash tests/step-times.sh
+    run bash tests/qa-gap-costs-rows.sh
 }
 
 check_runtime() { run ./bdo runtime; }
