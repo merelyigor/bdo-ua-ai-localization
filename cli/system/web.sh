@@ -244,6 +244,14 @@ if [ -s "$INFO" ]; then
         old_port="$(info_field port || true)"
         old_token="$(info_field token || true)"
         printf 'Сервер уже працює: http://127.0.0.1:%s/?t=%s\n' "$old_port" "$old_token"
+        # Другий запуск · це майже завжди «хочу відкрити сторінку»: клік по
+        # `make web`, повторний `./bdo`. Друкувати посилання й нічого не робити
+        # означає змусити власника копіювати його руками, хоча він щойно
+        # попросив саме відкрити.
+        if [ "$OPEN" = 1 ]; then
+            printf 'Відкриваю сторінку.\n'
+            open_browser "http://127.0.0.1:${old_port}/?t=${old_token}"
+        fi
         printf 'Зупинити: ./bdo web --stop\n'
         exit 0
     fi
@@ -292,6 +300,10 @@ fi
 if ours_on_port "$PORT"; then
     if [ -n "$PREVIOUS_TOKEN" ]; then
         printf 'Сервер уже працює на порту %s: http://127.0.0.1:%s/?t=%s\n' "$PORT" "$PORT" "$PREVIOUS_TOKEN"
+        if [ "$OPEN" = 1 ]; then
+            printf 'Відкриваю сторінку.\n'
+            open_browser "http://127.0.0.1:${PORT}/?t=${PREVIOUS_TOKEN}"
+        fi
     else
         printf 'На порту %s уже працює bdo, але запису state/web.json немає.\n' "$PORT" >&2
         printf 'Зупини його й запусти заново: ./bdo web --stop && ./bdo web\n' >&2

@@ -247,6 +247,22 @@ grep -q '^event: state' "$TMP/sse.txt" \
 # Без цієї межі зниклий `state/web.json` давав два сервери на одному стані: два
 # різні посилання й два токени, і власник не знає, яке з них живе.
 second="$(web --background --no-open 2>&1)" || fail "другий запуск упав: $second"
+# Повторний запуск БЕЗ `--no-open` мусить відкрити сторінку: це майже завжди
+# «хочу подивитись» (клік по `make web`, повторний `./bdo`), а не «повідом і
+# нічого не роби». Підміняємо відкривач і дивимось, що саме він отримав.
+mkdir -p "$TMP/fake"
+printf '#!/bin/sh\nprintf "%%s" "$1" > "%s/opened.txt"\n' "$TMP/fake" > "$TMP/fake/open"
+printf '#!/bin/sh\nprintf "%%s" "$1" > "%s/opened.txt"\n' "$TMP/fake" > "$TMP/fake/xdg-open"
+chmod +x "$TMP/fake/open" "$TMP/fake/xdg-open"
+rm -f "$TMP/fake/opened.txt"
+PATH="$TMP/fake:$PATH" web >/dev/null 2>&1 || true
+test -s "$TMP/fake/opened.txt" \
+    || fail 'повторний запуск не відкрив сторінку · власник мусив би копіювати посилання руками'
+grep -q "$TOKEN" "$TMP/fake/opened.txt" \
+    || fail "відкрито не те посилання: $(cat "$TMP/fake/opened.txt")"
+rm -f "$TMP/fake/opened.txt"
+PATH="$TMP/fake:$PATH" web --no-open >/dev/null 2>&1 || true
+test ! -s "$TMP/fake/opened.txt" || fail '--no-open усе одно відкрив браузер'
 printf '%s' "$second" | grep -q 'уже працює' \
     || fail "другий запуск мусив сказати, що сервер уже працює. Отримано: $second"
 printf '%s' "$second" | grep -q "$PORT" || fail "другий запуск не назвав чинного порту: $second"
