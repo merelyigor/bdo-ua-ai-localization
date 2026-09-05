@@ -356,7 +356,7 @@ WORKER_PROVIDER="${WORKER_MODEL%%/*}"
 WORKER_MODEL_NAME="${WORKER_MODEL#*/}"
 if [ "$DO_WRITE" = "--write" ] && [ "$COUNT" -gt 0 ]; then
     KEY_ARGS=(); test -n "$IDEMPOTENCY_KEY_PREFIX" && KEY_ARGS=(--idempotency-key "${IDEMPOTENCY_KEY_PREFIX}-pass")
-    # Друкуємо ФАКТ від API, а не намір. Раніше тут стояло «ЗАПИСАНО: $COUNT»
+    # Друкуємо ФАКТ від API, а не намір. Раніше тут стояло «ЗАПИСАНО: ${COUNT}»
     # за кількістю надісланих рядків, і рядок, який сервер відхилив
     # (`source_equivalent`), виглядав як успішно записаний · саме через це
     # причину нескінченного кола шукали не там.

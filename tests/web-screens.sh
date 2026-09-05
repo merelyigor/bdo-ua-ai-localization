@@ -62,7 +62,7 @@ done
 # Слова «потік» і «опитування» описують НАШ механізм, а не те, що бачить
 # власник. Замість них · що це означає для нього.
 for word in 'оновлюється наживо' 'оновлюється раз на секунду' 'немає звʼязку з сервером'; do
-    grep -Fq "$word" "$APP" || fail "немає людського підпису стану звʼязку: «$word»"
+    grep -Fq "$word" "$APP" || fail "немає людського підпису стану звʼязку: «${word}»"
 done
 grep -Eq "setLink\('live', *'потік'\)" "$APP" \
     && fail 'у підписі звʼязку лишився внутрішній жаргон «потік»'
@@ -87,7 +87,7 @@ foreach ($cases as $state => $expected) {
         json_encode(["id" => "20260905_010101_abcdef0123456789", "rows" => 50, "state" => $state]));
     $phrase = (new Snapshot($tmp))->toArray()["batch"]["state_phrase"] ?? "";
     if ($phrase !== $expected) {
-        fwrite(STDERR, "стан $state дав фразу «$phrase», очікувалось «$expected»\n");
+        fwrite(STDERR, "стан $state дав фразу «${phrase}», очікувалось «${expected}»\n");
         exit(1);
     }
 }
@@ -111,11 +111,11 @@ $goal = (new Snapshot($tmp))->toArray()["goal"];
 $phrase = (string) ($goal["phrase"] ?? "");
 foreach (["без ШІ-шару", "активний патч", "запис у ШІ-шар"] as $need) {
     if (! str_contains($phrase, $need)) {
-        fwrite(STDERR, "у фразі цілі немає «$need»: «$phrase»\n"); exit(1);
+        fwrite(STDERR, "у фразі цілі немає «${need}»: «${phrase}»\n"); exit(1);
     }
 }
 if (str_contains($phrase, "missing=machine")) {
-    fwrite(STDERR, "у фразі цілі лишився запит до API: «$phrase»\n"); exit(1);
+    fwrite(STDERR, "у фразі цілі лишився запит до API: «${phrase}»\n"); exit(1);
 }
 if (($goal["query"] ?? "") === "") { fwrite(STDERR, "запит до API загублено · нічим розбирати\n"); exit(1); }
 ' "$ROOT/lib/autoload.php" || fail 'ціль прогону не перетворюється на фразу'
@@ -127,7 +127,7 @@ grep -Fq 'що зараз' "$RUN" || fail 'у шапці прогону нема
 # --- 6. Кожен крок стрічки має СЛОВО ----------------------------------------
 # Сірий колір без підпису змусив власника питати, що сталося з ремонтом.
 for word in 'зроблено' 'іде зараз' 'не знадобився' 'попереду'; do
-    grep -Fq "$word" "$RUN" || fail "крок без підпису стану: немає слова «$word»"
+    grep -Fq "$word" "$RUN" || fail "крок без підпису стану: немає слова «${word}»"
 done
 
 # --- 7. Екран сесій справді відкриває сесію ---------------------------------

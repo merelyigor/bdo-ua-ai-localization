@@ -103,7 +103,7 @@ grep -Fq 'ОДНЕ коротке речення' "$ROOT/roles/translation-qa.md
     || fail 'промпт QA не обмежує issue одним реченням'
 for word in 'хоча' 'однак' 'це означає'; do
     grep -Fq "$word" "$ROOT/roles/translation-qa.md" \
-        || fail "промпт QA не забороняє слово-маркер міркування «$word»"
+        || fail "промпт QA не забороняє слово-маркер міркування «${word}»"
 done
 
 echo 'glossary provenance: OK · закон і машинний стандарт розділені в коді, payload і промптах.'

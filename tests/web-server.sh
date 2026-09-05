@@ -73,7 +73,7 @@ while IFS='|' read -r screen_path screen_title; do
     body="$(curl -s -m 5 "http://127.0.0.1:$PORT${screen_path}")" \
         || fail "екран $screen_path не відкрився"
     printf '%s' "$body" | grep -Fq "$screen_title" \
-        || fail "за шляхом $screen_path віддано не той екран (немає «$screen_title»)"
+        || fail "за шляхом $screen_path віддано не той екран (немає «${screen_title}»)"
     printf '%s' "$body" | grep -q "$TOKEN" \
         && fail "токен вшитий в екран $screen_path · він мусить приходити лише в посиланні"
 done <<'SCREENS'

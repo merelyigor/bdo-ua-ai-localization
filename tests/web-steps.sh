@@ -139,12 +139,12 @@ file_put_contents($tmp."/batches/B1/manifest.json", json_encode(["id"=>"B1","row
 
 $gone = (new Snapshot($tmp))->toArray()["calls"]["reason"] ?? "";
 if (! str_contains($gone, "переїхав")) {
-    fwrite(STDERR, "зниклий журнал не пояснено: «$gone»\n"); exit(1);
+    fwrite(STDERR, "зниклий журнал не пояснено: «${gone}»\n"); exit(1);
 }
 file_put_contents($tmp."/model-calls.jsonl", "");
 $fresh = (new Snapshot($tmp))->toArray()["calls"]["reason"] ?? "";
 if (! str_contains($fresh, "ще не було")) {
-    fwrite(STDERR, "порожній живий журнал названо переїздом: «$fresh»\n"); exit(1);
+    fwrite(STDERR, "порожній живий журнал названо переїздом: «${fresh}»\n"); exit(1);
 }
 ' "$ROOT/lib/autoload.php" || fail 'порожній список викликів не називає причини'
 grep -Fq 'callsView.reason' "$ROOT/web/index.html" \

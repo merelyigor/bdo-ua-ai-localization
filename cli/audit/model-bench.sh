@@ -58,7 +58,7 @@ while [ $# -gt 0 ]; do
     esac
 done
 
-case "$REPEAT" in ''|*[!0-9]*) die "--repeat потребує число, отримано «$REPEAT»" ;; esac
+case "$REPEAT" in ''|*[!0-9]*) die "--repeat потребує число, отримано «${REPEAT}»" ;; esac
 test "${#MODELS[@]}" -ge 1 || die 'потрібна хоча б одна модель: ./bdo bench <тег> [<тег>…]'
 test -d "$FIXTURES" || die "немає фікстури $FIXTURES · зніми її: ./bdo bench --capture під час пачки"
 
@@ -68,7 +68,7 @@ have_models="$(curl -s -m 10 "${OLLAMA_URL:-http://127.0.0.1:11434}/api/tags" ||
 test -n "$have_models" || die 'Ollama не відповідає · порівнювати нічого'
 for m in "${MODELS[@]}"; do
     printf '%s' "$have_models" | grep -Fq "\"$m\"" \
-        || die "моделі «$m» на машині немає · спершу ollama pull $m (вимір інакше поміряє завантаження, а не роботу)"
+        || die "моделі «${m}» на машині немає · спершу ollama pull $m (вимір інакше поміряє завантаження, а не роботу)"
 done
 
 # Роль -> (payload, схема). Порядок · порядок конвеєра.
