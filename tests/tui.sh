@@ -237,7 +237,7 @@ $checks = [
 ];
 foreach ($checks as [$want, $got]) {
     if ($want !== $got) {
-        fwrite(STDERR, "Clock: очікували «${want}», отримали «${got}»\n");
+        fwrite(STDERR, "Clock: очікували «{$want}», отримали «{$got}»\n");
         exit(1);
     }
 }
