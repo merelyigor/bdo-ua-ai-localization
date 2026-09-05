@@ -34,5 +34,10 @@ start docs/prototypes\01-run-live.html     # Windows
 | [03-moderation.html](03-moderation.html) | черга до людини: причина потрапляння, підказка глосарія, правка тексту, схвалення поштучно й пачкою | `./bdo moderation --limit 6` із PROD (рядки #356-361, усього чекає 214) |
 | [04-start.html](04-start.html) | старт прогону: режим, патч, категорія, кількість пачок, попередній показ самої команди й підтвердження PROD | `./bdo patches all machine` із PROD на 2026-09-04 |
 
-План, за яким ці макети стають робочим інтерфейсом ·
-[docs/plans/active/2026-09-04_BROWSER_GUI_AND_SESSIONS.md](../plans/active/2026-09-04_BROWSER_GUI_AND_SESSIONS.md).
+Інтерфейс за цими макетами ПОБУДОВАНО (2026-09-05), тому план закрито й
+видалено за політикою реєстру. Що вийшло насправді · `web/index.html`,
+`cli/system/web.sh`, `cli/system/web-router.php`; правила й межі ·
+[AI_AGENT_RULES_REFERENCE.md](../AI_AGENT_RULES_REFERENCE.md) §14.
+
+Макети лишаються як документація НАМІРУ: за ними видно, чого ми хотіли, і чим
+готове відрізняється від задуманого.

@@ -486,16 +486,19 @@ check_shell() {
     if [ -f Makefile ]; then
         local targets bad_bdo
         targets="$(grep -oE '^[a-z][a-z-]*:' Makefile | tr -d ':' | sort -u | tr '\n' ' ')"
-        test "$targets" = 'attach help screen stop ' \
-            || fail "Makefile має інші цілі, ніж attach/help/screen/stop: [$targets]"
+        test "$targets" = 'attach help screen stop web ' \
+            || fail "Makefile має інші цілі, ніж attach/help/screen/stop/web: [$targets]"
         # `./bdo help` і `./bdo review` у ПІДКАЗЦІ дозволені: це вказівник для
         # людини, а не виконання команди. Заборонено саме виконання чогось,
         # крім `watch`, тобто рецепт без `printf`/`@printf`.
-        bad_bdo="$(grep -nE '\./bdo ' Makefile | grep -v 'watch --' | grep -v 'printf' | grep -v '^[0-9]*:#' || true)"
+        # Дозволено рівно два виклики набору: `watch --…` (видимість роботи) і
+        # `web` (інтерфейс). Усе інше в Makefile означало б другу копію дерева
+        # команд · саме за це попередній Makefile і був видалений.
+        bad_bdo="$(grep -nE '\./bdo ' Makefile | grep -v 'watch --' | grep -v './bdo web' | grep -v 'printf' | grep -v '^[0-9]*:#' || true)"
         test -z "$bad_bdo" || fail "Makefile дублює команду набору замість посилання на ./bdo help: $bad_bdo"
         grep -Fq 'cli/command-registry.json' Makefile \
             || fail 'Makefile не називає єдине джерело дерева команд'
-        note 'Makefile: 4 цілі видимості, дерева команд не дублює'
+        note 'Makefile: 5 цілей (інтерфейс і видимість), дерева команд не дублює'
     fi
 
     step 'Bash syntax'

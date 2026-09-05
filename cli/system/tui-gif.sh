@@ -49,7 +49,7 @@ Set FontSize 15
 Set Width 1500
 Set Height 900
 Set Padding 12
-Type "cd $SCRIPT_DIR && ./bdo"
+Type "cd $SCRIPT_DIR && ./bdo tui"
 Enter
 Sleep 6s
 Type "1"
