@@ -159,7 +159,21 @@ $callsFile = $stateDir.'/model-calls.jsonl';
 $stats = ['in' => null, 'out' => null];
 
 /** Журнал викликів · власна заміна бази OpenCode. Пишеться ЗАВЖДИ. */
-$journal = static function (string $verdict) use ($callsFile, $role, $model, $provider, $started, &$stats): void {
+// Пачка, до якої належить виклик. Без цього поля журнал розповідає про сесію
+// взагалі, а екран показує пачку · і власник питає «до чого ці виклики?»
+// (зауваження 2026-09-05). Ідентифікатор беремо з того самого вказівника, що
+// й решта конвеєра, тому другої правди тут не зʼявляється.
+$currentBatch = static function () use ($stateDir): string {
+    $pointer = rtrim($stateDir, '/').'/current-batch';
+    if (! is_file($pointer)) {
+        return '';
+    }
+    $id = trim((string) file_get_contents($pointer));
+
+    return preg_match('/^[0-9]{8}_[0-9]{6}_[0-9a-f]+$/', $id) === 1 ? $id : '';
+};
+
+$journal = static function (string $verdict) use ($callsFile, $role, $model, $provider, $started, $currentBatch, &$stats): void {
     $dir = dirname($callsFile);
     if (! is_dir($dir) && ! mkdir($dir, 0777, true) && ! is_dir($dir)) {
         return;
@@ -167,6 +181,7 @@ $journal = static function (string $verdict) use ($callsFile, $role, $model, $pr
     @file_put_contents($callsFile, json_encode([
         'at' => gmdate('c'),
         'role' => $role,
+        'batch' => $currentBatch(),
         'model' => $model,
         'provider' => $provider,
         'verdict' => $verdict,

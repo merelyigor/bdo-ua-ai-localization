@@ -555,6 +555,7 @@ check_shell() {
     run bash tests/session-lifecycle.sh
     run bash tests/web-server.sh
     run bash tests/web-actions.sh
+    run bash tests/web-steps.sh
     run bash tests/no-silent-failures.sh
     run bash tests/quarantine-recovery.sh
     run bash tests/worker-reference.sh

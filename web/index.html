@@ -52,9 +52,21 @@ h1{font-size:20px;font-weight:500;margin:0 0 4px}
 .mono{font-family:var(--mono);font-size:12.5px;line-height:1.55}
 button{font-family:inherit;font-size:13px;padding:4px 10px;border-radius:8px;border:.5px solid var(--bd);background:transparent;color:var(--tp);cursor:pointer}
 button:hover{background:var(--s2)}
-.steps{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:14px;font-size:12px;color:var(--tm)}
-.steps .done{color:var(--ok-tx)}
-.steps .now{color:var(--acc-tx);font-weight:500}
+.steps{display:flex;gap:8px;align-items:stretch;flex-wrap:wrap;margin-bottom:14px}
+.step{display:flex;flex-direction:column;gap:1px;min-width:104px;padding:6px 10px;border-radius:9px;
+  border:.5px solid var(--bd);background:var(--s2)}
+.step .n{font-size:12.5px;font-weight:500}
+.step .s{font-size:11px;color:var(--tm)}
+.step.done{border-color:rgba(59,109,17,.35);background:var(--ok-bg)}
+.step.done .n{color:var(--ok-tx)}
+.step.done .s{color:var(--ok-tx);opacity:.75}
+.step.now{border-color:var(--bda);background:var(--acc-bg)}
+.step.now .n{color:var(--acc-tx)}
+.step.now .s{color:var(--acc-tx);opacity:.85}
+.step.skipped{background:transparent;border-style:dashed}
+.step.skipped .n{color:var(--ts)}
+.step.pending{background:transparent;opacity:.6}
+.step .arrow{display:none}
 .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin-bottom:4px}
 .card{background:var(--s2);border-radius:8px;padding:10px}
 .card .l{font-size:12px;color:var(--ts)}
@@ -276,14 +288,25 @@ td.num,th.num{text-align:right;font-family:var(--mono)}
       el('state').style.display = 'none';
     }
 
+    // Кожен крок має ПІДПИС стану. Сірий колір без слова змушував гадати, що
+    // сталося з ремонтом · саме це й запитав власник 2026-09-05.
+    var stepWords = {
+      done: 'зроблено',
+      now: 'іде зараз',
+      skipped: 'не знадобився',
+      pending: 'попереду'
+    };
     var steps = s.steps || [];
-    el('steps').innerHTML = steps.map(function (st, i) {
-      var cls = st.now ? 'now' : (st.done ? 'done' : '');
-      return (i ? '<span>›</span>' : '') + '<span class="' + cls + '">' + esc(st.label) + '</span>';
+    el('steps').innerHTML = steps.map(function (st) {
+      var state = st.state || 'pending';
+      return '<div class="step ' + state + '" title="' + esc(stepWords[state] || state) + '">'
+        + '<span class="n">' + esc(st.label) + '</span>'
+        + '<span class="s">' + esc(stepWords[state] || state) + '</span></div>';
     }).join('');
 
     var sum = s.summary || {};
-    var calls = s.calls || [];
+    var callsView = s.calls || { scope: 'session', items: [] };
+    var calls = callsView.items || [];
     var cards = [
       ['у шар', sum.to_layer, 'var(--ok-tx)'],
       ['до людини', sum.to_human, ''],
@@ -354,7 +377,12 @@ td.num,th.num{text-align:right;font-family:var(--mono)}
           + '<span class="meta">друкує…</span></div>'
           + '<div class="box mono" id="streambox"></div></div>';
       }
-      el('callsMeta').textContent = calls.length ? 'останні ' + calls.length : '';
+      // Заголовок каже, ЧИЇ це виклики. Раніше список показував сесію під
+      // заголовком про пачку, і питання «до чого вони?» було справедливим.
+      el('callsMeta').textContent = !calls.length ? ''
+        : (callsView.scope === 'batch'
+            ? 'пачки ' + callsView.batch + ' · ' + calls.length
+            : 'цієї сесії · ' + calls.length + ' (пачку не вказано)');
       paintStream();
     }
 

@@ -52,7 +52,7 @@ final class Snapshot
             ],
             'batch' => $this->batch($manifest),
             'steps' => $this->steps($manifest),
-            'calls' => $this->calls(),
+            'calls' => $this->callsView($manifest),
             'summary' => $this->summary($manifest),
             'transcript' => $this->transcript(),
             'stream' => $this->stream(),
@@ -248,21 +248,71 @@ final class Snapshot
      *
      * @return list<array{key:string,label:string,done:bool,now:bool}>
      */
+    /**
+     * Виклики моделі з ЯВНОЮ приналежністю.
+     *
+     * Питання власника було буквальним: «до чого відносяться ці виклики?»
+     * Тепер відповідь у самих даних: якщо всі показані виклики належать
+     * поточній пачці · `scope = batch`, інакше `scope = session`, і сторінка
+     * підписує блок відповідно. Раніше список мовчки показував сесію поруч із
+     * заголовком про пачку.
+     *
+     * @return array{scope:string,batch:string,items:list<array<string,mixed>>}
+     */
+    private function callsView(array $manifest): array
+    {
+        $batchId = (string) ($manifest['id'] ?? '');
+        $all = $this->calls();
+        if ($batchId === '') {
+            return ['scope' => 'session', 'batch' => '', 'items' => $all];
+        }
+        $mine = [];
+        foreach ($all as $call) {
+            if ((string) ($call['batch'] ?? '') === $batchId) {
+                $mine[] = $call;
+            }
+        }
+        // Пачка без жодного власного виклику · показуємо сесію, але чесно
+        // називаємо це сесією, а не приписуємо пачці чужу роботу.
+        if ($mine === []) {
+            return ['scope' => 'session', 'batch' => '', 'items' => $all];
+        }
+
+        return ['scope' => 'batch', 'batch' => $batchId, 'items' => $mine];
+    }
+
+    /**
+     * Стрічка кроків: що пройдено, що йде зараз, а що НЕ ЗНАДОБИЛОСЬ.
+     *
+     * Джерел два, і саме тому їх два. Стани журналу кажуть, куди пачка
+     * заходила; виклики ролей кажуть, хто справді працював. Роль може
+     * відпрацювати БЕЗ власного стану · так сталося з ремонтом: у пачці
+     * `20260905_034942` стану `healing` немає жодного разу, а `translation-repair`
+     * відпрацював 53 секунди всередині кроку якості. Екран показував
+     * «ремонту не було» поруч із «ремонтник ok» · дві правди одночасно
+     * (зауваження власника 2026-09-05).
+     *
+     * Третій стан named явно: `skipped` означає «пачка пройшла цей крок і він
+     * не знадобився». Сірий колір без слова заборонений · він змушує гадати.
+     *
+     * @return list<array{key:string,label:string,role:string,state:string}>
+     */
     private function steps(array $manifest): array
     {
+        // Крок · це пара «стан у машині станів» і «роль, яка його робить».
+        // Роль порожня там, де кроку не робить модель (запис іде в API).
         $order = [
-            'awaiting_terminology' => 'терміни',
-            'awaiting_worker' => 'переклад',
-            'awaiting_qa' => 'якість',
-            'healing' => 'ремонт',
-            'awaiting_judge' => 'суддя',
-            'names_pass' => 'назви',
-            'committing' => 'запис',
+            ['key' => 'awaiting_terminology', 'label' => 'терміни', 'role' => 'translation-terminology'],
+            ['key' => 'awaiting_worker', 'label' => 'переклад', 'role' => 'translation-worker'],
+            ['key' => 'awaiting_qa', 'label' => 'якість', 'role' => 'translation-qa'],
+            ['key' => 'healing', 'label' => 'ремонт', 'role' => 'translation-repair'],
+            ['key' => 'awaiting_judge', 'label' => 'суддя', 'role' => 'translation-judge'],
+            ['key' => 'names_pass', 'label' => 'назви', 'role' => ''],
+            ['key' => 'committing', 'label' => 'запис', 'role' => ''],
         ];
         $state = (string) ($manifest['state'] ?? '');
-        // Пройдені кроки беремо зі СЛІДУ пачки, а не з поточного стану: рядок,
-        // закритий памʼяттю, може взагалі не мати кроку QA, і «пройдено, бо
-        // раніше в переліку» збрехало б.
+        $batchId = (string) ($manifest['id'] ?? '');
+
         $seen = [];
         foreach ($this->journal($manifest) as $entry) {
             $seenState = (string) ($entry['state'] ?? '');
@@ -270,13 +320,49 @@ final class Snapshot
                 $seen[$seenState] = true;
             }
         }
+        // Ролі, які працювали САМЕ в цій пачці. Виклики без поля `batch` ·
+        // записи до 2026-09-05; вони не належать нікому конкретному, тому в
+        // стрічку не йдуть: краще «не знадобився», ніж приписана робота.
+        $worked = [];
+        foreach ($this->calls(200) as $call) {
+            if ($batchId !== '' && (string) ($call['batch'] ?? '') === $batchId) {
+                $worked[(string) $call['role']] = true;
+            }
+        }
+
+        // Найдальший крок, якого пачка ДІЙШЛА: усе перед ним або зроблено, або
+        // свідомо пропущено; усе після · ще попереду.
+        $reached = -1;
+        foreach ($order as $i => $step) {
+            if ($step['key'] === $state || isset($seen[$step['key']])
+                || ($step['role'] !== '' && isset($worked[$step['role']]))) {
+                $reached = $i;
+            }
+        }
+        // Завершена пачка дійшла до кінця незалежно від того, які стани
+        // потрапили в журнал.
+        if (in_array($state, ['committed', 'verified'], true)) {
+            $reached = count($order) - 1;
+        }
+
         $out = [];
-        foreach ($order as $key => $label) {
+        foreach ($order as $i => $step) {
+            $done = (isset($seen[$step['key']]) || ($step['role'] !== '' && isset($worked[$step['role']])))
+                && $step['key'] !== $state;
+            if ($step['key'] === $state) {
+                $status = 'now';
+            } elseif ($done) {
+                $status = 'done';
+            } elseif ($i < $reached) {
+                $status = 'skipped';
+            } else {
+                $status = 'pending';
+            }
             $out[] = [
-                'key' => $key,
-                'label' => $label,
-                'done' => isset($seen[$key]) && $key !== $state,
-                'now' => $key === $state,
+                'key' => $step['key'],
+                'label' => $step['label'],
+                'role' => $step['role'],
+                'state' => $status,
             ];
         }
 
@@ -288,9 +374,9 @@ final class Snapshot
      *
      * @return list<array<string,mixed>>
      */
-    private function calls(): array
+    private function calls(?int $limit = null): array
     {
-        $lines = $this->tailLines($this->path('model-calls.jsonl'), self::CALLS);
+        $lines = $this->tailLines($this->path('model-calls.jsonl'), $limit ?? self::CALLS);
         $out = [];
         foreach ($lines as $line) {
             $entry = json_decode($line, true);
@@ -302,6 +388,10 @@ final class Snapshot
                 'at' => (string) ($entry['at'] ?? ''),
                 'hms' => Clock::hms($entry['at'] ?? null),
                 'role' => $role,
+                // Приналежність до пачки · щоб перелік і стрічка кроків
+                // говорили про одне й те саме. Порожньо · запис старіший за
+                // 2026-09-05, і це видно на екрані як «сесія», а не пачка.
+                'batch' => (string) ($entry['batch'] ?? ''),
                 'role_label' => Labels::role($role),
                 'model' => (string) ($entry['model'] ?? ''),
                 'verdict' => (string) ($entry['verdict'] ?? ''),
