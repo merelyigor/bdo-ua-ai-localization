@@ -96,6 +96,8 @@ dispatcher, цим flow і документацією.
   ./bdo models-run 40                               останні виклики по одному
   ./bdo timer                                       скільки триває сесія
   ./bdo review                                      стан проєкту одним екраном
+  ./bdo timing [N|--all]                            куди пішов час прогону, не лише в модель
+  ./bdo bench <модель> <модель>                     порівняти моделі на тих самих payload, без запису
   ./bdo inspect [тека]                              інспекції PhpStorm (IDE закрита)
 
 Повна послідовність із причинами · WORKFLOW.md
@@ -230,6 +232,8 @@ case "$group" in
     audit)      sh_run cli/audit/model-run.sh "${@:2}" ;;
     inspect)    sh_run cli/system/ide-inspect.sh "${@:2}" ;;
     review)     sh_run cli/audit/project-review.sh "${@:2}" ;;
+    timing)     sh_run cli/audit/timing-report.sh "${@:2}" ;;
+    bench)      sh_run cli/audit/model-bench.sh "${@:2}" ;;
     incidents)  sh_run cli/audit/model-incidents.sh "${@:2}" ;;
     quarantine) sh_run cli/audit/quarantine-report.sh "${@:2}" ;;
     judge)      sh_run cli/audit/judge-report.sh "${@:2}" ;;

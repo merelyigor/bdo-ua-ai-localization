@@ -388,7 +388,7 @@ candidate_to_qa() {
     "$SCRIPT_DIR/cli/quality/normalize-candidate.sh" "$B/full.json" "$B/rows.json" > "$B/clean.json" 2>/dev/null
     "$SCRIPT_DIR/cli/quality/build-items.sh" "$B/rows.json" "$B/clean.json" "$B/items.json" "" --require-all >/dev/null
     "$SCRIPT_DIR/cli/quality/check-russianisms.sh" "$B/clean.json" "$B/rows.json" >/dev/null 2>&1 || true
-    if [ "${BDO_PIPELINE_OFFLINE:-0}" != 1 ]; then validate="$($SCRIPT_DIR/cli/api/validate.sh "$B/items.json" 2>&1 || true)"; fi
+    if [ "${BDO_PIPELINE_OFFLINE:-0}" != 1 ]; then validate="$(bash "$TIMED" validate.early "$SCRIPT_DIR/cli/api/validate.sh" "$B/items.json" 2>&1 || true)"; fi
     validate_file="$(printf '%s\n' "$validate" | grep -oE '/[^ ]*/output/validate_[0-9_]+\.json' | tail -1 || true)"
     test -f "$validate_file" && printf '%s\n' "$validate_file" > "$B/validate-path" || true
     complete deterministic "$B/clean.json"; transition deterministic_valid
@@ -451,6 +451,12 @@ merge_pre_verdicts() {
 #
 # `prune_verified_batch` займається ПОТОЧНОЮ пачкою, яку clean навмисно не
 # чіпає; clean · усіма іншими, недосяжними для флоу. Разом вони покривають усе.
+# Мітка часу на дорогий крок. Обгортка нічого не міняє в поведінці кроку ·
+# лише лишає рядок у `state/step-times.jsonl`. Заміряно 2026-09-05: між кінцем
+# пачки й початком наступної минало 173 і 259 с при 200-300 с усіх викликів
+# моделі разом · тобто половину часу конвеєра ніхто не бачив.
+TIMED="$SCRIPT_DIR/cli/system/timed.sh"
+
 auto_clean() {
     test "${BDO_AUTO_CLEAN:-1}" = 0 && return 0
     "$SCRIPT_DIR/cli/batch/batch-clean.sh" --apply --quiet \
@@ -754,7 +760,7 @@ ready_to_commit|committing)
     # обовʼязковою. `validate` · це dry-run того самого коду, що й запис.
     final_validate=""
     if [ "${BDO_PIPELINE_OFFLINE:-0}" != 1 ]; then
-        final_validate="$("$SCRIPT_DIR/cli/api/validate.sh" "$B/final-items.json" 2>&1 || true)"
+        final_validate="$(bash "$TIMED" validate.final "$SCRIPT_DIR/cli/api/validate.sh" "$B/final-items.json" 2>&1 || true)"
         final_validate="$(printf '%s\n' "$final_validate" | grep -oE '/[^ ]*/output/validate_[0-9_]+\.json' | tail -1 || true)"
     fi
     # Заглушка для офлайн-тесту: файл відповіді validate можна підкласти.
@@ -785,7 +791,7 @@ ready_to_commit|committing)
     test "$state" = committing || transition committing
     judge_args=(); test -s "$B/judge-verdicts.json" && judge_args=(--judge "$B/judge-verdicts.json")
     test -n "$final_validate" && judge_args+=(--api-rejected "$final_validate")
-    if "$SCRIPT_DIR/cli/batch/batch-commit.sh" "$B/rows.json" "$B/final-candidate.json" "$B/final-verdicts.json" --channel "$(field channel)" --idempotency-key-prefix "$key" "${judge_args[@]}" --write > "$B/commit-report.txt" 2>&1; then
+    if bash "$TIMED" commit "$SCRIPT_DIR/cli/batch/batch-commit.sh" "$B/rows.json" "$B/final-candidate.json" "$B/final-verdicts.json" --channel "$(field channel)" --idempotency-key-prefix "$key" "${judge_args[@]}" --write > "$B/commit-report.txt" 2>&1; then
         complete commit "$B/commit-report.txt"; transition committed; transition verified; "$SCRIPT_DIR/cli/prepare/build-schema.sh" --clear >/dev/null
         # Конверт рахується ДО прибирання: `completion` читає commit-report.txt
         # і batch-summary.json із теки, яку prune зараз видалить.

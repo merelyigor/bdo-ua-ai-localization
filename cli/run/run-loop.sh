@@ -37,6 +37,13 @@ done
 # крок віддає `retry` без жодного руху стану.
 readonly SPIN_LIMIT="${BDO_LOOP_SPIN_LIMIT:-12}"
 readonly DRIVE="$SCRIPT_DIR/bdo"
+# Мітка часу на дорогий крок · див. `cli/system/timed.sh`. Поведінки кроку не
+# міняє, лише лишає рядок у `state/step-times.jsonl`.
+readonly TIMED="$SCRIPT_DIR/cli/system/timed.sh"
+# Залежність називається ВГОЛОС і на старті. Без цього зникла обгортка давала
+# порожній конверт і повідомлення «run drive не віддав конверт» · тобто
+# наслідок замість причини (§12).
+test -x "$TIMED" || { echo "ЗУПИНКА: немає $TIMED · без нього немає міток часу." >&2; exit 1; }
 
 STATE_DIR="${BDO_STATE_DIR:-$SCRIPT_DIR/state}"
 TRANSCRIPT="$STATE_DIR/run-transcript.log"
@@ -71,7 +78,7 @@ spin=0
 last_state=""
 
 while :; do
-    envelope="$("$DRIVE" run drive 2>/dev/null || true)"
+    envelope="$(bash "$TIMED" drive "$DRIVE" run drive 2>/dev/null || true)"
     if [ -z "$envelope" ]; then
         echo "ЗУПИНКА: ./bdo run drive не віддав конверт." >&2
         exit 1
@@ -132,7 +139,7 @@ EOF
             # Крок конвеєра йде в журнал викликів разом із роллю: одна роль
             # працює в кількох кроках (`translation-repair` · і `healing`, і
             # `names_pass`), і без цього поля два різні проходи не відрізнити.
-            if ! BDO_RUN_STATE="$state" php "$SCRIPT_DIR/cli/model/client.php" "$role" "$payload" "$response"; then
+            if ! BDO_RUN_STATE="$state" bash "$TIMED" "model.$role" php "$SCRIPT_DIR/cli/model/client.php" "$role" "$payload" "$response"; then
                 echo "ЗУПИНКА: роль $role не дала відповіді (причина вище)." >&2
                 exit 1
             fi
@@ -204,7 +211,7 @@ EOF
             fi
             log "починаю наступну пачку: $mode $size $start_patch $start_domain"
             # shellcheck disable=SC2086
-            if ! "$DRIVE" mode start "$mode" "$size" $start_patch $start_domain >/dev/null; then
+            if ! bash "$TIMED" mode.start "$DRIVE" mode start "$mode" "$size" $start_patch $start_domain >/dev/null; then
                 echo "ЗУПИНКА: не вдалося почати наступну пачку." >&2
                 exit 1
             fi
