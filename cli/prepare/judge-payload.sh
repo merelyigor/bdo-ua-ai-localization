@@ -75,6 +75,10 @@ foreach ($rows as $row) {
         "candidate" => $text,
     ];
     if ($row->semanticType() !== null) $item["semantic_type"] = $row->semanticType();
+    // `domain` промпт називав із самого початку, а payload не ніс жодного разу
+    // (той самий клас, що D79). Три токени на рядок, а від них залежить сам
+    // вирок: помилка в реплиці квесту й у підписі кнопки важить по-різному.
+    if ($row->domain() !== null) $item["domain"] = $row->domain();
     if ($identical) { $item["identical_to_source"] = true; $stats["identical"]++; }
     if ($unresolved !== []) { $item["unresolved"] = $unresolved; $stats["unresolved"]++; }
     $glossary = $row->glossary();

@@ -22,11 +22,22 @@ declare -a PAIRS=(
     "translation-qa|cli/prepare/qa-payload.sh"
     "translation-repair|cli/heal/heal-plan.sh"
     "translation-names|cli/prepare/names-payload.sh"
+    "translation-judge|cli/prepare/judge-payload.sh"
+    "translation-terminology|cli/prepare/terminology-payload.sh"
 )
+
+# Роль, яку кличе драйвер, мусить мати рядок ВИЩЕ. Інакше наступна роль тихо
+# випаде з перевірки · рівно так само, як D79 випав з усіх перевірок разом.
+for role in $(grep -oE 'child [a-z_]+ (translation-[a-z-]+)' "$ROOT/cli/run/run-drive.sh" | awk '{print $3}' | sort -u); do
+    printf '%s\n' "${PAIRS[@]}" | grep -q "^${role}|" \
+        || fail "роль ${role} драйвер кличе, а в переліку перевірки її немає"
+done
 
 # Поля payload, згадка яких у промпті є ОБІЦЯНКОЮ даних. Службові слова
 # («items», «id», «text») сюди не входять: вони описують форму відповіді.
-FIELDS='semantic_type domain concepts examples terms glossary glossary_hint keep limits orders defects current source_text'
+# Вкладені поля спільних блоків (`terms[].canonical_source`) теж ні · їх
+# перевіряє той, хто будує сам блок.
+FIELDS='semantic_type domain concepts examples terms glossary glossary_hint keep limits orders defects current candidate source_text'
 
 checked=0
 for pair in "${PAIRS[@]}"; do

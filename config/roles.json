@@ -5,7 +5,8 @@
   "providers": {
     "ollama": {
       "transport": "ollama",
-      "endpoint": "http://127.0.0.1:11434"
+      "endpoint": "http://127.0.0.1:11434",
+      "keep_alive": "30m"
     },
     "openai": {
       "transport": "openai",

@@ -23,8 +23,16 @@ namespace Bdo\Translate\Model\Transport;
  */
 final class Ollama implements Transport
 {
+    /**
+     * Типова стеля Ollama · 5 хвилин, і її не вистачає навіть на паузу між
+     * пачками. Береться з `config/roles.json` (`ollama.keep_alive`), щоб
+     * власник міг зменшити її на машині, де памʼять потрібна іншому.
+     */
+    public const DEFAULT_KEEP_ALIVE = '30m';
+
     public function __construct(
         private readonly string $endpoint,
+        private readonly string $keepAlive = self::DEFAULT_KEEP_ALIVE,
     ) {}
 
     public function name(): string
@@ -38,6 +46,16 @@ final class Ollama implements Transport
             'model' => $request->model,
             'stream' => $request->stream,
             'think' => $request->think,
+            // Скільки модель лишається в памʼяті після відповіді.
+            //
+            // Заміряно 2026-09-05 на живому прогоні: ПЕРШИЙ виклик термінолога
+            // тривав 960 с при `in=2248, out=409`, тоді як той самий крок у
+            // наступних пачках · 9.7 с і 27.9 с. Різниця не в роботі, а в
+            // завантаженні 22.6 ГБ ваги. Типова стеля Ollama · 5 хвилин, а
+            // паузи МІЖ пачками виміряно 184-268 с: одна довша пауза (людина
+            // подивилась чергу, агент прогнав gate) вивантажує модель, і
+            // наступна пачка знову платить хвилини за те саме.
+            'keep_alive' => $this->keepAlive,
             'messages' => [
                 ['role' => 'system', 'content' => $request->prompt],
                 ['role' => 'user', 'content' => $request->payload],

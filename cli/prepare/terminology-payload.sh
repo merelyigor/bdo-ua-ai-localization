@@ -62,6 +62,12 @@ foreach ($rows as $row) {
                 "identity_hash" => $row->identityHash(),
                 "source_text" => $row->sourceText(),
             ];
+            // Класифікація рядка, у якому термін трапився. Промпт її називав
+            // завжди, payload не ніс жодного разу (клас D79). Для термінолога
+            // це не дрібниця: «Move» у підписі кнопки й «Move» у назві вміння ·
+            // різні терміни, і без `domain` він розрізняє їх лише здогадом.
+            if ($row->semanticType() !== null) $terms[$name]["semantic_type"] = $row->semanticType();
+            if ($row->domain() !== null) $terms[$name]["domain"] = $row->domain();
         }
     }
 }
