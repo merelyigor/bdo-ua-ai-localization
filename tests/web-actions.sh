@@ -35,6 +35,7 @@ $registry = json_decode((string) file_get_contents($argv[2]), true, 512, JSON_TH
 $patterns = $registry["guard_patterns"] ?? [];
 $cases = [
     ["run.start", ["mode" => "patch", "patch" => "8", "batches" => 2]],
+    ["run.start", ["mode" => "patch", "patch" => "8", "foreground" => true]],
     ["run.start", ["mode" => "improve", "patch" => "active", "domain" => "premium_shop"]],
     ["run.start", ["mode" => "manual", "patch" => "1"]],
     ["run.stop", []],
@@ -205,6 +206,28 @@ try {
     }
 }
 ' "$ROOT/lib/autoload.php" "$BDO_STATE_DIR" "$ROOT" || fail 'замок дій не тримає одночасні виклики'
+
+# --- Завершена сесія tmux не має блокувати наступний старт (D72) -----------
+# `watch` навмисно лишає pane після роботи, щоб було видно останній екран. Через
+# це другий старт зі сторінки падав на «сесія bdo уже існує», і власник бачив
+# «відмова, код 500» ПІСЛЯ успішного `mode start` · пачка вже відібрана, а
+# прогону немає.
+php -r '
+require $argv[1];
+use Bdo\Translate\Run\Actions;
+$web = Actions::commands("run.start", ["mode" => "patch", "patch" => "8"]);
+if (($web[0] ?? "") !== "./bdo watch --stop") {
+    fwrite(STDERR, "план для сторінки не прибирає завершену сесію tmux: " . json_encode($web, JSON_UNESCAPED_UNICODE) . "\n");
+    exit(1);
+}
+$tui = Actions::commands("run.start", ["mode" => "patch", "patch" => "8", "foreground" => true]);
+foreach ($tui as $command) {
+    if (str_contains($command, "watch")) {
+        fwrite(STDERR, "прогін без браузера не має чіпати tmux: $command\n");
+        exit(1);
+    }
+}
+' "$ROOT/lib/autoload.php" || fail 'план старту не прибирає завершену сесію tmux (D72)'
 
 # --- Ознака «прогін іде» мусить бути ПРАВДИВОЮ -----------------------------
 # 2026-09-05 на живому прогоні сторінка писала «драйвер не працює» посеред

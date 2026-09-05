@@ -83,13 +83,26 @@ final class Actions
                 // відсилати його в tmux означало б зробити гірше без причини.
                 $foreground = ($payload['foreground'] ?? false) === true;
                 $loop = $foreground ? ['./bdo', 'loop'] : ['./bdo', 'watch', 'loop'];
+                // Прибрати ЗАВЕРШЕНУ сесію tmux перед новим стартом.
+                //
+                // `watch` навмисно лишає pane після завершення роботи (щоб було
+                // видно останній екран і код виходу), але через це наступний
+                // старт зі сторінки падав: «сесія bdo уже існує». Спіймано на
+                // живій кнопці 2026-09-05 · власник бачив «відмова, код 500»
+                // після успішного `mode start`, тобто пачка вже була відібрана
+                // (D72). Живий прогін цим не зачепиш: `Runner` відмовляє ще до
+                // плану, якщо робота йде.
+                $steps = $foreground ? [] : [['./bdo', 'watch', '--stop']];
                 if (isset($payload['batches']) && (string) $payload['batches'] !== '') {
                     $loop[] = '--batches';
                     $loop[] = (string) self::count('batches', $payload['batches'], self::MAX_BATCHES);
                 }
 
+                $steps[] = $start;
+                $steps[] = $loop;
+
                 return [
-                    'steps' => [$start, $loop],
+                    'steps' => $steps,
                     'detached' => true,
                     // Запис у PROD незворотний, тому підтвердження вимагає КОД,
                     // а не галочка в розмітці: розмітку видно й можна обійти.

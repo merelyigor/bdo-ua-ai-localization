@@ -116,6 +116,7 @@ td.num,th.num{text-align:right;font-family:var(--mono)}
       <div class="bar">
         <button id="startBtn">почати прогін</button>
         <span id="actionMsg" class="empty"></span>
+        <button id="logToggle" style="display:none;margin-left:auto">показати вивід</button>
       </div>
       <pre class="log" id="actionLog" style="display:none;max-height:220px;margin-top:8px"></pre>
     </div>
@@ -310,7 +311,7 @@ td.num,th.num{text-align:right;font-family:var(--mono)}
         el('calls').innerHTML = '<div class="empty">Викликів ще не було. Журнал заповнює сам прогін.</div>';
       } else {
         el('calls').innerHTML = calls.map(function (c, i) {
-          var last = i === calls.length - 1;
+          var last = false;   // активну картку малюємо окремо, нижче
           var okColor = c.verdict === 'ok' ? 'var(--ok-tx)' : 'var(--dn-tx)';
           var bits = [];
           if (c.in || c.out) { bits.push(num(c.in) + '→' + num(c.out) + ' ток.'); }
@@ -322,9 +323,23 @@ td.num,th.num{text-align:right;font-family:var(--mono)}
             + '<span class="meta">' + esc(bits.join(' · ')) + '</span>'
             + '<span style="margin-left:auto;font-size:12px;color:' + okColor + '">' + esc(c.verdict || '—') + '</span>'
             + '<span class="meta" style="margin-left:8px">' + esc(c.hms) + '</span></div>'
-            + (last ? '<div class="box mono" id="streambox" style="display:none"></div>' : '')
             + '</div>';
         }).join('');
+      }
+      // Роль, яка друкує ЗАРАЗ, ще не має рядка в журналі викликів: він
+      // пишеться ПІСЛЯ відповіді. Тому її картка малюється окремо · інакше
+      // живий потік підписаний попередньою роллю, і власник бачить роботу
+      // перекладача під заголовком «термінолог».
+      // Картка «друкує…» показується лише поки роль СПРАВДІ друкує: ознака
+      // свіжості приходить із сервера (журнал токенів мовчить довше за 15 с ·
+      // отже, вже не друкує). `running` для цього не годиться: він навмисно
+      // має запас у дві хвилини, щоб не блимати між кроками.
+      var live = (s.stream && s.stream.role_label && s.stream.fresh) ? s.stream.role_label : '';
+      if (live && s.running) {
+        el('calls').innerHTML += '<div class="msg active">'
+          + '<div class="mh"><span style="font-weight:500;color:var(--acc-tx)">' + esc(live) + '</span>'
+          + '<span class="meta">друкує…</span></div>'
+          + '<div class="box mono" id="streambox"></div></div>';
       }
       el('callsMeta').textContent = calls.length ? 'останні ' + calls.length : '';
       paintStream();
@@ -335,7 +350,11 @@ td.num,th.num{text-align:right;font-family:var(--mono)}
     log.textContent = lines.length ? lines.join('\n') : 'журнал порожній';
     if (follow) { log.scrollTop = log.scrollHeight; }
 
-    if (s.stream && typeof s.stream.text === 'string' && !streamText) {
+    // Текст потоку · ЗАВЖДИ з сервера: він складає його з журналу й знає точну
+    // позицію. Сторінка лише дописує дельти між знімками. Доки знімок вважався
+    // «початковим значенням», перший символ дублювався · знімок і перша дельта
+    // перекривались на межі (видно очима: «{{"items"…»).
+    if (s.stream && typeof s.stream.text === 'string') {
       streamText = s.stream.text;
       paintStream();
     }
@@ -480,17 +499,32 @@ td.num,th.num{text-align:right;font-family:var(--mono)}
       return r.json().then(function (d) { return { status: r.status, body: d }; });
     }).then(function (res) {
       var log = el('actionLog');
-      if (res.status >= 400) {
+      var steps = (res.body && res.body.steps) || [];
+      if (res.status >= 400 && !steps.length) {
+        // Відмова ДО виконання (немає підтвердження, невалідне значення) ·
+        // причина приходить у `hint`, і показувати нема чого більше.
         msg.textContent = (res.body && res.body.hint) ? res.body.hint : ('відмова, код ' + res.status);
         msg.style.color = 'var(--dn-tx)';
         log.style.display = 'none';
         return false;
       }
-      var steps = (res.body && res.body.steps) || [];
+      // Крок ВИКОНАВСЯ і впав · тоді голий код помилки є найгіршою з можливих
+      // відповідей: причина лежить у виводі кроку, і саме її треба показати.
+      // 2026-09-05 власник побачив «відмова, код 500» на кнопці, а справжня
+      // причина («сесія bdo уже існує») була схована (D72).
+      // Вивід кроків згорнутий: у ньому корисні рядки перемішані зі службовими
+      // («Ціль: PROD …» друкує кожен виклик), і розгорнутий блок з'їдав пів
+      // екрана над самим прогоном. Кнопка поруч розгортає повністю.
       log.style.display = steps.length ? 'block' : 'none';
-      log.textContent = steps.map(function (s) {
+      log.dataset.full = steps.map(function (s) {
         return '$ ' + s.command + '  → код ' + s.code + (s.output ? '\n' + s.output : '');
       }).join('\n\n');
+      log.dataset.short = steps.map(function (s) {
+        return '$ ' + s.command + '  → код ' + s.code;
+      }).join('\n');
+      log.textContent = log.dataset.short;
+      el('logToggle').style.display = steps.length ? '' : 'none';
+      el('logToggle').textContent = 'показати вивід';
       msg.textContent = res.body.ok ? (res.body.label + ' · готово') : (res.body.label + ' · крок не вдався, дивись вивід');
       msg.style.color = res.body.ok ? 'var(--ok-tx)' : 'var(--dn-tx)';
       loadSessions();
@@ -567,6 +601,13 @@ td.num,th.num{text-align:right;font-family:var(--mono)}
     el(id).oninput = previewStart;
     el(id).onchange = previewStart;
   });
+
+  el('logToggle').onclick = function () {
+    var log = el('actionLog');
+    var full = log.textContent === log.dataset.short;
+    log.textContent = full ? log.dataset.full : log.dataset.short;
+    this.textContent = full ? 'згорнути вивід' : 'показати вивід';
+  };
 
   el('startBtn').onclick = function () {
     if (!el('confirm').checked) {

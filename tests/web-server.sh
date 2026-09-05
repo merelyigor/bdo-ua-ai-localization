@@ -122,6 +122,92 @@ printf '%s' "$state_body" | grep -q '{\\"content\\"' \
 grep -Fq 'assemble' "$ROOT/lib/Web/Snapshot.php" \
     || fail 'сервер не складає текст потоку · розбір поїхав би в кожну поверхню окремо (D67)'
 
+# --- Живий потік мусить бути підписаний СВОЄЮ роллю (D73) ------------------
+# Роль виклику зʼявляється в журналі лише ПІСЛЯ відповіді, тому сторінка
+# чіпляла потік до попереднього, завершеного виклику: у картці «термінолог»
+# друкувався текст перекладача. Імʼя береться з події `start` журналу токенів,
+# а ознака `fresh` не дає картці «друкує…» висіти після завершення.
+printf '%s\n' '{"at":"2026-09-05T00:00:00+00:00","role":"translation-qa","model":"m","provider":"ollama","event":"start"}' \
+    '{"content":"Пере"}' '{"content":"клад"}' > "$BDO_STATE_DIR/run-stream.log"
+php -r '
+require $argv[1];
+$s = (new Bdo\Translate\Web\Snapshot($argv[2]))->toArray()["stream"];
+if (($s["role_label"] ?? "") !== "контроль якості") {
+    fwrite(STDERR, "потік підписаний не тією роллю: " . json_encode($s, JSON_UNESCAPED_UNICODE) . "\n"); exit(1);
+}
+if (($s["text"] ?? "") !== "Переклад") {
+    fwrite(STDERR, "текст потоку зібрано неправильно: " . json_encode($s, JSON_UNESCAPED_UNICODE) . "\n"); exit(1);
+}
+if (($s["fresh"] ?? false) !== true) { fwrite(STDERR, "свіжий журнал не визнано свіжим\n"); exit(1); }
+' "$ROOT/lib/autoload.php" "$BDO_STATE_DIR" || fail 'потік не несе ролі або тексту (D73)'
+
+php -r 'touch($argv[1], time() - 300);' "$BDO_STATE_DIR/run-stream.log"
+php -r '
+require $argv[1];
+$s = (new Bdo\Translate\Web\Snapshot($argv[2]))->toArray()["stream"];
+if (($s["fresh"] ?? true) !== false) {
+    fwrite(STDERR, "мовчазний пʼять хвилин журнал усе ще вважається живим друком\n"); exit(1);
+}' "$ROOT/lib/autoload.php" "$BDO_STATE_DIR" || fail 'картка «друкує…» висітиме після завершення (D73)'
+# Журнал без події `start` (пошкоджений або обрізаний) НЕ дає вигадати роль:
+# порожнє імʼя чесніше за чуже. Клієнт моделі обнуляє цей файл на кожному
+# виклику, тому в роботі перший рядок завжди `start` · але покладатися на це
+# без перевірки не можна.
+printf '%s\n' '{"content":"без початку"}' > "$BDO_STATE_DIR/run-stream.log"
+php -r '
+require $argv[1];
+$s = (new Bdo\Translate\Web\Snapshot($argv[2]))->toArray()["stream"];
+if (($s["role_label"] ?? "") !== "") {
+    fwrite(STDERR, "роль вигадано з журналу без події start: " . json_encode($s, JSON_UNESCAPED_UNICODE) . "\n");
+    exit(1);
+}' "$ROOT/lib/autoload.php" "$BDO_STATE_DIR" || fail 'сторінка підписала б потік вигаданою роллю'
+rm -f "$BDO_STATE_DIR/run-stream.log"
+
+# --- Живий потік мусить бути підписаний СВОЄЮ роллю (D73) ------------------
+# Роль виклику зʼявляється в журналі лише ПІСЛЯ відповіді, тому сторінка
+# чіпляла потік до попереднього, завершеного виклику: у картці «термінолог»
+# друкувався текст перекладача. Імʼя береться з події `start` журналу токенів,
+# а ознака `fresh` не дає картці «друкує…» висіти після завершення.
+printf '%s\n' '{"at":"2026-09-05T00:00:00+00:00","role":"translation-qa","model":"m","provider":"ollama","event":"start"}' \
+    '{"content":"Пере"}' '{"content":"клад"}' > "$BDO_STATE_DIR/run-stream.log"
+php -r '
+require $argv[1];
+$s = (new Bdo\Translate\Web\Snapshot($argv[2]))->toArray()["stream"];
+if (($s["role_label"] ?? "") !== "контроль якості") {
+    fwrite(STDERR, "потік підписаний не тією роллю: " . json_encode($s, JSON_UNESCAPED_UNICODE) . "\n"); exit(1);
+}
+if (($s["text"] ?? "") !== "Переклад") {
+    fwrite(STDERR, "текст потоку зібрано неправильно: " . json_encode($s, JSON_UNESCAPED_UNICODE) . "\n"); exit(1);
+}
+if (($s["fresh"] ?? false) !== true) { fwrite(STDERR, "свіжий журнал не визнано свіжим\n"); exit(1); }
+' "$ROOT/lib/autoload.php" "$BDO_STATE_DIR" || fail 'потік не несе ролі або тексту (D73)'
+
+php -r 'touch($argv[1], time() - 300);' "$BDO_STATE_DIR/run-stream.log"
+php -r '
+require $argv[1];
+$s = (new Bdo\Translate\Web\Snapshot($argv[2]))->toArray()["stream"];
+if (($s["fresh"] ?? true) !== false) {
+    fwrite(STDERR, "мовчазний пʼять хвилин журнал усе ще вважається живим друком\n"); exit(1);
+}' "$ROOT/lib/autoload.php" "$BDO_STATE_DIR" || fail 'картка «друкує…» висітиме після завершення (D73)'
+rm -f "$BDO_STATE_DIR/run-stream.log"
+
+# --- Скрипт сторінки мусить бути синтаксично цілим -------------------------
+# Зламаний JavaScript не видно ні в HTTP-коді (сторінка віддається як завжди),
+# ні на скріншоті (розмітка малюється). Видно лише те, що кнопки мертві ·
+# 2026-09-05 я вставив у скрипт коментар `#` замість `//`, і сторінка мовчки
+# перестала працювати цілком.
+if command -v node >/dev/null 2>&1; then
+    php -r '$h = (string) file_get_contents($argv[1]);
+        preg_match("~<script>(.*)</script>~s", $h, $m);
+        file_put_contents($argv[2], $m[1] ?? "");' "$ROOT/web/index.html" "$TMP/page.js"
+    node --check "$TMP/page.js" >"$TMP/node.txt" 2>&1 \
+        || fail "скрипт сторінки не парситься: $(head -3 "$TMP/node.txt")"
+else
+    # Без node беремо грубу, але дієву ознаку того самого класу: коментар `#`
+    # у JavaScript є синтаксичною помилкою завжди.
+    grep -nE '^\s*# ' "$ROOT/web/index.html" \
+        && fail 'у скрипті сторінки коментар # замість // · це синтаксична помилка JavaScript'
+fi
+
 # --- 6. Лише loopback -------------------------------------------------------
 grep -q "127.0.0.1:" "$BDO_STATE_DIR/web.log" \
     || fail 'журнал сервера не підтверджує, що він слухає 127.0.0.1'

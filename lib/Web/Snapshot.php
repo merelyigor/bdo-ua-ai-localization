@@ -140,6 +140,11 @@ final class Snapshot
         $thinking = '';
         $restarted = false;
         $consumed = 0;
+        // Роль, яка ЗАРАЗ друкує. Доки виклик триває, його немає в журналі
+        // викликів (той пишеться ПІСЛЯ), і без цього імені сторінка підписувала
+        // живий потік попередньою роллю · показувала роботу перекладача під
+        // заголовком «термінолог» (спіймано очима на живому прогоні 2026-09-05).
+        $role = '';
         $parts = explode("\n", $raw);
         array_pop($parts);   // хвіст без переводу рядка · неповний
         foreach ($parts as $line) {
@@ -157,6 +162,7 @@ final class Snapshot
                 $text = '';
                 $thinking = '';
                 $restarted = true;
+                $role = (string) ($entry['role'] ?? '');
 
                 continue;
             }
@@ -168,7 +174,13 @@ final class Snapshot
             }
         }
 
-        return ['text' => $text, 'thinking' => $thinking, 'offset' => $from + $consumed, 'restarted' => $restarted];
+        return [
+            'text' => $text,
+            'thinking' => $thinking,
+            'offset' => $from + $consumed,
+            'restarted' => $restarted,
+            'role' => $role,
+        ];
     }
 
     /** Розмір журналу токенів · позиція, від якої докачувати потік. */
@@ -350,11 +362,29 @@ final class Snapshot
             $raw = $cut === false ? '' : substr($raw, $cut + 1);
         }
         $assembled = $this->assemble($raw, $from);
+        $role = $assembled['role'];
+        if ($role === '') {
+            // Хвіст може не містити події `start` (довга генерація), тому імʼя
+            // ролі беремо з ПЕРШОГО рядка журналу · він завжди `start`.
+            $head = (string) @file_get_contents($this->path('run-stream.log'), false, null, 0, 512);
+            $first = json_decode((string) strtok($head, "\n"), true);
+            $role = is_array($first) ? (string) ($first['role'] ?? '') : '';
+        }
+
+        // Свіжість окремо від «прогін іде»: генерація пише в журнал кілька разів
+        // на секунду, тому мовчання довше за 15 с означає, що роль ВЖЕ не
+        // друкує. Без цього картка «ремонтник друкує…» висіла ще дві хвилини
+        // після завершення пачки · видно очима на живому прогоні 2026-09-05.
+        $path = $this->path('run-stream.log');
+        $fresh = is_file($path) && (time() - (int) @filemtime($path)) <= 15;
 
         return [
             'size' => $size,
             'text' => $assembled['text'],
             'thinking' => $assembled['thinking'],
+            'role' => $role,
+            'role_label' => $role === '' ? '' : Labels::role($role),
+            'fresh' => $fresh,
         ];
     }
 
