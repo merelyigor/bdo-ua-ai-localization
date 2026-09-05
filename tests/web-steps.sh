@@ -124,4 +124,30 @@ grep -Fq "'batch' => \$currentBatch()" "$ROOT/cli/model/client.php" \
 grep -Fq 'не знадобився' "$ROOT/web/index.html" \
     || fail 'сторінка не називає пропущений крок словом · сірий колір без пояснення заборонений'
 
+# --- Порожній список викликів мусить називати ПРИЧИНУ ------------------------
+# Живий журнал переїжджає в теку сесії при її закритті, тому завершена пачка
+# законно лишається без викликів. Без причини це читалось як «модель не
+# працювала», і саме так виглядав екран власника 2026-09-05 (0 викликів при
+# живих числах пачки).
+php -r '
+require $argv[1];
+use Bdo\Translate\Web\Snapshot;
+$tmp = sys_get_temp_dir()."/bdo-calls-reason-".getmypid();
+@mkdir($tmp."/batches/B1", 0777, true);
+file_put_contents($tmp."/current-batch", "B1");
+file_put_contents($tmp."/batches/B1/manifest.json", json_encode(["id"=>"B1","rows"=>50,"state"=>"verified"]));
+
+$gone = (new Snapshot($tmp))->toArray()["calls"]["reason"] ?? "";
+if (! str_contains($gone, "переїхав")) {
+    fwrite(STDERR, "зниклий журнал не пояснено: «$gone»\n"); exit(1);
+}
+file_put_contents($tmp."/model-calls.jsonl", "");
+$fresh = (new Snapshot($tmp))->toArray()["calls"]["reason"] ?? "";
+if (! str_contains($fresh, "ще не було")) {
+    fwrite(STDERR, "порожній живий журнал названо переїздом: «$fresh»\n"); exit(1);
+}
+' "$ROOT/lib/autoload.php" || fail 'порожній список викликів не називає причини'
+grep -Fq 'callsView.reason' "$ROOT/web/index.html" \
+    || fail 'екран прогону не показує причини порожнього списку'
+
 echo 'web steps: OK · крок пройдено за роллю навіть без свого стану, пропущений названо словом, виклики підписані пачкою.'

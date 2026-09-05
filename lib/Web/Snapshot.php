@@ -44,7 +44,7 @@ final class Snapshot
         return [
             'at' => gmdate('c'),
             'env' => $this->env(),
-            'goal' => $this->readJson('run-goal.json'),
+            'goal' => $this->goal(),
             'remaining' => $this->remaining(),
             'session' => [
                 'id' => $sessionId,
@@ -235,6 +235,10 @@ final class Snapshot
             'channel' => (string) ($manifest['channel'] ?? ''),
             'state' => $state,
             'state_label' => Labels::state($state),
+            // Стан РЕЧЕННЯМ, а не ярликом. «закрито» поруч із ідентифікатором
+            // читалось як стан усього прогону або сесії · власник так і
+            // сказав 2026-09-05. Дієслово знімає це питання.
+            'state_phrase' => self::phrase($state),
             'updated_at' => (string) ($manifest['updated_at'] ?? ''),
             'updated_ago' => Clock::ago($manifest['updated_at'] ?? null),
         ];
@@ -249,6 +253,71 @@ final class Snapshot
      * @return list<array{key:string,label:string,done:bool,now:bool}>
      */
     /**
+     * Стан пачки людською фразою.
+     *
+     * Ярлик («закрито») описує стан МАШИНИ; власник читає його як стан усього,
+     * що бачить на екрані. Фраза називає підмет: пачку.
+     */
+    private static function phrase(string $state): string
+    {
+        return match ($state) {
+            'verified', 'committed' => 'пачку завершено',
+            'committing' => 'пачка записується в PROD',
+            'ready_to_commit' => 'пачка готова до запису',
+            'names_pass' => 'пачка виправляє назви',
+            'healing' => 'пачка виправляє дефекти',
+            'selected' => 'пачку відібрано, робота ще не почалась',
+            'failed_terminal' => 'пачку зупинено без відновлення',
+            'paused' => 'пачку поставлено на паузу',
+            '' => 'пачки немає',
+            default => 'пачка '.mb_strtolower(Labels::state($state)),
+        };
+    }
+
+    /**
+     * Ціль прогону ЛЮДСЬКОЮ мовою.
+     *
+     * Файл `run-goal.json` тримає запит до API (`patch=active&missing=machine`)
+     * · це відповідь на питання «як ми відібрали рядки», а не на питання «що ми
+     * зараз робимо». На екрані власника має стояти друге; сам запит лишається
+     * полем `query` і живе в підказці, бо він потрібен при розборі.
+     *
+     * @return array<string,mixed>
+     */
+    private function goal(): array
+    {
+        $goal = $this->readJson('run-goal.json');
+        if ($goal === []) {
+            return [];
+        }
+        $mode = (string) ($goal['mode'] ?? '');
+        $patch = (string) ($goal['patch'] ?? '');
+        $bits = [];
+        $bits[] = match ($mode) {
+            'patch' => 'рядки без ШІ-шару',
+            'improve' => 'другий прохід по вже машинних',
+            'proposal' => 'усе в чергу до людини',
+            'manual' => 'вузький набір під підтвердження',
+            default => $mode === '' ? 'режим не зафіксовано' : 'режим '.$mode,
+        };
+        if ($patch !== '') {
+            $bits[] = $patch === 'active' ? 'активний патч' : 'патч '.$patch;
+        }
+        if ((string) ($goal['domain'] ?? '') !== '') {
+            $bits[] = 'категорія '.$goal['domain'];
+        }
+        $bits[] = match ((string) ($goal['channel'] ?? '')) {
+            'machine' => 'запис у ШІ-шар',
+            'proposal' => 'запис у чергу до людини',
+            'manual' => 'запис у ручний шар',
+            default => 'канал запису не зафіксовано',
+        };
+        $goal['phrase'] = implode(' · ', $bits);
+
+        return $goal;
+    }
+
+    /**
      * Виклики моделі з ЯВНОЮ приналежністю.
      *
      * Питання власника було буквальним: «до чого відносяться ці виклики?»
@@ -257,14 +326,24 @@ final class Snapshot
      * підписує блок відповідно. Раніше список мовчки показував сесію поруч із
      * заголовком про пачку.
      *
-     * @return array{scope:string,batch:string,items:list<array<string,mixed>>}
+     * Порожній список теж мусить мати причину. Живий журнал переїжджає в теку
+     * сесії при її закритті, тому завершена пачка законно лишається без
+     * викликів · і без пояснення це читалось як «модель не працювала».
+     *
+     * @return array{scope:string,batch:string,items:list<array<string,mixed>>,reason:string}
      */
     private function callsView(array $manifest): array
     {
         $batchId = (string) ($manifest['id'] ?? '');
         $all = $this->calls();
+        $reason = '';
+        if ($all === []) {
+            $reason = is_file($this->path('model-calls.jsonl'))
+                ? 'викликів ще не було · журнал заповнює сам прогін'
+                : 'журнал викликів переїхав у теку закритої сесії · дивись екран сесій';
+        }
         if ($batchId === '') {
-            return ['scope' => 'session', 'batch' => '', 'items' => $all];
+            return ['scope' => 'session', 'batch' => '', 'items' => $all, 'reason' => $reason];
         }
         $mine = [];
         foreach ($all as $call) {
@@ -275,10 +354,10 @@ final class Snapshot
         // Пачка без жодного власного виклику · показуємо сесію, але чесно
         // називаємо це сесією, а не приписуємо пачці чужу роботу.
         if ($mine === []) {
-            return ['scope' => 'session', 'batch' => '', 'items' => $all];
+            return ['scope' => 'session', 'batch' => '', 'items' => $all, 'reason' => $reason];
         }
 
-        return ['scope' => 'batch', 'batch' => $batchId, 'items' => $mine];
+        return ['scope' => 'batch', 'batch' => $batchId, 'items' => $mine, 'reason' => ''];
     }
 
     /**

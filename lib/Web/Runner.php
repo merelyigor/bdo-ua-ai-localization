@@ -55,7 +55,10 @@ final class Runner
             $steps = [];
             $ok = true;
             foreach ($plan['steps'] as $argv) {
-                $result = $this->run($argv);
+                // Змінна йде лише кроку, який ЗАПУСКАЄ роботу: підготовка й
+                // прибирання сесії tmux до роздумів моделі стосунку не мають.
+                $env = in_array('loop', $argv, true) ? ($plan['env'] ?? []) : [];
+                $result = $this->run($argv, $env);
                 $steps[] = [
                     'command' => $result['command'],
                     'code' => $result['code'],
@@ -79,16 +82,21 @@ final class Runner
      * коштувало робочої панелі. Для показу людині склеєний текст лишається.
      *
      * @param  list<string>  $argv
+     * @param  array<string,string>  $env  додаткові змінні лише цьому кроку
      * @return array{command:string,code:int,output:string,stdout:string,stderr:string}
      */
-    private function run(array $argv): array
+    private function run(array $argv, array $env = []): array
     {
         $descriptors = [
             0 => ['file', '/dev/null', 'r'],
             1 => ['pipe', 'w'],
             2 => ['pipe', 'w'],
         ];
-        $process = proc_open($argv, $descriptors, $pipes, $this->root);
+        // `null` означає «успадкувати оточення сервера»; передавати масив
+        // ЗАВЖДИ не можна · сервер запущено з `.env`, і підміна оточення
+        // забрала б у кроку і BDO_ENV, і PATH.
+        $environment = $env === [] ? null : array_merge(getenv(), $env);
+        $process = proc_open($argv, $descriptors, $pipes, $this->root, $environment);
         if (! is_resource($process)) {
             throw new RuntimeException('не вдалося запустити: '.implode(' ', $argv));
         }
@@ -169,7 +177,7 @@ final class Runner
      * Кеш на 10 с: сторінка може перемалюватись кілька разів підряд, а кожен
      * раз · це запит до PROD і витрачена квота.
      *
-     * @return array{total:int,rows:list<array<string,mixed>>,cached:bool,error?:string}
+     * @return array{total:int,rows:list<array<string,mixed>>,limit:int,cached:bool,error?:string}
      */
     public function moderationQueue(int $limit = 20): array
     {
@@ -177,7 +185,10 @@ final class Runner
         $cachePath = rtrim($this->stateDir, '/').'/web-moderation.json';
         if (is_file($cachePath) && (time() - (int) filemtime($cachePath)) < 10) {
             $cached = json_decode((string) file_get_contents($cachePath), true);
-            if (is_array($cached)) {
+            // Кеш віддається лише на ТОЙ САМИЙ ліміт. Без цієї умови перемикач
+            // «показувати 20/50/100» десять секунд не робив нічого: сторінка
+            // просила сотню й отримувала збережену двадцятку.
+            if (is_array($cached) && (int) ($cached['limit'] ?? 0) === $limit) {
                 $cached['cached'] = true;
 
                 return $cached;
@@ -185,19 +196,25 @@ final class Runner
         }
         $result = $this->run(['./bdo', 'moderation', '--limit', (string) $limit, '--json']);
         if ($result['code'] !== 0) {
-            return ['total' => 0, 'rows' => [], 'cached' => false, 'error' => $result['output']];
+            return ['total' => 0, 'rows' => [], 'limit' => $limit, 'cached' => false, 'error' => $result['output']];
         }
         $data = json_decode($result['stdout'], true);
         if (! is_array($data)) {
-            return ['total' => 0, 'rows' => [], 'cached' => false, 'error' => 'API віддав не JSON: '.mb_substr($result['stdout'], 0, 200)];
+            return ['total' => 0, 'rows' => [], 'limit' => $limit, 'cached' => false, 'error' => 'API віддав не JSON: '.mb_substr($result['stdout'], 0, 200)];
         }
         $rows = [];
         foreach ($data['data']['proposals'] ?? [] as $row) {
+            // Полів «причина потрапляння» й «підказка глосарія» API не віддає:
+            // у пропозиції є лише те, що нижче. Вигадувати причину не можна ·
+            // екран показує рівно наявні факти, а звідки рядок узявся, видно з
+            // журналу прогону. Коли сервер додасть поле, воно зʼявиться тут.
             $rows[] = [
                 'id' => (int) ($row['id'] ?? 0),
                 'identity_hash' => (string) ($row['identity_hash'] ?? ''),
                 'source_text' => (string) ($row['source_text'] ?? ''),
                 'text' => (string) ($row['text'] ?? ''),
+                'status' => (string) ($row['status'] ?? ''),
+                'submitted_at' => (string) ($row['submitted_at'] ?? ''),
                 'domain' => (string) ($row['classification']['domain'] ?? ''),
                 'created_at' => (string) ($row['created_at'] ?? ''),
             ];
@@ -205,8 +222,47 @@ final class Runner
         $out = [
             'total' => (int) ($data['meta']['total_matching'] ?? count($rows)),
             'rows' => $rows,
+            'limit' => $limit,
             'cached' => false,
         ];
+        file_put_contents($cachePath, (string) json_encode($out, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
+
+        return $out;
+    }
+
+    /**
+     * Перелік патчів для екрана старту.
+     *
+     * Через CLI, а не власним запитом: `patches-overview.sh` уже знає маршрут,
+     * fallback для сервера без `GET /patches` і рахує «скільки лишилось без
+     * ШІ-шару» окремим запитом на кожен патч. Другий клієнт розійшовся б із
+     * ним при першій зміні контракту.
+     *
+     * Кеш на 5 хвилин: цей перелік коштує ~9 запитів у PROD, а міняється раз
+     * на тиждень із виходом патча.
+     *
+     * @return array{patches:list<array<string,mixed>>,cached:bool,error?:string}
+     */
+    public function patches(): array
+    {
+        $cachePath = rtrim($this->stateDir, '/').'/web-patches.json';
+        if (is_file($cachePath) && (time() - (int) filemtime($cachePath)) < 300) {
+            $cached = json_decode((string) file_get_contents($cachePath), true);
+            if (is_array($cached)) {
+                $cached['cached'] = true;
+
+                return $cached;
+            }
+        }
+        $result = $this->run(['./bdo', 'patches', 'all', 'machine', '--json']);
+        if ($result['code'] !== 0) {
+            return ['patches' => [], 'cached' => false, 'error' => $result['output']];
+        }
+        $data = json_decode($result['stdout'], true);
+        if (! is_array($data) || ! isset($data['patches'])) {
+            return ['patches' => [], 'cached' => false, 'error' => 'перелік патчів не розібрався: '.mb_substr($result['stdout'], 0, 200)];
+        }
+        $out = ['patches' => $data['patches'], 'cached' => false];
         file_put_contents($cachePath, (string) json_encode($out, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
 
         return $out;

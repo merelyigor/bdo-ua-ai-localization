@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<title>bdo · почати прогін</title>
+<link rel="stylesheet" href="/app.css">
+<!--
+  ЕКРАН СТАРТУ · за макетом `docs/prototypes/04-start.html`.
+
+  Три речі, яких бракувало в першій редакції й на які власник вказав прямо:
+  патч вибирається СЕЛЕКТОМ із живими числами (а не вводиться рядком), режим
+  пояснює НАСЛІДОК (куди піде запис), а попередній показ команди приходить із
+  сервера · щоб він не міг розійтися з тим, що виконається.
+-->
+</head>
+<body>
+<div class="wrap">
+  <div class="nav" id="nav"></div>
+  <div id="gate" class="panel" style="display:none"></div>
+
+  <div id="app" style="display:none">
+    <div class="screen-title">
+      <h1>Почати прогін</h1>
+      <span class="hint">кнопка виконує ті самі команди, що й термінал</span>
+    </div>
+
+    <div class="panel">
+      <div class="head">
+        <div class="row">
+          <span class="lbl">куди пишемо</span>
+          <span class="pill" id="env">—</span>
+          <span class="empty" id="running"></span>
+        </div>
+      </div>
+
+      <div class="bar" style="margin-bottom:4px"><span class="lbl">режим</span></div>
+      <div class="bar" id="modes" style="align-items:stretch"></div>
+
+      <div class="bar" style="margin:12px 0 4px"><span class="lbl">патч</span></div>
+      <div class="bar">
+        <select id="patch" style="min-width:320px"><option value="active">активний патч</option></select>
+        <label class="empty" for="domain">категорія</label>
+        <select id="domain"><option value="">усі</option></select>
+        <label class="empty" for="batches">пачок</label>
+        <input id="batches" type="number" min="1" max="200" value="1" style="width:80px">
+      </div>
+      <div class="empty" id="patchHint" style="margin-top:6px"></div>
+
+      <div class="bar" style="margin:12px 0 4px"><span class="lbl">роздуми</span></div>
+      <label class="bar" style="font-size:13px;cursor:pointer;margin-bottom:0">
+        <input type="checkbox" id="think">
+        <span>Дозволити моделі думати вголос перед відповіддю
+          <span class="empty">· якість інколи вища, час приблизно вшестеро довший (7.6 с проти 44.8 с на тому самому запиті)</span></span>
+      </label>
+
+      <div class="bar" style="margin:12px 0 4px"><span class="lbl">що запуститься</span></div>
+      <div class="box mono" id="preview" style="margin-top:0">—</div>
+
+      <label class="bar" style="margin:10px 0 6px;font-size:13px;cursor:pointer">
+        <input type="checkbox" id="confirm">
+        <span>Запис піде в <b id="confirmEnv" style="font-weight:500">PROD</b>, і це незворотно. Розумію.</span>
+      </label>
+      <div class="bar">
+        <button id="startBtn">почати прогін</button>
+        <span id="actionMsg" class="empty"></span>
+        <button id="logToggle" style="display:none;margin-left:auto">показати вивід</button>
+      </div>
+      <pre class="log" id="actionLog" style="display:none;max-height:240px;margin-top:8px"></pre>
+    </div>
+  </div>
+</div>
+
+<script src="/app.js"></script>
+<script>
+(function () {
+  'use strict';
+  var B = window.BDO;
+  B.renderNav('/start');
+  if (!B.ensureToken()) { return; }
+  B.el('app').style.display = 'block';
+
+  // Наслідок режиму · головне, чого бракувало: кнопки міняли рядок команди й
+  // більше нічого, тому було незрозуміло, що взагалі перемикається.
+  var MODE_INFO = {
+    patch: { name: 'патч', what: 'перекласти рядки без ШІ-шару', where: 'запис у ШІ-шар' },
+    improve: { name: 'покращення ШІ', what: 'другий прохід по вже машинних', where: 'запис у ШІ-шар' },
+    proposal: { name: 'пропозиції', what: 'усе віддати людині', where: 'черга до людини' },
+    manual: { name: 'ручний', what: 'вузький набір під підтвердження', where: 'ручний шар і черга' }
+  };
+  var mode = 'patch';
+  var patches = [];
+
+  function selectedPatch() { return B.el('patch').value || 'active'; }
+
+  function renderModes() {
+    B.el('modes').innerHTML = Object.keys(MODE_INFO).map(function (key) {
+      var m = MODE_INFO[key];
+      return '<button class="mode" data-mode="' + key + '" aria-pressed="' + (key === mode) + '">'
+        + '<span class="n">' + B.esc(m.name) + '</span>'
+        + '<span class="d">' + B.esc(m.what) + '</span>'
+        + '<span class="d">→ ' + B.esc(m.where) + '</span></button>';
+    }).join('');
+    Array.prototype.forEach.call(B.el('modes').querySelectorAll('.mode'), function (btn) {
+      btn.onclick = function () { mode = btn.getAttribute('data-mode'); renderModes(); refresh(); };
+    });
+  }
+
+  function renderPatches() {
+    var sel = B.el('patch');
+    sel.innerHTML = '<option value="active">активний патч</option>'
+      + patches.map(function (p) {
+          var left = p.missing_machine;
+          return '<option value="' + B.esc(p.patch) + '">патч ' + B.esc(p.patch)
+            + ' · без ШІ-шару ' + B.num(left) + (p.active ? ' · активний' : '') + '</option>';
+        }).join('');
+  }
+
+  function patchHint() {
+    var value = selectedPatch();
+    var found = null;
+    patches.forEach(function (p) { if (String(p.patch) === value) { found = p; } });
+    if (!found) {
+      B.el('patchHint').textContent = patches.length
+        ? '«активний патч» · той, що зараз у грі. «Неактивний» не означає «неактуальний»: більшість роботи живе в старих патчах.'
+        : 'перелік патчів вантажиться…';
+      return;
+    }
+    var batches = Math.max(1, Math.ceil(found.missing_machine / 50));
+    B.el('patchHint').textContent = 'у патчі ' + found.patch + ' лишилось ' + B.num(found.missing_machine)
+      + ' рядків без ШІ-шару · це приблизно ' + B.num(batches) + ' пачок по 50';
+  }
+
+  function payload() {
+    var p = { mode: mode, patch: selectedPatch() };
+    var domain = B.el('domain').value;
+    if (domain) { p.domain = domain; }
+    var batches = B.el('batches').value;
+    if (batches) { p.batches = batches; }
+    if (B.el('think').checked) { p.think = true; }
+    return p;
+  }
+
+  var previewTimer = null;
+  function refresh() {
+    patchHint();
+    if (previewTimer) { clearTimeout(previewTimer); }
+    previewTimer = setTimeout(function () {
+      B.get('/api/plan?action=run.start&payload=' + encodeURIComponent(JSON.stringify(payload())))
+        .then(function (d) {
+          B.el('preview').textContent = (d.commands || []).join('\n') || (d.hint || '—');
+        })
+        .catch(function () { B.el('preview').textContent = 'сервер не відповів · план невідомий'; });
+    }, 150);
+  }
+
+  ['patch', 'domain', 'batches', 'think'].forEach(function (id) {
+    B.el(id).onchange = refresh;
+    B.el(id).oninput = refresh;
+  });
+
+  B.get('/api/actions').then(function (d) {
+    B.el('domain').innerHTML = '<option value="">усі</option>'
+      + (d.domains || []).map(function (x) { return '<option>' + B.esc(x) + '</option>'; }).join('');
+  }).catch(function () {});
+
+  B.get('/api/patches').then(function (d) {
+    patches = d.patches || [];
+    renderPatches();
+    refresh();
+  }).catch(function () {
+    B.el('patchHint').textContent = 'перелік патчів не завантажився · патч можна лишити «активний»';
+  });
+
+  B.get('/api/state').then(function (s) {
+    var target = (s.env || '').toUpperCase() || '—';
+    B.el('env').textContent = target;
+    B.el('env').style.background = target === 'PROD' ? 'var(--dn-bg)' : 'var(--s2)';
+    B.el('env').style.color = target === 'PROD' ? 'var(--dn-tx)' : 'var(--ts)';
+    B.el('confirmEnv').textContent = target;
+    if (s.running) {
+      B.el('running').textContent = 'прогін уже йде · старт заблокований';
+      B.el('startBtn').disabled = true;
+    }
+    B.setLink('live');
+  }).catch(function (e) {
+    if (e && e.message === 'bad_token') { B.tokenRejected(); }
+  });
+
+  B.el('logToggle').onclick = function () {
+    var log = B.el('actionLog');
+    var short = log.textContent === log.dataset.short;
+    log.textContent = short ? log.dataset.full : log.dataset.short;
+    this.textContent = short ? 'згорнути вивід' : 'показати вивід';
+  };
+
+  B.el('startBtn').onclick = function () {
+    var msg = B.el('actionMsg');
+    if (!B.el('confirm').checked) {
+      msg.textContent = 'спершу підтверди запис у ' + B.el('confirmEnv').textContent;
+      msg.style.color = 'var(--dn-tx)';
+      return;
+    }
+    msg.textContent = 'запускаю…';
+    msg.style.color = 'var(--ts)';
+    B.post('/api/action', { action: 'run.start', payload: payload(), confirm: true }).then(function (res) {
+      var steps = (res.body && res.body.steps) || [];
+      var log = B.el('actionLog');
+      if (res.status >= 400 && !steps.length) {
+        msg.textContent = (res.body && res.body.hint) ? res.body.hint : 'відмова, код ' + res.status;
+        msg.style.color = 'var(--dn-tx)';
+        return;
+      }
+      log.dataset.full = steps.map(function (s) {
+        return '$ ' + s.command + '  → код ' + s.code + (s.output ? '\n' + s.output : '');
+      }).join('\n\n');
+      log.dataset.short = steps.map(function (s) { return '$ ' + s.command + '  → код ' + s.code; }).join('\n');
+      log.textContent = log.dataset.short;
+      log.style.display = 'block';
+      B.el('logToggle').style.display = '';
+      B.el('logToggle').textContent = 'показати вивід';
+      if (res.body && res.body.ok) {
+        msg.innerHTML = 'прогін запущено · <a href="/" style="color:var(--acc-tx)">дивитись роботу →</a>';
+        msg.style.color = 'var(--ok-tx)';
+      } else {
+        msg.textContent = 'крок не вдався · дивись вивід';
+        msg.style.color = 'var(--dn-tx)';
+      }
+    });
+  };
+
+  renderModes();
+  refresh();
+})();
+</script>
+</body>
+</html>

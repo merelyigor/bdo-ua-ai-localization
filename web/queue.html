@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<title>bdo · черга до людини</title>
+<link rel="stylesheet" href="/app.css">
+<!--
+  ЕКРАН ЧЕРГИ · за макетом `docs/prototypes/03-moderation.html`.
+
+  Рядок показується парою «джерело → переклад», текст можна виправити перед
+  схваленням, рішення приймається поштучно або пачкою.
+
+  ЧОГО ТУТ НЕМАЄ І ЧОМУ. У макеті були підписи «чому тут» і «підказка
+  глосарія». API пропозицій таких полів не віддає (є лише id, identity,
+  джерело, текст, статус, час), тому їх немає й на екрані: вигадана причина
+  гірша за відсутню.
+-->
+</head>
+<body>
+<div class="wrap">
+  <div class="nav" id="nav"></div>
+  <div id="gate" class="panel" style="display:none"></div>
+
+  <div id="app" style="display:none">
+    <div class="screen-title">
+      <h1>Черга до людини</h1>
+      <span class="hint">рядки, які конвеєр не взяв на себе · рішення за тобою</span>
+    </div>
+
+    <div class="panel">
+      <div class="bar">
+        <span class="pill" id="env">—</span>
+        <span id="total" style="font-weight:500">—</span>
+        <span class="empty" id="meta"></span>
+        <label class="empty" for="limit">показувати</label>
+        <select id="limit"><option>20</option><option>50</option><option>100</option></select>
+        <button id="reload" style="margin-left:auto">оновити</button>
+        <button id="approveSel" style="display:none">схвалити вибрані <span id="count">0</span></button>
+      </div>
+      <div id="rows"><div class="empty">вантажу чергу…</div></div>
+      <div class="empty" style="margin-top:12px">
+        Схвалення пише в API рівно те, що в полі. Виправлений тут текст іде як
+        рішення ЛЮДИНИ, тому надалі він сильніший за машинну назву глосарія.
+      </div>
+      <div class="bar" style="margin-top:10px"><span id="msg" class="empty"></span></div>
+    </div>
+  </div>
+</div>
+
+<script src="/app.js"></script>
+<script>
+(function () {
+  'use strict';
+  var B = window.BDO;
+  B.renderNav('/queue');
+  if (!B.ensureToken()) { return; }
+  B.el('app').style.display = 'block';
+  B.setLink('poll', 'черга вантажиться на запит');
+
+  var rows = [];
+
+  function selected() {
+    return Array.prototype.map.call(
+      document.querySelectorAll('#rows input.sel:checked'),
+      function (c) { return Number(c.getAttribute('data-id')); }
+    );
+  }
+
+  function recount() {
+    var n = selected().length;
+    B.el('count').textContent = n;
+    B.el('approveSel').style.display = n ? '' : 'none';
+  }
+
+  function rowHtml(r) {
+    return '<div class="row" data-row="' + r.id + '">'
+      + '<input type="checkbox" class="sel" data-id="' + r.id + '">'
+      + '<div style="flex:1;min-width:0">'
+      + '<div style="display:flex;gap:8px;align-items:center;margin-bottom:2px">'
+      + '<span class="mono" style="color:var(--tm)">#' + r.id + '</span>'
+      + (r.domain ? '<span class="pill" style="background:var(--wr-bg);color:var(--wr-tx)">' + B.esc(r.domain) + '</span>' : '')
+      + '</div>'
+      + '<div class="mono" style="color:var(--tm)">' + B.esc(r.source_text) + '</div>'
+      + '<input type="text" class="text" data-id="' + r.id + '" value="' + B.esc(r.text).replace(/"/g, '&quot;') + '" style="width:100%">'
+      + '<div class="bar" style="margin:6px 0 0">'
+      + '<button data-approve="' + r.id + '" style="font-size:12px">схвалити</button>'
+      + '<button data-reject="' + r.id + '" style="font-size:12px;color:var(--dn-tx)">відхилити</button>'
+      + '<span class="empty" data-note="' + r.id + '"></span>'
+      + '</div></div></div>';
+  }
+
+  function render(d) {
+    if (d.error) {
+      B.el('rows').innerHTML = '<div class="empty" style="color:var(--dn-tx)">' + B.esc(d.error) + '</div>';
+      B.el('total').textContent = 'не вдалося';
+      return;
+    }
+    rows = d.rows || [];
+    B.el('total').textContent = 'чекають ' + B.num(d.total);
+    var rest = Math.max(0, (Number(d.total) || 0) - rows.length);
+    B.el('meta').textContent = 'показано ' + rows.length
+      + (rest ? ' · поза екраном ще ' + B.num(rest) + ', вирішені зникають зі списку' : '')
+      + (d.cached ? ' · з кешу' : '');
+    var badge = B.el('queueBadge');
+    if (badge) { badge.textContent = d.total ? B.num(d.total) : ''; }
+    B.el('rows').innerHTML = rows.length
+      ? rows.map(rowHtml).join('')
+      : '<div class="empty">Черга порожня · нічого вирішувати.</div>';
+    Array.prototype.forEach.call(document.querySelectorAll('#rows input.sel'), function (c) { c.onchange = recount; });
+    Array.prototype.forEach.call(document.querySelectorAll('#rows [data-approve]'), function (btn) {
+      btn.onclick = function () { decide('moderation.approve', [Number(btn.getAttribute('data-approve'))]); };
+    });
+    Array.prototype.forEach.call(document.querySelectorAll('#rows [data-reject]'), function (btn) {
+      btn.onclick = function () { reject(Number(btn.getAttribute('data-reject'))); };
+    });
+    recount();
+  }
+
+  function load() {
+    B.el('meta').textContent = 'вантажу…';
+    // Стеля 100 · її ставить сервер (`Runner::moderationQueue`). Зсуву в CLI
+    // немає, тому «наступна сотня» була б обіцянкою без механізму: показуємо
+    // рівно те, що вміємо взяти, і кажемо, скільки лишилось поза екраном.
+    B.get('/api/moderation?limit=' + encodeURIComponent(B.el('limit').value)).then(render).catch(function (e) {
+      if (e && e.message === 'bad_token') { B.tokenRejected(); return; }
+      B.el('meta').textContent = 'сервер не відповів';
+    });
+  }
+
+  function note(ids, text, bad) {
+    ids.forEach(function (id) {
+      var n = document.querySelector('[data-note="' + id + '"]');
+      if (n) { n.textContent = text; n.style.color = bad ? 'var(--dn-tx)' : 'var(--ok-tx)'; }
+    });
+    B.el('msg').textContent = text;
+    B.el('msg').style.color = bad ? 'var(--dn-tx)' : 'var(--ok-tx)';
+  }
+
+  function decide(action, ids, reason) {
+    if (!ids.length) { return; }
+    // Виправлений текст поки не надсилається окремим полем: команда
+    // `./bdo moderation --approve` приймає лише перелік id. Тому якщо текст
+    // змінено, кажемо про це прямо, а не робимо вигляд, що правка врахована.
+    var edited = ids.filter(function (id) {
+      var input = document.querySelector('input.text[data-id="' + id + '"]');
+      var row = rows.filter(function (r) { return r.id === id; })[0];
+      return input && row && input.value !== row.text;
+    });
+    if (edited.length) {
+      note(edited, 'текст змінено, але схвалення надсилає ЗБЕРЕЖЕНИЙ варіант · правку зроби в адмінці', true);
+      return;
+    }
+    var payload = { ids: ids };
+    if (reason) { payload.reason = reason; }
+    note(ids, 'надсилаю…', false);
+    B.post('/api/action', { action: action, payload: payload, confirm: true }).then(function (res) {
+      if (res.status >= 400) {
+        note(ids, (res.body && res.body.hint) ? res.body.hint : 'відмова, код ' + res.status, true);
+        return;
+      }
+      note(ids, res.body && res.body.ok ? 'рішення надіслано' : 'крок не вдався', !(res.body && res.body.ok));
+      load();
+    });
+  }
+
+  function reject(id) {
+    var reason = prompt('Причина відхилення (її побачить автор):', '');
+    if (reason === null) { return; }
+    if (!reason.trim()) { note([id], 'відхилення без причини не надсилається', true); return; }
+    decide('moderation.reject', [id], reason.trim());
+  }
+
+  B.el('reload').onclick = load;
+  B.el('limit').onchange = load;
+  B.el('approveSel').onclick = function () { decide('moderation.approve', selected()); };
+
+  B.get('/api/state').then(function (s) {
+    var target = (s.env || '').toUpperCase() || '—';
+    B.el('env').textContent = target;
+    B.el('env').style.background = target === 'PROD' ? 'var(--dn-bg)' : 'var(--s2)';
+    B.el('env').style.color = target === 'PROD' ? 'var(--dn-tx)' : 'var(--ts)';
+  }).catch(function () {});
+
+  load();
+})();
+</script>
+</body>
+</html>

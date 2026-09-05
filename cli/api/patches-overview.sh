@@ -5,6 +5,7 @@
 #   ./patches-overview.sh 5                   лише останні 5
 #   ./patches-overview.sh 5 machine           лише ШІ-шар (удвічі менше запитів)
 #   ./patches-overview.sh all both --full     + зміни патча і стани перекладу
+#   ./patches-overview.sh all machine --json  машинний перелік (для сторінки)
 #
 # Навіщо. Пресети режимів націлені на `active`, і це щоденний випадок. Але
 # виміряно 2026-08-24: в активному патчі лишався ОДИН рядок без
@@ -33,12 +34,17 @@ KEY="${BDO_API_KEY:?}"
 LIMIT=0
 LAYER="both"
 FULL=0
+JSON=0
 for arg in "$@"; do
     case "$arg" in
         --full) FULL=1 ;;
+        # `--json` віддає ті самі рядки машинно · для екрана старту в браузері.
+        # Другого клієнта до `/patches` не заводимо: перелік, кількість без
+        # ШІ-шару й позначку активного рахує рівно цей скрипт.
+        --json) JSON=1 ;;
         machine|manual|both) LAYER="$arg" ;;
         all|0) LIMIT=0 ;;
-        ''|*[!0-9]*) echo "Аргументи: [кількість|all] [machine|manual|both] [--full]" >&2; exit 2 ;;
+        ''|*[!0-9]*) echo "Аргументи: [кількість|all] [machine|manual|both] [--full|--json]" >&2; exit 2 ;;
         *) LIMIT="$arg" ;;
     esac
 done
@@ -99,6 +105,27 @@ while IFS=$'\t' read -r snapshot number published total untranslated states chan
     test "$LAYER" != machine && manual="$(missing_count "$snapshot" manual)"
     ROWS_TSV="${ROWS_TSV}${snapshot}\t${number}\t${published}\t${total}\t${untranslated}\t${machine}\t${manual}\t${states}\t${changes}\t${mark}\n"
 done <<< "$LIST"
+
+if [ "$JSON" = 1 ]; then
+    printf '%b' "$ROWS_TSV" | php -r '
+    $out = [];
+    while (($line = fgets(STDIN)) !== false) {
+        $c = explode("\t", rtrim($line, "\n"));
+        if (count($c) < 10 || $c[0] === "") { continue; }
+        $out[] = [
+            "patch" => $c[0],
+            "game_number" => $c[1],
+            "published" => $c[2],
+            "rows" => (int) $c[3],
+            "missing_machine" => is_numeric($c[5]) ? (int) $c[5] : null,
+            "missing_manual" => is_numeric($c[6]) ? (int) $c[6] : null,
+            "active" => trim($c[9]) === "активний",
+        ];
+    }
+    echo json_encode(["patches" => $out], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    '
+    exit 0
+fi
 
 # Друкує PHP: `printf` у bash рахує БАЙТИ, і кириличні заголовки зсували колонки.
 printf '%b' "$ROWS_TSV" | php -r '

@@ -311,6 +311,11 @@ check_references() {
     $bad = [];
     foreach (explode("\n", trim(shell_exec("git ls-files \"*.md\""))) as $doc) {
         if ($doc === "") { continue; }
+        // Файл може бути в індексі git і вже видалений у робочій теці · саме
+        // так виглядає закритий план до коміту. Попередження PHP тут гірше за
+        // саму ситуацію: воно потрапляє у вивід і перетворює порожній перелік
+        // на «посилання ведуть у нікуди» без жодного посилання.
+        if (! is_file($doc)) { continue; }
         $dir = dirname($doc);
         preg_match_all("~\]\(([^)#][^)]*\.md)\)~", (string) file_get_contents($doc), $m);
         foreach ($m[1] as $target) {
@@ -556,6 +561,7 @@ check_shell() {
     run bash tests/web-server.sh
     run bash tests/web-actions.sh
     run bash tests/web-steps.sh
+    run bash tests/web-screens.sh
     run bash tests/no-silent-failures.sh
     run bash tests/quarantine-recovery.sh
     run bash tests/worker-reference.sh

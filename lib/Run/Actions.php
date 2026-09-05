@@ -59,8 +59,13 @@ final class Actions
     /**
      * Побудувати план дії. Нічого не запускає й не читає диск.
      *
+     * Поле `env` існує через єдиний вимикач, який НЕ є аргументом команди:
+     * роздуми моделі вмикає змінна `BDO_MODEL_THINK`. Тримати її окремо
+     * чесніше, ніж вигадувати неіснуючий прапорець `./bdo`, і саме тому
+     * `commands()` показує її в рядку · власник бачить, що саме запуститься.
+     *
      * @param  array<string,mixed>  $payload
-     * @return array{steps:list<list<string>>,detached:bool,needs_confirm:bool,label:string}
+     * @return array{steps:list<list<string>>,env:array<string,string>,detached:bool,needs_confirm:bool,label:string}
      */
     public static function plan(string $action, array $payload): array
     {
@@ -103,6 +108,10 @@ final class Actions
 
                 return [
                     'steps' => $steps,
+                    // Роздуми коштують шестикратного часу (виміряно: 7.6 с
+                    // проти 44.8 с на тому самому запиті), тому вмикаються
+                    // явно й лише на цей прогін, а не назавжди в `.env`.
+                    'env' => (($payload['think'] ?? false) === true) ? ['BDO_MODEL_THINK' => '1'] : [],
                     'detached' => true,
                     // Запис у PROD незворотний, тому підтвердження вимагає КОД,
                     // а не галочка в розмітці: розмітку видно й можна обійти.
@@ -113,6 +122,7 @@ final class Actions
             case 'run.stop':
                 return [
                     'steps' => [['./bdo', 'watch', '--stop']],
+                    'env' => [],
                     'detached' => false,
                     'needs_confirm' => false,
                     'label' => 'зупинити прогін',
@@ -121,6 +131,7 @@ final class Actions
             case 'session.new':
                 return [
                     'steps' => [['./bdo', 'session', 'new']],
+                    'env' => [],
                     'detached' => false,
                     'needs_confirm' => false,
                     'label' => 'нова сесія',
@@ -134,6 +145,7 @@ final class Actions
 
                 return [
                     'steps' => [$close],
+                    'env' => [],
                     'detached' => false,
                     'needs_confirm' => false,
                     'label' => 'закрити сесію',
@@ -142,6 +154,7 @@ final class Actions
             case 'moderation.approve':
                 return [
                     'steps' => [['./bdo', 'moderation', '--approve', self::ids($payload['ids'] ?? [])]],
+                    'env' => [],
                     'detached' => false,
                     // Схвалення пише в PROD-шар назавжди · без явного
                     // підтвердження кнопка стає пасткою для випадкового кліку.
@@ -163,6 +176,7 @@ final class Actions
 
                 return [
                     'steps' => [['./bdo', 'moderation', '--reject', self::ids($payload['ids'] ?? []), '--reason', $reason]],
+                    'env' => [],
                     'detached' => false,
                     'needs_confirm' => true,
                     'label' => 'відхилити пропозиції',
@@ -182,9 +196,17 @@ final class Actions
      */
     public static function commands(string $action, array $payload): array
     {
+        $plan = self::plan($action, $payload);
+        $prefix = '';
+        foreach ($plan['env'] as $name => $value) {
+            $prefix .= $name.'='.$value.' ';
+        }
         $out = [];
-        foreach (self::plan($action, $payload)['steps'] as $argv) {
-            $out[] = implode(' ', $argv);
+        foreach ($plan['steps'] as $argv) {
+            // Змінна стосується САМОГО прогону, а не підготовки: показувати
+            // `BDO_MODEL_THINK=1 ./bdo watch --stop` було б брехнею.
+            $isRun = in_array('loop', $argv, true);
+            $out[] = ($isRun ? $prefix : '').implode(' ', $argv);
         }
 
         return $out;

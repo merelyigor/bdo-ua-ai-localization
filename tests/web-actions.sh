@@ -270,11 +270,47 @@ grep -q ':42' "$BDO_STATE_DIR/web-client.log" \
 # --- Сторінка справді має ці кнопки ----------------------------------------
 # Без цієї перевірки дії могли б жити лише в API, а власник не мав би чим їх
 # натиснути · і «етап готовий» означало б готовий сервер при мертвому вікні.
-page="$(curl -s -m 10 "$URL")"
-for marker in 'id="startBtn"' 'id="stopBtn"' 'id="sessNew"' 'id="sessClose"' 'id="modApprove"' 'id="preview"'; do
-    printf '%s' "$page" | grep -q "$marker" || fail "на сторінці немає елемента $marker"
-done
-printf '%s' "$page" | grep -q "api/client-error" \
-    || fail 'сторінка не надсилає своїх помилок у журнал'
+# Екрани окремі (рішення власника 2026-09-05), тому кожна кнопка перевіряється
+# на СВОЄМУ екрані: інакше зниклий елемент сховався б за сусідньою сторінкою.
+while IFS='|' read -r screen_path marker; do
+    body="$(curl -s -m 10 "http://127.0.0.1:$PORT$screen_path")"
+    printf '%s' "$body" | grep -q "$marker" \
+        || fail "на екрані $screen_path немає елемента $marker"
+done <<'CONTROLS'
+/start|id="startBtn"
+/start|id="preview"
+/start|id="think"
+/|id="stopBtn"
+/sessions|id="sessNew"
+/sessions|id="sessClose"
+/queue|id="approveSel"
+CONTROLS
+grep -q 'api/client-error' "$ROOT/web/app.js" \
+    || fail 'спільний скрипт не надсилає помилок сторінки в журнал'
+grep -q "addEventListener('error'" "$ROOT/web/app.js" \
+    || fail 'помилки JavaScript ніхто не ловить · зламана кнопка не лишить сліду'
+
+# --- Кеш черги не має підмінювати ліміт --------------------------------------
+# Перемикач «показувати 20/50/100» десять секунд не робив нічого: сторінка
+# просила сотню, а кеш віддавав збережену двадцятку. Ключ кешу мусить включати
+# сам ліміт, інакше контроль на екрані є, а дії за ним немає.
+php -r '
+require $argv[1];
+use Bdo\Translate\Web\Runner;
+$dir = $argv[2];
+file_put_contents($dir."/web-moderation.json", json_encode([
+    "total" => 223, "rows" => array_fill(0, 20, ["id" => 1]), "limit" => 20, "cached" => false,
+]));
+$r = new Runner($argv[3], $dir);
+$same = $r->moderationQueue(20);
+if (($same["cached"] ?? false) !== true) {
+    fwrite(STDERR, "кеш не спрацював на той самий ліміт\n"); exit(1);
+}
+$other = $r->moderationQueue(100);
+if (($other["cached"] ?? false) === true && count($other["rows"]) === 20) {
+    fwrite(STDERR, "на ліміт 100 віддано кешовану двадцятку\n"); exit(1);
+}
+' "$ROOT/lib/autoload.php" "$BDO_STATE_DIR" "$ROOT" || fail 'кеш черги ігнорує ліміт'
+rm -f "$BDO_STATE_DIR/web-moderation.json"
 
 echo 'web actions: OK · кожна дія є командою з реєстру, POST зі своєю Origin, PROD вимагає підтвердження, рядок із браузера не стає командою, помилка сторінки лишає слід у файлі.'

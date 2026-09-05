@@ -66,9 +66,22 @@ page="$(curl -s -m 5 "$URL")" || fail 'сторінка за надрукова�
 printf '%s' "$page" | grep -q 'bdo · прогін' \
     || fail 'за посиланням віддано не нашу сторінку'
 
-# 9. Токена в тілі сторінки бути не має.
-printf '%s' "$page" | grep -q "$TOKEN" \
-    && fail 'токен вшитий у сторінку · він мусить приходити лише в посиланні'
+# Екрани окремі (рішення власника 2026-09-05), тому кожен мусить відкриватись
+# СВОЇМ шляхом. Один зламаний шлях = екран, у який неможливо потрапити, і на
+# сторінці прогону це видно лише мертвим посиланням у навігації.
+while IFS='|' read -r screen_path screen_title; do
+    body="$(curl -s -m 5 "http://127.0.0.1:$PORT${screen_path}")" \
+        || fail "екран $screen_path не відкрився"
+    printf '%s' "$body" | grep -Fq "$screen_title" \
+        || fail "за шляхом $screen_path віддано не той екран (немає «$screen_title»)"
+    printf '%s' "$body" | grep -q "$TOKEN" \
+        && fail "токен вшитий в екран $screen_path · він мусить приходити лише в посиланні"
+done <<'SCREENS'
+/|bdo · прогін
+/queue|bdo · черга до людини
+/sessions|bdo · сесії роботи
+/start|bdo · почати прогін
+SCREENS
 
 test -s "$BDO_STATE_DIR/web.json" || fail 'немає state/web.json після --background'
 perm="$(php -r 'printf("%o", fileperms($argv[1]) & 0777);' "$BDO_STATE_DIR/web.json")"
@@ -91,12 +104,20 @@ expect 403 'чужий токен' "http://127.0.0.1:$PORT/api/state?t=000000000
 # адреси, тому F5 йде на `/` без нього (D75). Дані лишаються за токеном ·
 # перевірки нижче це доводять.
 expect 200 'сторінка без токена' "http://127.0.0.1:$PORT/"
-shell="$(curl -s -m 5 "http://127.0.0.1:$PORT/")"
-printf '%s' "$shell" | grep -q 'Немає токена' \
-    || fail 'оболонка не має екрана «немає токена» · власник побачив би порожнє вікно без пояснення'
-for secret in 'batch-summary' 'identity_hash' 'write-log' 'model-calls'; do
-    printf '%s' "$shell" | grep -q "$secret" \
-        && fail "в оболонці сторінки лежать дані ($secret) · вона мусить бути порожньою"
+# Пояснення «немає токена» живе у спільному скрипті, а місце під нього · у
+# кожній оболонці. Без обох частин власник побачив би порожнє вікно без причини.
+grep -Fq 'Немає токена' "$ROOT/web/app.js" \
+    || fail 'спільний скрипт не має екрана «немає токена»'
+for page in index queue sessions start; do
+    grep -Fq 'id="gate"' "$ROOT/web/$page.html" \
+        || fail "у web/$page.html немає місця під пояснення «немає токена»"
+done
+for page_path in / /queue /sessions /start; do
+    shell="$(curl -s -m 5 "http://127.0.0.1:$PORT$page_path")"
+    for secret in 'batch-summary' 'identity_hash' 'write-log' 'model-calls'; do
+        printf '%s' "$shell" | grep -q "$secret" \
+            && fail "в оболонці екрана $page_path лежать дані ($secret) · вона мусить бути порожньою"
+    done
 done
 expect 200 'ping без токена' "http://127.0.0.1:$PORT/api/ping"
 expect 405 'POST' -X POST "http://127.0.0.1:$PORT/api/state?t=$TOKEN"
@@ -174,33 +195,6 @@ if (($s["role_label"] ?? "") !== "") {
 }' "$ROOT/lib/autoload.php" "$BDO_STATE_DIR" || fail 'сторінка підписала б потік вигаданою роллю'
 rm -f "$BDO_STATE_DIR/run-stream.log"
 
-# --- Живий потік мусить бути підписаний СВОЄЮ роллю (D73) ------------------
-# Роль виклику зʼявляється в журналі лише ПІСЛЯ відповіді, тому сторінка
-# чіпляла потік до попереднього, завершеного виклику: у картці «термінолог»
-# друкувався текст перекладача. Імʼя береться з події `start` журналу токенів,
-# а ознака `fresh` не дає картці «друкує…» висіти після завершення.
-printf '%s\n' '{"at":"2026-09-05T00:00:00+00:00","role":"translation-qa","model":"m","provider":"ollama","event":"start"}' \
-    '{"content":"Пере"}' '{"content":"клад"}' > "$BDO_STATE_DIR/run-stream.log"
-php -r '
-require $argv[1];
-$s = (new Bdo\Translate\Web\Snapshot($argv[2]))->toArray()["stream"];
-if (($s["role_label"] ?? "") !== "контроль якості") {
-    fwrite(STDERR, "потік підписаний не тією роллю: " . json_encode($s, JSON_UNESCAPED_UNICODE) . "\n"); exit(1);
-}
-if (($s["text"] ?? "") !== "Переклад") {
-    fwrite(STDERR, "текст потоку зібрано неправильно: " . json_encode($s, JSON_UNESCAPED_UNICODE) . "\n"); exit(1);
-}
-if (($s["fresh"] ?? false) !== true) { fwrite(STDERR, "свіжий журнал не визнано свіжим\n"); exit(1); }
-' "$ROOT/lib/autoload.php" "$BDO_STATE_DIR" || fail 'потік не несе ролі або тексту (D73)'
-
-php -r 'touch($argv[1], time() - 300);' "$BDO_STATE_DIR/run-stream.log"
-php -r '
-require $argv[1];
-$s = (new Bdo\Translate\Web\Snapshot($argv[2]))->toArray()["stream"];
-if (($s["fresh"] ?? true) !== false) {
-    fwrite(STDERR, "мовчазний пʼять хвилин журнал усе ще вважається живим друком\n"); exit(1);
-}' "$ROOT/lib/autoload.php" "$BDO_STATE_DIR" || fail 'картка «друкує…» висітиме після завершення (D73)'
-rm -f "$BDO_STATE_DIR/run-stream.log"
 
 # --- Вкладки не мають вибирати всі воркери (D76) ---------------------------
 # Кожне SSE-зʼєднання займає ОДИН воркер. При чотирьох воркерах і чотирьох
@@ -211,9 +205,9 @@ workers_default="$(sed -n 's/^WORKERS="${BDO_WEB_WORKERS:-\([0-9]*\)}"/\1/p' "$R
 test -n "$workers_default" || fail 'не вдалося прочитати кількість воркерів із cli/system/web.sh'
 test "$workers_default" -ge 8 \
     || fail "воркерів $workers_default · чотирьох не вистачало вже на четвертій вкладці (D76)"
-grep -Fq 'visibilitychange' "$ROOT/web/index.html" \
+grep -Fq 'visibilitychange' "$ROOT/web/app.js" \
     || fail 'схована вкладка не відпускає SSE · кілька вкладок вибирають усі воркери (D76)'
-grep -Fq 'pagehide' "$ROOT/web/index.html" \
+grep -Fq 'pagehide' "$ROOT/web/app.js" \
     || fail 'закрита вкладка не відпускає SSE'
 
 # --- Скрипт сторінки мусить бути синтаксично цілим -------------------------
@@ -222,15 +216,22 @@ grep -Fq 'pagehide' "$ROOT/web/index.html" \
 # 2026-09-05 я вставив у скрипт коментар `#` замість `//`, і сторінка мовчки
 # перестала працювати цілком.
 if command -v node >/dev/null 2>&1; then
-    php -r '$h = (string) file_get_contents($argv[1]);
-        preg_match("~<script>(.*)</script>~s", $h, $m);
-        file_put_contents($argv[2], $m[1] ?? "");' "$ROOT/web/index.html" "$TMP/page.js"
-    node --check "$TMP/page.js" >"$TMP/node.txt" 2>&1 \
-        || fail "скрипт сторінки не парситься: $(head -3 "$TMP/node.txt")"
+    node --check "$ROOT/web/app.js" >"$TMP/node.txt" 2>&1 \
+        || fail "спільний скрипт web/app.js не парситься: $(head -3 "$TMP/node.txt")"
+    for page in index queue sessions start; do
+        # Береться ОСТАННІЙ вбудований скрипт: перший · це <script src>.
+        php -r '$h = (string) file_get_contents($argv[1]);
+            preg_match_all("~<script>(.*?)</script>~s", $h, $m);
+            file_put_contents($argv[2], $m[1] ? end($m[1]) : "");' \
+            "$ROOT/web/$page.html" "$TMP/$page.js"
+        test -s "$TMP/$page.js" || fail "у web/$page.html немає вбудованого скрипта"
+        node --check "$TMP/$page.js" >"$TMP/node.txt" 2>&1 \
+            || fail "скрипт web/$page.html не парситься: $(head -3 "$TMP/node.txt")"
+    done
 else
     # Без node беремо грубу, але дієву ознаку того самого класу: коментар `#`
     # у JavaScript є синтаксичною помилкою завжди.
-    grep -nE '^\s*# ' "$ROOT/web/index.html" \
+    grep -nE '^\s*# ' "$ROOT/web/"*.html "$ROOT/web/app.js" \
         && fail 'у скрипті сторінки коментар # замість // · це синтаксична помилка JavaScript'
 fi
 

@@ -120,7 +120,10 @@ if ($isAction && $origin === '') {
 // шапці. Усе, що несе дані або виконує дію, вимагає токен.
 // `/api/ping` теж публічний і навмисно порожній: за ним `./bdo web` упізнає
 // СВІЙ сервер на порту й не підіймає другий. Даних у відповіді немає.
-$publicPaths = ['/', '/index.html', '/api/ping'];
+// Порожні оболонки екранів і спільна статика · без токена (див. пункт 3):
+// у них немає жодного рядка даних, а без цього оновлення вкладки давало б
+// голий JSON замість сторінки.
+$publicPaths = ['/', '/index.html', '/queue', '/sessions', '/start', '/app.css', '/app.js', '/api/ping'];
 $given = (string) ($_GET['t'] ?? ($_SERVER['HTTP_X_BDO_TOKEN'] ?? ''));
 if ($token === '') {
     $fail(500, 'token_missing_on_server', 'сервер запущено без BDO_WEB_TOKEN · запускай через ./bdo web');
@@ -138,19 +141,39 @@ $snapshot = new Snapshot($stateDir);
 switch ($path) {
     case '/':
     case '/index.html':
-        if (! is_file($pageFile)) {
-            $fail(500, 'page_missing', 'немає web/index.html');
+    case '/queue':
+    case '/sessions':
+    case '/start':
+    case '/app.css':
+    case '/app.js':
+        // Екрани окремі (рішення власника 2026-09-05), тому файлів кілька.
+        // Але відображення «шлях -> файл» лишається ЗАКРИТИМ переліком: імена
+        // задані тут, а не складаються з запиту, тому обхід теки неможливий
+        // за побудовою, а не за перевіркою.
+        $files = [
+            '/' => ['web/index.html', 'text/html; charset=utf-8'],
+            '/index.html' => ['web/index.html', 'text/html; charset=utf-8'],
+            '/queue' => ['web/queue.html', 'text/html; charset=utf-8'],
+            '/sessions' => ['web/sessions.html', 'text/html; charset=utf-8'],
+            '/start' => ['web/start.html', 'text/html; charset=utf-8'],
+            '/app.css' => ['web/app.css', 'text/css; charset=utf-8'],
+            '/app.js' => ['web/app.js', 'application/javascript; charset=utf-8'],
+        ];
+        [$relative, $type] = $files[$path];
+        $file = dirname(__DIR__, 2).'/'.$relative;
+        if (! is_file($file)) {
+            $fail(500, 'page_missing', 'немає '.$relative);
 
             return;
         }
-        header('Content-Type: text/html; charset=utf-8');
+        header('Content-Type: '.$type);
         header('Cache-Control: no-store');
         header('X-Content-Type-Options: nosniff');
         header('Referrer-Policy: no-referrer');
         if ($method === 'HEAD') {
             return;
         }
-        echo (string) file_get_contents($pageFile);
+        echo (string) file_get_contents($file);
 
         return;
 
@@ -215,6 +238,14 @@ switch ($path) {
 
         return;
 
+    case '/api/patches':
+        // Перелік патчів для екрана старту. Коштує запити в PROD, тому в
+        // Runner стоїть пʼятихвилинний кеш · сторінка може перемальовуватись,
+        // а квота від цього не витрачається.
+        $json((new Runner(dirname(__DIR__, 2), $stateDir))->patches());
+
+        return;
+
     case '/api/actions':
         // Що сторінка МОЖЕ попросити · перелік із коду, а не з розмітки.
         $json([
@@ -264,7 +295,7 @@ switch ($path) {
         return;
 
     default:
-        $fail(404, 'unknown_path', 'сервер віддає лише /, /api/ping, /api/health, /api/state, /api/sessions, /api/stream, /api/actions, /api/plan, а дії · POST на /api/action і /api/client-error');
+        $fail(404, 'unknown_path', 'сервер віддає лише екрани /, /queue, /sessions, /start, статику /app.css і /app.js, а з даних · /api/ping, /api/health, /api/state, /api/sessions, /api/stream, /api/actions, /api/plan, а дії · POST на /api/action і /api/client-error');
 
         return;
 }

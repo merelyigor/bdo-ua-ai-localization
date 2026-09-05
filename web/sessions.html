@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<title>bdo · сесії роботи</title>
+<link rel="stylesheet" href="/app.css">
+<!--
+  ЕКРАН СЕСІЙ · за макетом `docs/prototypes/02-sessions.html`.
+
+  Виправляє три речі, які власник назвав 2026-09-05: по сесіях НЕ МОЖНА було
+  перейти, кнопка «закрити сесію» не називала, яку саме, а вміст сесії ніде не
+  показувався. Тепер: перелік ліворуч, вміст вибраної праворуч, у питанні про
+  закриття стоїть ідентифікатор.
+-->
+</head>
+<body>
+<div class="wrap">
+  <div class="nav" id="nav"></div>
+  <div id="gate" class="panel" style="display:none"></div>
+
+  <div id="app" style="display:none">
+    <div class="screen-title">
+      <h1>Сесії роботи</h1>
+      <span class="hint">період роботи з N пачок · історія лишається назавжди</span>
+    </div>
+
+    <div class="panel">
+      <div class="bar">
+        <span id="openInfo" style="font-weight:500">—</span>
+        <button id="sessNew" style="margin-left:auto">нова сесія</button>
+        <button id="sessClose">закрити відкриту сесію</button>
+      </div>
+      <div id="closeDialog" style="display:none;margin:6px 0 12px;border:.5px solid var(--bda);border-radius:10px;padding:12px;background:var(--s2)">
+        <div style="font-weight:500;margin-bottom:4px" id="closeTitle">Закрити сесію?</div>
+        <div class="empty" style="margin-bottom:6px">Підсумок і перелік пачок лишаються назавжди. Питання лише про журнали: хронологію кроків і потік токенів.</div>
+        <label class="bar" style="cursor:pointer"><input type="radio" name="keep" value="keep" checked>
+          <span>Тримати журнали 7 днів · можна повернутись до прогону</span></label>
+        <label class="bar" style="cursor:pointer"><input type="radio" name="keep" value="drop">
+          <span>Видалити журнали зараз · чисто одразу</span></label>
+        <div class="bar" style="margin-top:6px">
+          <button id="closeOk">закрити сесію</button>
+          <button id="closeCancel">скасувати</button>
+          <span id="msg" class="empty"></span>
+        </div>
+      </div>
+      <table>
+        <thead><tr><th>сесія</th><th>стан</th><th class="num">пачок</th><th class="num">у шар</th>
+          <th class="num">до людини</th><th class="num">карантин</th><th></th></tr></thead>
+        <tbody id="list"></tbody>
+      </table>
+    </div>
+
+    <div class="panel" id="detail" style="display:none">
+      <div class="bar" style="margin-bottom:8px">
+        <span style="font-size:13px;font-weight:500" id="detailTitle">сесія</span>
+        <span class="empty" id="detailMeta"></span>
+      </div>
+      <div id="detailBody"></div>
+    </div>
+  </div>
+</div>
+
+<script src="/app.js"></script>
+<script>
+(function () {
+  'use strict';
+  var B = window.BDO;
+  B.renderNav('/sessions');
+  if (!B.ensureToken()) { return; }
+  B.el('app').style.display = 'block';
+  B.setLink('poll', 'оновлюється при дії');
+
+  var sessions = [];
+  var chosen = null;
+
+  var STATUS = { open: 'відкрита', closed: 'закрита', abandoned: 'покинута' };
+
+  function openSession() {
+    return sessions.filter(function (s) { return s.status === 'open'; })[0] || null;
+  }
+
+  function renderList() {
+    B.el('list').innerHTML = sessions.map(function (s) {
+      var mark = s.id === chosen ? ' style="background:var(--acc-bg)"' : '';
+      return '<tr data-id="' + B.esc(s.id) + '"' + mark + ' style="cursor:pointer">'
+        + '<td class="mono">' + B.esc(s.id) + '</td>'
+        + '<td>' + B.esc(STATUS[s.status] || s.status) + '</td>'
+        + '<td class="num">' + B.num(s.batches) + '</td>'
+        + '<td class="num">' + B.num(s.to_layer) + '</td>'
+        + '<td class="num">' + B.num(s.to_human) + '</td>'
+        + '<td class="num">' + B.num(s.quarantine) + '</td>'
+        + '<td class="empty">' + (s.id === chosen ? 'показано нижче' : 'показати') + '</td></tr>';
+    }).join('') || '<tr><td colspan="7" class="empty">Сесій ще немає. Перша відкриється сама з першою пачкою.</td></tr>';
+
+    Array.prototype.forEach.call(B.el('list').querySelectorAll('tr[data-id]'), function (tr) {
+      tr.onclick = function () { choose(tr.getAttribute('data-id')); };
+    });
+
+    var open = openSession();
+    B.el('openInfo').textContent = open
+      ? 'відкрита сесія ' + open.id + ' · пачок ' + B.num(open.batches)
+      : 'відкритої сесії немає · вона почнеться сама з першою пачкою';
+    B.el('sessClose').disabled = !open;
+  }
+
+  function choose(id) {
+    chosen = id;
+    renderList();
+    var s = sessions.filter(function (x) { return x.id === id; })[0];
+    if (!s) { B.el('detail').style.display = 'none'; return; }
+    B.el('detail').style.display = 'block';
+    B.el('detailTitle').textContent = 'сесія ' + s.id + ' · ' + (STATUS[s.status] || s.status);
+    var bits = [];
+    if (s.stamp) { bits.push('почалась ' + s.stamp); }
+    if (s.minutes) { bits.push('тривала ' + s.minutes + ' хв'); }
+    bits.push('журнали: ' + ((s.journals_on_disk && s.journals_on_disk.length) ? s.journals_on_disk.length + ' файли' : 'прибрані'));
+    B.el('detailMeta').textContent = bits.join(' · ');
+
+    var batchRows = s.batch_rows || [];
+    B.el('detailBody').innerHTML = batchRows.length
+      ? '<table><thead><tr><th>пачка</th><th class="num">рядків</th><th class="num">у шар</th>'
+        + '<th class="num">до людини</th><th class="num">карантин</th><th>стан</th></tr></thead><tbody>'
+        + batchRows.map(function (b) {
+            if (b.receipt_gone) {
+              return '<tr><td class="mono">' + B.esc(b.id) + '</td>'
+                + '<td colspan="5" class="empty">квитанцію прибрано · числа втрачені</td></tr>';
+            }
+            return '<tr><td class="mono">' + B.esc(b.id) + '</td>'
+              + '<td class="num">' + B.num(b.rows) + '</td>'
+              + '<td class="num">' + B.num(b.to_layer) + '</td>'
+              + '<td class="num">' + B.num(b.to_human) + '</td>'
+              + '<td class="num">' + B.num(b.quarantine) + '</td>'
+              + '<td class="empty">' + B.esc(b.state || '') + '</td></tr>';
+          }).join('') + '</tbody></table>'
+      : '<div class="empty">У цій сесії пачок ще не було.</div>';
+
+    if (s.status !== 'open') {
+      B.el('detailBody').innerHTML += '<div class="empty" style="margin-top:10px">'
+        + 'Сесія закрита · дій запису тут немає, лише історія.</div>';
+    }
+  }
+
+  function load() {
+    B.get('/api/sessions').then(function (d) {
+      sessions = d.sessions || [];
+      if (!chosen && sessions.length) { chosen = sessions[0].id; }
+      renderList();
+      if (chosen) { choose(chosen); }
+    }).catch(function (e) {
+      if (e && e.message === 'bad_token') { B.tokenRejected(); }
+    });
+  }
+
+  function act(action, payload) {
+    B.el('msg').textContent = 'виконую…';
+    B.el('msg').style.color = 'var(--ts)';
+    return B.post('/api/action', { action: action, payload: payload || {} }).then(function (res) {
+      var ok = res.status < 400 && res.body && res.body.ok;
+      B.el('msg').textContent = ok
+        ? 'готово'
+        : ((res.body && res.body.hint) ? res.body.hint : 'відмова, код ' + res.status);
+      B.el('msg').style.color = ok ? 'var(--ok-tx)' : 'var(--dn-tx)';
+      chosen = null;
+      load();
+      return ok;
+    });
+  }
+
+  B.el('sessNew').onclick = function () { act('session.new'); };
+  B.el('sessClose').onclick = function () {
+    var open = openSession();
+    if (!open) { return; }
+    // Питання називає СЕСІЮ. Раніше кнопка діяла на поточну, ніде не названу,
+    // і власник не знав, що саме закрив.
+    B.el('closeTitle').textContent = 'Закрити сесію ' + open.id + '?';
+    B.el('closeDialog').style.display = 'block';
+  };
+  B.el('closeCancel').onclick = function () { B.el('closeDialog').style.display = 'none'; };
+  B.el('closeOk').onclick = function () {
+    var drop = document.querySelector('input[name="keep"]:checked').value === 'drop';
+    B.el('closeDialog').style.display = 'none';
+    act('session.close', { drop_journals: drop });
+  };
+
+  load();
+})();
+</script>
+</body>
+</html>
