@@ -1,2 +1,35 @@
-# .bat читає cmd Windows · йому потрібні CRLF, і git не має права їх нормалізувати.
+# Кінці рядків фіксуються в репозиторії, а не в налаштуваннях кожної машини.
+#
+# Причина конкретна. На Windows `core.autocrlf=true` є типовим значенням, і без
+# цього файла клон на `C:\` отримує CRLF у КОЖНОМУ `.sh`. Усередині WSL такий
+# скрипт падає на першому ж рядку з `\r: command not found`, а `.env`, вичитаний
+# із CRLF, дає значення з невидимим `\r` на кінці · ціль прогону, ключ і URL
+# тихо стають іншими рядками. Обидва симптоми виглядають як помилка коду, хоча
+# код не змінювався.
+#
+# Тому LF примусовий для всього, що виконується або парситься, незалежно від
+# платформи. Windows-редактори з LF працюють; bash і парсер `.env` з CRLF · ні.
+* text=auto eol=lf
+
+# Виконувані входи без розширення.
+bdo         text eol=lf
+LICENSE     text eol=lf
+
+*.sh        text eol=lf
+*.php       text eol=lf
+*.ts        text eol=lf
+*.mjs       text eol=lf
+*.json      text eol=lf
+*.jsonc     text eol=lf
+*.md        text eol=lf
+*.yml       text eol=lf
+*.txt       text eol=lf
+.env*       text eol=lf
+.githooks/* text eol=lf
+
+*.png       binary
+
+# `.bat` · виняток із правила вище, і саме тому він тут окремо: цей файл читає
+# cmd Windows, якому потрібні CRLF. Запуск інтерфейсу з Windows (`bdo.bat`)
+# із LF ламається на багаторядкових конструкціях.
 *.bat text eol=crlf

@@ -121,6 +121,16 @@ check_rules() {
         || fail "розмір пачки прописаний поруч із командою поза планувальником: $hardcoded"
     grep -Fq 'cli/run/plan-args.php' bin/tui.sh \
         || fail 'вікно в терміналі не бере план у спільного планувальника'
+    # `.gitattributes` тримає кінці рядків, і його вміст не має права зникнути:
+    # без правила LF клон на Windows дає CRLF у кожному `.sh`, і всередині WSL
+    # скрипт падає з `\r: command not found`, а `.env` віддає ключ із невидимим
+    # `\r`. 2026-09-05 цей файл був ПЕРЕЗАПИСАНИЙ під час додавання `bdo.bat` ·
+    # перевірки на нього не існувало.
+    test -f .gitattributes || fail 'немає .gitattributes · кінці рядків віддані налаштуванням машини'
+    grep -qE '^\*\.sh( |\t)+text( |\t)+eol=lf' .gitattributes \
+        || fail '.gitattributes не примушує LF для *.sh · у WSL такий скрипт падає на \r'
+    grep -qE '^\*\.bat( |\t)+text( |\t)+eol=crlf' .gitattributes \
+        || fail '.gitattributes не примушує CRLF для *.bat · cmd ламається на LF'
     # Документація не має права ВЧИТИ помилки, яка вже коштувала прогону:
     # `mode start патч` · це рівно D50. Приклад із українським ключем жив у
     # `README.md` і `WORKFLOW.md` навіть після того, як код виправили.
