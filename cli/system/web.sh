@@ -56,6 +56,8 @@ STATE_DIR="${BDO_STATE_DIR:-$SCRIPT_DIR/state}"
 ROUTER="$SCRIPT_DIR/cli/system/web-router.php"
 PAGE="$SCRIPT_DIR/web/index.html"
 INFO="$STATE_DIR/web.json"
+# Токен переживає зупинку: інакше кожен `--stop` робив би закладку мертвою.
+TOKEN_FILE="$STATE_DIR/web-token"
 LOG="$STATE_DIR/web.log"
 WORKERS="${BDO_WEB_WORKERS:-4}"
 # Типовий порт має шов лише для тестів: перевірка «типовий зайнятий -> беремо
@@ -214,6 +216,26 @@ while [ $# -gt 0 ]; do
     esac
 done
 
+# Чи стоїть уже НАШ сервер на цьому порту. Питаємо сам сервер (`/api/ping`),
+# а не файл: `state/web.json` може зникнути (аварія, ручне прибирання), і тоді
+# другий запуск підіймав ДРУГИЙ сервер на іншому порту · два різні посилання,
+# два токени, і власник не знає, яке з них живе.
+ours_on_port() {
+    local port="$1" body
+    if command -v curl >/dev/null 2>&1; then
+        body="$(curl -s -m 2 "http://127.0.0.1:${port}/api/ping" 2>/dev/null || true)"
+    else
+        body="$(php -r '
+            $ctx = stream_context_create(["http" => ["timeout" => 2, "ignore_errors" => true]]);
+            echo (string) @file_get_contents("http://127.0.0.1:".$argv[1]."/api/ping", false, $ctx);
+        ' "$port")"
+    fi
+    case "$body" in
+        *'"bdo":true'*) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
 # Уже запущений сервер не дублюємо: два сервери на одному стані · два різні
 # посилання й два токени, і власник не знатиме, яке з них живе.
 if [ -s "$INFO" ]; then
@@ -228,13 +250,31 @@ if [ -s "$INFO" ]; then
     rm -f "$INFO"
 fi
 
+# ТОКЕН СТАБІЛЬНИЙ МІЖ ПЕРЕЗАПУСКАМИ.
+#
+# Новий токен на кожен запуск виглядав охайно, але ламав звичайну роботу:
+# відкрита вкладка власника після перезапуску сервера отримувала 403 на кожен
+# запит даних, а закладка в браузері ставала мертвою назавжди (D75). Токен
+# лежить у `state/web.json` із правами 0600 · це той самий локальний секрет,
+# що й був, просто він переживає рестарт.
+# Токен живе в ОКРЕМОМУ файлі, а не в записі про запущений сервер: `--stop`
+# прибирає запис, і разом із ним зникав би токен · тобто після кожної зупинки
+# закладка ставала мертвою. Один файл · одне значення.
 if [ -n "${BDO_WEB_TOKEN:-}" ]; then
     TOKEN="$BDO_WEB_TOKEN"
+elif [ -s "$TOKEN_FILE" ]; then
+    TOKEN="$(tr -d '[:space:]' < "$TOKEN_FILE")"
 elif command -v openssl >/dev/null 2>&1; then
     TOKEN="$(openssl rand -hex 16)"
 else
     TOKEN="$(php -r 'echo bin2hex(random_bytes(16));')"
 fi
+case "$TOKEN" in
+    ''|*[!0-9a-fA-F]*) die 'токен мусить бути шістнадцятковим рядком · перевір BDO_WEB_TOKEN або state/web-token' ;;
+esac
+printf '%s\n' "$TOKEN" > "$TOKEN_FILE"
+chmod 600 "$TOKEN_FILE" 2>/dev/null || true
+PREVIOUS_TOKEN="$TOKEN"
 
 EXPLICIT_PORT=0
 PORT="$DEFAULT_PORT"
@@ -244,6 +284,21 @@ if [ -n "${BDO_WEB_PORT:-}" ]; then
     esac
     PORT="$BDO_WEB_PORT"
     EXPLICIT_PORT=1
+fi
+
+# Порт зайнятий НАШИМ сервером · не піднімаємо другий, а віддаємо посилання на
+# той, що вже працює. Саме цей випадок дає «два сервери на одному стані», коли
+# запис у `state/web.json` загубився.
+if ours_on_port "$PORT"; then
+    if [ -n "$PREVIOUS_TOKEN" ]; then
+        printf 'Сервер уже працює на порту %s: http://127.0.0.1:%s/?t=%s\n' "$PORT" "$PORT" "$PREVIOUS_TOKEN"
+    else
+        printf 'На порту %s уже працює bdo, але запису state/web.json немає.\n' "$PORT" >&2
+        printf 'Зупини його й запусти заново: ./bdo web --stop && ./bdo web\n' >&2
+        exit 1
+    fi
+    printf 'Зупинити: ./bdo web --stop\n'
+    exit 0
 fi
 
 SERVER_PID=""

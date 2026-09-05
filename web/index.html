@@ -208,6 +208,19 @@ td.num,th.num{text-align:right;font-family:var(--mono)}
     document.getElementById('gate').style.display = 'block';
     return;
   }
+  // Токен є, але сервер його не приймає · це майже завжди означає одне:
+  // сервер перезапустили з іншим токеном. Мовчазний червоний напис у кутку
+  // залишав власника з порожнім вікном без пояснення, тому кажемо прямо.
+  function tokenRejected() {
+    try { sessionStorage.removeItem('bdo_token'); } catch (e) {}
+    var gate = document.getElementById('gate');
+    gate.innerHTML = '<div style="font-weight:500;margin-bottom:4px">Токен більше не діє</div>'
+      + '<div class="empty">Сервер перезапустили з іншим токеном. Візьми свіже посилання: '
+      + '<span class="mono">./bdo web --status</span> · або перезапусти інтерфейс '
+      + '<span class="mono">./bdo</span>.</div>';
+    gate.style.display = 'block';
+    document.getElementById('app').style.display = 'none';
+  }
   document.getElementById('app').style.display = 'block';
 
   var q = function (path) { return path + (path.indexOf('?') < 0 ? '?' : '&') + 't=' + encodeURIComponent(token); };
@@ -421,7 +434,8 @@ td.num,th.num{text-align:right;font-family:var(--mono)}
           paintStream();
         })
         .catch(function (e) {
-          setLink('dead', e && e.message === 'bad_token' ? 'токен відкинуто' : 'сервер не відповідає');
+          if (e && e.message === 'bad_token') { tokenRejected(); return; }
+          setLink('dead', 'сервер не відповідає');
         });
     };
     tick();

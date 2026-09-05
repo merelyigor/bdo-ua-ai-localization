@@ -86,7 +86,19 @@ expect 200 'стан за токеном' "http://127.0.0.1:$PORT/api/state?t=$T
 expect 200 'сесії за токеном' "http://127.0.0.1:$PORT/api/sessions?t=$TOKEN"
 expect 403 'запит без токена' "http://127.0.0.1:$PORT/api/state"
 expect 403 'чужий токен' "http://127.0.0.1:$PORT/api/state?t=00000000000000000000000000000000"
-expect 403 'сторінка без токена' "http://127.0.0.1:$PORT/"
+# Сама сторінка · ПОРОЖНЯ оболонка й віддається без токена. Інакше оновлення
+# вкладки давало б голий JSON `bad_token`: сторінка навмисно прибирає токен з
+# адреси, тому F5 йде на `/` без нього (D75). Дані лишаються за токеном ·
+# перевірки нижче це доводять.
+expect 200 'сторінка без токена' "http://127.0.0.1:$PORT/"
+shell="$(curl -s -m 5 "http://127.0.0.1:$PORT/")"
+printf '%s' "$shell" | grep -q 'Немає токена' \
+    || fail 'оболонка не має екрана «немає токена» · власник побачив би порожнє вікно без пояснення'
+for secret in 'batch-summary' 'identity_hash' 'write-log' 'model-calls'; do
+    printf '%s' "$shell" | grep -q "$secret" \
+        && fail "в оболонці сторінки лежать дані ($secret) · вона мусить бути порожньою"
+done
+expect 200 'ping без токена' "http://127.0.0.1:$PORT/api/ping"
 expect 405 'POST' -X POST "http://127.0.0.1:$PORT/api/state?t=$TOKEN"
 expect 405 'DELETE' -X DELETE "http://127.0.0.1:$PORT/api/state?t=$TOKEN"
 expect 404 'невідомий шлях' "http://127.0.0.1:$PORT/api/anything?t=$TOKEN"
@@ -231,6 +243,30 @@ wait "$SSE_PID" 2>/dev/null || true
 grep -q '^event: state' "$TMP/sse.txt" \
     || fail "SSE не надіслав першого знімка стану. Отримано: $(head -3 "$TMP/sse.txt")"
 
+# --- Другий запуск не піднімає другий сервер (вимога власника 2026-09-05) ---
+# Без цієї межі зниклий `state/web.json` давав два сервери на одному стані: два
+# різні посилання й два токени, і власник не знає, яке з них живе.
+second="$(web --background --no-open 2>&1)" || fail "другий запуск упав: $second"
+printf '%s' "$second" | grep -q 'уже працює' \
+    || fail "другий запуск мусив сказати, що сервер уже працює. Отримано: $second"
+printf '%s' "$second" | grep -q "$PORT" || fail "другий запуск не назвав чинного порту: $second"
+started_now="$(grep -c 'Development Server' "$BDO_STATE_DIR/web.log" || true)"
+test "$started_now" -le 8 \
+    || fail "після другого запуску в журналі $started_now рядків старту · піднявся ще один сервер"
+
+# Те саме, коли запис зник: сервер живий, а `state/web.json` немає.
+cp "$BDO_STATE_DIR/web.json" "$TMP/web.json.bak"
+rm -f "$BDO_STATE_DIR/web.json"
+lost="$(web --background --no-open 2>&1 || true)"
+printf '%s' "$lost" | grep -q 'уже працює' \
+    || fail "без запису й із живим сервером треба віддати чинне посилання, а не підняти другий: $lost"
+printf '%s' "$lost" | grep -q "$TOKEN" \
+    || fail "втрачений запис · посилання мусить лишитись тим самим (токен живе окремим файлом): $lost"
+lost_started="$(grep -c 'Development Server' "$BDO_STATE_DIR/web.log" || true)"
+test "$lost_started" -le 8 \
+    || fail "після запуску з утраченим записом піднявся ще один сервер ($lost_started рядків старту)"
+cp "$TMP/web.json.bak" "$BDO_STATE_DIR/web.json"
+
 # --- --status і --stop ------------------------------------------------------
 status="$(web --status)" || fail "--status упав: $status"
 printf '%s' "$status" | grep -q "порт $PORT" || fail "--status не назвав порт: $status"
@@ -257,6 +293,15 @@ grep -Fq 'port_owners' "$ROOT/cli/system/web.sh" \
     || fail 'зупинка не цілиться у власників порту · без цього вона або не звільнить порт, або вбʼє зайве'
 again="$(web --stop)" || fail 'повторний --stop упав'
 printf '%s' "$again" | grep -q 'Зупиняти нічого' || fail "повторний --stop мусить сказати, що зупиняти нічого: $again"
+
+# --- Токен переживає перезапуск (D75) --------------------------------------
+# Новий токен на кожен запуск робив мертвими і відкриту вкладку, і закладку:
+# після рестарту сервера кожен запит даних отримував 403.
+restart_out="$(web --background --no-open 2>&1)" || fail "запуск після зупинки впав: $restart_out"
+restart_token="$(printf '%s\n' "$restart_out" | sed -n 's~.*t=\([0-9a-f]*\).*~\1~p' | head -1)"
+test "$restart_token" = "$TOKEN" \
+    || fail "після перезапуску токен змінився ($TOKEN -> $restart_token) · стара вкладка й закладка мертві"
+web --stop >/dev/null || fail '--stop після перевірки токена впав'
 
 # --- 8. Порт: зайнятий типовий і зайнятий явний -----------------------------
 php -r '
