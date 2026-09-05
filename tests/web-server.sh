@@ -202,6 +202,20 @@ if (($s["fresh"] ?? true) !== false) {
 }' "$ROOT/lib/autoload.php" "$BDO_STATE_DIR" || fail 'картка «друкує…» висітиме після завершення (D73)'
 rm -f "$BDO_STATE_DIR/run-stream.log"
 
+# --- Вкладки не мають вибирати всі воркери (D76) ---------------------------
+# Кожне SSE-зʼєднання займає ОДИН воркер. При чотирьох воркерах і чотирьох
+# відкритих вкладках звичайний запит чекав 10.5 с · сторінка «підвисала».
+# Дві межі проти цього: воркерів більше за типову кількість вкладок, і схована
+# вкладка сама відпускає зʼєднання.
+workers_default="$(sed -n 's/^WORKERS="${BDO_WEB_WORKERS:-\([0-9]*\)}"/\1/p' "$ROOT/cli/system/web.sh")"
+test -n "$workers_default" || fail 'не вдалося прочитати кількість воркерів із cli/system/web.sh'
+test "$workers_default" -ge 8 \
+    || fail "воркерів $workers_default · чотирьох не вистачало вже на четвертій вкладці (D76)"
+grep -Fq 'visibilitychange' "$ROOT/web/index.html" \
+    || fail 'схована вкладка не відпускає SSE · кілька вкладок вибирають усі воркери (D76)'
+grep -Fq 'pagehide' "$ROOT/web/index.html" \
+    || fail 'закрита вкладка не відпускає SSE'
+
 # --- Скрипт сторінки мусить бути синтаксично цілим -------------------------
 # Зламаний JavaScript не видно ні в HTTP-коді (сторінка віддається як завжди),
 # ні на скріншоті (розмітка малюється). Видно лише те, що кнопки мертві ·
@@ -246,6 +260,7 @@ grep -q '^event: state' "$TMP/sse.txt" \
 # --- Другий запуск не піднімає другий сервер (вимога власника 2026-09-05) ---
 # Без цієї межі зниклий `state/web.json` давав два сервери на одному стані: два
 # різні посилання й два токени, і власник не знає, яке з них живе.
+started_before="$(grep -c 'Development Server' "$BDO_STATE_DIR/web.log" || true)"
 second="$(web --background --no-open 2>&1)" || fail "другий запуск упав: $second"
 # Повторний запуск БЕЗ `--no-open` мусить відкрити сторінку: це майже завжди
 # «хочу подивитись» (клік по `make web`, повторний `./bdo`), а не «повідом і
@@ -266,9 +281,11 @@ test ! -s "$TMP/fake/opened.txt" || fail '--no-open усе одно відкри
 printf '%s' "$second" | grep -q 'уже працює' \
     || fail "другий запуск мусив сказати, що сервер уже працює. Отримано: $second"
 printf '%s' "$second" | grep -q "$PORT" || fail "другий запуск не назвав чинного порту: $second"
+# Рахуємо не рядки (їх стільки, скільки воркерів), а САМ ФАКТ нового старту:
+# журнал не має рости після повторного запуску.
 started_now="$(grep -c 'Development Server' "$BDO_STATE_DIR/web.log" || true)"
-test "$started_now" -le 8 \
-    || fail "після другого запуску в журналі $started_now рядків старту · піднявся ще один сервер"
+test "$started_now" = "$started_before" \
+    || fail "після другого запуску журнал виріс ($started_before -> $started_now) · піднявся ще один сервер"
 
 # Те саме, коли запис зник: сервер живий, а `state/web.json` немає.
 cp "$BDO_STATE_DIR/web.json" "$TMP/web.json.bak"
@@ -279,8 +296,8 @@ printf '%s' "$lost" | grep -q 'уже працює' \
 printf '%s' "$lost" | grep -q "$TOKEN" \
     || fail "втрачений запис · посилання мусить лишитись тим самим (токен живе окремим файлом): $lost"
 lost_started="$(grep -c 'Development Server' "$BDO_STATE_DIR/web.log" || true)"
-test "$lost_started" -le 8 \
-    || fail "після запуску з утраченим записом піднявся ще один сервер ($lost_started рядків старту)"
+test "$lost_started" = "$started_before" \
+    || fail "після запуску з утраченим записом піднявся ще один сервер ($started_before -> $lost_started)"
 cp "$TMP/web.json.bak" "$BDO_STATE_DIR/web.json"
 
 # --- --status і --stop ------------------------------------------------------

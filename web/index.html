@@ -446,6 +446,7 @@ td.num,th.num{text-align:right;font-family:var(--mono)}
     if (typeof EventSource === 'undefined') { startPolling('немає EventSource'); return; }
     var es;
     try { es = new EventSource(q('/api/stream')); } catch (e) { startPolling('SSE не відкрився'); return; }
+    streamHandle = es;
     var opened = false;
     var guard = setTimeout(function () { if (!opened) { try { es.close(); } catch (e) {} startPolling('SSE не піднявся за 2 с'); } }, 2000);
 
@@ -695,9 +696,29 @@ td.num,th.num{text-align:right;font-family:var(--mono)}
     });
   };
 
+  // ФОНОВА ВКЛАДКА НЕ ТРИМАЄ ЗʼЄДНАННЯ.
+  //
+  // Одне SSE-зʼєднання займає один воркер сервера, а вбудований сервер PHP має
+  // їх обмежену кількість. Три-чотири відкриті вкладки (а вони зʼявляються
+  // самі: кожен `./bdo web` відкриває нову) вибирали всі воркери, і звичайний
+  // запит чекав 10.5 с · сторінка «підвисала» саме через це (заміряно
+  // 2026-09-05, D76). Схована вкладка нічого не показує, тому й тримати
+  // зʼєднання їй нема потреби: відпускаємо й піднімаємо назад при поверненні.
+  var streamHandle = null;
+  function stopStream() {
+    if (streamHandle) { try { streamHandle.close(); } catch (e) {} streamHandle = null; }
+    if (polling) { clearInterval(polling); polling = null; }
+    setLink('', 'пауза · вкладка у фоні');
+  }
+  document.addEventListener('visibilitychange', function () {
+    if (document.hidden) { stopStream(); return; }
+    if (!streamHandle && !polling) { startStream(); loadSessions(); }
+  });
+  window.addEventListener('pagehide', stopStream);
+
   startStream();
   loadSessions();
-  setInterval(loadSessions, 15000);
+  setInterval(function () { if (!document.hidden) { loadSessions(); } }, 15000);
 })();
 </script>
 </body>
