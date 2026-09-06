@@ -120,4 +120,42 @@ if out="$(start "$hub_prod" prod)"; then
     fail 'підтвердження prod пройшло на цілі hub-prod'
 fi
 
+
+# --- 5. Групи полів беруться зі СЛІВ ЦІЛІ, а не з коду ----------------------
+#
+# Клієнт просить шість груп, і старий API дає всі. Хаб 2026-09-06 приймає лише
+# `core`, `layers`, `coordinates`, а на зайву групу відповідає `invalid_request`
+# · вибірка падала б ЦІЛКОМ, хоча рядки він віддати може.
+#
+# Дві вимоги, і друга не менш важлива за першу: ціль, яка приймає ВСЕ, мусить
+# отримати перелік ДОСЛІВНО. Тихо дописати навіть безпечну групу в запит
+# робочої системи заради сумісності з іншою · не можна.
+CAPS="$ROOT/cli/api/capabilities.sh"
+CAPSTATE="$TMP/caps"; mkdir -p "$CAPSTATE"
+fields_for() {   # <перелік дозволених або "" > <бажане>
+    local cache="$CAPSTATE/api-capabilities.$2.json"
+    printf '{"field_groups":"%s","items":{}}\n' "$1" > "$cache"
+    BDO_STATE_DIR="$CAPSTATE" TRANSLATE_ENV_FILE="$3" bash "$CAPS" --fields "$4" 2>/dev/null | tail -1
+}
+
+want='classification,tokens,constraints,glossary,reference,patch'
+got="$(fields_for 'core,coordinates,classification,layers,reference,tokens,constraints,glossary,patch' prod "$legacy_prod" "$want")"
+test "$got" = "$want" \
+    || fail "ціль приймає все, але перелік змінився: «${got}» замість «${want}»"
+
+got="$(fields_for 'core,layers,coordinates' hub-prod "$hub_prod" "$want")"
+test "$got" = core \
+    || fail "на вужчій цілі перелік не звузився до дозволеного: «${got}»"
+printf '%s' "$got" | grep -Fq core \
+    || fail 'у звуженому переліку немає core · рядок прийде без source_text'
+
+got="$(fields_for '' prod "$legacy_prod" "$want")"
+test "$got" = "$want" \
+    || fail "ціль без оголошених груп мусить отримати перелік як є: «${got}»"
+
+# І сама вибірка мусить цим користуватись · інакше перевірка вище стосується
+# лише бібліотеки, а не запиту.
+grep -Fq 'capabilities.sh" --fields' "$ROOT/cli/api/fetch-rows.sh" \
+    || fail 'вибірка не звіряє групи полів із ціллю · запит до хаба падатиме цілком'
+
 echo 'api target switch: OK · дві осі дають чотири цілі, ключі не течуть, ціль замикає прогін.'

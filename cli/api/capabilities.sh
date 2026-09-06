@@ -18,6 +18,7 @@
 # Використання:
 #   ./capabilities.sh                    показати таблицю для поточної цілі
 #   ./capabilities.sh --has glossary     код 0 · можливість є, 1 · немає
+#   ./capabilities.sh --fields a,b,c     лишити з переліку те, що ціль приймає
 #   ./capabilities.sh --refresh          перепитати, не дивлячись у кеш
 set -euo pipefail
 
@@ -49,10 +50,12 @@ probe_path() {
 readonly NAMES='glossary memory patches guide proposals'
 
 WANT=''
+FIELDS=''
 REFRESH=0
 while [ $# -gt 0 ]; do
     case "$1" in
         --has) WANT="${2:?--has потребує назву можливості}"; shift 2 ;;
+        --fields) FIELDS="${2:?--fields потребує перелік через кому}"; shift 2 ;;
         --refresh) REFRESH=1; shift ;;
         *) echo "capabilities: невідомий аргумент «${1}»" >&2; exit 1 ;;
     esac
@@ -86,12 +89,33 @@ probe() {
     esac
 }
 
+# ЯКІ ГРУПИ ПОЛІВ приймає ця ціль · зі слів самої цілі.
+#
+# Клієнт просить у `/rows` шість груп (`classification`, `glossary`, `tokens`,
+# `constraints`, `reference`, `patch`). Хаб 2026-09-06 приймає лише три
+# (`core`, `layers`, `coordinates`) і на зайву відповідає `invalid_request` ·
+# тобто вибірка падає ЦІЛКОМ, хоча рядки віддати він може. Тому перелік
+# береться з `/taxonomy.field_groups`, а не з коду: коли хаб додасть групу,
+# клієнт почне її просити сам, без правки.
+taxonomy_fields() {
+    "$SCRIPT_DIR/cli/api/http-request.sh" -sS -H "X-API-Key: $BDO_API_KEY" \
+        "$BDO_API_BASE/taxonomy" 2>/dev/null \
+        | php -r '
+        $d = json_decode((string) stream_get_contents(STDIN), true) ?: [];
+        $groups = $d["data"]["field_groups"] ?? null;
+        // Порожній перелік і ВІДСУТНІЙ перелік · різні речі. Старий API групи
+        // не оголошує взагалі, і це означає «приймаю всі», а не «жодної».
+        echo is_array($groups) ? implode(",", $groups) : "";
+        ' || printf ''
+}
+
 build_cache() {
-    local name value first=1
+    local name value first=1 groups
     mkdir -p "$STATE_DIR"
+    groups="$(taxonomy_fields)"
     {
-        printf '{"target":"%s","base":"%s","at":"%s","items":{' \
-            "$BDO_API_ENV" "$BDO_API_BASE" "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+        printf '{"target":"%s","base":"%s","at":"%s","field_groups":"%s","items":{' \
+            "$BDO_API_ENV" "$BDO_API_BASE" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$groups"
         for name in $NAMES; do
             value="$(probe "$name")"
             test "$first" = 1 || printf ','
@@ -111,6 +135,33 @@ read_value() {
     echo (string) ($d["items"][$argv[2]] ?? "unknown");
     ' "$CACHE" "$1"
 }
+
+if [ -n "$FIELDS" ]; then
+    # Перетин бажаного з дозволеним. Ціль, яка груп не оголошує (старий API),
+    # приймає все · тоді віддаємо перелік як є.
+    php -r '
+    $cache = json_decode((string) @file_get_contents($argv[1]), true) ?: [];
+    $allowed = array_filter(explode(",", (string) ($cache["field_groups"] ?? "")));
+    $want = array_values(array_filter(array_map("trim", explode(",", $argv[2]))));
+    // Ціль, яка груп не оголошує (старий API), приймає все · перелік іде
+    // ДОСЛІВНО. Саме дослівно: додати сюди навіть безпечну групу означало б
+    // тихо змінити запит робочої системи заради сумісності з іншою.
+    if ($allowed === []) { echo implode(",", $want); exit; }
+    $kept = array_values(array_intersect($want, $allowed));
+    // Ціль приймає ВСЕ, що ми просимо · віддаємо перелік дослівно. Додати сюди
+    // навіть безпечну групу означало б тихо змінити запит робочої системи
+    // заради сумісності з іншою.
+    if (count($kept) === count($want)) { echo implode(",", $want); exit; }
+    // Щось відпало. Тоді `core` обовʼязковий: без нього рядок приходить без
+    // `source_text`, і перекладати нема чого.
+    if (! in_array("core", $kept, true) && in_array("core", $allowed, true)) {
+        array_unshift($kept, "core");
+    }
+    echo implode(",", $kept);
+    ' "$CACHE" "$FIELDS"
+    printf '\n'
+    exit 0
+fi
 
 if [ -n "$WANT" ]; then
     probe_path "$WANT" >/dev/null 2>&1 || { echo "capabilities: невідома можливість «${WANT}»" >&2; exit 2; }

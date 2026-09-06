@@ -30,11 +30,38 @@ mkdir -p "$SCRIPT_DIR/output"
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
 OUT="$SCRIPT_DIR/output/rows_${TIMESTAMP}.json"
 
-URL="$API/rows?limit=50&include_total=1&fields=classification,tokens,constraints,glossary,reference,patch"
+# ГРУПИ ПОЛІВ ПИТАЄМО ТІ, ЯКІ ЦІЛЬ ПРИЙМАЄ.
+#
+# Клієнту потрібні шість груп, і старий API дає всі. Хаб локалізацій 2026-09-06
+# приймає лише `core`, `layers`, `coordinates`, а на зайву групу відповідає
+# `invalid_request` · тобто вибірка падала б ЦІЛКОМ, хоча рядки він віддати
+# може. Перелік звіряється з `/taxonomy.field_groups` самої цілі, а не з
+# переліком у коді: коли хаб додасть групу, клієнт почне її просити сам.
+#
+# Ціль, яка груп не оголошує (старий API), приймає все · перелік іде як є.
+# `core` просимо ЗАВЖДИ, коли ціль узагалі оголошує групи: без нього хаб
+# віддав би рядок без `source_text`, і перекладати було б нічого. На старому
+# API груп немає, і перелік іде як був · поведінка не змінюється взагалі.
+WANT_FIELDS='classification,tokens,constraints,glossary,reference,patch'
+FIELDS="$("$SCRIPT_DIR/cli/api/capabilities.sh" --fields "$WANT_FIELDS" 2>/dev/null | tail -1)"
+if [ -z "$FIELDS" ]; then
+    FIELDS="$WANT_FIELDS"
+elif [ "$FIELDS" != "$WANT_FIELDS" ]; then
+    echo "Ціль приймає не всі групи полів: беремо «${FIELDS}» замість «${WANT_FIELDS}»." >&2
+    echo "Чого бракує · ./bdo capabilities" >&2
+fi
+URL="$API/rows?limit=50&include_total=1&fields=$FIELDS"
 # Для переперекладу (exclude_proposed) потрібні поточні machine-переклади як
 # контекст для моделі: щоб не розтягувати скорочення, не портити вже добре.
 case "$EXTRA" in
-    *exclude_proposed*) URL="${URL},layers" ;;
+    *exclude_proposed*)
+        # `layers` додаємо лише коли ціль його приймає: інакше запит упаде
+        # цілком замість того, щоб піти без поточних перекладів.
+        if [ "$("$SCRIPT_DIR/cli/api/capabilities.sh" --fields layers 2>/dev/null | tail -1)" = layers ] \
+            || [ "$FIELDS" = "$WANT_FIELDS" ]; then
+            case ",$FIELDS," in *,layers,*) ;; *) URL="${URL},layers" ;; esac
+        fi
+        ;;
 esac
 [ -n "$EXTRA" ] && URL="${URL}&${EXTRA}"
 
