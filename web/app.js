@@ -316,11 +316,82 @@
         at = valueStart(raw, from, key);
       }
     }
-    if (parts.length === 0) { return raw; }
+    // Нічого не впізнали. Два різні випадки, і плутати їх не можна:
+    //   · роль друкує JSON (strict-схема), але ключ ще не дописано · показувати
+    //     нема чого, і сирий конверт `{"items":[{"id":"r1","te` на екрані є
+    //     сміттям, яке ще й осідає в накопичувачі назавжди;
+    //   · відповідь узагалі не JSON · тоді показати сире краще, ніж мовчати.
+    var head = raw.charAt(0);
+    if (parts.length === 0) { return (head === '{' || head === '[') ? '' : raw; }
     // Порядок · такий, як у потоці: інакше рядки стрибали б місцями.
     parts.sort(function (a, b) { return a.at - b.at; });
-    return parts.map(function (p) { return p.value; }).join('\n\n');
+    // Порожні значення пропускаємо: у вироку QA поля `issue` й `fix` порожні на
+    // кожному чистому рядку, і вікно починалось із десятка порожніх рядків ·
+    // видно оком на живому прогоні 2026-09-06.
+    return parts.filter(function (p) { return p.value !== ''; })
+      .map(function (p) { return p.value; }).join('\n\n');
   }
+
+  // --- пам'ять вікон -------------------------------------------------------
+  //
+  // Сервер тримає лише ХВІСТ: 24 КБ журналу токенів і 200 рядків журналу
+  // кроків. Тому після перезавантаження сторінки початок роботи взяти НЕМА
+  // ЗВІДКИ · власник бачив обрізаний вивід і назвав це 2026-09-06. Показане
+  // складається в `localStorage` під МІТКОЮ (пачка або сесія): змінилась мітка
+  // · запис прибирається сам, тож сховище не засмічується.
+  //
+  // Сховище є ЗРУЧНІСТЮ, а не джерелом правди: недоступне (приватний режим,
+  // вичерпана квота) · сторінка працює далі, просто без пам'яті між
+  // перезавантаженнями. Тому кожен доступ загорнутий і мовчить про помилку.
+  var KEEP_PREFIX = 'bdo.win.';
+  var KEEP_MAX = 400000;   // символів на вікно · далі ріжемо ПОЧАТОК
+
+  function keep(name) {
+    var key = KEEP_PREFIX + name;
+    return {
+      load: function (tag) {
+        try {
+          var rec = JSON.parse(window.localStorage.getItem(key) || 'null');
+          return (rec && rec.tag === tag) ? String(rec.text || '') : '';
+        } catch (e) { return ''; }
+      },
+      save: function (tag, text) {
+        try {
+          if (!text) { window.localStorage.removeItem(key); return; }
+          if (text.length > KEEP_MAX) { text = text.slice(-KEEP_MAX); }
+          window.localStorage.setItem(key, JSON.stringify({ tag: tag, text: text }));
+        } catch (e) { /* показ не залежить від сховища */ }
+      }
+    };
+  }
+
+  // Прибрати вікна, яких більше ніхто не пише · інакше ключі накопичувались би
+  // від версії до версії.
+  function keepPrune(alive) {
+    try {
+      var drop = [];
+      for (var i = 0; i < window.localStorage.length; i++) {
+        var k = window.localStorage.key(i);
+        if (k && k.indexOf(KEEP_PREFIX) === 0 && alive.indexOf(k.slice(KEEP_PREFIX.length)) === -1) {
+          drop.push(k);
+        }
+      }
+      drop.forEach(function (k) { window.localStorage.removeItem(k); });
+    } catch (e) { /* нічого не прибрали · це не заважає роботі */ }
+  }
+
+  // ЗШИВАННЯ ПО ВМІСТУ ТУТ БУЛО · І ЙОГО ПРИБРАНО.
+  //
+  // Спроба пришити хвіст знімка до накопиченого по найдовшому збігу тексту
+  // виглядала розумно, поки текст не став повторюваним. На живій пачці
+  // 2026-09-06 власник побачив у вікні «Залізний руйнівникуйнівникуйнівник
+  // Валька14 Days)», хоча роль відповіла рівно «Залізний руйнівник Валька
+  // (14 днів)» (перевірено у `term-proposals.json`). Тобто показ ВИГАДУВАВ
+  // текст, якого модель не друкувала · найгірше, що може робити вікно, яке
+  // власник читає, щоб судити про якість перекладу.
+  //
+  // Тому зшивання немає взагалі: показ або точно продовжує показане
+  // (`typer.sync` звіряє префікс), або чесно починає з того, що знає сервер.
 
   // --- живий друк: рівномірно, по символах ---------------------------------
   //
@@ -335,43 +406,69 @@
   // `DRAIN_MS`. Відстає черга · темп сам зростає, тож затримка не накопичується.
   function typer(node, options) {
     var opts = options || {};
-    var DRAIN_MS = opts.drainMs || 220;   // за скільки прагнемо показати чергу
-    var MIN_CHARS = 1;
+    var DRAIN_MS = opts.drainMs || 260;   // за скільки прагнемо показати чергу
+    var MAX_PER_STEP = opts.maxPerStep || 4;   // стеля символів за крок
+    var clock = opts.now || function () { return Date.now(); };
+    var carry = 0;      // накопичений дріб символа
+    var lastAt = 0;
     var shown = '';
     var pending = '';
     var frame = null;
+    var timer = null;
     var onPaint = opts.onPaint || function () {};
+
+    function stop() {
+      if (frame !== null) { cancelAnimationFrame(frame); frame = null; }
+      if (timer !== null) { clearTimeout(timer); timer = null; }
+    }
 
     function step() {
       frame = null;
-      if (!pending) { return; }
-      // Скільки символів віддати цьому кадру. 16 мс · кадр браузера.
-      var perFrame = Math.max(MIN_CHARS, Math.ceil(pending.length * (16 / DRAIN_MS)));
-      shown += pending.slice(0, perFrame);
-      pending = pending.slice(perFrame);
-      onPaint(shown);
-      if (pending) { frame = requestAnimationFrame(step); }
-    }
+      timer = null;
+      if (!pending) { carry = 0; return; }
+      var now = clock();
+      // Крок міряється ЧАСОМ, а не кадрами: у власника екран на 120 Гц, у
+      // тесті кадрів немає взагалі, і однакова поведінка потрібна скрізь.
+      var dt = lastAt === 0 ? 16 : Math.min(200, now - lastAt);
+      lastAt = now;
 
-    function schedule() {
-      if (frame !== null || !pending) { return; }
-      // `requestAnimationFrame` не спрацює у схованій вкладці · тоді працює
-      // запасний таймер, і черга не застрягає навіть без кадрів.
-      frame = requestAnimationFrame(step);
-      if (document.hidden) { setTimeout(function () { if (pending) { step(); } }, 60); }
-    }
-
-    // Схована вкладка НЕ малює кадрів: `requestAnimationFrame` у ній не
-    // викликається взагалі, і черга завмерла б до повернення власника. Тому
-    // при схованні показуємо все негайно · плавність там нікому не потрібна,
-    // а застряглий хвіст відповіді потрібен.
-    document.addEventListener('visibilitychange', function () {
-      if (document.hidden && pending) {
-        shown += pending;
-        pending = '';
+      // Дробова видача · головне тут. Ціле «не менше символа за кадр»
+      // спорожняло коротку чергу за кілька кадрів, після чого друк стояв до
+      // наступної порції: виходили ривки словами. Тепер борг накопичується, і
+      // три символи розтягуються на всю паузу до наступної порції.
+      carry += pending.length * (dt / DRAIN_MS);
+      // Стеля на кадр тримає рівність і на сплеску: без неї одна затримка
+      // мережі вивалювала б абзац одним махом.
+      var take = Math.min(Math.floor(carry), MAX_PER_STEP, pending.length);
+      if (take > 0) {
+        carry -= take;
+        shown += pending.slice(0, take);
+        pending = pending.slice(take);
         onPaint(shown);
-        if (frame !== null) { cancelAnimationFrame(frame); frame = null; }
       }
+      schedule();
+    }
+
+    // ЧЕРГА МУСИТЬ РУХАТИСЬ ЗАВЖДИ · навіть коли кадрів немає.
+    //
+    // У схованій вкладці `requestAnimationFrame` не викликається взагалі. Перша
+    // редакція ставила кадр І запасний таймер: таймер робив один крок, після
+    // нього крок ставив НОВИЙ кадр, який теж не спрацьовував, а `push` бачив
+    // непорожній `frame` і більше нічого не планував. Друк застигав назавжди й
+    // не оживав навіть після повернення на вкладку · знайдено оком на живому
+    // прогоні 2026-09-06. Тому джерело кроку рівно одне на раз, і воно
+    // вибирається за станом вкладки.
+    function schedule() {
+      if (frame !== null || timer !== null || !pending) { return; }
+      if (document.hidden) { timer = setTimeout(step, 50); }
+      else { frame = requestAnimationFrame(step); }
+    }
+
+    // Зміна видимості перемикає джерело кроку в обидва боки: сховали · черга
+    // йде таймером, повернулись · знову кадрами.
+    document.addEventListener('visibilitychange', function () {
+      stop();
+      schedule();
     });
 
     return {
@@ -384,12 +481,12 @@
       // Показати все негайно · роль завершила відповідь, тягнути нема сенсу.
       flush: function () {
         if (pending) { shown += pending; pending = ''; onPaint(shown); }
-        if (frame !== null) { cancelAnimationFrame(frame); frame = null; }
+        stop();
       },
       // Новий виклик ролі · починаємо з чистого аркуша.
       reset: function () {
         shown = ''; pending = '';
-        if (frame !== null) { cancelAnimationFrame(frame); frame = null; }
+        stop();
         onPaint('');
       },
       // Синхронізація з сервером: він знає ПОВНИЙ текст, ми · показаний плюс
@@ -402,11 +499,55 @@
           return;
         }
         shown = ''; pending = '';
-        if (frame !== null) { cancelAnimationFrame(frame); frame = null; }
+        stop();
         this.push(full);
       },
       text: function () { return shown + pending; },
       done: function () { return pending === ''; }
+    };
+  }
+
+  // --- що робити з потоком ролі --------------------------------------------
+  //
+  // Одне місце, яке знає ДВА джерела того самого тексту: порції події `tokens`
+  // (везуть кожен байт від моменту під'єднання) і знімок стану (знає лише
+  // хвіст журналу токенів). Поки це знання жило на екрані, тест міг перевіряти
+  // лише свою копію логіки · тобто нічого.
+  function streamFeed(buffer) {
+    var raw = '';
+    // Запобіжник від нескінченного зростання. Відповідь однієї ролі це сотні
+    // кілобайт, тож на роботі це не спрацьовує ніколи; обрізання ПОЧАТКУ тут
+    // було половиною D83, і повертати його не можна.
+    var CAP = 2000000;
+    var KEEP = 1500000;
+
+    return {
+      // Порція потоку · головне й точне джерело.
+      delta: function (d) {
+        if (d && d.restarted) { raw = ''; buffer.reset(); }
+        raw += (d && d.text) || '';
+        if (raw.length > CAP) { raw = raw.slice(-KEEP); }
+        buffer.sync(readable(raw));
+      },
+      // Знімок стану · джерело ДРУГОЇ черги. Береться, лише коли нам нема чого
+      // показати або коли він віддав ПОВНИЙ текст виклику (`complete`).
+      //
+      // Ознака `complete` тут не здогад: у події `state` всередині SSE знімок
+      // читає хвіст журналу, а `/api/state` (запасне опитування) віддає весь
+      // текст · `Snapshot::toArray(true)`. Тому запасний шлях не застигає, а
+      // живий не перебиває сам себе хвостом.
+      //
+      // Спроба вгадати «потік мовчить, отже його немає» за таймером тут БУЛА і
+      // виявилась хибною: модель робить паузи довші за будь-який поріг, і на
+      // такій паузі сторінка підміняла показане хвостом · текст СКОРОЧУВАВСЯ
+      // на очах (заміряно на живій пачці 2026-09-06: -28 символів).
+      snapshot: function (st) {
+        if (!st || typeof st.text !== 'string' || st.text === '') { return; }
+        if (raw !== '' && ! st.complete) { return; }
+        raw = st.text;
+        buffer.sync(readable(raw));
+      },
+      raw: function () { return raw; }
     };
   }
 
@@ -468,6 +609,9 @@
     follow: follow,
     typer: typer,
     readable: readable,
+    streamFeed: streamFeed,
+    keep: keep,
+    keepPrune: keepPrune,
     screens: SCREENS
   };
 })(window);

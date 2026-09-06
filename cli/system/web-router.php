@@ -38,6 +38,7 @@ declare(strict_types=1);
 require __DIR__.'/../../lib/autoload.php';
 
 use Bdo\Translate\Session\Ledger;
+use Bdo\Translate\Ui\Labels;
 use Bdo\Translate\Run\Actions;
 use Bdo\Translate\Web\Runner;
 use Bdo\Translate\Web\Snapshot;
@@ -129,7 +130,7 @@ if ($isAction && $origin === '') {
 // Порожні оболонки екранів і спільна статика · без токена (див. пункт 3):
 // у них немає жодного рядка даних, а без цього оновлення вкладки давало б
 // голий JSON замість сторінки.
-$publicPaths = ['/', '/index.html', '/queue', '/sessions', '/start', '/app.css', '/app.js', '/api/ping'];
+$publicPaths = ['/', '/index.html', '/queue', '/sessions', '/start', '/call', '/app.css', '/app.js', '/api/ping'];
 $given = (string) ($_GET['t'] ?? ($_SERVER['HTTP_X_BDO_TOKEN'] ?? ''));
 if ($token === '') {
     $fail(500, 'token_missing_on_server', 'сервер запущено без BDO_WEB_TOKEN · запускай через ./bdo web');
@@ -144,12 +145,39 @@ if (! in_array($path, $publicPaths, true) && ($given === '' || ! hash_equals($to
 
 $snapshot = new Snapshot($stateDir);
 
+/**
+ * Такт читання журналу токенів.
+ *
+ * Такт мусить бути ДРІБНІШИЙ за темп появи тексту, інакше він сам стає
+ * стелею плавності. Заміряно 2026-09-06 на живій пачці після виправлення D85:
+ * журнал токенів росте раз на 55 мс (медіана) по 48 байтів. Тому такт 33 мс ·
+ * сторінка бачить кожен приріст окремо, а не злиплими по три.
+ *
+ * Читання дешеве: перевірка розміру файла й хвіст від зсуву.
+ *
+ * Сокет чи `fetch` + `ReadableStream` тут нічого не додали б: транспорт ніколи
+ * не був вузьким місцем (доказ · та сама вимірка), а рівність друку однаково
+ * тримає буфер на клієнті (`B.typer`). Вони знадобились би лише під POST,
+ * заголовки чи `AbortController`, яких цьому потоку не треба.
+ *
+ * СТОЯТЬ ДО `switch` НАВМИСНО. `const` на рівні файла виконується ПО ПОРЯДКУ,
+ * а не піднімається, як оголошення функції. Поки цей блок лежав під `switch`,
+ * `/api/stream` падав на першому ж використанні (`Undefined constant
+ * "STATE_EVERY"`), зʼєднання рвалось, і сторінка мовчки жила на запасному
+ * опитуванні · тобто отримувала текст раз на секунду цілим шматком. Саме це
+ * власник і бачив як друк «порціями по рядку» (D84).
+ */
+const STREAM_TICK_US = 33000;
+const STATE_EVERY = 30;        // знімок стану · раз на секунду
+const HEARTBEAT_EVERY = 450;   // тиша не довша за 15 секунд
+
 switch ($path) {
     case '/':
     case '/index.html':
     case '/queue':
     case '/sessions':
     case '/start':
+    case '/call':
     case '/app.css':
     case '/app.js':
         // Екрани окремі (рішення власника 2026-09-05), тому файлів кілька.
@@ -162,6 +190,7 @@ switch ($path) {
             '/queue' => ['web/queue.html', 'text/html; charset=utf-8'],
             '/sessions' => ['web/sessions.html', 'text/html; charset=utf-8'],
             '/start' => ['web/start.html', 'text/html; charset=utf-8'],
+            '/call' => ['web/call.html', 'text/html; charset=utf-8'],
             '/app.css' => ['web/app.css', 'text/css; charset=utf-8'],
             '/app.js' => ['web/app.js', 'application/javascript; charset=utf-8'],
         ];
@@ -196,7 +225,9 @@ switch ($path) {
         return;
 
     case '/api/state':
-        $json($snapshot->toArray());
+        // Опитування · запасний шлях, і саме тоді сторінці потрібен ПОВНИЙ
+        // текст ролі: живого потоку немає, а зшивати хвіст здогадом заборонено.
+        $json($snapshot->toArray(true));
 
         return;
 
@@ -204,9 +235,67 @@ switch ($path) {
         $ledger = new Ledger($stateDir);
         $sessions = $ledger->sessions(20);
         foreach ($sessions as $i => $session) {
-            $sessions[$i]['batch_rows'] = $ledger->batches((string) $session['id']);
+            $rows = $ledger->batches((string) $session['id']);
+            // Стан пачки на екрані · УКРАЇНСЬКОЮ. Ключ (`verified`, `committed`)
+            // лишається ключем у файлах і в коді, але власник читає сторінку, а
+            // не реєстр станів · він і сказав це прямо 2026-09-06. Переклад
+            // бере `Labels::state`, тобто той самий словник, що й екран прогону
+            // й вікно в терміналі: третьої правди про стан не зʼявляється.
+            foreach ($rows as $j => $row) {
+                $rows[$j]['state_label'] = Labels::state((string) ($row['state'] ?? ''));
+            }
+            $sessions[$i]['batch_rows'] = $rows;
         }
         $json(['sessions' => $sessions]);
+
+        return;
+
+    case '/api/call':
+        // ПОВНА РОБОТА ОДНОГО ВИКЛИКУ · запит і відповідь ролі цілком.
+        //
+        // Живий потік показує рівно те, що модель друкує ЗАРАЗ, і після
+        // завершення ролі подивитись її роботу було ніде (власник попросив це
+        // 2026-09-06). Тепер екран бере її звідси.
+        //
+        // ЧОМУ ТУТ НЕМАЄ ШЛЯХУ В ЗАПИТІ. Клієнт називає виклик (час і роль), а
+        // файли беруться з НАШОГО ж журналу й додатково звіряються з текою
+        // стану. Тому «покажи файл X» ззовні неможливе за побудовою: чужий
+        // шлях просто ні з чим не збігається.
+        $wantAt = (string) ($_GET['at'] ?? '');
+        $wantRole = (string) ($_GET['role'] ?? '');
+        if (preg_match('/^[0-9T:+\-]{10,32}$/', $wantAt) !== 1 || preg_match('/^[a-z0-9-]{1,48}$/', $wantRole) !== 1) {
+            $fail(400, 'bad_call_key', 'виклик називається часом (`at`) і роллю (`role`) · саме так, як їх віддає /api/state');
+
+            return;
+        }
+        $record = null;
+        foreach (array_reverse($snapshot->callRecords()) as $entry) {
+            if ((string) ($entry['at'] ?? '') === $wantAt && (string) ($entry['role'] ?? '') === $wantRole) {
+                $record = $entry;
+                break;
+            }
+        }
+        if ($record === null) {
+            $fail(404, 'call_unknown', 'такого виклику немає в журналі · він міг переїхати в теку закритої сесії');
+
+            return;
+        }
+        $json([
+            'at' => $wantAt,
+            'role' => $wantRole,
+            'role_label' => Labels::role($wantRole),
+            'unit' => Labels::unit($wantRole, (int) ($record['rows'] ?? 0)),
+            'rows' => (int) ($record['rows'] ?? 0),
+            'batch' => (string) ($record['batch'] ?? ''),
+            'state_label' => Labels::state((string) ($record['state'] ?? '')),
+            'model' => (string) ($record['model'] ?? ''),
+            'verdict' => (string) ($record['verdict'] ?? ''),
+            'ms' => (int) ($record['ms'] ?? 0),
+            'in' => $record['in'] ?? null,
+            'out' => $record['out'] ?? null,
+            'payload' => $snapshot->readWork($record['payload'] ?? null),
+            'answer' => $snapshot->readWork($record['answer'] ?? null),
+        ]);
 
         return;
 
@@ -301,7 +390,7 @@ switch ($path) {
         return;
 
     default:
-        $fail(404, 'unknown_path', 'сервер віддає лише екрани /, /queue, /sessions, /start, статику /app.css і /app.js, а з даних · /api/ping, /api/health, /api/state, /api/sessions, /api/stream, /api/actions, /api/plan, а дії · POST на /api/action і /api/client-error');
+        $fail(404, 'unknown_path', 'сервер віддає лише екрани /, /queue, /sessions, /start, /call, статику /app.css і /app.js, а з даних · /api/ping, /api/health, /api/state, /api/sessions, /api/stream, /api/call, /api/actions, /api/plan, а дії · POST на /api/action і /api/client-error');
 
         return;
 }
@@ -314,20 +403,6 @@ switch ($path) {
  * Через `MAX_SECONDS` зʼєднання закривається саме: забута вкладка не тримає
  * воркер вічно, а `EventSource` перепідключається сам.
  */
-/**
- * Такт читання журналу токенів.
- *
- * Був 200 мс · і саме це власник побачив як «дьорганий» друк 2026-09-06: за
- * такт прилітав десяток символів, і сторінка малювала їх стрибком. Тепер такт
- * коротший, а рівність друку тримає буфер на клієнті (`B.typer`) · разом вони
- * дають рух по символах. Читання дешеве: перевірка розміру файла й хвіст.
- *
- * Сокет тут не потрібен: SSE вже штовхає дані сам, вузьким місцем був такт.
- */
-const STREAM_TICK_US = 100000;
-const STATE_EVERY = 10;        // знімок стану · раз на секунду
-const HEARTBEAT_EVERY = 150;   // тиша не довша за 15 секунд
-
 function stream(Snapshot $snapshot): void
 {
     header('Content-Type: text/event-stream; charset=utf-8');
@@ -354,8 +429,9 @@ function stream(Snapshot $snapshot): void
         flush();
     };
 
-    // Перший знімок одразу: сторінка не має чекати такту, щоб щось показати.
-    $send('state', (string) json_encode($snapshot->toArray(), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
+    // ПЕРШИЙ знімок · із ПОВНИМ текстом поточного виклику: сторінку могли
+    // відкрити посеред довгої відповіді, і початок вона взяти більше нізвідки.
+    $send('state', (string) json_encode($snapshot->toArray(true), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
 
     while (time() - $started < $maxSeconds) {
         if (connection_aborted() === 1) {
@@ -366,6 +442,12 @@ function stream(Snapshot $snapshot): void
         // NDJSON замість тексту моделі · так і сталося на живому прогоні (D67).
         // Неповний останній рядок лишається в файлі до наступного такту, тому
         // зсув рухаємо рівно на спожите.
+        // Зсув живе ТУТ, тому й скидати його треба тут: новий виклик ролі
+        // перезаписує журнал із нуля, і зсув від попередньої відповіді
+        // опиняється за кінцем файла (D86).
+        if ($snapshot->streamSize() < $offset) {
+            $offset = 0;
+        }
         $chunk = $snapshot->streamFrom($offset);
         if ($chunk !== '') {
             $assembled = $snapshot->assemble($chunk, $offset);
@@ -385,6 +467,13 @@ function stream(Snapshot $snapshot): void
         if ($tick % STATE_EVERY === 0) {
             $state = $snapshot->toArray();
             unset($state['at']);
+            // ДАЛІ ТЕКСТ ВЕДЕ ЛИШЕ ПОТІК. Знімок його не повторює взагалі:
+            // подія `tokens` на цьому зʼєднанні везе кожен байт від моменту
+            // під'єднання, а знімок рахує від початку виклику. Дві різні точки
+            // відліку в одному вікні давали стрибок уперед і назад · заміряно
+            // на живій пачці 2026-09-06: +644 і одразу -640 символів.
+            $state['stream']['text'] = null;
+            $state['stream']['complete'] = false;
             $encoded = (string) json_encode($state, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
             $hash = md5($encoded);
             if ($hash !== $lastState) {

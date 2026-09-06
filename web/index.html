@@ -93,7 +93,33 @@
   // (`B.readable`). Без цього власник бачив `ext":"[Доса] Оберіть свій…` ·
   // переклад упереміш зі службовими лапками (виявлено на живому прогоні
   // 2026-09-06). Темп друку рахується вже по ЛЮДСЬКОМУ тексту.
-  var rawStream = '';
+  // ЩО РОБИТИ З ПОТОКОМ · знає `B.streamFeed`, а не екран: два джерела того
+  // самого тексту (порції SSE і хвіст у знімку стану) вже сплутали одне одного
+  // раз (D83), і другого місця з цим знанням бути не має.
+  var feed = B.streamFeed(stream);
+
+  // Пам'ять вікон: сервер тримає лише хвіст, тому початок роботи після
+  // перезавантаження сторінки взяти нема звідки. Мітка · пачка (або сесія,
+  // поки пачки немає): змінилась мітка, і старий запис зникає сам.
+  var streamKeep = B.keep('run.stream');
+  var journalKeep = B.keep('run.journal');
+  B.keepPrune(['run.stream', 'run.journal']);
+  var journalText = '';
+  var journalTag = '';
+  var journalLines = 0;   // скільки рядків журналу вже показано
+  var streamTag = '';
+  var rememberedAt = 0;
+
+  // Запис у сховище · не частіше ніж раз на дві секунди: вікно може важити
+  // сотні кілобайт, і писати їх на кожен знімок стану було б дорожче за саму
+  // користь. Втратити при цьому можна щонайбільше останні дві секунди.
+  function remember() {
+    var now = Date.now();
+    if (now - rememberedAt < 2000) { return; }
+    rememberedAt = now;
+    journalKeep.save(journalTag, journalText);
+    streamKeep.save(streamTag, stream.text());
+  }
 
   // Кожен крок має ПІДПИС станом. Сірий колір без слова змушував гадати, що
   // сталося з ремонтом · саме це власник і запитав 2026-09-05.
@@ -106,6 +132,12 @@
 
   // Малюємо ТЕКСТОМ, а не розміткою: `innerHTML` на кожен кадр змушував браузер
   // щоразу заново розбирати рядок, і саме це додавало ривків.
+  //
+  // Обрізання тут БУЛО і власник назвав його прямо 2026-09-06: показувалось
+  // останні 4000 символів, тобто початок відповіді ролі зникав з очей назавжди
+  // · сервер його вже не пам'ятає (знімок тримає лише хвіст журналу). Тепер
+  // вікно показує ВСЮ відповідь, а межа лишається тільки як запобіжник від
+  // нескінченного зростання вузла.
   function paintStream(text) {
     var box = B.el('streambox');
     if (!box) { return; }
@@ -120,8 +152,50 @@
       caret.className = 'caret';
       box.appendChild(caret);
     }
-    body.nodeValue = text.length > 4000 ? text.slice(-4000) : text;
+    body.nodeValue = text;
     box.scrollTop = box.scrollHeight;
+  }
+
+  // Розгортання роботи виклику ПРЯМО в списку. Тягнемо лише на вимогу: відповідь
+  // ролі це сотні кілобайт, і вантажити їх для кожного рядка списку означало б
+  // мегабайти на кожну перемальовку.
+  function bindOpenCall() {
+    Array.prototype.forEach.call(B.el('calls').querySelectorAll('.openCall'), function (btn) {
+      btn.onclick = function () {
+        var card = btn.closest('.msg');
+        var box = card.querySelector('.callWork');
+        if (box.style.display !== 'none') {
+          box.style.display = 'none';
+          btn.textContent = 'розгорнути роботу';
+          return;
+        }
+        box.style.display = 'block';
+        btn.textContent = 'згорнути';
+        if (box.dataset.loaded === '1') { return; }
+        box.innerHTML = '<div class="empty">вантажу роботу…</div>';
+        B.get('/api/call?' + card.dataset.call).then(function (d) {
+          if (d.error) {
+            box.innerHTML = '<div class="empty">' + B.esc(d.hint || 'виклик не знайдено') + '</div>';
+            return;
+          }
+          box.dataset.loaded = '1';
+          box.innerHTML = part('що пішло в модель', d.payload) + part('що модель відповіла', d.answer);
+        }).catch(function () {
+          box.innerHTML = '<div class="empty">сервер не відповів</div>';
+        });
+      };
+    });
+  }
+
+  function part(title, work) {
+    if (!work) {
+      return '<div class="empty" style="margin-top:6px">' + B.esc(title)
+        + ' · файла немає (пачку прибрано або відповіді не було)</div>';
+    }
+    var kb = work.size < 1024 ? work.size + ' Б' : Math.round(work.size / 1024) + ' КБ';
+    return '<div class="empty" style="margin-top:8px">' + B.esc(title) + ' · '
+      + B.esc(work.path) + ' · ' + kb + (work.truncated ? ' · показано перші 2 МБ' : '') + '</div>'
+      + '<pre class="log">' + B.esc(work.text) + '</pre>';
   }
 
   function render(s) {
@@ -198,11 +272,20 @@
         if (c.payload_bytes) { bits.push(Math.round(c.payload_bytes / 1024) + ' КБ payload'); }
         if (c.ms) { bits.push(B.secs(c.ms)); }
         if (c.think) { bits.push('роздуми'); }
-        return '<div class="msg"><div class="mh">'
+        // РОБОТУ ЗАВЕРШЕНОГО ВИКЛИКУ можна відкрити · власник попросив бачити
+        // її після закінчення ролі, а не тільки поки друкується (2026-09-06).
+        // Ключ виклику · час і роль, той самий, що приймає `/api/call`.
+        var key2 = 'at=' + encodeURIComponent(c.at) + '&role=' + encodeURIComponent(c.role);
+        return '<div class="msg" data-call="' + B.esc(key2) + '"><div class="mh">'
           + '<span style="font-weight:500">' + B.esc(c.role_label) + '</span>'
           + '<span class="meta">' + B.esc(bits.join(' · ')) + '</span>'
           + '<span style="margin-left:auto;font-size:12px;color:' + okColor + '">' + B.esc(c.verdict || '—') + '</span>'
-          + '<span class="meta" style="margin-left:8px">' + B.esc(c.hms) + '</span></div></div>';
+          + '<span class="meta" style="margin-left:8px">' + B.esc(c.hms) + '</span></div>'
+          + '<div class="bar" style="margin-top:6px">'
+          + '<button class="openCall" type="button">розгорнути роботу</button>'
+          + '<a href="/call?' + B.esc(key2) + '" target="_blank" rel="noopener"'
+          + ' style="font-size:12px;color:var(--acc-tx)">на весь екран ↗</a></div>'
+          + '<div class="callWork" style="display:none"></div></div>';
       }).join('') : '<div class="empty">' + B.esc(callsView.reason || 'викликів немає') + '</div>';
       // Роль, яка друкує ЗАРАЗ, ще не має рядка в журналі викликів: він
       // пишеться ПІСЛЯ відповіді. Тому її картка малюється окремо.
@@ -226,6 +309,7 @@
           + '<div class="box mono" id="streambox"></div></div>';
       }
       B.el('calls').innerHTML = html;
+      bindOpenCall();
       B.el('callsMeta').textContent = !calls.length ? ''
         : (callsView.scope === 'batch'
             ? 'пачки ' + callsView.batch + ' · ' + calls.length
@@ -233,24 +317,58 @@
       paintStream(stream.text());
     }
 
-    // Знімок стану знає ПОВНИЙ текст ролі · він і є джерелом правди, коли
-    // сторінку щойно відкрили або потік на мить обірвався. Буфер сам добере
-    // різницю, а не перемалює все стрибком.
-    if (s.stream && typeof s.stream.text === 'string' && s.stream.text !== '') {
-      rawStream = s.stream.text;
-      stream.sync(B.readable(rawStream));
-    }
+    // Знімок стану знає лише ХВІСТ журналу токенів (`s.stream.complete` каже,
+    // чи це початок відповіді). Тому його текст ЗШИВАЄТЬСЯ з накопиченим по
+    // збігу, а не підміняє його: підміна не впізнавала префікса й щосекунди
+    // починала друк спочатку · саме це власник бачив як друк «порціями по
+    // рядку» 2026-09-06 (D83).
+    feed.snapshot(s.stream);
     // Роль договорила · тягнути залишок буфера нема сенсу.
     if (!live || !s.running) { stream.flush(); }
-    journal.write((s.transcript || []).join('\n') || 'журнал порожній');
+
+    // Журнал кроків сервер теж віддає ХВОСТОМ (200 рядків), тому початок пачки
+    // зникав з екрана. Накопичуємо його тим самим зшиванням і тримаємо в
+    // пам'яті вікна · перезавантаження сторінки більше не з'їдає початок.
+    var tag = String(b.id || (s.session && s.session.id) || '');
+    if (tag !== journalTag) {
+      // Нова мітка · беремо збережене саме під неї. Немає такого запису ·
+      // `load` віддає порожньо, і вікно просто починається з чистого аркуша.
+      journalTag = tag;
+      journalText = journalKeep.load(tag);
+      journalLines = journalText === '' ? 0 : journalText.split('\n').length;
+    }
+    // Журнал сервер віддає ХВОСТОМ у 200 рядків і НАЗИВАЄ номер першого з них
+    // (`transcript_from`). Тому дописуємо рівно ті рядки, яких ще не бачили ·
+    // без жодного зіставлення тексту. Зшивання по вмісту тут уже вигадувало
+    // слова, яких модель не друкувала (D83), і повертати його не можна.
+    var lines = s.transcript || [];
+    var from = s.transcript_from;
+    if (from === -1 || from === undefined || from > journalLines) {
+      // Порахувати межу не вийшло або ми відстали більше, ніж сервер пам'ятає:
+      // показуємо хвіст як є. Це видно розривом · і це чесно.
+      journalText = lines.join('\n');
+      journalLines = from === -1 || from === undefined ? lines.length : from + lines.length;
+    } else {
+      var fresh = lines.slice(journalLines - from);
+      if (fresh.length) {
+        journalText = journalText === '' ? fresh.join('\n') : journalText + '\n' + fresh.join('\n');
+        journalLines += fresh.length;
+      }
+    }
+    journal.write(journalText || 'журнал порожній');
+
+    // Мітка живого друку · пачка ПЛЮС роль: у межах пачки ролі змінюють одна
+    // одну, і відповідь термінолога не має відновитись у вікні перекладача.
+    var sTag = tag + '/' + String((s.stream && s.stream.role) || '');
+    if (sTag !== streamTag) {
+      streamTag = sTag;
+      var saved = streamKeep.load(sTag);
+      if (saved && stream.text() === '') { stream.sync(saved); stream.flush(); }
+    }
+    remember();
   }
 
-  B.live(render, function (d) {
-    if (d.restarted) { rawStream = ''; stream.reset(); }
-    rawStream += d.text || '';
-    if (rawStream.length > 24000) { rawStream = rawStream.slice(-16000); }
-    stream.sync(B.readable(rawStream));
-  });
+  B.live(render, function (d) { feed.delta(d); });
 
   B.el('stopBtn').onclick = function () {
     var msg = B.el('actionMsg');

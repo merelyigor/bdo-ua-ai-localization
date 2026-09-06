@@ -143,6 +143,10 @@ final class OpenAi implements Transport
         // · тобто «мережа впала» замість «перевищено ліміт запитів». Спіймано
         // цим самим тестом 2026-09-05.
         $plain = '';
+        // Читання БЕЗ буфера · та сама причина, що в `Ollama`: обгортка `http`
+        // інакше віддає події SSE злиплими пачками, і живий друк іде блоками
+        // замість символів (D85).
+        stream_set_chunk_size($handle, 1);
         while (($line = fgets($handle)) !== false) {
             $line = trim($line);
             if ($line === '' || str_starts_with($line, ':')) {

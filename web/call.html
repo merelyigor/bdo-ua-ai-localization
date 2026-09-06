@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<title>bdo · робота ролі</title>
+<link rel="stylesheet" href="/app.css">
+<!--
+  ЕКРАН ОДНОГО ВИКЛИКУ · вся робота ролі на весь екран.
+
+  Навіщо окремий екран, якщо є вікно друку на екрані прогону. Вікно показує те,
+  що модель друкує ЗАРАЗ, і воно мале: власник попросив дивитись роботу цілком,
+  розгорнуто, і мати змогу відкрити її окремою вкладкою (2026-09-06).
+
+  Два стани, і різницю видно на екрані:
+    · виклик ІДЕ · текст друкується наживо тим самим буфером, що й на прогоні;
+    · виклик ЗАВЕРШЕНО · сервер віддає запит і відповідь ЦІЛКОМ із журналу.
+
+  Дані беруться лише з `/api/call` і `/api/state`. Своєї правди тут немає.
+-->
+</head>
+<body>
+<div class="wrap wide">
+  <div class="nav" id="nav"></div>
+  <div id="gate" class="panel" style="display:none"></div>
+
+  <div id="app" style="display:none">
+    <div class="screen-title">
+      <h1 id="title">Робота ролі</h1>
+      <span class="hint" id="subtitle">запит і відповідь моделі цілком</span>
+    </div>
+
+    <div class="panel">
+      <div class="bar">
+        <span class="empty" id="meta"></span>
+        <button id="wrapBtn" style="margin-left:auto" aria-pressed="true">переносити рядки</button>
+        <button id="fullBtn">на весь екран</button>
+        <a href="/" style="font-size:13px;color:var(--acc-tx)">← до прогону</a>
+      </div>
+    </div>
+
+    <div class="panel" id="livePanel" style="display:none">
+      <div class="bar" style="margin-bottom:8px">
+        <span style="font-weight:500;color:var(--acc-tx)" id="liveRole">роль друкує</span>
+        <span class="empty" id="liveNote">друкує…</span>
+      </div>
+      <div class="box mono big" id="livebox"></div>
+    </div>
+
+    <div class="panel">
+      <div class="bar" style="margin-bottom:8px">
+        <span style="font-size:13px;font-weight:500">що пішло в модель</span>
+        <span class="empty" id="payloadMeta"></span>
+      </div>
+      <pre class="log big" id="payload">—</pre>
+    </div>
+
+    <div class="panel">
+      <div class="bar" style="margin-bottom:8px">
+        <span style="font-size:13px;font-weight:500">що модель відповіла</span>
+        <span class="empty" id="answerMeta"></span>
+      </div>
+      <pre class="log big" id="answer">—</pre>
+    </div>
+  </div>
+</div>
+
+<script src="/app.js"></script>
+<script>
+(function () {
+  'use strict';
+  var B = window.BDO;
+  B.renderNav('');
+  if (!B.ensureToken()) { return; }
+  B.el('app').style.display = 'block';
+
+  var q = new URLSearchParams(location.search);
+  var at = q.get('at') || '';
+  var role = q.get('role') || '';
+
+  // Живий друк · той самий буфер і та сама логіка потоку, що на прогоні.
+  // Другої реалізації тут навмисно немає: саме роздвоєння дало D83.
+  var stream = B.typer(null, { onPaint: paintLive });
+  var feed = B.streamFeed(stream);
+
+  function paintLive(text) {
+    var box = B.el('livebox');
+    var body = box.firstChild;
+    if (!body || body.nodeType !== 3) {
+      box.textContent = '';
+      body = document.createTextNode('');
+      box.appendChild(body);
+      var caret = document.createElement('span');
+      caret.className = 'caret';
+      box.appendChild(caret);
+    }
+    body.nodeValue = text;
+    box.scrollTop = box.scrollHeight;
+  }
+
+  function size(bytes) {
+    var n = Number(bytes) || 0;
+    return n < 1024 ? n + ' Б' : (n < 1024 * 1024 ? Math.round(n / 1024) + ' КБ'
+      : (n / 1048576).toFixed(1) + ' МБ');
+  }
+
+  function show(id, metaId, work) {
+    var node = B.el(id);
+    if (!work) {
+      node.textContent = 'файла роботи немає · його прибрали разом із пачкою або виклик не дійшов до відповіді';
+      B.el(metaId).textContent = '';
+      return;
+    }
+    node.textContent = work.text;
+    B.el(metaId).textContent = work.path + ' · ' + size(work.size)
+      + (work.truncated ? ' · показано перші 2 МБ' : '');
+  }
+
+  // --- завершений виклик: беремо роботу цілком -------------------------------
+  if (at && role) {
+    B.get('/api/call?at=' + encodeURIComponent(at) + '&role=' + encodeURIComponent(role))
+      .then(function (d) {
+        if (d.error) {
+          B.el('subtitle').textContent = d.hint || 'виклик не знайдено';
+          return;
+        }
+        B.el('title').textContent = d.role_label;
+        var bits = [];
+        if (d.rows) { bits.push(B.num(d.rows) + ' ' + d.unit); }
+        if (d.in || d.out) { bits.push(B.num(d.in) + '→' + B.num(d.out) + ' ток.'); }
+        if (d.ms) { bits.push(B.secs(d.ms)); }
+        if (d.state_label) { bits.push(d.state_label); }
+        if (d.batch) { bits.push('пачка ' + d.batch); }
+        if (d.model) { bits.push(d.model); }
+        bits.push('вирок ' + (d.verdict || '—'));
+        B.el('subtitle').textContent = bits.join(' · ');
+        B.el('meta').textContent = d.at;
+        show('payload', 'payloadMeta', d.payload);
+        show('answer', 'answerMeta', d.answer);
+      })
+      .catch(function () { B.el('subtitle').textContent = 'сервер не відповів'; });
+  }
+
+  // --- живий виклик ----------------------------------------------------------
+  // Без ключа в адресі екран показує те, що друкується ЗАРАЗ · тобто працює як
+  // розгорнуте вікно прогону.
+  B.live(function (s) {
+    var live = (s.stream && s.stream.role_label && s.stream.fresh) ? s.stream : null;
+    var showLive = !!live && s.running && (!at || (live.role === role));
+    B.el('livePanel').style.display = showLive ? 'block' : 'none';
+    if (!showLive) { return; }
+    B.el('liveRole').textContent = live.role_label;
+    var waiting = live.waiting || 0;
+    B.el('liveNote').textContent = waiting >= 12
+      ? 'модель вантажиться, ' + waiting + ' с · перший виклик після паузи тягне вагу з диска'
+      : 'друкує…';
+    if (!at) {
+      B.el('title').textContent = live.role_label;
+      B.el('subtitle').textContent = 'друкує зараз · оновиться саме';
+    }
+    feed.snapshot(s.stream);
+  }, function (d) { feed.delta(d); });
+
+  // --- зручність перегляду ---------------------------------------------------
+  var wrapped = true;
+  B.el('wrapBtn').onclick = function () {
+    wrapped = !wrapped;
+    this.setAttribute('aria-pressed', wrapped ? 'true' : 'false');
+    this.textContent = wrapped ? 'переносити рядки' : 'не переносити';
+    ['payload', 'answer', 'livebox'].forEach(function (id) {
+      var n = B.el(id);
+      if (n) { n.style.whiteSpace = wrapped ? 'pre-wrap' : 'pre'; }
+    });
+  };
+  B.el('fullBtn').onclick = function () {
+    if (document.fullscreenElement) { document.exitFullscreen(); }
+    else if (document.documentElement.requestFullscreen) { document.documentElement.requestFullscreen(); }
+  };
+  document.addEventListener('fullscreenchange', function () {
+    B.el('fullBtn').textContent = document.fullscreenElement ? 'вийти з повного екрана' : 'на весь екран';
+  });
+})();
+</script>
+</body>
+</html>

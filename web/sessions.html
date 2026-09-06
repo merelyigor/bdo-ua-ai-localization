@@ -132,7 +132,11 @@
               + '<td class="num">' + B.num(b.to_layer) + '</td>'
               + '<td class="num">' + B.num(b.to_human) + '</td>'
               + '<td class="num">' + B.num(b.quarantine) + '</td>'
-              + '<td class="empty">' + B.esc(b.state || '') + '</td></tr>';
+              // Стан УКРАЇНСЬКОЮ, ключ · у підказці: власник читає таблицю, а
+              // не реєстр станів (вимога 2026-09-06). Переклад дає сервер тим
+              // самим словником, що й екран прогону.
+              + '<td class="empty" title="' + B.esc(b.state || '') + '">'
+              + B.esc(b.state_label || b.state || '') + '</td></tr>';
           }).join('') + '</tbody></table>'
       : '<div class="empty">У цій сесії пачок ще не було.</div>';
 

@@ -23,6 +23,11 @@ valid_qa() {
         "$SCRIPT_DIR/lib/autoload.php" "$1" "$2" 2>/dev/null
 }
 transition() { php -r 'require $argv[1];Bdo\Translate\Batch\Workspace::requireCurrent($argv[2])->transition($argv[3]);' "$SCRIPT_DIR/lib/autoload.php" "$STATE_DIR" "$1"; }
+# Перехід у стан, у якому пачка ВЖЕ стоїть, є нормальним при відновленні:
+# підготовка кроку повторюється, бо її файли не дожили (D87). Машина станів
+# такого переходу не приймає й правильно робить · тому питаємо стан, а не
+# ловимо помилку. Перехід у ІНШИЙ стан лишається під тим самим контролем.
+transition_or_stay() { test "$(field state)" = "$1" || transition "$1"; }
 complete() {
     local sum; sum="$(shasum -a 256 "$2" | awk '{print $1}')"
     php -r 'require $argv[1];Bdo\Translate\Batch\Workspace::requireCurrent($argv[2])->completeStep($argv[3],basename($argv[4]),$argv[5]);' "$SCRIPT_DIR/lib/autoload.php" "$STATE_DIR" "$1" "$2" "$sum"
@@ -415,7 +420,7 @@ dispatch_qa() {
     clean_rows="$(row_count "$B/qa-subset.json")"
     if [ "${clean_rows:-0}" -eq 0 ]; then
         cp "$B/pre-verdicts.json" "$B/verdicts.json"
-        transition awaiting_qa
+        transition_or_stay awaiting_qa
         # Причина називає, ЩО саме зняло QA: суцільний дефект або суцільна памʼять.
         if grep -q '"status":"REJECT"' "$B/pre-verdicts.json"; then
             emit 1 awaiting_qa '{"kind":"continue","reason":"mechanical_only"}'
@@ -427,7 +432,8 @@ dispatch_qa() {
     "$SCRIPT_DIR/cli/prepare/build-schema.sh" --qa "$B/qa-subset.json" >/dev/null
     qa_args=(); test "$(field mode)" = improve && qa_args+=(--with-current)
     "$SCRIPT_DIR/cli/prepare/qa-payload.sh" "$B/qa-subset.json" "$B/clean.json" "${qa_args[@]}" > "$B/qa-payload.json"
-    transition awaiting_qa; child awaiting_qa translation-qa "$B/qa-payload.json" "$B/verdicts.json"
+    transition_or_stay awaiting_qa
+    child awaiting_qa translation-qa "$B/qa-payload.json" "$B/verdicts.json"
 }
 # Злити механічні вердикти з відповіддю QA. Порядок важливий: доведений кодом
 # дефект сильніший за думку моделі про той самий рядок.
@@ -730,9 +736,25 @@ deterministic_valid)
 awaiting_qa)
     if [ ! -s "$B/verdicts.json" ]; then
         if retry_exceeded awaiting_qa; then give_up awaiting_qa; fi
+        # Payload міг не дожити до відновлення (D87: прибирання зносило робочі
+        # файли незавершеної пачки). Тоді готуємо його ЗАНОВО, а не кличемо
+        # роль із неіснуючим файлом · інакше пачка стоїть назавжди, а причина
+        # звучить як «роль не дала відповіді», тобто вказує не на той шар.
+        if [ ! -s "$B/qa-payload.json" ]; then dispatch_qa; exit 0; fi
         ensure_schema qa; child awaiting_qa translation-qa "$B/qa-payload.json" "$B/verdicts.json"; exit 0
     fi
-    qa_scope="$B/rows.json"; test -s "$B/qa-subset.json" && qa_scope="$B/qa-subset.json"
+    # ОБСЯГ QA · за кількістю РЯДКІВ, а не за розміром файла.
+    #
+    # `qa-subset.json` існує завжди, коли розділювач відпрацював, і при повністю
+    # памʼятній пачці містить `rows: []` · файл непорожній, рядків нуль. Стара
+    # умова `test -s` брала його за обсяг, тому 50 механічних вироків звірялись
+    # із нулем рядків, не проходили перевірку й щоразу летіли у
+    # `verdicts.invalid.*`. Пачка ходила по колу, а причина називала роль, яка
+    # тут ні до чого (D87).
+    qa_scope="$B/rows.json"
+    if [ -s "$B/qa-subset.json" ] && [ "$(row_count "$B/qa-subset.json")" -gt 0 ]; then
+        qa_scope="$B/qa-subset.json"
+    fi
     if ! valid_qa "$B/verdicts.json" "$qa_scope"; then
         # Спроби вичерпані · рятуємо пачку, а не викидаємо її.
         #

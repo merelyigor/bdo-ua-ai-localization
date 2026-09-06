@@ -77,8 +77,19 @@ check_rules() {
         || fail 'AGENTS.md не називає браузер основним інтерфейсом власника'
     grep -Fq 'Кнопка сторінки не має власної логіки' AGENTS.md \
         || fail 'AGENTS.md не фіксує, що дія сторінки є командою з реєстру'
-    grep -Fq 'СТАНОМ DOM, а не скріншотами' AGENTS.md \
+    grep -Fq 'Сторінку перевіряй СТАНОМ DOM' AGENTS.md \
         || fail 'AGENTS.md не фіксує спосіб перевірки сторінки'
+    # Стану НЕ ДОСИТЬ · вимога власника 2026-09-06. Два дефекти вікна живого
+    # друку поспіль (сирий JSON, друк порціями з утратою початку · D83) знайшло
+    # око власника: обидва живуть у темпі показу, якого в знімку DOM немає.
+    grep -Fq 'перевіряй ВІЗУАЛЬНО' AGENTS.md \
+        || fail 'AGENTS.md не вимагає ДОДАТКОВОЇ візуальної перевірки видимих змін'
+    # Дозвіл на малу пачку існує РАЗОМ зі своєю межею: без неї наступна сесія
+    # почне міряти поведінку моделі на пʼяти рядках і повторить D82.
+    grep -Fq 'НАЙМЕНШУ пачку' AGENTS.md \
+        || fail 'AGENTS.md не дозволяє малу пачку для перевірки механіки'
+    grep -Fq 'РОБОЧОМУ розмірі 50' AGENTS.md \
+        || fail 'AGENTS.md не називає межі малої пачки · поведінку моделі міряють на 50'
     grep -Fq '§14 Браузерний інтерфейс як основна поверхня власника' "$RULE_REFERENCE" \
         || fail "у $RULE_REFERENCE немає §14 про браузерний інтерфейс"
     # Розмір пачки зафіксовано на 50 (рішення власника 2026-08-28) і це стеля
@@ -585,6 +596,9 @@ $braceless"
     run bash tests/web-actions.sh
     run bash tests/web-steps.sh
     run bash tests/web-screens.sh
+    run bash tests/web-live-typing.sh
+    run bash tests/web-call-view.sh
+    run bash tests/qa-memory-only.sh
     run bash tests/no-silent-failures.sh
     run bash tests/quarantine-recovery.sh
     run bash tests/worker-reference.sh

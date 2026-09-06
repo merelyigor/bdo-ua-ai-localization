@@ -101,3 +101,12 @@ td.num,th.num{text-align:right;font-family:var(--mono)}
 .mode[aria-pressed="true"] .d{color:var(--acc-tx)}
 select,input[type=number],input[type=text]{font-family:inherit;font-size:13px;padding:5px 8px;border-radius:8px;
   border:.5px solid var(--bd);background:var(--s2);color:var(--tp)}
+
+/* Екран одного виклику · читати роботу моделі, а не підглядати в щілину.
+   Власник попросив розгортати вікно на весь екран і відкривати окремою
+   вкладкою (2026-09-06), тому тут ширша колонка й високі вікна. */
+.wrap.wide{max-width:1600px}
+.box.big{max-height:60vh}
+pre.log.big{max-height:70vh;font-size:13px}
+:fullscreen .wrap.wide{max-width:none;padding:0 24px}
+:fullscreen pre.log.big{max-height:80vh}

@@ -254,7 +254,7 @@ tick_us="$(sed -n 's/^const STREAM_TICK_US = \([0-9]*\);.*/\1/p' "$ROOT/cli/syst
 test -n "$tick_us" || fail 'не вдалося прочитати такт потоку з cli/system/web-router.php'
 test "$tick_us" -le 120000 \
     || fail "такт читання токенів ${tick_us} мкс · за такий час набігає десяток символів, і друк смикає"
-for mark in 'requestAnimationFrame' 'perFrame' 'typer:'; do
+for mark in 'requestAnimationFrame' 'carry +=' 'typer:'; do
     grep -Fq "$mark" "$ROOT/web/app.js" \
         || fail "на клієнті немає рівномірного буфера друку (немає «${mark}») · порція малюватиметься стрибком"
 done
@@ -304,6 +304,14 @@ check('чужий формат', readable('просто текст'), 'прос�
 check('відступи', readable('{\n  "items": [\n    {\n      "canonical_source": "X",\n'
     + '      "ukrainian_proposal": "[Школяр] Набір",\n      "next_action": ""\n    }\n  ]\n}'),
     '[Школяр] Набір');
+// 8а. Порожні поля не дають порожніх рядків: у вироку QA `issue` порожній на
+//     кожному чистому рядку, і вікно починалось із десятка переносів.
+check('порожні поля', readable('{"items":[{"id":"r1","status":"PASS","issue":""},'
+    + '{"id":"r2","status":"REVIEW","issue":"Русизм"}]}'), 'Русизм');
+// 8б. Початок конверта · ще не текст. Показаний сирий JSON осідав у
+//     накопичувачі назавжди (D83).
+check('початок конверта', readable('{"items":[{"id":"r1","te'), '');
+check('не JSON узагалі', readable('роль відповіла прозою'), 'роль відповіла прозою');
 // 8. Ключ, який трапився НЕ як пара «ключ: значення», не має ламати розбір.
 check('ключ у тексті', readable('{"items":[{"text":"слово text без двокрапки"}]}'), 'слово text без двокрапки');
 console.log('ok');
@@ -311,8 +319,12 @@ JS
     node "$TMP/readable.js" "$ROOT/web/app.js" >/dev/null \
         || fail 'живий друк показує JSON замість тексту моделі (див. причину вище)'
 fi
-grep -Fq 'B.readable(rawStream)' "$ROOT/web/index.html" \
-    || fail 'екран прогону не проганяє потік через B.readable · у вікні друку знову буде JSON'
+# Потік проходить через `B.readable` усередині `B.streamFeed` · екран лише
+# віддає йому обидва джерела (D83: раніше це знання жило на екрані й роздвоїлось).
+grep -Fq 'readable(raw)' "$ROOT/web/app.js" \
+    || fail 'потік ролі не проганяється через B.readable · у вікні друку знову буде JSON'
+grep -Fq 'B.streamFeed(stream)' "$ROOT/web/index.html" \
+    || fail 'екран прогону не веде потік через B.streamFeed · логіка показу знову роздвоїлась'
 
 # --- «Модель вантажиться» · окремий підпис, а не мовчання --------------------
 #
@@ -360,9 +372,45 @@ end_ms="$(php -r 'echo (int) round(microtime(true) * 1000);')"
 elapsed=$(( end_ms - start_ms ))
 test "$elapsed" -lt 1000 \
     || fail "при висячому SSE звичайний запит чекав ${elapsed} мс · воркери не працюють, потік мусить відкотитись на опитування"
+# ПЕРШИЙ ЗНІМОК ЩЕ НЕ Є ПОТОКОМ. Він відправляється ДО циклу, тому перевірка
+# лише на нього мовчала, коли цикл падав на першому ж кроці: константи такту
+# лежали НИЖЧЕ за `switch`, `const` не піднімається, і `/api/stream` рвався з
+# `Undefined constant "STATE_EVERY"` (D84). Сторінка тихо жила на запасному
+# опитуванні · тобто отримувала текст раз на секунду цілим шматком.
+#
+# Тому пишемо в журнал токенів ПОКИ зʼєднання відкрите й вимагаємо подію.
+printf '%s\n' '{"at":"'"$(date -u +%Y-%m-%dT%H:%M:%S+00:00)"'","role":"translation-worker","model":"m","provider":"ollama","event":"start"}' \
+    > "$BDO_STATE_DIR/run-stream.log"
+sleep 0.4
+printf '%s\n' '{"content":"жива порція потоку"}' >> "$BDO_STATE_DIR/run-stream.log"
 wait "$SSE_PID" 2>/dev/null || true
 grep -q '^event: state' "$TMP/sse.txt" \
     || fail "SSE не надіслав першого знімка стану. Отримано: $(head -3 "$TMP/sse.txt")"
+grep -q '^event: tokens' "$TMP/sse.txt" \
+    || fail "SSE не довіз жодної порції тексту · цикл потоку падає одразу після першого знімка. Отримано: $(head -20 "$TMP/sse.txt")"
+grep -q 'жива порція потоку' "$TMP/sse.txt" \
+    || fail "порція потоку не доїхала до сторінки. Отримано: $(head -20 "$TMP/sse.txt")"
+if grep -qE 'Undefined (constant|variable|function)|Fatal error|Uncaught' "$BDO_STATE_DIR/web.log"; then
+    fail "сервер писав помилку PHP під час потоку: $(grep -m 3 -E 'Undefined|Fatal|Uncaught' "$BDO_STATE_DIR/web.log")"
+fi
+
+# НОВИЙ ВИКЛИК РОЛІ перезаписує журнал токенів із нуля, і зсув потоку від
+# попередньої відповіді опиняється ЗА кінцем файла. Поки скидання зсуву було
+# недосяжною гілкою, потік після цього мовчав до перепідключення через 300 с ·
+# вікно застигало на попередній відповіді (D86). Перевіряємо саме перехід.
+curl -s -N -m 5 "http://127.0.0.1:$PORT/api/stream?t=$TOKEN" >"$TMP/sse2.txt" 2>&1 &
+SSE2_PID=$!
+sleep 0.5
+printf '%s\n' '{"content":"перша відповідь ролі"}' >> "$BDO_STATE_DIR/run-stream.log"
+sleep 0.5
+# Роль договорила · наступний виклик пише журнал ЗАНОВО й коротшим.
+printf '%s\n' '{"at":"'"$(date -u +%Y-%m-%dT%H:%M:%S+00:00)"'","role":"translation-qa","model":"m","provider":"ollama","event":"start"}' \
+    > "$BDO_STATE_DIR/run-stream.log"
+printf '%s\n' '{"content":"друга"}' >> "$BDO_STATE_DIR/run-stream.log"
+sleep 0.6
+wait "$SSE2_PID" 2>/dev/null || true
+grep -q 'друга' "$TMP/sse2.txt" \
+    || fail "після нового виклику ролі потік замовк · вікно застигне на попередній відповіді. Отримано: $(tail -6 "$TMP/sse2.txt")"
 
 # --- Другий запуск не піднімає другий сервер (вимога власника 2026-09-05) ---
 # Без цієї межі зниклий `state/web.json` давав два сервери на одному стані: два

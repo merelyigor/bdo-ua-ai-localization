@@ -194,7 +194,27 @@ $rows = \Bdo\Translate\Payload\Items::count($payloadPath);
 // є ціною службових полів, тому в журналі стоять обидва числа.
 $payloadBytes = is_file($payloadPath) ? (int) filesize($payloadPath) : null;
 
-$journal = static function (string $verdict) use ($callsFile, $role, $model, $provider, $started, $currentBatch, $runState, $rows, $payloadBytes, &$stats): void {
+// ДЕ ЛЕЖИТЬ САМА РОБОТА · шлях відносно теки стану.
+//
+// Журнал досі знав ЧИСЛА виклику (скільки токенів, скільки секунд), але не
+// знав, де подивитись сам запит і саму відповідь. Через це вікно показувало
+// лише те, що встигло проїхати потоком, а після завершення ролі роботу можна
+// було відкрити тільки руками з термінала · власник попросив бачити її на
+// сторінці (2026-09-06).
+//
+// Відносний шлях тут не косметика: він робить неможливим показ файла ПОЗА
+// текою стану, навіть якщо в журнал колись потрапить чуже значення.
+$relative = static function (string $path) use ($stateDir): ?string {
+    $base = rtrim((string) realpath($stateDir), '/');
+    $full = realpath($path);
+    if ($base === '' || $full === false || ! str_starts_with($full, $base.'/')) {
+        return null;
+    }
+
+    return substr($full, strlen($base) + 1);
+};
+
+$journal = static function (string $verdict) use ($callsFile, $role, $model, $provider, $started, $currentBatch, $runState, $rows, $payloadBytes, $relative, $payloadPath, $responsePath, &$stats): void {
     $dir = dirname($callsFile);
     if (! is_dir($dir) && ! mkdir($dir, 0777, true) && ! is_dir($dir)) {
         return;
@@ -205,6 +225,10 @@ $journal = static function (string $verdict) use ($callsFile, $role, $model, $pr
         'state' => $runState,
         'rows' => $rows,
         'payload_bytes' => $payloadBytes,
+        // Шляхи до самої роботи · щоб екран міг показати запит і відповідь
+        // ЦІЛКОМ, а не тільки те, що встигло проїхати потоком.
+        'payload' => $relative($payloadPath),
+        'answer' => $relative($responsePath),
         'batch' => $currentBatch(),
         'model' => $model,
         'provider' => $provider,

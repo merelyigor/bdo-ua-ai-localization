@@ -34,8 +34,18 @@ final class Snapshot
 
     public function __construct(private readonly string $stateDir) {}
 
-    /** @return array<string,mixed> */
-    public function toArray(): array
+    /**
+     * @return array<string,mixed>
+     *
+     * @param  bool  $fullStream  віддати ВЕСЬ текст поточного виклику, а не хвіст.
+     *
+     * Хвіст (24 КБ) дешевий і його досить, поки живий потік `tokens` везе кожен
+     * байт. Коли ж потоку немає (SSE не піднявся, сторінка на опитуванні),
+     * хвіст стає єдиним джерелом · і показати з нього початок відповіді
+     * НЕМОЖЛИВО. Вигадувати не можна (D83), тому `/api/state` віддає повний
+     * текст: раз на секунду й лише тоді, коли потік не працює.
+     */
+    public function toArray(bool $fullStream = false): array
     {
         $manifest = $this->currentManifest();
         $ledger = new Ledger($this->stateDir);
@@ -55,7 +65,8 @@ final class Snapshot
             'calls' => $this->callsView($manifest),
             'summary' => $this->summary($manifest),
             'transcript' => $this->transcript(),
-            'stream' => $this->stream(),
+            'transcript_from' => $this->transcriptFrom(),
+            'stream' => $this->stream($fullStream),
             'running' => $this->running(),
         ];
     }
@@ -199,13 +210,16 @@ final class Snapshot
             return '';
         }
         $size = (int) filesize($path);
-        if ($offset >= $size) {
-            return '';
-        }
-        // Файл перезаписали (новий виклик ролі) · читаємо з початку, інакше
-        // сторінка назавжди застрягла б на позиції минулого прогону.
+        // Файл перезаписали (новий виклик ролі) · читаємо з початку. ЦЕЙ
+        // ПОРЯДОК ВАЖЛИВИЙ: раніше перевірка «нічого нового» стояла ВИЩЕ, тому
+        // гілка скидання була недосяжною взагалі, і після кожного нового
+        // виклику потік замовкав назавжди · вікно застигало на попередній
+        // відповіді до перепідключення через 300 с (D86).
         if ($offset > $size) {
             $offset = 0;
+        }
+        if ($offset >= $size) {
+            return '';
         }
         $fh = fopen($path, 'rb');
         if ($fh === false) {
@@ -453,6 +467,61 @@ final class Snapshot
      *
      * @return list<array<string,mixed>>
      */
+    /**
+     * Сирі записи журналу викликів · для показу ПОВНОЇ роботи одного виклику.
+     *
+     * `calls()` готує їх до показу списком (людські підписи, одиниці), а тут
+     * потрібні саме поля запису, зокрема шляхи до payload і відповіді.
+     *
+     * @return list<array<string,mixed>>
+     */
+    public function callRecords(?int $limit = null): array
+    {
+        $out = [];
+        foreach ($this->tailLines($this->path('model-calls.jsonl'), $limit ?? self::CALLS) as $line) {
+            $entry = json_decode($line, true);
+            if (is_array($entry)) {
+                $out[] = $entry;
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * Прочитати файл роботи виклику за шляхом ІЗ ЖУРНАЛУ.
+     *
+     * Шлях приходить не з запиту, а з нашого ж журналу, і все одно звіряється з
+     * текою стану: журнал теж є файлом, і одного джерела довіри для читання
+     * файлів мало. Виходу за теку стану тут немає за побудовою.
+     *
+     * @return array{path:string,size:int,text:string,truncated:bool}|null
+     */
+    public function readWork(mixed $relative): ?array
+    {
+        if (! is_string($relative) || $relative === '' || str_contains($relative, "\0")) {
+            return null;
+        }
+        $base = rtrim((string) realpath($this->stateDir), '/');
+        $full = realpath($this->stateDir.'/'.$relative);
+        if ($base === '' || $full === false || ! str_starts_with($full, $base.'/') || ! is_file($full)) {
+            return null;
+        }
+        $size = (int) filesize($full);
+        // Стеля показу · відповідь ролі це сотні кілобайт, і це нормально, але
+        // безмежним читання бути не має. Обрізання НАЗИВАЄТЬСЯ вголос: мовчазно
+        // показаний шматок читався б як уся робота.
+        $cap = 2 * 1024 * 1024;
+        $text = (string) file_get_contents($full, false, null, 0, $cap);
+
+        return [
+            'path' => $relative,
+            'size' => $size,
+            'text' => $text,
+            'truncated' => $size > $cap,
+        ];
+    }
+
     private function calls(?int $limit = null): array
     {
         $lines = $this->tailLines($this->path('model-calls.jsonl'), $limit ?? self::CALLS);
@@ -527,13 +596,52 @@ final class Snapshot
         return $this->tailLines($this->path('run-transcript.log'), self::TRANSCRIPT_LINES);
     }
 
+    /**
+     * НОМЕР ПЕРШОГО ВІДДАНОГО РЯДКА журналу кроків.
+     *
+     * Без нього сторінка не може відрізнити «те саме, що вже показано» від
+     * «нове»: віддається лише хвіст у 200 рядків. Зшивати по вмісту не можна ·
+     * на повторюваному тексті таке зшивання ВИГАДУВАЛО слова, і власник бачив
+     * у вікні «руйнівникуйнівникуйнівник», якого модель не друкувала (D83).
+     * Тому межу називає СЕРВЕР числом, а не сторінка здогадом.
+     *
+     * -1 · порахувати неможливо (журнал завеликий): сторінка тоді просто
+     * показує хвіст, і це чесно, бо вигадувати їй нема з чого.
+     */
+    private function transcriptFrom(): int
+    {
+        $path = $this->path('run-transcript.log');
+        if (! is_file($path)) {
+            return 0;
+        }
+        // Лічити рядки мільйонного журналу щосекунди не можна · тоді знімок
+        // сам стане найдорожчою операцією сторінки.
+        if ((int) filesize($path) > 4 * 1024 * 1024) {
+            return -1;
+        }
+        $total = 0;
+        $fh = fopen($path, 'rb');
+        if ($fh === false) {
+            return -1;
+        }
+        while (($line = fgets($fh)) !== false) {
+            if (trim($line) !== '') {
+                $total++;
+            }
+        }
+        fclose($fh);
+
+        return max(0, $total - min($total, self::TRANSCRIPT_LINES));
+    }
+
     /** @return array{size:int,text:string,thinking:string} */
-    private function stream(): array
+    private function stream(bool $full = false): array
     {
         $size = $this->streamSize();
         // Останні 24 КБ сирого журналу: після складання це кілька тисяч
         // символів тексту · рівно видимий хвіст генерації, а не весь прогін.
-        $from = max(0, $size - 24576);
+        // `$full` знімає межу · див. `toArray()`.
+        $from = $full ? 0 : max(0, $size - 24576);
         $raw = $this->streamFrom($from);
         // Обрізаний перший рядок відкидаємо: половина JSON не є ні текстом, ні
         // записом. Саме тому беремо все ПІСЛЯ першого переводу рядка.
@@ -577,6 +685,15 @@ final class Snapshot
         return [
             'size' => $size,
             'text' => $assembled['text'],
+            // ХВІСТ ЧИ ПОЧАТОК · сторінка мусить це ЗНАТИ, а не здогадуватись.
+            //
+            // Знімок читає останні 24 КБ журналу, тому після ~600 токенів його
+            // `text` перестає бути початком відповіді й стає її серединою. Поки
+            // сторінка вважала цей текст повним, вона щосекунди підмінювала ним
+            // накопичене, не впізнавала префікса й перемальовувала все спочатку
+            // · саме це власник бачив як друк «порціями по рядку» 2026-09-06
+            // (D83). Тепер вона зшиває хвіст по збігу, а не замінює ним усе.
+            'complete' => $from === 0,
             'thinking' => $assembled['thinking'],
             'role' => $role,
             'role_label' => $role === '' ? '' : Labels::role($role),
