@@ -81,9 +81,13 @@
   if (!B.ensureToken()) { return; }
   B.el('app').style.display = 'block';
 
-  var streamText = '';
   var lastCallsKey = '';
   var journal = B.follow(B.el('log'), B.el('follow'));
+
+  // Живий друк іде через рівномірний буфер (`B.typer`), а не малюється порціями
+  // так, як прилетіло: сервер читає журнал токенів тактами, тому за раз
+  // приходить десяток символів, і без буфера друк смикає.
+  var stream = B.typer(null, { onPaint: paintStream });
 
   // Кожен крок має ПІДПИС станом. Сірий колір без слова змушував гадати, що
   // сталося з ремонтом · саме це власник і запитав 2026-09-05.
@@ -94,13 +98,23 @@
     pending: 'попереду'
   };
 
-  function paintStream() {
+  // Малюємо ТЕКСТОМ, а не розміткою: `innerHTML` на кожен кадр змушував браузер
+  // щоразу заново розбирати рядок, і саме це додавало ривків.
+  function paintStream(text) {
     var box = B.el('streambox');
     if (!box) { return; }
-    if (!streamText) { box.style.display = 'none'; return; }
+    if (!text) { box.style.display = 'none'; return; }
     box.style.display = 'block';
-    var tail = streamText.length > 4000 ? streamText.slice(-4000) : streamText;
-    box.innerHTML = B.esc(tail) + '<span class="caret"></span>';
+    var body = box.firstChild;
+    if (!body || body.nodeType !== 3) {
+      box.textContent = '';
+      body = document.createTextNode('');
+      box.appendChild(body);
+      var caret = document.createElement('span');
+      caret.className = 'caret';
+      box.appendChild(caret);
+    }
+    body.nodeValue = text.length > 4000 ? text.slice(-4000) : text;
     box.scrollTop = box.scrollHeight;
   }
 
@@ -185,9 +199,22 @@
       // Роль, яка друкує ЗАРАЗ, ще не має рядка в журналі викликів: він
       // пишеться ПІСЛЯ відповіді. Тому її картка малюється окремо.
       if (live && s.running) {
+        // ЩО САМЕ ЗАРАЗ · «друкує…» лише коли справді йдуть символи.
+        //
+        // Ollama вивантажує вагу за налаштуванням машини (у власника 5 хвилин),
+        // і перший виклик після паузи спершу вантажить 23 ГБ. На живому прогоні
+        // це дало 960 секунд повного мовчання · виглядало як «зависло».
+        var waiting = (s.stream && s.stream.waiting) || 0;
+        var loading = waiting >= 12;
         html += '<div class="msg active"><div class="mh">'
           + '<span style="font-weight:500;color:var(--acc-tx)">' + B.esc(live) + '</span>'
-          + '<span class="meta">друкує…</span></div>'
+          + '<span class="meta">' + (loading
+              ? 'модель вантажиться, ' + waiting + ' с · перший виклик після паузи тягне вагу з диска'
+              : 'друкує…') + '</span></div>'
+          + (loading
+              ? '<div class="empty" style="margin-top:6px">Це не зависання: Ollama вивантажує модель за своїм '
+                + 'налаштуванням, і наступні виклики підуть без цієї паузи.</div>'
+              : '')
           + '<div class="box mono" id="streambox"></div></div>';
       }
       B.el('calls').innerHTML = html;
@@ -195,21 +222,23 @@
         : (callsView.scope === 'batch'
             ? 'пачки ' + callsView.batch + ' · ' + calls.length
             : 'цієї сесії · ' + calls.length + ' (пачку не вказано)');
-      paintStream();
+      paintStream(stream.text());
     }
 
-    if (s.stream && typeof s.stream.text === 'string') {
-      streamText = s.stream.text;
-      paintStream();
+    // Знімок стану знає ПОВНИЙ текст ролі · він і є джерелом правди, коли
+    // сторінку щойно відкрили або потік на мить обірвався. Буфер сам добере
+    // різницю, а не перемалює все стрибком.
+    if (s.stream && typeof s.stream.text === 'string' && s.stream.text !== '') {
+      stream.sync(s.stream.text);
     }
+    // Роль договорила · тягнути залишок буфера нема сенсу.
+    if (!live || !s.running) { stream.flush(); }
     journal.write((s.transcript || []).join('\n') || 'журнал порожній');
   }
 
   B.live(render, function (d) {
-    if (d.restarted) { streamText = ''; }
-    streamText += d.text || '';
-    if (streamText.length > 20000) { streamText = streamText.slice(-8000); }
-    paintStream();
+    if (d.restarted) { stream.reset(); }
+    stream.push(d.text || '');
   });
 
   B.el('stopBtn').onclick = function () {

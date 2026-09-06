@@ -128,6 +128,15 @@ expect 404 'обхід теки до .env' --path-as-is "http://127.0.0.1:$PORT/
 expect 404 'файл стану' "http://127.0.0.1:$PORT/state/write-log.jsonl?t=$TOKEN"
 expect 404 'сам маршрутизатор' "http://127.0.0.1:$PORT/cli/system/web-router.php?t=$TOKEN"
 expect 403 'чуже походження' -H 'Origin: https://evil.example' "http://127.0.0.1:$PORT/api/state?t=$TOKEN"
+# Підроблений `Host` не має відкривати чуже походження.
+#
+# Перелік дозволених джерел раніше будувався з заголовка `Host`, тобто з даних
+# КЛІЄНТА: пара `Host: evil.example` + `Origin: http://evil.example` проходила
+# перевірку сама себе. Тепер перелік будується з порту, на якому ми слухаємо.
+expect 403 'підроблений Host' -H 'Host: evil.example' -H 'Origin: http://evil.example' \
+    "http://127.0.0.1:$PORT/api/state?t=$TOKEN"
+expect 200 'localhost як своє походження' -H "Origin: http://localhost:$PORT" \
+    "http://127.0.0.1:$PORT/api/state?t=$TOKEN"
 expect 403 'міжсайтовий запит' -H 'Sec-Fetch-Site: cross-site' "http://127.0.0.1:$PORT/api/state?t=$TOKEN"
 expect 200 'своє походження' -H "Origin: http://127.0.0.1:$PORT" "http://127.0.0.1:$PORT/api/state?t=$TOKEN"
 
@@ -234,6 +243,54 @@ else
     grep -nE '^\s*# ' "$ROOT/web/"*.html "$ROOT/web/app.js" \
         && fail 'у скрипті сторінки коментар # замість // · це синтаксична помилка JavaScript'
 fi
+
+# --- Живий друк мусить бути ПЛАВНИЙ ------------------------------------------
+#
+# 2026-09-06 власник побачив «дьорганий» друк: сервер читав журнал токенів раз
+# на 200 мс, тому за такт прилітав десяток символів, і сторінка малювала їх
+# стрибком. Виправлення має ДВІ половини, і жодна сама по собі не досить:
+# коротший такт сервера й рівномірний буфер на клієнті.
+tick_us="$(sed -n 's/^const STREAM_TICK_US = \([0-9]*\);.*/\1/p' "$ROOT/cli/system/web-router.php")"
+test -n "$tick_us" || fail 'не вдалося прочитати такт потоку з cli/system/web-router.php'
+test "$tick_us" -le 120000 \
+    || fail "такт читання токенів ${tick_us} мкс · за такий час набігає десяток символів, і друк смикає"
+for mark in 'requestAnimationFrame' 'perFrame' 'typer:'; do
+    grep -Fq "$mark" "$ROOT/web/app.js" \
+        || fail "на клієнті немає рівномірного буфера друку (немає «${mark}») · порція малюватиметься стрибком"
+done
+grep -Fq 'B.typer(' "$ROOT/web/index.html" \
+    || fail 'екран прогону не користується буфером друку'
+# І навпаки: буфер не має права ковтати текст назавжди · роль договорила,
+# залишок показуємо негайно.
+grep -Fq 'stream.flush()' "$ROOT/web/index.html" \
+    || fail 'буфер друку не спорожняється після завершення ролі · хвіст відповіді не буде видно'
+
+# --- «Модель вантажиться» · окремий підпис, а не мовчання --------------------
+#
+# Ollama вивантажує вагу за налаштуванням машини власника, і перший виклик
+# після паузи тягне 23 ГБ: на живому прогоні це дало 960 с повного мовчання при
+# `in=2248`. Для власника це виглядало як «зависло».
+grep -Fq 'модель вантажиться' "$ROOT/web/index.html" \
+    || fail 'екран не пояснює довгого мовчання перед першим символом'
+printf '%s\n' '{"at":"'"$(date -u -v-60S +%Y-%m-%dT%H:%M:%S+00:00 2>/dev/null || date -u -d "60 seconds ago" +%Y-%m-%dT%H:%M:%S+00:00)"'","role":"translation-worker","model":"m","provider":"ollama","event":"start"}' \
+    > "$BDO_STATE_DIR/run-stream.log"
+php -r '
+require $argv[1];
+$s = (new Bdo\Translate\Web\Snapshot($argv[2]))->toArray()["stream"];
+if (($s["waiting"] ?? 0) < 30) {
+    fwrite(STDERR, "мовчання від старту виклику не пораховано: ".json_encode($s, JSON_UNESCAPED_UNICODE)."\n"); exit(1);
+}
+if (($s["role_label"] ?? "") === "") { fwrite(STDERR, "роль не названо\n"); exit(1); }
+' "$ROOT/lib/autoload.php" "$BDO_STATE_DIR" || fail 'сервер не рахує, скільки роль мовчить від старту виклику'
+# Щойно пішов перший символ · це вже не завантаження.
+printf '%s\n' '{"content":"Пере"}' >> "$BDO_STATE_DIR/run-stream.log"
+php -r '
+require $argv[1];
+$s = (new Bdo\Translate\Web\Snapshot($argv[2]))->toArray()["stream"];
+if ((int) ($s["waiting"] ?? 0) !== 0) {
+    fwrite(STDERR, "після першого символу все ще «вантажиться»: ".json_encode($s, JSON_UNESCAPED_UNICODE)."\n"); exit(1);
+}' "$ROOT/lib/autoload.php" "$BDO_STATE_DIR" || fail 'підпис «вантажиться» не зникає після першого символу'
+rm -f "$BDO_STATE_DIR/run-stream.log"
 
 # --- 6. Лише loopback -------------------------------------------------------
 grep -q "127.0.0.1:" "$BDO_STATE_DIR/web.log" \

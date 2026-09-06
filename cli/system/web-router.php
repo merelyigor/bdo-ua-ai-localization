@@ -89,12 +89,18 @@ if (! $isAction && $method !== 'GET' && $method !== 'HEAD') {
 }
 
 // 4. Походження. Порожній `Origin` для GET із власної сторінки · норма.
-$host = (string) ($_SERVER['HTTP_HOST'] ?? '');
+//
+// Дозволений перелік будується з ПОРТУ, на якому ми слухаємо, а не з заголовка
+// `Host`. Host приходить від клієнта: браузер підставляє його чесно, але
+// будь-хто локальний може надіслати `Host: evil.example` разом з
+// `Origin: http://evil.example` · і перевірка сама себе пропустить. Порт же
+// знає сервер, і слухає він лише loopback.
+$port = (string) ($_SERVER['SERVER_PORT'] ?? '');
 $origin = (string) ($_SERVER['HTTP_ORIGIN'] ?? '');
 if ($origin !== '') {
-    $allowed = ['http://'.$host, 'https://'.$host];
-    if (str_starts_with($host, '127.0.0.1:')) {
-        $allowed[] = 'http://localhost:'.substr($host, strlen('127.0.0.1:'));
+    $allowed = [];
+    foreach (['127.0.0.1', 'localhost', '[::1]'] as $name) {
+        $allowed[] = 'http://'.$name.($port === '' ? '' : ':'.$port);
     }
     if (! in_array($origin, $allowed, true)) {
         $fail(403, 'foreign_origin', 'запит прийшов зі сторонньої сторінки: '.$origin);
@@ -185,7 +191,7 @@ switch ($path) {
         return;
 
     case '/api/health':
-        $json(['ok' => true, 'pid' => getmypid(), 'host' => $host, 'state_dir' => $stateDir]);
+        $json(['ok' => true, 'pid' => getmypid(), 'port' => $port, 'state_dir' => $stateDir]);
 
         return;
 
@@ -308,6 +314,20 @@ switch ($path) {
  * Через `MAX_SECONDS` зʼєднання закривається саме: забута вкладка не тримає
  * воркер вічно, а `EventSource` перепідключається сам.
  */
+/**
+ * Такт читання журналу токенів.
+ *
+ * Був 200 мс · і саме це власник побачив як «дьорганий» друк 2026-09-06: за
+ * такт прилітав десяток символів, і сторінка малювала їх стрибком. Тепер такт
+ * коротший, а рівність друку тримає буфер на клієнті (`B.typer`) · разом вони
+ * дають рух по символах. Читання дешеве: перевірка розміру файла й хвіст.
+ *
+ * Сокет тут не потрібен: SSE вже штовхає дані сам, вузьким місцем був такт.
+ */
+const STREAM_TICK_US = 100000;
+const STATE_EVERY = 10;        // знімок стану · раз на секунду
+const HEARTBEAT_EVERY = 150;   // тиша не довша за 15 секунд
+
 function stream(Snapshot $snapshot): void
 {
     header('Content-Type: text/event-stream; charset=utf-8');
@@ -358,9 +378,11 @@ function stream(Snapshot $snapshot): void
                 ], JSON_UNESCAPED_UNICODE));
             }
         }
-        // Знімок стану · раз на такт, але лише коли він СПРАВДІ змінився:
-        // інакше сторінка перемальовувалась би двічі на секунду без причини.
-        if ($tick % 5 === 0) {
+        // Знімок стану · раз на секунду, і лише коли він СПРАВДІ змінився:
+        // інакше сторінка перемальовувалась би без причини. Такт читання
+        // токенів коротший за такт стану, тому лічильник рахує ЧАС, а не
+        // оберти · зміна паузи не має тихо змінювати цю частоту.
+        if ($tick % STATE_EVERY === 0) {
             $state = $snapshot->toArray();
             unset($state['at']);
             $encoded = (string) json_encode($state, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
@@ -370,12 +392,12 @@ function stream(Snapshot $snapshot): void
                 $send('state', $encoded);
             }
         }
-        if ($tick % 75 === 0 && $tick > 0) {
+        if ($tick % HEARTBEAT_EVERY === 0 && $tick > 0) {
             echo ": heartbeat\n\n";
             flush();
         }
         $tick++;
-        usleep(200000);
+        usleep(STREAM_TICK_US);
     }
     $send('bye', (string) json_encode(['reason' => 'max_seconds'], JSON_UNESCAPED_UNICODE));
 }

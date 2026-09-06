@@ -243,6 +243,94 @@
     return { stop: stop };
   }
 
+  // --- живий друк: рівномірно, по символах ---------------------------------
+  //
+  // Текст приходить ПОРЦІЯМИ: сервер читає журнал токенів раз на такт, тому за
+  // один раз прилітає десяток символів. Якщо малювати їх одразу, друк смикає ·
+  // саме це власник побачив 2026-09-06.
+  //
+  // Сокет тут нічого не змінив би: вузьке місце не в транспорті (SSE вже
+  // штовхає дані сам), а в тому, що ПОРЦІЯ малюється миттєво. Тому текст
+  // складається в чергу, а показується рівним темпом · один кадр браузера
+  // (~16 мс) віддає стільки символів, щоб черга спорожніла приблизно за
+  // `DRAIN_MS`. Відстає черга · темп сам зростає, тож затримка не накопичується.
+  function typer(node, options) {
+    var opts = options || {};
+    var DRAIN_MS = opts.drainMs || 220;   // за скільки прагнемо показати чергу
+    var MIN_CHARS = 1;
+    var shown = '';
+    var pending = '';
+    var frame = null;
+    var onPaint = opts.onPaint || function () {};
+
+    function step() {
+      frame = null;
+      if (!pending) { return; }
+      // Скільки символів віддати цьому кадру. 16 мс · кадр браузера.
+      var perFrame = Math.max(MIN_CHARS, Math.ceil(pending.length * (16 / DRAIN_MS)));
+      shown += pending.slice(0, perFrame);
+      pending = pending.slice(perFrame);
+      onPaint(shown);
+      if (pending) { frame = requestAnimationFrame(step); }
+    }
+
+    function schedule() {
+      if (frame !== null || !pending) { return; }
+      // `requestAnimationFrame` не спрацює у схованій вкладці · тоді працює
+      // запасний таймер, і черга не застрягає навіть без кадрів.
+      frame = requestAnimationFrame(step);
+      if (document.hidden) { setTimeout(function () { if (pending) { step(); } }, 60); }
+    }
+
+    // Схована вкладка НЕ малює кадрів: `requestAnimationFrame` у ній не
+    // викликається взагалі, і черга завмерла б до повернення власника. Тому
+    // при схованні показуємо все негайно · плавність там нікому не потрібна,
+    // а застряглий хвіст відповіді потрібен.
+    document.addEventListener('visibilitychange', function () {
+      if (document.hidden && pending) {
+        shown += pending;
+        pending = '';
+        onPaint(shown);
+        if (frame !== null) { cancelAnimationFrame(frame); frame = null; }
+      }
+    });
+
+    return {
+      // Дописати порцію в чергу.
+      push: function (text) {
+        if (!text) { return; }
+        pending += text;
+        schedule();
+      },
+      // Показати все негайно · роль завершила відповідь, тягнути нема сенсу.
+      flush: function () {
+        if (pending) { shown += pending; pending = ''; onPaint(shown); }
+        if (frame !== null) { cancelAnimationFrame(frame); frame = null; }
+      },
+      // Новий виклик ролі · починаємо з чистого аркуша.
+      reset: function () {
+        shown = ''; pending = '';
+        if (frame !== null) { cancelAnimationFrame(frame); frame = null; }
+        onPaint('');
+      },
+      // Синхронізація з сервером: він знає ПОВНИЙ текст, ми · показаний плюс
+      // черга. Різницю дописуємо, розбіжність назад означає новий виклик.
+      sync: function (full) {
+        var have = shown + pending;
+        if (full === have) { return; }
+        if (full.length > have.length && full.slice(0, have.length) === have) {
+          this.push(full.slice(have.length));
+          return;
+        }
+        shown = ''; pending = '';
+        if (frame !== null) { cancelAnimationFrame(frame); frame = null; }
+        this.push(full);
+      },
+      text: function () { return shown + pending; },
+      done: function () { return pending === ''; }
+    };
+  }
+
   // --- журнал, який поводиться як чат --------------------------------------
   //
   // Тримаємось хвоста ЛИШЕ коли читач уже внизу. Примусовий скрол скидав
@@ -299,6 +387,7 @@
     setLink: setLink,
     live: live,
     follow: follow,
+    typer: typer,
     screens: SCREENS
   };
 })(window);

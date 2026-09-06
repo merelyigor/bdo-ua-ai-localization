@@ -554,6 +554,22 @@ final class Snapshot
         $path = $this->path('run-stream.log');
         $fresh = is_file($path) && (time() - (int) @filemtime($path)) <= 15;
 
+        // ЧОМУ НІЧОГО НЕ ВІДБУВАЄТЬСЯ · окреме поле, а не здогад сторінки.
+        //
+        // Ollama вивантажує вагу за налаштуванням машини власника (у нього
+        // 5 хвилин), і перший виклик після паузи спершу вантажить 23 ГБ. На
+        // живому прогоні це дало 960 секунд повного мовчання при `in=2248`:
+        // роль уже викликана, журнал відкритий, а тексту немає ще й хвилини.
+        // Для власника це виглядало як «зависло». Рахуємо ЧАС ВІД ПОЧАТКУ
+        // виклику, поки не прийшов жоден символ · це і є завантаження ваги.
+        $waiting = 0;
+        if ($role !== '' && $assembled['text'] === '' && $assembled['thinking'] === '') {
+            $startedAt = $this->streamStartedAt();
+            if ($startedAt > 0) {
+                $waiting = max(0, time() - $startedAt);
+            }
+        }
+
         return [
             'size' => $size,
             'text' => $assembled['text'],
@@ -561,7 +577,26 @@ final class Snapshot
             'role' => $role,
             'role_label' => $role === '' ? '' : Labels::role($role),
             'fresh' => $fresh,
+            // Скільки секунд роль мовчить від старту виклику · 0, щойно пішов
+            // перший символ. Поріг «коли це вже завантаження» ставить сторінка.
+            'waiting' => $waiting,
         ];
+    }
+
+    /** Час події `start` у журналі токенів; 0 · події немає. */
+    private function streamStartedAt(): int
+    {
+        $head = (string) @file_get_contents($this->path('run-stream.log'), false, null, 0, 512);
+        if ($head === '') {
+            return 0;
+        }
+        $first = json_decode((string) strtok($head, "\n"), true);
+        if (! is_array($first) || ($first['event'] ?? '') !== 'start') {
+            return 0;
+        }
+        $at = strtotime((string) ($first['at'] ?? ''));
+
+        return $at === false ? 0 : $at;
     }
 
     /** Скільки рядків лишилось за журналом прогону. */
