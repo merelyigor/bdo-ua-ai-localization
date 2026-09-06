@@ -589,6 +589,7 @@ $braceless"
     run bash tests/commit-version-guard.sh
     run bash tests/run-resume.sh
     run bash tests/run-target-env.sh
+    run bash tests/api-target-switch.sh
     run bash tests/http-retry.sh
     run bash tests/rotation.sh
     run bash tests/session-lifecycle.sh

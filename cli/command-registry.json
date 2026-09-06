@@ -236,6 +236,10 @@
         [
           "api",
           "read-only smoke Agent API"
+        ],
+        [
+          "capabilities",
+          "що вміє поточна ціль API (перевіряється запитом)"
         ]
       ]
     }
@@ -257,6 +261,7 @@
     "^\\.\\/bdo$",
     "^\\.\\/bdo help( [a-z-]+)?$",
     "^\\.\\/bdo (paths|platform|models|api|runtime)$",
+    "^\\.\\/bdo capabilities( --refresh)?$",
     "^\\.\\/bdo platform --fix$",
     "^\\.\\/bdo patch( (active|[0-9]{1,6}))?$",
     "^\\.\\/bdo patches( (all|[1-9][0-9]*))?( (machine|manual|both))?( --full)?$",

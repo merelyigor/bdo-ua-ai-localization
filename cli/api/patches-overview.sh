@@ -88,7 +88,19 @@ if [ -z "$LIST" ]; then
     echo "GET /patches недоступний · показую лише внутрішні номери знімків." >&2
     ACTIVE="$(api_get "patch/summary?patch=active" 120 \
         | php -r '$d=json_decode((string)file_get_contents("php://stdin"),true);echo (int)($d["meta"]["snapshot_id"]??0);')"
-    test "$ACTIVE" -gt 0 || { echo "Не вдалося визначити активний патч (перевір ключ і мережу)." >&2; exit 1; }
+    if [ "$ACTIVE" -le 0 ]; then
+        # ДВІ РІЗНІ ПРИЧИНИ, і плутати їх не можна. Ціль без патчів (хаб) ·
+        # це НЕ поломка: там працюють зі знімком, який сервер віддає сам.
+        # Порада «перевір ключ і мережу» в цьому разі відправляла б шукати
+        # несправність там, де її немає.
+        if ! "$SCRIPT_DIR/cli/api/capabilities.sh" --has patches >/dev/null 2>&1; then
+            echo "У цій цілі патчів немає взагалі · вона віддає один активний знімок." >&2
+            echo "Це не помилка: вибирай режим без патча. Що вміє ціль · ./bdo capabilities" >&2
+        else
+            echo "Не вдалося визначити активний патч (перевір ключ і мережу)." >&2
+        fi
+        exit 1
+    fi
     for ((n = ACTIVE; n >= 1; n--)); do
         LIST="${LIST}${n}\t-\t-\t-\t-\t-\t-\t$([ "$n" = "$ACTIVE" ] && echo активний)\n"
     done

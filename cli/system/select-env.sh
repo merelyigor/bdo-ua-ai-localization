@@ -30,8 +30,30 @@
 # Застарілий `BDO_API_BASE` не використовується: інакше DEV URL тихо перемагає
 # `BDO_ENV=PROD`, що робить єдиний перемикач середовища неправдивим.
 #
-# Експортує: BDO_ENV (PROD|DEV), BDO_API_ENV (prod|local · внутрішня назва для
-# скриптів стану), BDO_API_BASE, BDO_API_KEY.
+# ДРУГА ВІСЬ: ЯКИЙ САМЕ БЕКЕНД.
+#
+#   BDO_API_TARGET=legacy   Agent API проєкту BDO UA (типово)
+#   BDO_API_TARGET=hub      Agent API хаба локалізацій (`/api/bdo/agent/v1`)
+#
+# Навіщо дві осі, а не одна. `BDO_ENV` каже КУДИ (прод чи розробка), а
+# `BDO_API_TARGET` · ЯКИЙ бекенд. Це справді незалежні питання: хаб має і свій
+# прод, і свою розробку, і жодне з чотирьох поєднань не є безглуздим.
+#
+# Ключі НЕ переносяться між бекендами (у старому вони з префіксом `bdo_`, у
+# хабі · `hub_`, і видані окремо), тому кожен бекенд має свою пару:
+#
+#   BDO_API_KEY_PROD / BDO_API_KEY_DEV      ключі старого API
+#   HUB_API_KEY_PROD / HUB_API_KEY_DEV      ключі хаба
+#   HUB_API_BASE_PROD / HUB_API_BASE_DEV    адреси хаба (вбудованої немає)
+#
+# Чому в хаба немає вбудованої адреси, а в старого API є. Адреса BDO UA ·
+# публічна константа, яка не змінюється. Хаб ЩЕ в розробці: його домен поки
+# змінюється, і зашитий default тихо розійшовся б із дійсністю. Коли він
+# стане сталим, він переїде сюди тим самим рядком.
+#
+# Експортує: BDO_ENV (PROD|DEV), BDO_API_TARGET (legacy|hub),
+# BDO_API_ENV (prod|local|hub-prod|hub-local · внутрішня назва цілі, яка йде у
+# `state/run-target` і `write-log.jsonl`), BDO_API_BASE, BDO_API_KEY.
 set -euo pipefail
 
 SCRIPT_DIR="${SCRIPT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}"
@@ -65,6 +87,16 @@ _normalize_env() {
     esac
 }
 
+# Бекенд · так само одне слово, і так само з поблажливістю до написання.
+# `bdo` приймається як синонім `legacy`: саме так власник називає старий проєкт.
+_normalize_target() {
+    case "$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')" in
+        ''|legacy|bdo|old) printf 'legacy' ;;
+        hub|new) printf 'hub' ;;
+        *) return 1 ;;
+    esac
+}
+
 if [ -z "${BDO_ENV:-}" ]; then
     echo "У $ENV_FILE не задано BDO_ENV. Дозволено PROD або DEV." >&2
     echo "Зразок · .env.example" >&2
@@ -82,50 +114,59 @@ unset _resolved
 : "${BDO_API_BASE_DEV:=${BDO_API_BASE_LOCALHOST:-}}"
 : "${BDO_API_KEY_DEV:=${BDO_API_KEY_LOCALHOST:-}}"
 
-# База визначається ВИКЛЮЧНО вибраним середовищем.
-if [ "$BDO_ENV" = PROD ]; then
-    BDO_API_BASE="${BDO_API_BASE_PROD:-$BDO_API_BASE_PROD_DEFAULT}"
-else
-    BDO_API_BASE="${BDO_API_BASE_DEV:-}"
+# Бекенд · друга вісь, незалежна від середовища.
+if ! _resolved_target="$(_normalize_target "${BDO_API_TARGET:-}")"; then
+    echo "BDO_API_TARGET має бути legacy або hub, а в $ENV_FILE стоїть '${BDO_API_TARGET}'." >&2
+    exit 1
+fi
+BDO_API_TARGET="$_resolved_target"
+unset _resolved_target
+
+# База й ключ визначаються ПАРОЮ «бекенд + середовище». Жодного змішування:
+# ключ хаба не підходить старому API й навпаки, тому запасних варіантів на
+# кшталт «якщо немає, візьми сусідній» тут немає навмисно · тихо піти не в той
+# бекенд гірше, ніж зупинитись із назвою відсутньої змінної.
+if [ "$BDO_API_TARGET" = hub ]; then
+    if [ "$BDO_ENV" = PROD ]; then
+        BDO_API_BASE="${HUB_API_BASE_PROD:-}"; _base_name='HUB_API_BASE_PROD'
+        BDO_API_KEY="${HUB_API_KEY_PROD:-}";   _key_name='HUB_API_KEY_PROD'
+    else
+        BDO_API_BASE="${HUB_API_BASE_DEV:-}";  _base_name='HUB_API_BASE_DEV'
+        BDO_API_KEY="${HUB_API_KEY_DEV:-}";    _key_name='HUB_API_KEY_DEV'
+    fi
     if [ -z "$BDO_API_BASE" ]; then
-        echo "BDO_ENV=DEV, але BDO_API_BASE_DEV не заданий у $ENV_FILE." >&2
-        echo "DEV · приватне середовище розробки проєкту, тому його адреса живе лише" >&2
-        echo "у вашому .env і не входить у публічний репозиторій. Задайте її або" >&2
-        echo "поставте BDO_ENV=PROD." >&2
+        echo "BDO_API_TARGET=hub і BDO_ENV=$BDO_ENV, але $_base_name не заданий у $ENV_FILE." >&2
+        echo "Хаб ще в розробці, тому вбудованої адреси в нього немає: у ній має бути" >&2
+        echo "slug гри, наприклад https://<домен>/api/bdo/agent/v1." >&2
         exit 1
     fi
-fi
-
-# Ключ: свій для середовища -> спільний скорочений запис.
-if [ "$BDO_ENV" = PROD ]; then
-    BDO_API_KEY="${BDO_API_KEY_PROD:-${BDO_API_KEY:-}}"
-    _key_name='BDO_API_KEY_PROD'
 else
-    BDO_API_KEY="${BDO_API_KEY_DEV:-${BDO_API_KEY:-}}"
-    _key_name='BDO_API_KEY_DEV'
+    if [ "$BDO_ENV" = PROD ]; then
+        BDO_API_BASE="${BDO_API_BASE_PROD:-$BDO_API_BASE_PROD_DEFAULT}"
+        BDO_API_KEY="${BDO_API_KEY_PROD:-${BDO_API_KEY:-}}"; _key_name='BDO_API_KEY_PROD'
+    else
+        BDO_API_BASE="${BDO_API_BASE_DEV:-}"
+        BDO_API_KEY="${BDO_API_KEY_DEV:-${BDO_API_KEY:-}}";  _key_name='BDO_API_KEY_DEV'
+        if [ -z "$BDO_API_BASE" ]; then
+            echo "BDO_ENV=DEV, але BDO_API_BASE_DEV не заданий у $ENV_FILE." >&2
+            echo "DEV · приватне середовище розробки проєкту, тому його адреса живе лише" >&2
+            echo "у вашому .env і не входить у публічний репозиторій. Задайте її або" >&2
+            echo "поставте BDO_ENV=PROD." >&2
+            exit 1
+        fi
+    fi
 fi
 if [ -z "$BDO_API_KEY" ]; then
-    echo "Немає ключа для BDO_ENV=$BDO_ENV: задайте $_key_name у $ENV_FILE." >&2
+    echo "Немає ключа для BDO_API_TARGET=$BDO_API_TARGET і BDO_ENV=$BDO_ENV:" >&2
+    echo "задайте $_key_name у $ENV_FILE." >&2
     exit 1
 fi
 unset _key_name
+unset _base_name 2>/dev/null || true
 
 # Розбіжність файла й префікса · помилка, а не тихе перемикання. Саме цей клас
 # помилок робив прогін половинчастим: частина пачок в одному середовищі,
 # частина в іншому, і жоден вивід про це не попереджав.
-if [ -n "$_env_from_shell" ]; then
-    if ! _shell_target="$(_normalize_env "$_env_from_shell")"; then
-        echo "Невідоме BDO_API_ENV='$_env_from_shell'. Дозволено: prod або dev." >&2
-        exit 1
-    fi
-    if [ "$_shell_target" != "$BDO_ENV" ]; then
-        echo "Конфлікт цілі: у $ENV_FILE BDO_ENV=$BDO_ENV, а в команді BDO_API_ENV=$_env_from_shell." >&2
-        echo "Ціль задається одним місцем · файлом. Прибери префікс або зміни BDO_ENV." >&2
-        exit 1
-    fi
-    unset _shell_target
-fi
-unset _env_from_shell
 
 # Внутрішня назва для скриптів стану (`cli/run/run-start.sh`, `cli/batch/batch-commit.sh`,
 # журнали записів). Навмисно лишається `local`/`prod`: це формат, у якому вже
@@ -134,6 +175,30 @@ case "$BDO_ENV" in
     PROD) BDO_API_ENV=prod ;;
     *)    BDO_API_ENV=local ;;
 esac
+# Бекенд входить у ту саму назву цілі, і це не косметика. Саме цим рядком
+# `state/run-target` замикає прогін, `batch-commit.sh` звіряє кожну пачку, а
+# `write-log.jsonl` назавжди фіксує, КУДИ саме поїхав рядок. Поки обидва API
+# живі паралельно, питання «де цей переклад» без цього поля не має відповіді.
+# Старі значення (`prod`, `local`) лишились незмінними, тому вже записані
+# журнали й зафіксовані цілі читаються далі.
+test "$BDO_API_TARGET" = hub && BDO_API_ENV="hub-$BDO_API_ENV"
 
-export BDO_ENV BDO_API_ENV BDO_API_BASE BDO_API_KEY
-echo "Ціль: $BDO_ENV ($BDO_API_BASE)" >&2
+if [ -n "$_env_from_shell" ]; then
+    # Порівнюємо ПОВНУ назву цілі (`prod`, `local`, `hub-prod`, `hub-local`):
+    # з появою другої осі окремої перевірки середовища вже мало, бо `prod` і
+    # `hub-prod` є різними цілями при однаковому `BDO_ENV`.
+    if [ "$_env_from_shell" != "$BDO_API_ENV" ]; then
+        echo "Конфлікт цілі: файл $ENV_FILE дає '$BDO_API_ENV' (BDO_ENV=$BDO_ENV, BDO_API_TARGET=$BDO_API_TARGET)," >&2
+        echo "а в команді BDO_API_ENV='$_env_from_shell'." >&2
+        echo "Ціль задається одним місцем · файлом. Прибери префікс або зміни .env." >&2
+        exit 1
+    fi
+fi
+unset _env_from_shell
+
+export BDO_ENV BDO_API_TARGET BDO_API_ENV BDO_API_BASE BDO_API_KEY
+if [ "$BDO_API_TARGET" = hub ]; then
+    echo "Ціль: ХАБ $BDO_ENV ($BDO_API_BASE)" >&2
+else
+    echo "Ціль: $BDO_ENV ($BDO_API_BASE)" >&2
+fi

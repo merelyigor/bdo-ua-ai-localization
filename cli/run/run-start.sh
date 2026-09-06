@@ -43,14 +43,19 @@ source "$SCRIPT_DIR/cli/system/select-env.sh"
 TARGET="$BDO_API_ENV"
 
 if [ $# -gt 0 ]; then
+    # Підтвердження називає ЦІЛЬ, а не лише середовище: з появою хаба `prod` і
+    # `hub-prod` є різними цілями при однаковому `BDO_ENV`.
     case "$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')" in
         prod|production) CONFIRM=prod ;;
         dev|local|localhost) CONFIRM=local ;;
-        *) echo "Дозволено лише DEV або PROD як підтвердження, отримано '$1'." >&2; exit 1 ;;
+        hub-prod|hub-production) CONFIRM=hub-prod ;;
+        hub-dev|hub-local) CONFIRM=hub-local ;;
+        *) echo "Дозволено DEV, PROD, HUB-DEV або HUB-PROD як підтвердження, отримано '$1'." >&2; exit 1 ;;
     esac
     if [ "$CONFIRM" != "$TARGET" ]; then
-        echo "Підтвердження '$1' не збігається з BDO_ENV=$BDO_ENV у .env." >&2
-        echo "Ціль задає файл. Зміни BDO_ENV або прибери аргумент." >&2
+        echo "Підтвердження '$1' не збігається з ціллю '$TARGET' із .env" >&2
+        echo "(BDO_ENV=$BDO_ENV, BDO_API_TARGET=$BDO_API_TARGET)." >&2
+        echo "Ціль задає файл. Зміни .env або прибери аргумент." >&2
         exit 1
     fi
 fi

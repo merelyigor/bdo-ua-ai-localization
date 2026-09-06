@@ -84,3 +84,4 @@
 | `./bdo clean` | прибрати недосяжні теки пачок і старі дампи output |
 | `./bdo paths` | що куди вирішилось із розкладкою |
 | `./bdo api` | read-only smoke Agent API |
+| `./bdo capabilities` | що вміє поточна ціль API (перевіряється запитом) |
