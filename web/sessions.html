@@ -168,10 +168,43 @@
       + sessionBar(s);
   }
 
+  // КОЛИ сесія відкрилась і коли закрилась · вимога власника 2026-09-07.
+  // Ідентифікатор сесії має в собі дату, але читати `20260906_064420` очима
+  // означає розбирати рядок у голові; `minutes` у шапці каже, СКІЛЬКИ вона
+  // тривала, і не каже, КОЛИ. Час перекладає `B.when` за годинником машини.
+  function sessionWhen(s) {
+    var bits = [];
+    var opened = B.when(s.started_at);
+    var closed = B.when(s.closed_at);
+    if (opened) { bits.push('відкрито ' + opened); }
+    // Покинута сесія `closed_at` не має, і мовчання тут чесніше за вигадку.
+    if (closed) { bits.push('закрито ' + closed); }
+    if (!bits.length) { return ''; }
+    // Тривалість у дужках · щоб не віднімати одну мітку від іншої в голові.
+    // Годинами, а не хвилинами: «756 хв» у шапці треба ділити на 60, щоб
+    // зрозуміти, що сесія йшла більш ніж півдоби.
+    var span = dur(s.minutes);
+    return '<div class="empty" style="margin-top:10px">' + B.esc(bits.join(' · '))
+      + (span ? B.esc(' (' + span + ')') : '') + '</div>';
+  }
+
+  // Хвилини словами: `48 хв`, `12 год 36 хв`, `2 дн 3 год`.
+  function dur(minutes) {
+    var m = Number(minutes) || 0;
+    if (m <= 0) { return ''; }
+    var d = Math.floor(m / 1440);
+    var h = Math.floor((m % 1440) / 60);
+    var rest = m % 60;
+    if (d) { return h ? d + ' дн ' + h + ' год' : d + ' дн'; }
+    if (h) { return rest ? h + ' год ' + rest + ' хв' : h + ' год'; }
+    return rest + ' хв';
+  }
+
   // Дії живуть У САМІЙ сесії. Кожна за собою має команду з реєстру ·
   // намальована кнопка без команди означала б другу систему поруч.
   function sessionBar(s) {
-    return '<div class="bar" style="margin-top:10px">'
+    return sessionWhen(s)
+      + '<div class="bar" style="margin-top:10px">'
       + (s.status === 'open'
           // ВІДКРИТА · її можна закрити, і кнопка стоїть саме тут, тому питання
           // «яку сесію я закриваю» не виникає взагалі.

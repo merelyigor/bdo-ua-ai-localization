@@ -34,6 +34,13 @@ cat > "$WORK/bdo" <<'SH'
 HERE="$(cd "$(dirname "$0")" && pwd)"
 printf '%s\n' "$*" >> "$HERE/state/calls.log"
 if [ "$1 $2" = "run drive" ]; then
+    # Шви для перевірки ЗУПИНКИ: рушій, що падає з поясненням, і рушій,
+    # перерваний сигналом. Обидва не віддають конверта.
+    if [ -n "${FAKE_DRIVE_BOOM:-}" ]; then
+        printf 'Fatal error: %s\n' "$FAKE_DRIVE_BOOM" >&2
+        exit 1
+    fi
+    test -z "${FAKE_DRIVE_SIGNAL:-}" || exit "$FAKE_DRIVE_SIGNAL"
     step="$(head -1 "$HERE/state/scenario")"
     sed -i.bak '1d' "$HERE/state/scenario" && rm -f "$HERE/state/scenario.bak"
     # Рушій законно друкує людські звіти перед конвертом.
@@ -145,6 +152,24 @@ printf '%s' "$out" | grep -q 'не рухається' || fail "retry-зупин
 scenario '{"ok":true,"state":"awaiting_worker","next":{"kind":"child","role":"translation-worker","payload_path":"p","response_path":"r"}}'
 out="$(cd "$WORK" && FAKE_CHILD_FAILS=1 bash cli/run/run-loop.sh 2>&1)" && fail 'драйвер пішов далі після відмови ролі'
 printf '%s' "$out" | grep -q 'не дала відповіді' || fail "відмова ролі без причини: $out"
+
+# 7b. ЗУПИНКА НАЗИВАЄ ПРИЧИНУ, А НЕ НАСЛІДОК.
+#
+# Цикл глушив stderr рушія (`2>/dev/null`), тому будь-яка зупинка виглядала
+# однаково: «run drive не віддав конверт». Власник бачив цей напис на місці
+# ВЛАСНОГО натискання «зупинити» й шукав неіснуючий дефект (D96).
+scenario '{"ok":true,"state":"awaiting_worker","next":{"kind":"stop"}}'
+out="$(cd "$WORK" && FAKE_DRIVE_BOOM='рушій зламався тут' bash cli/run/run-loop.sh 2>&1)" \
+    && fail 'драйвер пішов далі, хоч конверта не було'
+printf '%s' "$out" | grep -q 'рушій зламався тут' \
+    || fail "причину зупинки проковтнуто: $out"
+printf '%s' "$out" | grep -q 'код 1' || fail "зупинка без коду виходу: $out"
+
+# Перервали ззовні (кнопка «зупинити» вбиває сесію роботи) · це НЕ несправність.
+out="$(cd "$WORK" && FAKE_DRIVE_SIGNAL=130 bash cli/run/run-loop.sh 2>&1)" \
+    && fail 'драйвер пішов далі після переривання'
+printf '%s' "$out" | grep -q 'перервано ззовні' \
+    || fail "штатну зупинку названо несправністю: $out"
 
 # 8. Невідомий `kind` · зупинка. Мовчазний `continue` тут означав би, що новий
 #    стан у машині пройшов повз драйвер.

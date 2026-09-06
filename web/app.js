@@ -114,6 +114,29 @@
     return s >= 10 ? Math.round(s) + ' с' : s.toFixed(1) + ' с';
   }
 
+  // Мить у часі · українською й у 24-годинному вигляді: `06.09.2026, 06:44`.
+  //
+  // ГОДИННИК БЕРЕТЬСЯ З МАШИНИ ВЛАСНИКА, а не з сервера: сервер пише мітки в
+  // UTC (`gmdate('c', …)` у `lib/Session/Ledger.php`), і показати їх як є
+  // означало б збрехати на кілька годин. `Intl` сам переводить у пояс того
+  // комп'ютера, де відкрито сторінку · macOS чи Windows, байдуже.
+  //
+  // Порожнє повертаємо ТИХО: покинута сесія не має `closed_at`, і рядок
+  // «закрито невідомо коли» був би шумом, а не інформацією.
+  function when(iso) {
+    if (!iso) { return ''; }
+    var at = new Date(iso);
+    if (isNaN(at.getTime())) { return ''; }
+    try {
+      return at.toLocaleString('uk-UA', {
+        day: '2-digit', month: '2-digit', year: 'numeric',
+        hour: '2-digit', minute: '2-digit', hour12: false
+      });
+    } catch (e) {
+      return '';
+    }
+  }
+
   // --- екран без токена ----------------------------------------------------
   // Сторінка · порожня оболонка, і сервер віддає її без токена (інакше F5 давав
   // би голий JSON, D75). Але показувати порожнечу не можна: кажемо, що робити.
@@ -304,11 +327,10 @@
     return i + 1;
   }
 
-  function readable(raw) {
-    if (!raw) { return ''; }
+  function scanKeys(raw, keys) {
     var parts = [];
-    for (var k = 0; k < READABLE_KEYS.length; k++) {
-      var key = READABLE_KEYS[k];
+    for (var k = 0; k < keys.length; k++) {
+      var key = keys[k];
       var from = 0;
       var at = valueStart(raw, from, key);
       while (at !== -1) {
@@ -330,6 +352,14 @@
         at = valueStart(raw, from, key);
       }
     }
+    // Порядок · такий, як у потоці: інакше рядки стрибали б місцями.
+    parts.sort(function (a, b) { return a.at - b.at; });
+    return parts;
+  }
+
+  function readable(raw) {
+    if (!raw) { return ''; }
+    var parts = scanKeys(raw, READABLE_KEYS);
     // Нічого не впізнали. Два різні випадки, і плутати їх не можна:
     //   · роль друкує JSON (strict-схема), але ключ ще не дописано · показувати
     //     нема чого, і сирий конверт `{"items":[{"id":"r1","te` на екрані є
@@ -337,8 +367,6 @@
     //   · відповідь узагалі не JSON · тоді показати сире краще, ніж мовчати.
     var head = raw.charAt(0);
     if (parts.length === 0) { return (head === '{' || head === '[') ? '' : raw; }
-    // Порядок · такий, як у потоці: інакше рядки стрибали б місцями.
-    parts.sort(function (a, b) { return a.at - b.at; });
     // Порожні значення пропускаємо: у вироку QA поля `issue` й `fix` порожні на
     // кожному чистому рядку, і вікно починалось із десятка порожніх рядків ·
     // видно оком на живому прогоні 2026-09-06.
@@ -586,21 +614,45 @@
   // (везуть кожен байт від моменту під'єднання) і знімок стану (знає лише
   // хвіст журналу токенів). Поки це знання жило на екрані, тест міг перевіряти
   // лише свою копію логіки · тобто нічого.
-  function streamFeed(buffer) {
+  function streamFeed(buffer, thinkBuffer) {
     var raw = '';
+    // РОЗДУМИ · ОКРЕМИЙ ПОТІК У ОКРЕМЕ ВІКНО, як у прототипі 01.
+    //
+    // Сервер уже розділив потік: подія `tokens` і знімок стану везуть `text`
+    // (відповідь) і `thinking` (чернетка) двома полями. Розбирати сирий журнал
+    // тут не треба й НЕ МОЖНА · у ньому лапки екрановані, і жоден ключ
+    // відповіді там не знайдеться (перевірено на живому потоці 2026-09-07).
+    //
+    // Чому окремим вікном, а не замість відповіді: на живій пачці роздуми
+    // склали 3356 порцій проти 112 порцій відповіді · тобто 97% часу головне
+    // вікно стояло порожнє, хоч роль працювала («де мій лайв чат друк»). Але
+    // змішувати їх теж не можна: чернетка не є перекладом.
+    var think = '';
     // Запобіжник від нескінченного зростання. Відповідь однієї ролі це сотні
     // кілобайт, тож на роботі це не спрацьовує ніколи; обрізання ПОЧАТКУ тут
     // було половиною D83, і повертати його не можна.
     var CAP = 2000000;
     var KEEP = 1500000;
 
+    function paint() {
+      buffer.sync(readable(raw));
+      if (thinkBuffer) { thinkBuffer.sync(think); }
+    }
+
     return {
       // Порція потоку · головне й точне джерело.
       delta: function (d) {
-        if (d && d.restarted) { raw = ''; buffer.reset(); }
+        if (d && d.restarted) {
+          raw = '';
+          think = '';
+          buffer.reset();
+          if (thinkBuffer) { thinkBuffer.reset(); }
+        }
         raw += (d && d.text) || '';
+        think += (d && d.thinking) || '';
         if (raw.length > CAP) { raw = raw.slice(-KEEP); }
-        buffer.sync(readable(raw));
+        if (think.length > CAP) { think = think.slice(-KEEP); }
+        paint();
       },
       // Знімок стану · джерело ДРУГОЇ черги. Береться, лише коли нам нема чого
       // показати або коли він віддав ПОВНИЙ текст виклику (`complete`).
@@ -615,12 +667,21 @@
       // такій паузі сторінка підміняла показане хвостом · текст СКОРОЧУВАВСЯ
       // на очах (заміряно на живій пачці 2026-09-06: -28 символів).
       snapshot: function (st) {
-        if (!st || typeof st.text !== 'string' || st.text === '') { return; }
+        if (!st) { return; }
+        // Вкладка, що під'єдналась посеред виклику, бере роздуми звідси ·
+        // інших джерел у неї немає. Тільки НАРОЩУЄМО: коротший хвіст не має
+        // права з'їсти вже показане (той самий урок, що й D83).
+        if (typeof st.thinking === 'string' && st.thinking.length > think.length) {
+          think = st.thinking;
+          if (thinkBuffer) { thinkBuffer.sync(think); }
+        }
+        if (typeof st.text !== 'string' || st.text === '') { return; }
         if (raw !== '' && ! st.complete) { return; }
         raw = st.text;
         buffer.sync(readable(raw));
       },
-      raw: function () { return raw; }
+      raw: function () { return raw; },
+      thinking: function () { return think; }
     };
   }
 
@@ -674,6 +735,7 @@
     esc: esc,
     num: num,
     secs: secs,
+    when: when,
     ensureToken: ensureToken,
     tokenRejected: tokenRejected,
     renderNav: renderNav,

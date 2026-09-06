@@ -78,11 +78,39 @@ spin=0
 last_state=""
 
 while :; do
-    envelope="$(bash "$TIMED" drive "$DRIVE" run drive 2>/dev/null || true)"
+    # STDERR НЕ ГЛУШИТЬСЯ, А ЗБЕРІГАЄТЬСЯ. Раніше тут стояло `2>/dev/null`, і
+    # єдине, що бачив власник при будь-якій зупинці, було «run drive не віддав
+    # конверт» · тобто НАСЛІДОК замість причини (D96). Справжній текст
+    # ішов у нікуди: ні виняток PHP, ні пояснення рушія не доходили нікуди.
+    drive_err="$(mktemp)"
+    # Код виходу беремо ЧЕРЕЗ `||`, а не з `$?` після `|| true`: там він завжди
+    # нуль, і гілка «перервано сигналом» була б недосяжною.
+    drive_code=0
+    envelope="$(bash "$TIMED" drive "$DRIVE" run drive 2>"$drive_err")" || drive_code=$?
     if [ -z "$envelope" ]; then
-        echo "ЗУПИНКА: ./bdo run drive не віддав конверт." >&2
+        # ШТАТНА ЗУПИНКА НЕ Є НЕСПРАВНІСТЮ. Кнопка «зупинити» вбиває сесію
+        # роботи, і `run drive` гине з сигналом · код 130 (INT) або 143 (TERM).
+        # Називати це збоєм означало відправляти власника шукати дефект там,
+        # де він сам натиснув кнопку (виявлено ним 2026-09-07).
+        if [ "$drive_code" = 130 ] || [ "$drive_code" = 143 ]; then
+            echo "ЗУПИНЕНО: прогін перервано ззовні (сигнал, код $drive_code)." >&2
+        else
+            echo "ЗУПИНКА: ./bdo run drive не віддав конверт (код $drive_code)." >&2
+            # Причина · рядками самого рушія, а не переказом.
+            if [ -s "$drive_err" ]; then
+                echo "Останнє, що сказав run drive:" >&2
+                tail -5 "$drive_err" >&2
+            else
+                echo "run drive не сказав нічого · ані в stdout, ані в stderr." >&2
+            fi
+        fi
+        rm -f "$drive_err"
         exit 1
     fi
+    # Пояснення рушія (`payload воркера: …`) є частиною звіту кроку й мусить
+    # лишатись видимим, як було до появи файла.
+    test -s "$drive_err" && cat "$drive_err" >&2
+    rm -f "$drive_err"
     read -r state kind role payload response reason mode patch domain remaining <<EOF
 $(printf '%s' "$envelope" | php -r '
 // Конверт беремо з ОСТАННЬОГО рядка, який розбирається як JSON.

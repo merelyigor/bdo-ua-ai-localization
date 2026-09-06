@@ -113,7 +113,13 @@
   // ЩО РОБИТИ З ПОТОКОМ · знає `B.streamFeed`, а не екран: два джерела того
   // самого тексту (порції SSE і хвіст у знімку стану) вже сплутали одне одного
   // раз (D83), і другого місця з цим знанням бути не має.
-  var feed = B.streamFeed(stream);
+  // РОЗДУМИ · власна друкарка й власне вікно, як у прототипі 01: там роздуми
+  // стоять НАД відповіддю окремим приглушеним блоком, а чип «роздуми» його
+  // ховає. Одна друкарка на двох не годиться · тексти йдуть одночасно.
+  var thinkStream = B.typer(null, { onPaint: paintThinking });
+  var feed = B.streamFeed(stream, thinkStream);
+  var thinkPref = B.pref('run');
+  var thinkOn = thinkPref.get('think') === '1';
 
   // Пам'ять вікон: сервер тримає лише хвіст, тому початок роботи після
   // перезавантаження сторінки взяти нема звідки. Мітка · пачка (або сесія,
@@ -155,6 +161,17 @@
   // · сервер його вже не пам'ятає (знімок тримає лише хвіст журналу). Тепер
   // вікно показує ВСЮ відповідь, а межа лишається тільки як запобіжник від
   // нескінченного зростання вузла.
+  // Вікно роздумів. Чернетка моделі · це НЕ відповідь, тому вона приглушена й
+  // підписана; ховається чипом і памʼятає вибір власника між сесіями.
+  function paintThinking(text) {
+    var box = B.el('thinkbox');
+    if (!box) { return; }
+    if (!text || !thinkOn) { box.style.display = 'none'; return; }
+    box.style.display = 'block';
+    box.textContent = text;
+    box.scrollTop = box.scrollHeight;
+  }
+
   function paintStream(text) {
     var box = B.el('streambox');
     if (!box) { return; }
@@ -413,6 +430,24 @@
     B.el('meta').textContent = meta.join(' | ');
     B.el('stopBtn').disabled = !s.running;
 
+    // ПАЧКА, ЩО СТОЇТЬ, МУСИТЬ СКАЗАТИ ЦЕ ВГОЛОС І НАЗВАТИ ВИХІД.
+    //
+    // Пачка не закрита, прогону немає · екран виглядав як «висить»: стан
+    // показує крок, кнопка «зупинити» сіра й ні на що не реагує, а що робити
+    // далі · ніде. Власник назвав це прямо 2026-09-07: «не зрозуміло, зависла
+    // пачка чи що». Причин зупинки дві й обидві законні: людина натиснула
+    // «зупинити» або цикл вийшов сам · і в обох випадках вихід той самий.
+    var idle = B.el('actionMsg');
+    if (!s.running && b.id && (b.state || '') !== 'closed') {
+      idle.textContent = 'Прогін не йде, а пачка не закрита · вона стоїть на кроці «'
+        + (b.state_label || b.state || '?') + '». Це не зависання: процес циклу завершився '
+        + '(кнопкою «зупинити» або сам). Продовжити або почати заново · на сторінці «почати прогін».';
+      idle.style.color = 'var(--wr-tx)';
+    } else if (idle.style.color === 'var(--wr-tx)') {
+      idle.textContent = '';
+      idle.style.color = '';
+    }
+
     var key = calls.map(function (c) { return c.at + c.role + c.verdict + c.ms; }).join('|');
     var live = (s.stream && s.stream.role_label && s.stream.fresh) ? s.stream.role_label : '';
     if (key !== lastCallsKey || (live && !B.el('streambox'))) {
@@ -459,9 +494,21 @@
         var loading = waiting >= 12;
         html += '<div class="msg active"><div class="mh">'
           + '<span style="font-weight:500;color:var(--acc-tx)">' + B.esc(live) + '</span>'
-          + '<span class="meta">' + (loading
+          + '<span class="meta" id="liveNote">' + (loading
               ? 'модель вантажиться, ' + waiting + ' с · перший виклик після паузи тягне вагу з диска'
-              : 'друкує…') + '</span></div>'
+              : 'друкує…') + '</span>'
+          // Чип «роздуми» · як у прототипі 01. Показує чернетку моделі, поки
+          // вона думає: без нього вікно стоїть порожнє майже весь виклик.
+          + '<button class="chip" id="thinkChip" type="button" style="margin-left:auto"'
+          + ' aria-pressed="' + (thinkOn ? 'true' : 'false') + '">роздуми</button>'
+          // ЩО ПІШЛО В МОДЕЛЬ · доступне поки роль ще друкує, а не лише після.
+          // Шлях дає сервер (`stream.payload`), сторінка його не вгадує.
+          + ((s.stream && s.stream.payload)
+              ? '<button class="chip" id="reqChip" type="button">запит ▾</button>'
+              : '')
+          + '</div>'
+          + '<div class="box mono" id="reqbox" style="display:none"></div>'
+          + '<div class="box mono" id="thinkbox" style="display:none;color:var(--tm)"></div>'
           + (loading
               ? '<div class="empty" style="margin-top:6px">Це не зависання: Ollama вивантажує модель за своїм '
                 + 'налаштуванням, і наступні виклики підуть без цієї паузи.</div>'
@@ -470,11 +517,37 @@
       }
       B.el('calls').innerHTML = html;
       bindOpenCall();
+      var req = B.el('reqChip');
+      if (req) {
+        req.onclick = function () {
+          var box = B.el('reqbox');
+          if (box.style.display === 'block') { box.style.display = 'none'; return; }
+          box.style.display = 'block';
+          B.busy(box, 'беру запит ролі…');
+          // Шлях НЕ передаємо: його називає сервер. Інакше цей самий виклик
+          // читав би будь-що під `state/`, зокрема токен.
+          B.get('/api/call?live=1').then(function (d) {
+            box.textContent = (d && d.payload && d.payload.text) || 'запиту ще немає на диску';
+          }).catch(function (e) {
+            box.textContent = 'не вдалося взяти запит: ' + e;
+          });
+        };
+      }
+      var chip = B.el('thinkChip');
+      if (chip) {
+        chip.onclick = function () {
+          thinkOn = !thinkOn;
+          chip.setAttribute('aria-pressed', thinkOn ? 'true' : 'false');
+          thinkPref.set('think', thinkOn ? '1' : '0');
+          paintThinking(thinkStream.text());
+        };
+      }
       B.el('callsMeta').textContent = !calls.length ? ''
         : (callsView.scope === 'batch'
             ? 'пачки ' + callsView.batch + ' · ' + calls.length
             : 'цієї сесії · ' + calls.length + ' (пачку не вказано)');
       paintStream(stream.text());
+      paintThinking(thinkStream.text());
     }
 
     // Знімок стану знає лише ХВІСТ журналу токенів (`s.stream.complete` каже,
