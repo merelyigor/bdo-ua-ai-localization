@@ -659,6 +659,7 @@ check_agents() {
     run bash tests/step-times.sh
     run bash tests/qa-gap-costs-rows.sh
     run bash tests/terminology-excerpt.sh
+    run bash tests/terminology-chunks.sh
 }
 
 check_runtime() { run ./bdo runtime; }

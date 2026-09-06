@@ -457,6 +457,27 @@ merge_pre_verdicts() {
 # моделі разом · тобто половину часу конвеєра ніхто не бачив.
 TIMED="$SCRIPT_DIR/cli/system/timed.sh"
 
+# --- Частини довгого payload ------------------------------------------------
+#
+# Термінолог брав УСІ терміни пачки одним запитом: заміряно 2026-09-06 · 98-136
+# термінів, 208-621 секунда. Ціна невдачі дорівнювала всьому виклику. Тепер
+# роль кличеться частинами, а драйвер складає відповіді. Стан у машині станів
+# той самий, тому пачка, зупинена посеред частин, відновлюється звичайним
+# resume: курсор лежить у теці пачки.
+term_chunk_index() {
+    test -s "$B/terminology-chunk" && cat "$B/terminology-chunk" || echo 0
+}
+term_chunk_total() {
+    php -r 'require $argv[2]; echo Bdo\Translate\Payload\Chunks::count($argv[1]);' \
+        "$B/terminology-payload.full.json" "$SCRIPT_DIR/lib/autoload.php" 2>/dev/null || echo 0
+}
+# Витягнути чергову частину в той самий файл, який отримує роль. Друкує
+# кількість записів; 0 означає, що частин більше немає.
+term_chunk_write() {
+    php -r 'require $argv[4]; echo Bdo\Translate\Payload\Chunks::write($argv[1], (int) $argv[2], $argv[3]);' \
+        "$B/terminology-payload.full.json" "$1" "$B/terminology-payload.json" "$SCRIPT_DIR/lib/autoload.php" 2>/dev/null || echo 0
+}
+
 auto_clean() {
     test "${BDO_AUTO_CLEAN:-1}" = 0 && return 0
     "$SCRIPT_DIR/cli/batch/batch-clean.sh" --apply --quiet \
@@ -591,12 +612,17 @@ selected)
     # лишаються в теці пачки для власника; терміни в каталог додає лише адмінка.
     if [ "${BDO_PIPELINE_OFFLINE:-0}" != 1 ] && [ ! -s "$B/term-proposals.json" ]; then
         gaps="$(php -r 'require $argv[2];$n=0;foreach(Bdo\Translate\Batch\RowSet::fromFile($argv[1]) as $r){$n+=count($r->pendingTerms())+count($r->unresolvedEntities());}echo $n;' "$rows" "$SCRIPT_DIR/lib/autoload.php" 2>/dev/null || echo 0)"
-        if [ "${gaps:-0}" -gt 0 ] && "$SCRIPT_DIR/cli/prepare/terminology-payload.sh" "$rows" > "$B/terminology-payload.json" 2>/dev/null; then
-            terms="$(php -r 'echo count(json_decode((string)file_get_contents($argv[1]),true)?:[]);' "$B/terminology-payload.json")"
+        if [ "${gaps:-0}" -gt 0 ] && "$SCRIPT_DIR/cli/prepare/terminology-payload.sh" "$rows" > "$B/terminology-payload.full.json" 2>/dev/null; then
+            terms="$(php -r 'require $argv[2]; echo Bdo\Translate\Payload\Items::count($argv[1]);' "$B/terminology-payload.full.json" "$SCRIPT_DIR/lib/autoload.php")"
             if [ "${terms:-0}" -gt 0 ]; then
-                transition awaiting_terminology
-                child awaiting_terminology translation-terminology "$B/terminology-payload.json" "$B/term-proposals.json"
-                exit 0
+                : > "$B/terminology-answers.json"
+                echo 0 > "$B/terminology-chunk"
+                rm -f "$B/term-proposals.json"
+                if [ "$(term_chunk_write 0)" != 0 ]; then
+                    transition awaiting_terminology
+                    child awaiting_terminology translation-terminology "$B/terminology-payload.json" "$B/term-proposals.json"
+                    exit 0
+                fi
             fi
         fi
     fi
@@ -605,15 +631,47 @@ selected)
 awaiting_terminology)
     # Пропозиції термінів · артефакт для власника, не ворота пачки: вичерпаний
     # ліміт повторів не блокує прогін, а веде до воркера без пропозицій.
+    #
+    # Роль кличеться ЧАСТИНАМИ (`Payload\Chunks`), тому тут три можливі кроки:
+    # долити відповідь частини, взяти наступну частину, або зібрати підсумок.
+    # Бюджет повторів рахується ОКРЕМО на кожну частину · саме в цьому й сенс
+    # розбиття: збій коштує частину, а не весь виклик на десять хвилин.
+    chunk="$(term_chunk_index)"
+    chunks_total="$(term_chunk_total)"
+
     if [ ! -s "$B/term-proposals.json" ]; then
-        if retry_exceeded awaiting_terminology; then prepare_worker; exit 0; fi
-        child awaiting_terminology translation-terminology "$B/terminology-payload.json" "$B/term-proposals.json"; exit 0
-    fi
-    if ! php -r '$a=json_decode((string)file_get_contents($argv[1]),true);exit(is_array($a)?0:1);' "$B/term-proposals.json" 2>/dev/null; then
+        if retry_exceeded "awaiting_terminology:${chunk}"; then
+            # Частина не вийшла · пропускаємо ЇЇ, а не всю роботу.
+            echo $((chunk + 1)) > "$B/terminology-chunk"
+        else
+            child awaiting_terminology translation-terminology "$B/terminology-payload.json" "$B/term-proposals.json"
+            exit 0
+        fi
+    elif ! php -r '$a=json_decode((string)file_get_contents($argv[1]),true);exit(is_array($a)?0:1);' "$B/term-proposals.json" 2>/dev/null; then
         mv "$B/term-proposals.json" "$B/term-proposals.invalid.$(date +%s).json"
-        if retry_exceeded awaiting_terminology; then prepare_worker; exit 0; fi
-        child awaiting_terminology translation-terminology "$B/terminology-payload.json" "$B/term-proposals.json"; exit 0
+        if retry_exceeded "awaiting_terminology:${chunk}"; then
+            echo $((chunk + 1)) > "$B/terminology-chunk"
+        else
+            child awaiting_terminology translation-terminology "$B/terminology-payload.json" "$B/term-proposals.json"
+            exit 0
+        fi
+    else
+        # Частина вийшла · доливаємо її до накопичувача й рухаємось далі.
+        php -r 'require $argv[3]; Bdo\Translate\Payload\Chunks::append($argv[1], $argv[2]);' \
+            "$B/term-proposals.json" "$B/terminology-answers.json" "$SCRIPT_DIR/lib/autoload.php" 2>/dev/null || true
+        rm -f "$B/term-proposals.json"
+        echo $((chunk + 1)) > "$B/terminology-chunk"
     fi
+
+    next="$(term_chunk_index)"
+    if [ "${next:-0}" -lt "${chunks_total:-0}" ] && [ "$(term_chunk_write "$next")" != 0 ]; then
+        emit 1 awaiting_terminology "{\"kind\":\"continue\",\"reason\":\"terminology_chunk_${next}_of_${chunks_total}\"}"
+        exit 0
+    fi
+
+    # Частини скінчились · збираємо підсумок.
+    cp "$B/terminology-answers.json" "$B/term-proposals.json" 2>/dev/null || echo '[]' > "$B/term-proposals.json"
+
     # Identity повертає КОД, а не модель.
     #
     # У payload `identity_hash` більше немає, і схема відповіді не вимагає
