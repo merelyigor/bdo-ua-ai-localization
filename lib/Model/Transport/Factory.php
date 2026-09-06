@@ -34,8 +34,7 @@ final class Factory
 
         return match ($kind) {
             'ollama' => new Ollama(
-                rtrim((string) (getenv('OLLAMA_URL') ?: ($settings['endpoint'] ?? $config['endpoint'] ?? 'http://127.0.0.1:11434')), '/'),
-                (string) ($settings['keep_alive'] ?? Ollama::DEFAULT_KEEP_ALIVE),
+                rtrim((string) (getenv('OLLAMA_URL') ?: ($settings['endpoint'] ?? $config['endpoint'] ?? 'http://127.0.0.1:11434')), '/')
             ),
             'openai' => new OpenAi(
                 endpoint: rtrim((string) ($settings['endpoint'] ?? 'https://api.openai.com/v1'), '/'),
