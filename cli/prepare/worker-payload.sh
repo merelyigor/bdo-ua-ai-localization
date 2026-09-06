@@ -199,10 +199,16 @@ if [ "$WANT_CONTEXT" = 1 ]; then
             // коли він зʼявиться. Порожні поля не кладемо: сьогодні `definition`
             // порожній у всіх термінів, і зайвий null лише важчає payload.
             foreach ($context["terms"] ?? [] as $term) {
-                $canonical = (string) ($term["canonical_source"] ?? "");
+                // Назва береться СПІЛЬНИМ правилом (`Api\Term`): хаб називає це
+                // поле `term`, старий API · `canonical_source`. Читання «в лоб»
+                // мовчки викидало б кожен термін хаба, і пачка їхала б без
+                // термінів, нікого не попередивши.
+                $canonical = Bdo\Translate\Api\Term::name(is_array($term) ? $term : []) ?? "";
                 if ($canonical === "" || isset($terms[$canonical])) continue;
                 if (in_array($canonical, $suspects, true)) { $skippedSuspects[$canonical] = true; continue; }
                 $entry = ["canonical_source" => $canonical];
+                $ukrainian = Bdo\Translate\Api\Term::ukrainian($term);
+                if ($ukrainian !== null) { $entry["ukrainian"] = $ukrainian; }
                 // `ukrainian_layer` тут ОБОВʼЯЗКОВИЙ: без нього промпт не може
                 // відрізнити закон від машинного стандарту, а API це поле
                 // віддає з 2026-09-04 і в `/rows`, і в `/rows/context`.

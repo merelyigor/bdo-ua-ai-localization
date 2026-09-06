@@ -195,4 +195,31 @@ if ($trap->glossary() !== []) {
 }
 ' "$ROOT/lib/autoload.php" || fail 'глосарій читається не з обох бекендів'
 
+# --- 7. Правило назв терміна ОДНЕ на всі місця читання ----------------------
+#
+# Термін читається щонайменше у трьох місцях (`Row::glossary`,
+# `Row::pendingTerms`, payload воркера з `/rows/{hash}/context`). Кожне
+# читання «в лоб» МОВЧКИ викидало б термін, назви якого не впізнало: порожня
+# назва просто пропускається, пачка їде без термінів, і ніхто не дізнається до
+# першого русизму в шарі. Тому правило одне · `Api\Term`.
+grep -Fq 'Bdo\Translate\Api\Term::name' "$ROOT/cli/prepare/worker-payload.sh" \
+    || fail 'контекст рядка читає назви термінів власним правилом · терміни хаба зникнуть мовчки'
+grep -Fq 'Term::name(' "$ROOT/lib/Batch/Row.php" \
+    || fail 'глосарій рядка читає назви термінів власним правилом'
+php -r '
+require $argv[1];
+use Bdo\Translate\Api\Term;
+$hub = ["term" => "Box", "matched_form" => "Boxes", "translation" => null];
+$legacy = ["canonical_source" => "Box", "ukrainian" => "Скринька"];
+if (Term::name($hub) !== "Box" || Term::name($legacy) !== "Box") {
+    fwrite(STDERR, "назва терміна читається не з обох бекендів\n"); exit(1);
+}
+if (Term::ukrainian($legacy) !== "Скринька") { fwrite(STDERR, "відповідник старого API загублено\n"); exit(1); }
+// `matched_form` · форма ДЖЕРЕЛА. Прийняти її за переклад означало б підставити
+// англійське слово як українську назву.
+if (Term::ukrainian($hub) !== null) {
+    fwrite(STDERR, "matched_form прийнято за переклад: ".var_export(Term::ukrainian($hub), true)."\n"); exit(1);
+}
+' "$ROOT/lib/autoload.php" || fail 'спільне правило назв терміна працює не так, як обіцяно'
+
 echo 'api target switch: OK · дві осі дають чотири цілі, ключі не течуть, ціль замикає прогін.'
