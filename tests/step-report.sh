@@ -48,7 +48,31 @@ file_put_contents("$dir/empty.json", "[]");
 #    названа причина (§12).
 out="$(report --before translation-worker "$TMP/payload.json")" \
     || fail 'звіт про запит завершився ненульовим кодом'
-printf '%s' "$out" | grep -Fq 'перекладач → 2 рядків' || fail "запит не назвав роль і обсяг: $out"
+printf '%s' "$out" | grep -Fq 'перекладач → 2 рядки' || fail "запит не назвав роль і обсяг: $out"
+
+# Одиниця роботи · РОЛІ, а не звіту.
+#
+# Термінолог рахує ТЕРМІНИ: один опис предмета несе до тринадцяти назв
+# (заміряно 2026-09-06 · 111 термінів у блоках glossary на 50 рядків, медіана 2,
+# максимум 13). Через це «термінолог → 136 рядків» на пачці з 50 рядків
+# читалось як помилка, і власник питав прямо, як таке можливо.
+php -r '
+require $argv[1];
+use Bdo\Translate\Ui\Labels;
+$cases = [
+    ["translation-terminology", 1, "термін"],
+    ["translation-terminology", 2, "терміни"],
+    ["translation-terminology", 136, "термінів"],
+    ["translation-terminology", 13, "термінів"],
+    ["translation-worker", 1, "рядок"],
+    ["translation-worker", 50, "рядків"],
+];
+foreach ($cases as [$role, $n, $want]) {
+    $got = Labels::unit($role, $n);
+    if ($got !== $want) {
+        fwrite(STDERR, "{$role} {$n} дало «{$got}», очікувалось «{$want}»\n"); exit(1);
+    }
+}' "$ROOT/lib/autoload.php" || fail 'одиниця роботи ролі названа неправильно'
 printf '%s' "$out" | grep -Fq 'затверджених термінів 1' || fail "запит не назвав контекст: $out"
 printf '%s' "$out" | grep -Fq 'Ancient Armor of the Deep' || fail "запит не показав джерела: $out"
 printf '%s' "$out" | grep -Fq "$H1" && fail 'у звіт просочився повний identity_hash замість тексту'
@@ -115,7 +139,7 @@ else
     out="$(bash "$ROOT/cli/run/step-report.sh" --before translation-worker "$TMP/payload.json" < /dev/null 2>&1)" \
         || fail "звіт упав без stdin-термінала: $out"
 fi
-printf '%s' "$out" | grep -Fq 'перекладач → 2 рядків' \
+printf '%s' "$out" | grep -Fq 'перекладач → 2 рядки' \
     || fail "без термінала звіт не намалював крок: $out"
 
 # 8. Драйвер справді ходить цим шляхом, і вимикач існує · інакше gate і тести,

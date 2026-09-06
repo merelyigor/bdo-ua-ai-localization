@@ -74,6 +74,38 @@ final class Labels
         ],
     ];
 
+    /**
+     * ЩО САМЕ роль рахує · «рядків» правда не для всіх.
+     *
+     * Термінолог працює з ТЕРМІНАМИ, а не з рядками пачки: один опис предмета
+     * несе до тринадцяти назв (заміряно 2026-09-06 на живій пачці · 111 термінів
+     * у блоках `glossary.terms` на 50 рядків, медіана 2, максимум 13). Через це
+     * рядок «термінолог → 136 рядків» на пачці з 50 рядків читався як помилка,
+     * і власник питав прямо, як таке можливо.
+     *
+     * @var array<string,array{0:string,1:string,2:string}> роль -> [один, кілька, багато]
+     */
+    private const ROLE_UNITS = [
+        'translation-terminology' => ['термін', 'терміни', 'термінів'],
+        'translation-glossary' => ['термін', 'терміни', 'термінів'],
+    ];
+
+    /** Одиниця роботи ролі у правильній формі числа. */
+    public static function unit(string $role, int $count): string
+    {
+        [$one, $few, $many] = self::ROLE_UNITS[$role] ?? ['рядок', 'рядки', 'рядків'];
+        $mod100 = $count % 100;
+        if ($mod100 >= 11 && $mod100 <= 14) {
+            return $many;
+        }
+
+        return match ($count % 10) {
+            1 => $one,
+            2, 3, 4 => $few,
+            default => $many,
+        };
+    }
+
     /** Підпис ролі з урахуванням кроку, у якому її викликали. */
     public static function roleInState(string $role, string $state): string
     {

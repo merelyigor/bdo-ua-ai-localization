@@ -102,7 +102,11 @@ $rows = $items($payload);
 $label = Labels::role($role);
 
 if ($mode === "--before") {
-    printf("  ┌─ %s → %d рядків, payload %d КБ\n", $label, count($rows), (int) round(filesize($payloadPath) / 1024));
+    // Одиницю роботи називає роль, а не звіт: термінолог рахує ТЕРМІНИ, і
+    // рядок «136 рядків» на пачці з 50 рядків читався як помилка (питання
+    // власника 2026-09-06).
+    printf("  ┌─ %s → %d %s, payload %d КБ\n",
+        $label, count($rows), Labels::unit($role, count($rows)), (int) round(filesize($payloadPath) / 1024));
     // Спільні блоки payload називаються числом: саме вони роблять переклад
     // узгодженим, і їхня відсутність є фактом, який видно одразу.
     if (is_array($payload) && ! array_is_list($payload)) {
@@ -163,7 +167,7 @@ foreach ($rows as $row) {
     }
 }
 
-printf("  ├─ %s повернув %d\n", $label, count($answers));
+printf("  ├─ %s повернув %d %s\n", $label, count($answers), Labels::unit($role, count($answers)));
 // Стеля рахує НАПЕЧАТАНІ рядки, а не переглянуті.
 //
 // Спершу лічильник збільшувався на кожну відповідь, і для QA це ховало саму

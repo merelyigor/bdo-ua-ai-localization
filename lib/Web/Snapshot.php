@@ -473,6 +473,10 @@ final class Snapshot
                 'role' => $role,
                 'state' => $state,
                 'rows' => isset($entry['rows']) ? (int) $entry['rows'] : null,
+                // Одиниця роботи ролі: термінолог рахує ТЕРМІНИ, і «136 рядків»
+                // на пачці з 50 рядків читалось як помилка (питання власника
+                // 2026-09-06). Слово дає сервер · сторінка не вгадує.
+                'unit' => Labels::unit($role, (int) ($entry['rows'] ?? 0)),
                 'payload_bytes' => isset($entry['payload_bytes']) ? (int) $entry['payload_bytes'] : null,
                 // Приналежність до пачки · щоб перелік і стрічка кроків
                 // говорили про одне й те саме. Порожньо · запис старіший за
