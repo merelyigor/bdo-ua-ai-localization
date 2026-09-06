@@ -614,6 +614,28 @@ awaiting_terminology)
         if retry_exceeded awaiting_terminology; then prepare_worker; exit 0; fi
         child awaiting_terminology translation-terminology "$B/terminology-payload.json" "$B/term-proposals.json"; exit 0
     fi
+    # Identity повертає КОД, а не модель.
+    #
+    # У payload `identity_hash` більше немає, і схема відповіді не вимагає
+    # `source_identity`: заміряно 2026-09-06, що на 113 термінів хеш займав
+    # 10.5% payload і ~16% виходу · модель посимвольно копіювала 64 знаки на
+    # кожен термін (клас D59). Звʼязок відновлюється за `canonical_source` із
+    # того самого відображення, яким будувався payload, тому пропозиція для
+    # власника лишається повною.
+    php -r '
+    require $argv[3];
+    use Bdo\Translate\Batch\RowSet;
+    use Bdo\Translate\Payload\Items;
+    use Bdo\Translate\Payload\TermIndex;
+    $answer = json_decode((string) file_get_contents($argv[1]), true);
+    if (! is_array($answer)) { exit(0); }
+    $withIdentity = TermIndex::attachIdentity(
+        Items::rows($answer),
+        TermIndex::forRows(RowSet::fromFile($argv[2]))
+    );
+    file_put_contents($argv[1], json_encode($withIdentity, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT)."\n");
+    ' "$B/term-proposals.json" "$B/rows.json" "$SCRIPT_DIR/lib/autoload.php" 2>/dev/null || true
+
     complete terminology "$B/term-proposals.json"
     prepare_worker
     ;;

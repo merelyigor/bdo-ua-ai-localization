@@ -83,6 +83,59 @@ if (! str_contains($src, "Epheria Carrack")) { fwrite(STDERR, "уривок не
 if (! str_contains($src, "…")) { fwrite(STDERR, "обрізання не позначене трикрапкою\n"); exit(1); }
 ' "$ROOT/lib/autoload.php" "$out" || fail 'payload термінолога не звузився до уривка'
 
+# --- 2б. Хеш у модель НЕ йде, а identity все одно повертається --------------
+#
+# Заміряно 2026-09-06 на виклику зі 113 термінів: `identity_hash` займав 10.5%
+# payload, а схема відповіді вимагала переписати його назад полем
+# `source_identity` · близько 16% виходу на посимвольне копіювання 64
+# шістнадцяткових знаків. Рівно той клас, який для інших ролей закрив D59.
+php -r '
+require $argv[1];
+use Bdo\Translate\Payload\Items;
+foreach (Items::rows(json_decode($argv[2], true)) as $item) {
+    foreach ($item as $k => $v) {
+        if (is_string($v) && preg_match("~^[0-9a-f]{64}$~", $v)) {
+            fwrite(STDERR, "у payload термінолога лежить хеш у полі «{$k}» · модель переписуватиме 64 знаки (D59)\n");
+            exit(1);
+        }
+    }
+}' "$ROOT/lib/autoload.php" "$out" || fail 'хеш повернувся в payload термінолога'
+
+# Відповідь каталогу теж не має тягнути хеш у модель: `resolve.source_identity`
+# це той самий хеш, лише загорнутий у рядок JSON.
+grep -Fq '"source_identity"' "$ROOT/cli/prepare/terminology-payload.sh" \
+    && fail 'у payload знову береться resolve.source_identity · це той самий хеш для моделі'
+
+# Схема відповіді теж не має його просити.
+php -r '
+$s = json_decode((string) file_get_contents($argv[1]), true, 512, JSON_THROW_ON_ERROR);
+$props = $s["properties"]["items"]["items"]["properties"] ?? [];
+if (isset($props["source_identity"])) {
+    fwrite(STDERR, "схема відповіді знову вимагає source_identity від моделі\n"); exit(1);
+}' "$ROOT/roles/schema/translation-terminology.json" || fail 'схема просить у моделі те, що знає код'
+
+# Але identity МУСИТЬ повертатись у пропозицію · її потрібно для API.
+php -r '
+require $argv[1];
+use Bdo\Translate\Batch\RowSet;
+use Bdo\Translate\Payload\TermIndex;
+$index = TermIndex::forRows(RowSet::fromFile($argv[2]));
+$out = TermIndex::attachIdentity([
+    ["canonical_source" => "Epheria Carrack", "status" => "ready"],
+    ["canonical_source" => "чого-в-пачці-не-було", "status" => "no_answer"],
+], $index);
+if (($out[0]["source_identity"]["identity_hash"] ?? "") !== $argv[3]) {
+    fwrite(STDERR, "identity не повернулась у пропозицію: ".json_encode($out[0], JSON_UNESCAPED_UNICODE)."\n"); exit(1);
+}
+// Чужому терміну хеш не вигадуємо: мовчазна підстановка гірша за відсутність.
+if (isset($out[1]["source_identity"])) {
+    fwrite(STDERR, "терміну, якого в пачці не було, приписано чужу identity\n"); exit(1);
+}' "$ROOT/lib/autoload.php" "$TMP/rows.json" "$H1" || fail 'код не відновлює identity за canonical_source'
+
+# І рушій мусить це РОБИТИ, а не лише вміти.
+grep -Fq 'TermIndex::attachIdentity(' "$ROOT/cli/run/run-drive.sh" \
+    || fail 'рушій не повертає identity в пропозиції термінів · артефакт для власника буде неповний'
+
 # --- 3. Промпт не має обіцяти повного рядка ---------------------------------
 grep -Fq 'УРИВОК рядка навколо цього терміна' "$ROOT/roles/translation-terminology.md" \
     || fail 'промпт термінолога досі каже, що source_text · весь рядок'

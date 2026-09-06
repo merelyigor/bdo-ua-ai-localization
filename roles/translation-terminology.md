@@ -12,9 +12,10 @@
 русизми, яких потім не пропускає перевірка.
 
 Для кожного терміна поверни поля `canonical_source`, `status`, `term_id`,
-`entity_type`, `source_identity`, `ukrainian_proposal`, `next_action`.
+`entity_type`, `ukrainian_proposal`, `next_action`.
 
-1. `canonical_source` та наявні identity-поля копіюй без змін.
+1. `canonical_source` копіюй без змін · за ним набір сам знайде рядок, з якого
+   термін узято. Жодних хешів чи ідентифікаторів рядка від тебе не потрібно.
 2. `resolve.status=ready`: статус `ready`, запропонуй український відповідник.
 3. `blocked_identity`: нічого не вигадуй; порожня пропозиція,
    `next_action="moderation"`.

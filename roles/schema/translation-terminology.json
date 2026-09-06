@@ -23,9 +23,6 @@
           "entity_type": {
             "type": "string"
           },
-          "source_identity": {
-            "type": "string"
-          },
           "ukrainian_proposal": {
             "type": "string"
           },
@@ -38,7 +35,6 @@
           "status",
           "term_id",
           "entity_type",
-          "source_identity",
           "ukrainian_proposal",
           "next_action"
         ],

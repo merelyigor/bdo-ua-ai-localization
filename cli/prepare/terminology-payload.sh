@@ -42,51 +42,49 @@ done
 # Терміни й представницький рядок для кожного. Один рядок на термін достатньо:
 # resolve звіряє identity саме сутності, а не всіх її згадок.
 TERMS_FILE="$(mktemp)"
-trap 'rm -f "$TERMS_FILE"' EXIT
+# Індекс «термін -> рядок» лишається на НАШОМУ боці: у payload identity не йде,
+# але resolve до каталогу без неї неможливий.
+INDEX_FILE="$(mktemp)"
+trap 'rm -f "$TERMS_FILE" "$INDEX_FILE"' EXIT
 php -r '
 require $argv[2];
 use Bdo\Translate\Batch\RowSet;
+use Bdo\Translate\Payload\Excerpt;
+use Bdo\Translate\Payload\TermIndex;
 
-$rows = RowSet::fromFile($argv[1]);
+// Відображення «термін -> рядок» будує спільний клас: після відповіді моделі
+// те саме відображення повертає `identity_hash` у пропозиції, і два місця не
+// мають права розійтися в тому, який рядок вважати представницьким.
+$index = TermIndex::forRows(RowSet::fromFile($argv[1]));
+$budget = (int) (getenv("BDO_TERM_EXCERPT") ?: Excerpt::DEFAULT_BUDGET);
 $terms = [];
-foreach ($rows as $row) {
-    // Дві різні множини, обидві потрібні моделі:
-    //   pendingTerms       · термін оголошений mandatory, відповідника немає;
-    //   unresolvedEntities · назву впізнано, але каталог її не знає взагалі.
-    foreach ([["pending", $row->pendingTerms()], ["unresolved", $row->unresolvedEntities()]] as [$kind, $names]) {
-        foreach ($names as $name) {
-            if (isset($terms[$name])) continue;
-            $terms[$name] = [
-                "canonical_source" => $name,
-                "kind" => $kind,
-                "identity_hash" => $row->identityHash(),
-                // УРИВОК навколо терміна, а не весь опис предмета.
-                //
-                // Заміряно 2026-09-06 на живому прогоні: 136 термінів дали
-                // payload 111 КБ, `in=43 839`, `out=17 722`, 621 с · найважчий
-                // виклик усього флоу, більший за воркер і QA разом. Причина не
-                // в кількості термінів, а в тому, що кожен ніс ПОВНИЙ опис
-                // предмета, а описи BDO довгі. Термінологу ж потрібне місце,
-                // де слово вжите: воно й каже, це назва предмета чи дієслово
-                // в прозі. Обрізаний край позначений трикрапкою · модель
-                // мусить бачити, що це фрагмент.
-                "source_text" => Bdo\Translate\Payload\Excerpt::around(
-                    $row->sourceText(),
-                    $name,
-                    (int) (getenv("BDO_TERM_EXCERPT") ?: Bdo\Translate\Payload\Excerpt::DEFAULT_BUDGET)
-                ),
-            ];
-            // Класифікація рядка, у якому термін трапився. Промпт її називав
-            // завжди, payload не ніс жодного разу (клас D79). Для термінолога
-            // це не дрібниця: «Move» у підписі кнопки й «Move» у назві вміння ·
-            // різні терміни, і без `domain` він розрізняє їх лише здогадом.
-            if ($row->semanticType() !== null) $terms[$name]["semantic_type"] = $row->semanticType();
-            if ($row->domain() !== null) $terms[$name]["domain"] = $row->domain();
-        }
-    }
+foreach ($index as $name => $meta) {
+    $item = [
+        "canonical_source" => $name,
+        "kind" => $meta["kind"],
+        // УРИВОК навколо терміна, а не весь опис предмета.
+        //
+        // Заміряно 2026-09-06: 136 термінів дали payload 111 КБ, `in=43 839`,
+        // `out=17 722`, 621 с · найважчий виклик усього флоу. Причина не в
+        // кількості термінів, а в тому, що кожен ніс ПОВНИЙ опис предмета.
+        // Термінологу потрібне місце, де слово вжите: воно й каже, це назва
+        // предмета чи дієслово в прозі.
+        "source_text" => Excerpt::around($meta["source_text"], $name, $budget),
+    ];
+    // `identity_hash` тут БІЛЬШЕ НЕМАЄ, і це друга економія цього виклику.
+    // Схема відповіді вимагала переписати його назад полем `source_identity`:
+    // 10.5% payload і ~16% виходу на посимвольне копіювання 64 шістнадцяткових
+    // знаків (клас D59). Звʼязок відновлює КОД за `canonical_source`.
+    //
+    // Класифікація рядка лишається: «Move» у підписі кнопки й «Move» у назві
+    // вміння · різні терміни, і без `domain` модель розрізняє їх здогадом.
+    if ($meta["semantic_type"] !== null) $item["semantic_type"] = $meta["semantic_type"];
+    if ($meta["domain"] !== null) $item["domain"] = $meta["domain"];
+    $terms[] = $item;
 }
-echo json_encode(array_values($terms), JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR), "\n";
-' "$ROWS_FILE" "$SCRIPT_DIR/lib/autoload.php" > "$TERMS_FILE"
+file_put_contents($argv[3], json_encode($index, JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR));
+echo json_encode($terms, JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR), "\n";
+' "$ROWS_FILE" "$SCRIPT_DIR/lib/autoload.php" "$INDEX_FILE" > "$TERMS_FILE"
 
 COUNT="$(php -r 'echo count(json_decode(file_get_contents($argv[1]), true) ?: []);' "$TERMS_FILE")"
 if [ "$COUNT" = 0 ]; then
@@ -129,7 +127,11 @@ if [ "$WANT_RESOLVE" = 1 ]; then
         $all = json_decode(file_get_contents($file), true) ?: [];
         $entry = ["status" => $argv[3] !== "" ? $argv[3] : "no_answer"];
         foreach (explode("\n", $argv[4]) as $line) {
-            foreach (["term_id", "entity_type", "category", "source_identity", "message"] as $k) {
+            // `source_identity` каталогу сюди НЕ береться: це той самий
+            // 64-символьний хеш, тільки загорнутий у рядок JSON. Модель за ним
+            // нічого не вирішує · вона працює з `status`, `term_id` і
+            // `entity_type`. Наш бік identity й так знає (`TermIndex`).
+            foreach (["term_id", "entity_type", "category", "message"] as $k) {
                 if (str_starts_with($line, $k . ": ")) $entry[$k] = substr($line, strlen($k) + 2);
             }
         }
@@ -137,9 +139,11 @@ if [ "$WANT_RESOLVE" = 1 ]; then
         file_put_contents($file, json_encode($all, JSON_UNESCAPED_UNICODE));
         ' "$RESOLVED_FILE" "$name" "$status" "$out"
     done < <(php -r '
-    foreach (json_decode(file_get_contents($argv[1]), true) as $t) {
-        printf("%s\t%s\n", $t["canonical_source"], $t["identity_hash"]);
-    }' "$TERMS_FILE")
+    // Identity беремо з ІНДЕКСУ: у payload її немає навмисно (модель не мусить
+    // переписувати 64 символи хеша), але каталогу вона потрібна.
+    foreach (json_decode(file_get_contents($argv[1]), true) as $name => $meta) {
+        printf("%s\t%s\n", $name, $meta["identity_hash"]);
+    }' "$INDEX_FILE")
     echo "Resolve: $READY ready, $BLOCKED blocked_identity, $UNKNOWN без відповіді каталогу" >&2
 fi
 
