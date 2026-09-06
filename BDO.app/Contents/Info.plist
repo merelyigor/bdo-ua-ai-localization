@@ -28,6 +28,10 @@
   <string>bdo-web</string>
   <key>LSMinimumSystemVersion</key>
   <string>11.0</string>
+  <!-- `Resources/BDO.icns`. Без цього ключа Dock показує безликий бланк, і
+       значок неможливо відрізнити від будь-якого іншого саморобного бандла. -->
+  <key>CFBundleIconFile</key>
+  <string>BDO</string>
   <!-- Значок МУСИТЬ бути в Dock, поки інтерфейс працює: власник закриває
        саме його, і закриття гасить сервер. З `LSUIElement` додаток не мав би
        значка, і закривати було б нічого. -->

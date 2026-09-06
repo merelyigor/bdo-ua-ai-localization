@@ -77,6 +77,14 @@ $URL
 else
     if ! out="$(./bdo web --background --no-open 2>&1)"; then
         trap - EXIT
+        # «немає php» з-під значка майже завжди означає не відсутній php, а
+        # PATH без Homebrew (D89). Це лагодить `cli/system/gui-path.sh`, тому
+        # напис тут ще й каже, що саме зламалось, якщо він усе-таки вигулькнув.
+        case "$out" in
+            *'немає php'*) out="$out
+
+PATH клікового запуску не бачить php. Перевірка: ./bdo gate shell" ;;
+        esac
         say "Не вдалося підняти інтерфейс.
 
 $out" 'buttons {"Зрозуміло"} default button 1' >/dev/null || true

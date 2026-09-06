@@ -528,7 +528,28 @@ check_shell() {
         if have plutil && plutil -extract LSUIElement raw BDO.app/Contents/Info.plist >/dev/null 2>&1; then
             fail 'BDO.app схований із Dock (LSUIElement) · власнику нічого закривати'
         fi
-        note 'BDO.app: місток у cli/system/mac-app.sh, логіки в бандлі немає'
+        # ЗНАЧОК МУСИТЬ МАТИ ОБЛИЧЧЯ. Без `CFBundleIconFile` + файла ресурсу
+        # Dock показує безликий бланк, і власник не відрізнить набір від
+        # будь-якого іншого саморобного бандла. Ключ читаємо `plutil`, а не
+        # `grep`: назва в коментарі не є налаштуванням.
+        test -f 'BDO.app/Contents/Resources/BDO.icns' \
+            || fail 'BDO.app без Resources/BDO.icns · у Dock буде порожній бланк'
+        if have plutil; then
+            local icon
+            icon="$(plutil -extract CFBundleIconFile raw BDO.app/Contents/Info.plist 2>/dev/null || true)"
+            test "$icon" = 'BDO' \
+                || fail "CFBundleIconFile=${icon:-<немає>}, а ресурс зветься BDO.icns · Dock значка не знайде"
+        fi
+        # Windows-значок лишається в теці набору поруч із `bdo.bat`. Сам `.bat`
+        # свого значка нести НЕ МОЖЕ · його чіпляють до ярлика (див. README).
+        test -f bdo.ico || fail 'немає bdo.ico · ярлику Windows нема чого показати'
+        # КЛІКОВИЙ ЗАПУСК НЕ МАЄ PATH ТЕРМІНАЛА (D89). Перевірка структурна й
+        # доповнює `tests/gui-path.sh`: той тест SKIP-иться там, де php лежить
+        # у базовому PATH, а прибрати рядок із `bdo` можна на будь-якій машині.
+        test -f cli/system/gui-path.sh || fail 'немає cli/system/gui-path.sh · кліковий запуск лишиться без Homebrew у PATH'
+        grep -Fq 'cli/system/gui-path.sh' bdo \
+            || fail 'єдиний вхід не лагодить PATH · значок у Dock помре на «немає php» (D89)'
+        note 'BDO.app: місток у cli/system/mac-app.sh, значок BDO.icns, Windows · bdo.ico'
     fi
 
     # Makefile не має права стати другою копією дерева команд.
@@ -704,6 +725,7 @@ check_agents() {
     run bash tests/tui.sh
     run bash tests/tui-live.sh
     run bash tests/watch-session.sh
+    run bash tests/gui-path.sh
     run bash tests/step-report.sh
     run bash tests/glossary-provenance.sh
     run bash tests/qa-scope.sh

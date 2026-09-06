@@ -13,6 +13,12 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")" && pwd)"
 readonly ROOT
 
+# Кліковий запуск (значок у Dock, ярлик) дає мінімальний PATH без Homebrew.
+# Лагодиться тут, у єдиному вході, а не в кожному скрипті окремо. У терміналі
+# це порожня операція · подробиці в самому файлі.
+# shellcheck source=cli/system/gui-path.sh
+. "$ROOT/cli/system/gui-path.sh"
+
 die() { printf 'bdo: %s\n' "$1" >&2; exit 2; }
 
 # Надрукувати шапку скрипта · його власну документацію.
