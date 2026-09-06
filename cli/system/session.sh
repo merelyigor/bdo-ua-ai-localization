@@ -193,6 +193,88 @@ case "$SUB" in
         ' "$AUTOLOAD" "$STATE_DIR" "$ID"
         ;;
 
+    delete)
+        # ВИДАЛИТИ СЕСІЮ РАЗОМ ІЗ ДАНИМИ · дія незворотна, тому вона окрема.
+        #
+        # `close` лишає сесію в історії, `journals --drop` прибирає лише
+        # журнали. Власник попросив третє: прибрати сесію повністю, коли вона
+        # більше не потрібна (2026-09-06).
+        #
+        # ЧОГО ЦЕ НЕ ЧІПАЄ НІКОЛИ · `state/write-log.jsonl`. Це незнищенний слід
+        # того, ЩО і КУДИ записано в API. Переклади вже на проді; стерти запис
+        # про них означало б втратити єдину відповідь на питання «хто це
+        # записав», нічого не повернувши. Те саме про `quarantine.jsonl` і
+        # `row-attempts.jsonl`: вони про РЯДКИ, а не про сесію.
+        #
+        # За замовчуванням · ПОКАЗ. Видаляє лише `--apply`: незворотна дія не
+        # має ставатися від описки в ідентифікаторі.
+        ID="${1:-}"
+        APPLY=0
+        test "${2:-}" = --apply && APPLY=1
+        php -r '
+        require $argv[1];
+        use Bdo\Translate\Session\Ledger;
+        $stateDir = rtrim($argv[2], "/");
+        $ledger = new Ledger($stateDir);
+        $id = $argv[3];
+        $apply = $argv[4] === "1";
+        if (preg_match("/^[0-9]{8}_[0-9]{6}$/", $id) !== 1) {
+            fwrite(STDERR, "session delete: назви сесію як 20260906_064420\n"); exit(1);
+        }
+        $dir = $ledger->dir($id);
+        if (! is_dir($dir)) { fwrite(STDERR, "session delete: немає сесії $id\n"); exit(1); }
+
+        // ВІДКРИТУ сесію не видаляємо: у неї може йти пачка просто зараз.
+        if ((string) $ledger->currentId() === $id) {
+            fwrite(STDERR, "session delete: сесія $id ВІДКРИТА. Спершу закрий її (./bdo session close),\n");
+            fwrite(STDERR, "інакше видалення забере теку, у яку пише поточний прогін.\n");
+            exit(1);
+        }
+
+        $batches = $ledger->batches($id);
+        $currentBatch = trim((string) @file_get_contents($stateDir."/current-batch"));
+        $dirs = [];
+        $bytes = 0;
+        $measure = static function (string $path) use (&$bytes): void {
+            if (! is_dir($path)) { return; }
+            $it = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($path, FilesystemIterator::SKIP_DOTS));
+            foreach ($it as $f) { if ($f->isFile()) { $bytes += $f->getSize(); } }
+        };
+        foreach ($batches as $b) {
+            $bid = (string) ($b["id"] ?? "");
+            if ($bid === "") { continue; }
+            // Поточна пачка не належить нікому, крім прогону, що йде.
+            if ($bid === $currentBatch) {
+                fwrite(STDERR, "session delete: пачка $bid цієї сесії є ПОТОЧНОЮ · видалення заблоковано.\n");
+                exit(1);
+            }
+            $bdir = $stateDir."/batches/".$bid;
+            if (is_dir($bdir)) { $dirs[] = $bdir; $measure($bdir); }
+        }
+        $measure($dir);
+        $dirs[] = $dir;
+
+        printf("Сесія %s · пачок %d, тек до видалення %d, разом %d КБ\n",
+            $id, count($batches), count($dirs), (int) round($bytes / 1024));
+        foreach ($dirs as $d) { printf("  %s\n", substr($d, strlen($stateDir) + 1)); }
+        echo "НЕ чіпається: write-log.jsonl (слід записів у API), quarantine.jsonl, row-attempts.jsonl.\n";
+        if (! $apply) {
+            printf("ВИРОК: це лише показ. Видалити: ./bdo session delete %s --apply\n", $id);
+            exit(0);
+        }
+        $rm = static function (string $path) use (&$rm): void {
+            if (! is_dir($path)) { @unlink($path); return; }
+            foreach (scandir($path) ?: [] as $name) {
+                if ($name === "." || $name === "..") { continue; }
+                $rm($path."/".$name);
+            }
+            @rmdir($path);
+        };
+        foreach ($dirs as $d) { $rm($d); }
+        printf("Видалено: сесія %s і %d тек пачок (%d КБ).\n", $id, count($dirs) - 1, (int) round($bytes / 1024));
+        ' "$AUTOLOAD" "$STATE_DIR" "$ID" "$APPLY"
+        ;;
+
     journals)
         # ЖУРНАЛИ ЗАКРИТОЇ СЕСІЇ · показати або прибрати.
         #

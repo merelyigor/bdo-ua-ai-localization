@@ -33,7 +33,11 @@
              від сесій і не називала, яку саме закриває · власник назвав це
              недопрацюванням UX 2026-09-06. Тепер дія живе В САМІЙ сесії, поруч
              із її числами, і не може стосуватись іншої. -->
-        <button id="sessNew" style="margin-left:auto">нова сесія</button>
+        <!-- Стан розгортання переживає перезавантаження (це зручно), але
+             розгорнувши кілька сесій, згортати їх по одній · ні. Кнопка
+             зʼявляється лише коли є що згортати, тому в спокої не займає місця. -->
+        <button id="collapseAll" style="margin-left:auto;display:none">згорнути всі</button>
+        <button id="sessNew">нова сесія</button>
       </div>
       <div id="closeDialog" style="display:none;margin:6px 0 12px;border:.5px solid var(--bda);border-radius:10px;padding:12px;background:var(--s2)">
         <div style="font-weight:500;margin-bottom:4px" id="closeTitle">Закрити сесію?</div>
@@ -170,7 +174,11 @@
                 ? '<button class="dropJ" type="button" data-id="' + B.esc(s.id) + '">'
                   + 'видалити журнали (' + journals(s) + ')</button>'
                 : '<span class="empty">журнали вже прибрані</span>')
-            + '<span class="empty">запис не чіпається ніколи</span>')
+            // ВИДАЛИТИ СЕСІЮ ЦІЛКОМ · окремо від «видалити журнали», бо це
+            // інша за наслідками дія: гине історія пачок, а не лише хронологія.
+            + '<button class="delS btn-danger" type="button" data-id="' + B.esc(s.id) + '"'
+            + ' style="margin-left:auto">видалити сесію</button>'
+            + '<span class="empty">запис у API не чіпається ніколи</span>')
       + '</div>';
   }
 
@@ -210,6 +218,20 @@
       };
     });
 
+    Array.prototype.forEach.call(B.el('list').querySelectorAll('.delS'), function (btn) {
+      btn.onclick = function (ev) {
+        ev.stopPropagation();
+        var id = btn.dataset.id;
+        // Питання називає СЕСІЮ і те, що лишиться. Незворотну дію не можна
+        // ховати за словом «видалити» без наслідків.
+        if (!window.confirm('Видалити сесію ' + id + ' РАЗОМ ІЗ ДАНИМИ?\n\n'
+            + 'Зникнуть: підсумок сесії, перелік її пачок і теки цих пачок.\n'
+            + 'Лишиться: незнищенний слід записів у API · переклади вже на проді.\n\n'
+            + 'Це незворотно.')) { return; }
+        act('session.delete', { id: id });
+      };
+    });
+
     Array.prototype.forEach.call(B.el('list').querySelectorAll('.dropJ'), function (btn) {
       btn.onclick = function (ev) {
         ev.stopPropagation();   // клік по кнопці не має згортати сесію
@@ -231,6 +253,15 @@
         renderList();
       };
     });
+
+    // ВІДКРИТУ сесію не згортаємо: у ній іде робота, і саме її дивляться.
+    // Тому кнопка рахує лише ті, що згорнути справді можна.
+    var collapsible = sessions.filter(function (x) {
+      return open[x.id] && x.status !== 'open';
+    }).length;
+    var cb = B.el('collapseAll');
+    cb.style.display = collapsible ? '' : 'none';
+    cb.textContent = 'згорнути всі (' + B.num(collapsible) + ')';
 
     var opened = openSession();
     B.el('openInfo').textContent = opened
@@ -262,7 +293,7 @@
   function act(action, payload) {
     B.el('msg').textContent = 'виконую…';
     B.el('msg').style.color = 'var(--ts)';
-    return B.post('/api/action', { action: action, payload: payload || {} }).then(function (res) {
+    return B.post('/api/action', { action: action, payload: payload || {}, confirm: true }).then(function (res) {
       var ok = res.status < 400 && res.body && res.body.ok;
       B.el('msg').textContent = ok
         ? 'готово'
@@ -272,6 +303,14 @@
       return ok;
     });
   }
+
+  B.el('collapseAll').onclick = function () {
+    sessions.forEach(function (x) {
+      if (x.status !== 'open') { delete open[x.id]; }
+    });
+    SP.set('open', open);
+    renderList();
+  };
 
   B.el('sessNew').onclick = function () { act('session.new'); };
   // Питання називає СЕСІЮ. Раніше кнопка діяла на «відкриту», ніде не названу,

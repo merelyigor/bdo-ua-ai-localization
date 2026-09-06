@@ -67,6 +67,7 @@ foreach (Actions::names() as $name) {
         "moderation.approve" => ["ids" => [1]],
         "moderation.reject" => ["ids" => [1], "reason" => "тест"],
         "session.journals.drop" => ["id" => "20260101_010101"],
+        "session.delete" => ["id" => "20260101_010101"],
         default => [],
     };
     Actions::plan($name, $payload);
@@ -292,6 +293,22 @@ grep -Fq 'class="closeS' "$ROOT/web/sessions.html" \
     || fail 'у сесії немає кнопки закриття'
 grep -Fq "act('session.close'" "$ROOT/web/sessions.html" \
     || fail 'кнопка закриття сесії не веде до команди session.close'
+# ВИДАЛЕННЯ СЕСІЇ · окрема дія з окремими наслідками, і вона мусить вимагати
+# підтвердження на сервері, а не лише питати в браузері.
+grep -Fq "act('session.delete'" "$ROOT/web/sessions.html" \
+    || fail 'у сесії немає видалення разом із даними'
+php -r '
+require $argv[1];
+use Bdo\Translate\Run\Actions;
+$plan = Actions::plan("session.delete", ["id" => "20260101_010101"]);
+if (($plan["needs_confirm"] ?? false) !== true) {
+    fwrite(STDERR, "видалення сесії не вимагає підтвердження\n"); exit(1);
+}
+try {
+    Actions::plan("session.delete", ["id" => "../../etc"]);
+    fwrite(STDERR, "кривий ідентифікатор сесії прийнято планувальником\n"); exit(1);
+} catch (InvalidArgumentException $e) { }
+' "$ROOT/lib/autoload.php" || fail 'межі видалення сесії не тримаються'
 grep -q 'api/client-error' "$ROOT/web/app.js" \
     || fail 'спільний скрипт не надсилає помилок сторінки в журнал'
 grep -q "addEventListener('error'" "$ROOT/web/app.js" \

@@ -224,4 +224,60 @@ test "$THIRD" != "$SECOND" || fail 'new не відкрив нову сесію'
 test -s "$BDO_STATE_DIR/sessions/$SECOND/summary.json" \
     || fail 'new не залишив підсумку від закритої сесії'
 
+# --- ВИДАЛЕННЯ СЕСІЇ · разом із даними, але не зі слідом записів -------------
+#
+# Власник попросив третю дію поруч із `close` (лишає в історії) і
+# `journals --drop` (прибирає лише журнали): прибрати сесію повністю, коли вона
+# більше не потрібна (2026-09-06). Дія незворотна, тому межі перевіряються
+# окремо й на живих файлах.
+DEL_STATE="$TMP/del-state"
+rm -rf "$DEL_STATE"
+mkdir -p "$DEL_STATE/sessions/20260101_010101" "$DEL_STATE/batches/20260101_010101_aaaa"
+printf '{"id":"20260101_010101","status":"closed"}\n' > "$DEL_STATE/sessions/20260101_010101/session.json"
+printf '{"id":"20260101_010101_aaaa"}\n' > "$DEL_STATE/sessions/20260101_010101/batches.jsonl"
+printf '{"id":"20260101_010101_aaaa","rows":50,"state":"verified"}\n' \
+    > "$DEL_STATE/batches/20260101_010101_aaaa/manifest.json"
+printf 'дамп\n' > "$DEL_STATE/batches/20260101_010101_aaaa/rows.json"
+# СЛІД ЗАПИСІВ · те, чого видалення не має права торкнутись НІКОЛИ.
+printf '{"at":"20260101_010101","env":"prod","written":50}\n' > "$DEL_STATE/write-log.jsonl"
+WL_BEFORE="$(cat "$DEL_STATE/write-log.jsonl")"
+
+# 1. За замовчуванням · ПОКАЗ, а не видалення: незворотна дія не має ставатися
+#    від описки в ідентифікаторі.
+BDO_STATE_DIR="$DEL_STATE" bash "$ROOT/cli/system/session.sh" delete 20260101_010101 >/dev/null 2>&1 \
+    || fail 'показ видалення завершився помилкою'
+test -d "$DEL_STATE/sessions/20260101_010101" \
+    || fail 'показ видалив сесію · `--apply` перестав бути потрібним'
+
+# 2. ВІДКРИТУ сесію не видаляємо: у неї може йти пачка просто зараз.
+printf '20260101_010101\n' > "$DEL_STATE/current-session"
+if BDO_STATE_DIR="$DEL_STATE" bash "$ROOT/cli/system/session.sh" delete 20260101_010101 --apply >/dev/null 2>&1; then
+    fail 'відкриту сесію видалено · теку, у яку пише прогін, забрано з-під нього'
+fi
+rm -f "$DEL_STATE/current-session"
+
+# 3. Сесію з ПОТОЧНОЮ пачкою теж не видаляємо.
+printf '20260101_010101_aaaa\n' > "$DEL_STATE/current-batch"
+if BDO_STATE_DIR="$DEL_STATE" bash "$ROOT/cli/system/session.sh" delete 20260101_010101 --apply >/dev/null 2>&1; then
+    fail 'видалено сесію, чия пачка є поточною'
+fi
+rm -f "$DEL_STATE/current-batch"
+
+# 4. `--apply` прибирає сесію РАЗОМ із теками її пачок.
+BDO_STATE_DIR="$DEL_STATE" bash "$ROOT/cli/system/session.sh" delete 20260101_010101 --apply >/dev/null 2>&1 \
+    || fail 'видалення завершилось помилкою'
+test ! -d "$DEL_STATE/sessions/20260101_010101" || fail 'теку сесії не прибрано'
+test ! -d "$DEL_STATE/batches/20260101_010101_aaaa" || fail 'теку пачки сесії не прибрано'
+
+# 5. СЛІД ЗАПИСІВ У API ЦІЛИЙ. Переклади вже на проді; стерти запис про них
+#    означало б втратити єдину відповідь на «хто це записав», нічого не
+#    повернувши.
+test "$(cat "$DEL_STATE/write-log.jsonl")" = "$WL_BEFORE" \
+    || fail 'видалення сесії зачепило write-log.jsonl · незнищенний слід записів'
+
+# 6. Кривий ідентифікатор не видаляє нічого.
+if BDO_STATE_DIR="$DEL_STATE" bash "$ROOT/cli/system/session.sh" delete ../../etc --apply >/dev/null 2>&1; then
+    fail 'кривий ідентифікатор сесії прийнято'
+fi
+
 echo 'session lifecycle: OK · пачки потрапляють у сесію самі, підсумок сходиться, втрата квитанції названа, живі журнали чисті, строк 7 днів працює.'

@@ -500,6 +500,37 @@ check_shell() {
     done
     note 'root *.sh: 0; cli/** категорії: 10'
 
+    # КЛІКОВІ ВХОДИ · Windows має `bdo.bat`, macOS `BDO.app`. Бандл лишається
+    # тонким містком: уся логіка живе в `cli/system/mac-app.sh`, бо всередині
+    # бандла її не бачать ні `bash -n`, ні ShellCheck, ні цей gate.
+    if [ -d BDO.app ]; then
+        local shim='BDO.app/Contents/MacOS/bdo-web'
+        test -f 'BDO.app/Contents/Info.plist' || fail 'BDO.app без Info.plist · macOS такий бандл не запустить'
+        test -x "$shim" || fail "$shim не виконуваний · клік у Dock нічого не зробить"
+        grep -Fq 'cli/system/mac-app.sh' "$shim" \
+            || fail 'місток BDO.app не веде в cli/system/mac-app.sh · логіка переїхала в бандл, де її ніхто не перевіряє'
+        # Пояснення для скопійованого бандла мусить бути В МІСТКУ: коли набору
+        # поруч немає, скрипта, який мав би це сказати, теж немає.
+        grep -Fq 'Набір не знайдено поруч із додатком' "$shim" \
+            || fail 'скопійований BDO.app мовчить замість пояснення'
+        test -x cli/system/mac-app.sh || fail 'cli/system/mac-app.sh не виконуваний'
+        # ЗАКРИВ ЗНАЧОК · ЗУПИНИВСЯ ІНТЕРФЕЙС (вимога власника 2026-09-06).
+        # Тримається це двома речами разом: пасткою на сигнал і очікуванням.
+        # Без очікування процес зникав би одразу, і в Dock не було б чого
+        # закривати; без пастки закриття лишало б сервер жити далі.
+        grep -Fq 'trap' cli/system/mac-app.sh \
+            || fail 'значок не гасить інтерфейс при закритті · немає пастки на сигнал'
+        grep -Fq 'while [ -n "$(status_url || true)" ]' cli/system/mac-app.sh \
+            || fail 'значок не тримається живим · закривати в Dock буде нічого'
+        # Значок мусить бути видимий у Dock · інакше закрити його неможливо.
+        # Питаємо САМ ключ, а не слово в тексті: згадка в коментарі не є
+        # налаштуванням, і `grep` по назві валив би перевірку на поясненні.
+        if have plutil && plutil -extract LSUIElement raw BDO.app/Contents/Info.plist >/dev/null 2>&1; then
+            fail 'BDO.app схований із Dock (LSUIElement) · власнику нічого закривати'
+        fi
+        note 'BDO.app: місток у cli/system/mac-app.sh, логіки в бандлі немає'
+    fi
+
     # Makefile не має права стати другою копією дерева команд.
     #
     # Він уже нею був і був видалений 2026-09-04 (4.4.0). Повернутий того ж дня

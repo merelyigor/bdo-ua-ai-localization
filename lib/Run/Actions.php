@@ -54,7 +54,7 @@ final class Actions
     public static function names(): array
     {
         return ['run.start', 'run.stop', 'session.new', 'session.close', 'session.journals.drop',
-            'moderation.approve', 'moderation.reject'];
+            'session.delete', 'moderation.approve', 'moderation.reject'];
     }
 
     /**
@@ -172,6 +172,27 @@ final class Actions
                     'label' => 'видалити журнали сесії '.$id,
                 ];
 
+            case 'session.delete':
+                // ВИДАЛЕННЯ СЕСІЇ · незворотне, тому підтвердження обовʼязкове
+                // навіть у DEV: тут гине історія пачок, а не лише журнали.
+                // Слід записів у API (`write-log.jsonl`) не чіпається ніколи ·
+                // переклади вже на проді, і стерти запис про них означало б
+                // втратити відповідь на «хто це записав», нічого не повернувши.
+                $del = (string) ($payload['id'] ?? '');
+                if (preg_match('/^[0-9]{8}_[0-9]{6}$/', $del) !== 1) {
+                    throw new \InvalidArgumentException(
+                        'session.delete: потрібен ідентифікатор сесії у вигляді 20260906_064420'
+                    );
+                }
+
+                return [
+                    'steps' => [['./bdo', 'session', 'delete', $del, '--apply']],
+                    'env' => [],
+                    'detached' => false,
+                    'needs_confirm' => true,
+                    'label' => 'видалити сесію '.$del.' разом із даними',
+                ];
+
             case 'moderation.approve':
                 return [
                     'steps' => [['./bdo', 'moderation', '--approve', self::ids($payload['ids'] ?? [])]],
@@ -282,7 +303,14 @@ final class Actions
      */
     private static function ids(mixed $value): string
     {
-        $items = is_array($value) ? $value : (preg_split('/\s*,\s*/', trim((string) $value)) ?: []);
+        // Вкладений тернар тут читався гірше, ніж три рядки, а це перевірка
+        // ВВОДУ з браузера · місце, де ясність є властивістю безпеки, а не
+        // смаком (інспекція IDE 2026-09-06).
+        if (is_array($value)) {
+            $items = $value;
+        } else {
+            $items = preg_split('/\s*,\s*/', trim((string) $value)) ?: [];
+        }
         $clean = [];
         foreach ($items as $item) {
             $item = trim((string) $item);

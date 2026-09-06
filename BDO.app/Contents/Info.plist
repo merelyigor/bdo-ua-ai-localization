@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Значок для Dock: підняти інтерфейс набору одним кліком.
+
+  Бандл лежить У ТЕЦІ НАБОРУ навмисно · виконуваний файл знаходить набір від
+  власного розташування. Dock тримає посилання на оригінал, тому перетягнути
+  значок у Dock можна; КОПІЯ кудись інде втратить набір і скаже про це вікном.
+
+  Логіки тут немає: вона в `cli/system/mac-app.sh`, де її бачать `bash -n`,
+  ShellCheck і gate. Усередині бандла скрипт був би поза всіма перевірками.
+-->
+<plist version="1.0">
+<dict>
+  <key>CFBundleName</key>
+  <string>BDO Локалізація</string>
+  <key>CFBundleDisplayName</key>
+  <string>BDO Локалізація</string>
+  <key>CFBundleIdentifier</key>
+  <string>ua.bdo.localization.launcher</string>
+  <key>CFBundleVersion</key>
+  <string>1</string>
+  <key>CFBundleShortVersionString</key>
+  <string>1.0</string>
+  <key>CFBundlePackageType</key>
+  <string>APPL</string>
+  <key>CFBundleExecutable</key>
+  <string>bdo-web</string>
+  <key>LSMinimumSystemVersion</key>
+  <string>11.0</string>
+  <!-- Значок МУСИТЬ бути в Dock, поки інтерфейс працює: власник закриває
+       саме його, і закриття гасить сервер. З `LSUIElement` додаток не мав би
+       значка, і закривати було б нічого. -->
+</dict>
+</plist>
