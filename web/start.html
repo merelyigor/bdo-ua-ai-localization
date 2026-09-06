@@ -45,7 +45,7 @@
       <table class="tbl pick" id="patchTable">
         <thead><tr><th>патч</th><th>№ у грі</th><th>опубліковано</th>
           <th class="num">рядків</th><th class="num">без ШІ-шару</th><th></th></tr></thead>
-        <tbody id="patchRows"><tr><td colspan="6" class="empty">перелік патчів вантажиться…</td></tr></tbody>
+        <tbody id="patchRows"></tbody>
       </table>
       <div class="bar" style="margin-top:10px">
         <label class="empty" for="domain">категорія</label>
@@ -218,6 +218,10 @@
       + (d.domains || []).map(function (x) { return '<option>' + B.esc(x) + '</option>'; }).join('');
   }).catch(function () {});
 
+  // Патчі їдуть із API · без ознаки роботи порожня таблиця читається як
+  // «патчів немає».
+  B.el('patchRows').innerHTML = '<tr><td colspan="6">'
+    + B.loadingHtml('беру перелік патчів з API…') + '</td></tr>';
   B.get('/api/patches').then(function (d) {
     patches = d.patches || [];
     renderPatches();

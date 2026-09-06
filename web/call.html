@@ -53,7 +53,8 @@
         <span style="font-size:13px;font-weight:500">що пішло в модель</span>
         <span class="empty" id="payloadMeta"></span>
       </div>
-      <pre class="log big" id="payload">—</pre>
+      <div id="payloadLoad"></div>
+      <pre class="log big" id="payload"></pre>
     </div>
 
     <div class="panel">
@@ -61,7 +62,8 @@
         <span style="font-size:13px;font-weight:500">що модель відповіла</span>
         <span class="empty" id="answerMeta"></span>
       </div>
-      <pre class="log big" id="answer">—</pre>
+      <div id="answerLoad"></div>
+      <pre class="log big" id="answer"></pre>
     </div>
   </div>
 </div>
@@ -122,11 +124,17 @@
 
   // --- завершений виклик: беремо роботу цілком -------------------------------
   if (session || (at && role)) {
+    // Робота ролі буває на сотні кілобайт · читання з диска й передача займають
+    // помітний час, і порожнє вікно без ознаки роботи виглядає як «файла немає».
+    B.busy(B.el('payloadLoad'), 'беру запит ролі…');
+    B.busy(B.el('answerLoad'), 'беру відповідь ролі…');
     B.get(session
         ? '/api/call?session=' + encodeURIComponent(session)
         : '/api/call?at=' + encodeURIComponent(at) + '&role=' + encodeURIComponent(role))
       .then(function (d) {
         if (d.error) {
+          B.el('payloadLoad').innerHTML = '';
+          B.el('answerLoad').innerHTML = '';
           B.el('subtitle').textContent = d.hint || 'виклик не знайдено';
           return;
         }
@@ -141,6 +149,8 @@
         bits.push('вирок ' + (d.verdict || '—'));
         B.el('subtitle').textContent = bits.join(' · ');
         B.el('meta').textContent = d.at;
+        B.el('payloadLoad').innerHTML = '';
+        B.el('answerLoad').innerHTML = '';
         show('payload', 'payloadMeta', d.payload);
         show('answer', 'answerMeta', d.answer);
         if (session) {
@@ -150,7 +160,11 @@
           });
         }
       })
-      .catch(function () { B.el('subtitle').textContent = 'сервер не відповів'; });
+      .catch(function () {
+        B.el('payloadLoad').innerHTML = '';
+        B.el('answerLoad').innerHTML = '';
+        B.el('subtitle').textContent = 'сервер не відповів';
+      });
   }
 
   // --- живий виклик ----------------------------------------------------------

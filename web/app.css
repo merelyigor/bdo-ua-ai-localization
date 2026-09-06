@@ -193,3 +193,16 @@ textarea.grow{width:100%;display:block;box-sizing:border-box;resize:vertical;ove
   font-family:inherit;font-size:14px;line-height:1.5;padding:6px 9px;border-radius:8px;
   border:.5px solid var(--bd);background:var(--s2);color:var(--tp);min-height:34px}
 textarea.grow:focus{outline:none;border-color:var(--bda)}
+
+/* ПРЕЛОАДЕР · один на весь інтерфейс.
+   Кожен екран тягне дані з API, і без ознаки роботи порожній блок читається як
+   «нічого немає» або «зламалось» · власник назвав це 2026-09-06. Текст поруч
+   обовʼязковий: сам обертач каже «чекай», але не каже, ЧОГО чекати. */
+.load{display:flex;align-items:center;gap:9px;color:var(--ts);font-size:13px;padding:10px 0}
+.spin{flex:0 0 auto;width:14px;height:14px;border-radius:50%;
+  border:2px solid var(--bd);border-top-color:var(--bda);animation:spin .7s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+/* Рух вимкнено у власника системи · це вимога доступності, а не смак. */
+@media (prefers-reduced-motion:reduce){
+  .spin{animation:none;border-top-color:var(--bd)}
+}

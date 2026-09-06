@@ -39,7 +39,7 @@
         <button id="reload" style="margin-left:auto">оновити</button>
         <button id="approveSel" style="display:none">схвалити вибрані <span id="count">0</span></button>
       </div>
-      <div id="rows"><div class="empty">вантажу чергу…</div></div>
+      <div id="rows"></div>
       <div class="empty" style="margin-top:12px">
         Схвалення пише в API рівно те, що в полі. Виправлений тут текст іде як
         рішення ЛЮДИНИ, тому надалі він сильніший за машинну назву глосарія.
@@ -166,7 +166,10 @@
   }
 
   function load() {
-    B.el('meta').textContent = 'вантажу…';
+    B.el('meta').textContent = '';
+    // Черга · запит у PROD, і він буває довгим. Порожній екран без ознаки
+    // роботи читається як «черга порожня», що є прямо протилежним.
+    B.busy(B.el('rows'), 'беру чергу з API…');
     // Стеля 100 · її ставить сервер (`Runner::moderationQueue`). Зсуву в CLI
     // немає, тому «наступна сотня» була б обіцянкою без механізму: показуємо
     // рівно те, що вміємо взяти, і кажемо, скільки лишилось поза екраном.

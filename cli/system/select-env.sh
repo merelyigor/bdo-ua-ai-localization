@@ -202,3 +202,20 @@ if [ "$BDO_API_TARGET" = hub ]; then
 else
     echo "Ціль: $BDO_ENV ($BDO_API_BASE)" >&2
 fi
+
+# ДРУГИЙ БЕКЕНД ІСНУЄ, І ПРО НЬОГО ТРЕБА ЗНАТИ.
+#
+# Змінні хаба живуть у `.env.example`, а у власника в `.env` їх немає взагалі ·
+# і він не бачив, куди їх вписувати (сказав це 2026-09-06). Мовчання тут гірше
+# за один рядок: можливість, про яку не сказано, дорівнює відсутній.
+#
+# Підказка друкується ЛИШЕ коли `BDO_API_TARGET` не заданий у файлі, тобто
+# рівно раз для тих, хто про хаб ще не знає. Задав · більше не турбуємо.
+if [ -z "${BDO_API_TARGET_FROM_FILE:-}" ] && ! grep -q '^[[:space:]]*BDO_API_TARGET=' "$ENV_FILE" 2>/dev/null; then
+    echo "Є другий бекенд · хаб локалізацій. Щоб перемкнутись, додай у $ENV_FILE:" >&2
+    echo "  BDO_API_TARGET=hub          (legacy · старий API BDO UA, типово)" >&2
+    echo "  HUB_API_BASE_PROD=https://<домен>/api/bdo/agent/v1" >&2
+    echo "  HUB_API_KEY_PROD=hub_..." >&2
+    echo "  HUB_API_BASE_DEV / HUB_API_KEY_DEV · те саме для BDO_ENV=DEV" >&2
+    echo "Що вміє вибрана ціль: ./bdo capabilities" >&2
+fi

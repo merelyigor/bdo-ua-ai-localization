@@ -223,6 +223,7 @@
   }
 
   function load() {
+    if (!sessions.length) { B.busy(B.el('list'), 'беру сесії…'); }
     B.get('/api/sessions').then(function (d) {
       sessions = d.sessions || [];
       // Відкрита сесія розгорнута одразу · саме її дивляться найчастіше.

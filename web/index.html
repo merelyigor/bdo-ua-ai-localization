@@ -187,7 +187,7 @@
         box.style.display = 'block';
         btn.textContent = 'згорнути';
         if (box.dataset.loaded === '1') { return; }
-        box.innerHTML = '<div class="empty">вантажу роботу…</div>';
+        box.innerHTML = B.loadingHtml('беру роботу ролі з диска…');
         B.get('/api/call?' + card.dataset.call).then(function (d) {
           if (d.error) {
             box.innerHTML = '<div class="empty">' + B.esc(d.hint || 'виклик не знайдено') + '</div>';
