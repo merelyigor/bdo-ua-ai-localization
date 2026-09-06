@@ -28,8 +28,29 @@ transition() { php -r 'require $argv[1];Bdo\Translate\Batch\Workspace::requireCu
 # такого переходу не приймає й правильно робить · тому питаємо стан, а не
 # ловимо помилку. Перехід у ІНШИЙ стан лишається під тим самим контролем.
 transition_or_stay() { test "$(field state)" = "$1" || transition "$1"; }
+# КРОК ЗАВЕРШУЄТЬСЯ РІВНО ОДИН РАЗ · і повторна спроба не має вбивати драйвер.
+#
+# `completeStep` навмисно кидає виняток, коли той самий крок закривають ІНШИМ
+# artifact: це захист від тихої підміни результату. Але спрацьовував він у
+# сценарії, який трапляється сам собою · крок закрився, наступний упав
+# (наприклад, контекст пачки недоступний), драйвер пішов на повтор, роль
+# відповіла ІНШИМ текстом, і виняток лишався НЕОБРОБЛЕНИМ: `run drive` падав
+# без конверта, а цикл казав «у виводі немає конверта» · тобто називав наслідок
+# замість причини. Спіймано на живому прогоні проти хаба 2026-09-06.
+#
+# Тому повтор уже закритого кроку тут НЕ помилка: результат, який уже
+# зафіксовано, лишається чинним, а ми кажемо про це вголос і йдемо далі.
 complete() {
-    local sum; sum="$(shasum -a 256 "$2" | awk '{print $1}')"
+    local sum done_at; sum="$(shasum -a 256 "$2" | awk '{print $1}')"
+    done_at="$(php -r '
+    require $argv[1];
+    $m = Bdo\Translate\Batch\Workspace::requireCurrent($argv[2])->manifest();
+    echo (string) ($m["steps"][$argv[3]]["at"] ?? "");
+    ' "$SCRIPT_DIR/lib/autoload.php" "$STATE_DIR" "$1")"
+    if [ -n "$done_at" ]; then
+        echo "Крок $1 уже закрито о $done_at · лишаємо зафіксований результат." >&2
+        return 0
+    fi
     php -r 'require $argv[1];Bdo\Translate\Batch\Workspace::requireCurrent($argv[2])->completeStep($argv[3],basename($argv[4]),$argv[5]);' "$SCRIPT_DIR/lib/autoload.php" "$STATE_DIR" "$1" "$2" "$sum"
 }
 emit() {

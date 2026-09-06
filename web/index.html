@@ -30,27 +30,22 @@
       <span class="hint">крок за кроком: що робить кожна роль і що вже зроблено</span>
     </div>
 
+    <!-- Шапка ОДНИМ рядком, як у прототипі 01: ціль, пачка, стан, час, дії.
+         Два рядки з великими підписами «КУДИ ПИШЕМО / ЩО ЗАРАЗ» називали
+         очевидне й відсували роботу ролей нижче згину екрана. -->
     <div class="panel">
-      <div class="head">
-        <div class="row">
-          <span class="lbl">куди пишемо</span>
-          <span class="pill" id="env">—</span>
-          <span class="empty" id="goal"></span>
-        </div>
-        <div class="row">
-          <span class="lbl">що зараз</span>
-          <span id="statePhrase" style="font-weight:500">пачки немає</span>
-          <span class="mono" id="batch" style="color:var(--tm)"></span>
-        </div>
+      <div class="bar" style="margin-bottom:12px">
+        <span class="pill" id="env">—</span>
+        <span class="mono" id="batch" style="color:var(--ts)"></span>
+        <span class="pill" id="statePhrase" style="background:var(--acc-bg);color:var(--acc-tx)">пачки немає</span>
+        <span class="empty" id="elapsed" style="margin-left:auto"></span>
+        <button id="stopBtn" style="color:var(--dn-tx)">зупинити</button>
+        <a href="/start" style="font-size:13px;color:var(--acc-tx)">новий прогін →</a>
       </div>
       <div class="steps" id="steps"></div>
-      <div class="cards" id="cards"></div>
-      <div class="empty" id="meta" style="margin-top:8px"></div>
-      <div class="bar" style="margin:10px 0 0">
-        <button id="stopBtn" style="color:var(--dn-tx)">зупинити прогін</button>
-        <a href="/start" style="font-size:13px;color:var(--acc-tx)">почати новий прогін →</a>
-        <span id="actionMsg" class="empty"></span>
-      </div>
+      <div class="empty" id="goal" style="margin-bottom:6px"></div>
+      <div class="empty" id="meta"></div>
+      <div class="empty" id="actionMsg" style="margin-top:6px"></div>
     </div>
 
     <div class="panel">
@@ -60,6 +55,26 @@
       </div>
       <div id="calls"></div>
     </div>
+
+    <!-- ВЕРДИКТИ · рядки пачки з перекладом і думкою QA.
+         Це те, заради чого сторінку й відкривають: до 2026-09-06 екран
+         показував, скільки секунд працювала роль, але не показував ЖОДНОГО
+         перекладеного рядка. Блок є в прототипі 01 від початку. -->
+    <div class="panel" id="verdictPanel" style="display:none">
+      <div class="bar" style="margin-bottom:8px">
+        <span style="font-size:13px;font-weight:500">вердикти</span>
+        <button class="chip" data-f="all" aria-pressed="true">усі</button>
+        <button class="chip" data-f="pass">пройшло</button>
+        <button class="chip" data-f="review">на перегляд</button>
+        <button class="chip" data-f="reject">відхилено</button>
+        <span class="empty" id="verdictMeta" style="margin-left:auto"></span>
+      </div>
+      <div id="verdicts"></div>
+    </div>
+
+    <!-- Підсумок ПІД роботою · у прототипі він унизу, і це правильний порядок:
+         спершу видно, що зроблено, а вже потім скільки. -->
+    <div class="cards" id="cards" style="margin-bottom:14px"></div>
 
     <div class="panel">
       <div class="bar" style="margin-bottom:8px">
@@ -198,6 +213,95 @@
       + '<pre class="log">' + B.esc(work.text) + '</pre>';
   }
 
+  // Фільтр вердиктів живе поза `render`: перемальовка знімка не має скидати
+  // вибір власника. Саме так поводиться прототип.
+  // Фільтр вердиктів переживає перезавантаження: власник дивиться «на перегляд»
+  // пачку за пачкою, і скидати вибір на кожному відкритті означало б клікати
+  // його щоразу.
+  var VP = B.pref('run');
+  var verdictFilter = String(VP.get('verdictFilter', 'all'));
+  var lastVerdictKey = '';
+
+  function renderVerdicts(v) {
+    var items = v.items || [];
+    var panel = B.el('verdictPanel');
+    if (!items.length) { panel.style.display = 'none'; return; }
+    panel.style.display = 'block';
+
+    // Перемальовуємо лише коли зміст СПРАВДІ змінився: інакше кожен знімок
+    // стану переписував би десятки вузлів раз на секунду без причини.
+    var key = v.total + '|' + v.pass + '|' + v.review + '|' + v.reject + '|' + items.length;
+    if (key !== lastVerdictKey) {
+      lastVerdictKey = key;
+      // Кнопка збереженого фільтра мусить виглядати натиснутою, інакше показ
+      // і підпис розійдуться.
+      Array.prototype.forEach.call(document.querySelectorAll('#verdictPanel .chip'), function (c) {
+        c.setAttribute('aria-pressed', c.dataset.f === verdictFilter ? 'true' : 'false');
+      });
+      B.el('verdicts').innerHTML = items.map(function (r) {
+        // Клас, а не зібране рядком імʼя змінної: `var(--' + color + '-bg)`
+        // не бачить ні редактор, ні інспекція · вони мають рацію, бо таку
+        // назву неможливо перевірити.
+        var kind = r.kind || 'none';
+        return '<div class="vrow" data-v="' + B.esc(kind) + '">'
+          + '<span class="pill v-' + B.esc(kind) + '">' + B.esc(r.label) + '</span>'
+          + '<div style="flex:1;min-width:0">'
+          + '<div class="mono" style="color:var(--tm)">' + B.esc(r.source) + '</div>'
+          + (r.text ? '<div class="mono">' + B.esc(r.text) + '</div>'
+                    : '<div class="empty">перекладу ще немає</div>')
+          + (r.issue ? '<div class="vissue" title="натисни, щоб розгорнути">'
+              + B.esc(r.issue) + '</div>' : '')
+          + '</div></div>';
+      }).join('');
+      applyVerdictFilter();
+      // Довгий вирок розгортається кліком по ньому самому · окрема кнопка на
+      // кожен рядок була б шумом там, де таких рядків десятки.
+      Array.prototype.forEach.call(B.el('verdicts').querySelectorAll('.vissue'), function (n) {
+        n.onclick = function () { n.classList.toggle('open'); };
+      });
+    }
+    var meta = [B.num(v.total) + ' з вироком'];
+    if (items.length < v.total) { meta.push('показано ' + items.length); }
+    B.el('verdictMeta').textContent = meta.join(' · ');
+    setChip('all', v.total);
+    setChip('pass', v.pass);
+    setChip('review', v.review);
+    setChip('reject', v.reject);
+  }
+
+  function setChip(name, count) {
+    var btn = B.el('verdictPanel').querySelector('.chip[data-f="' + name + '"]');
+    if (!btn) { return; }
+    var words = { all: 'усі', pass: 'пройшло', review: 'на перегляд', reject: 'відхилено' };
+    btn.textContent = words[name] + ' ' + B.num(count || 0);
+    // Порожню категорію ховаємо: кнопка «відхилено 0» пропонує подивитись на
+    // те, чого немає.
+    btn.style.display = (name === 'all' || count) ? '' : 'none';
+  }
+
+  function applyVerdictFilter() {
+    Array.prototype.forEach.call(B.el('verdicts').querySelectorAll('.vrow'), function (r) {
+      r.style.display = (verdictFilter === 'all' || r.dataset.v === verdictFilter) ? 'flex' : 'none';
+    });
+  }
+
+  Array.prototype.forEach.call(document.querySelectorAll('#verdictPanel .chip'), function (c) {
+    c.onclick = function () {
+      Array.prototype.forEach.call(document.querySelectorAll('#verdictPanel .chip'), function (o) {
+        o.setAttribute('aria-pressed', 'false');
+      });
+      c.setAttribute('aria-pressed', 'true');
+      verdictFilter = c.dataset.f;
+      VP.set('verdictFilter', verdictFilter);
+      applyVerdictFilter();
+      // Довгий вирок розгортається кліком по ньому самому · окрема кнопка на
+      // кожен рядок була б шумом там, де таких рядків десятки.
+      Array.prototype.forEach.call(B.el('verdicts').querySelectorAll('.vissue'), function (n) {
+        n.onclick = function () { n.classList.toggle('open'); };
+      });
+    };
+  });
+
   function render(s) {
     var target = (s.env || '').toUpperCase() || '—';
     var envEl = B.el('env');
@@ -215,19 +319,25 @@
       B.el('statePhrase').textContent = b.state_phrase || b.state_label || '—';
     } else {
       B.el('batch').textContent = '';
-      B.el('statePhrase').textContent = 'пачки немає · сторінка чекає';
+      B.el('statePhrase').textContent = 'пачки немає';
     }
+    // Скільки триває прогін · у прототипі це `3:41` у правому куті шапки.
+    // Показуємо ЛИШЕ поки він іде: `run-target` живе й після завершення, і
+    // лічильник, що біжить над зупиненим прогоном, каже неправду.
+    B.el('elapsed').textContent = (s.running && s.run && s.run.elapsed) ? s.run.elapsed : '';
     var goal = B.el('goal');
     goal.textContent = (s.goal && s.goal.phrase) ? s.goal.phrase : 'ціль прогону не зафіксована';
     // Сам запит до API лишається в підказці: він потрібен при розборі, але на
     // екрані власника мусить стояти те, що робиться, а не як відібрано рядки.
     goal.title = (s.goal && s.goal.query) ? 'вибірка: ' + s.goal.query : '';
 
-    B.el('steps').innerHTML = (s.steps || []).map(function (st) {
+    // Хлібний слід: стан каже КОЛІР, а слово лишається в підказці · шість
+    // однакових «зроблено» під кроками не додавали нічого, крім висоти.
+    B.el('steps').innerHTML = (s.steps || []).map(function (st, i) {
       var state = st.state || 'pending';
-      return '<div class="step ' + state + '">'
-        + '<span class="n">' + B.esc(st.label) + '</span>'
-        + '<span class="s">' + B.esc(STEP_WORDS[state] || state) + '</span></div>';
+      return (i ? '<span class="arrow">›</span>' : '')
+        + '<span class="step ' + state + '" title="' + B.esc(STEP_WORDS[state] || state) + '">'
+        + '<span class="n">' + B.esc(st.label) + '</span></span>';
     }).join('');
 
     var sum = s.summary || {};
@@ -322,6 +432,7 @@
     // збігу, а не підміняє його: підміна не впізнавала префікса й щосекунди
     // починала друк спочатку · саме це власник бачив як друк «порціями по
     // рядку» 2026-09-06 (D83).
+    renderVerdicts(s.verdicts || {});
     feed.snapshot(s.stream);
     // Роль договорила · тягнути залишок буфера нема сенсу.
     if (!live || !s.running) { stream.flush(); }

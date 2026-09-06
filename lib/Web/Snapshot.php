@@ -64,10 +64,182 @@ final class Snapshot
             'steps' => $this->steps($manifest),
             'calls' => $this->callsView($manifest),
             'summary' => $this->summary($manifest),
+            'verdicts' => $this->verdicts($manifest),
             'transcript' => $this->transcript(),
             'transcript_from' => $this->transcriptFrom(),
             'stream' => $this->stream($fullStream),
+            'run' => $this->run(),
             'running' => $this->running(),
+        ];
+    }
+
+    /** Скільки рядків пачки показувати в блоці вердиктів. */
+    public const VERDICT_ROWS = 60;
+
+    /**
+     * РЯДКИ ПАЧКИ З ВЕРДИКТАМИ · джерело, переклад і думка QA поруч.
+     *
+     * Це те, заради чого сторінку й відкривають, і чого на ній не було: екран
+     * показував, скільки секунд працювала роль, але не показував ЖОДНОГО
+     * перекладеного рядка. Прототип 01 має цей блок від початку (`вердикти ·
+     * усі / пройшло / на перегляд`), і власник назвав його прямо 2026-09-06.
+     *
+     * Дані зшиваються ЗА identity_hash із трьох файлів пачки, які вже існують:
+     * `rows.json` (джерело), `final-candidate.json` або `candidate.json`
+     * (переклад), `verdicts.json` (вирок). Нічого не рахується наново · інакше
+     * сторінка стала б другою правдою про ту саму пачку.
+     *
+     * @param  array<string,mixed>  $manifest
+     * @return array{items:list<array<string,mixed>>,total:int,pass:int,review:int,reject:int}
+     */
+    private function verdicts(array $manifest): array
+    {
+        $empty = ['items' => [], 'total' => 0, 'pass' => 0, 'review' => 0, 'reject' => 0];
+        $id = (string) ($manifest['id'] ?? '');
+        if ($id === '') {
+            return $empty;
+        }
+        $dir = $this->path('batches/'.$id);
+        $verdicts = [];
+        foreach ($this->readList($dir.'/verdicts.json') as $v) {
+            $hash = (string) ($v['identity_hash'] ?? '');
+            if ($hash !== '') {
+                $verdicts[$hash] = $v;
+            }
+        }
+        // Переклад беремо ФІНАЛЬНИЙ, якщо він уже є: після ремонту й підстановки
+        // назв текст інший, і показувати чернетку означало б показувати не те,
+        // що поїде в API.
+        $texts = [];
+        foreach (['final-candidate.json', 'healed.json', 'candidate.json'] as $name) {
+            foreach ($this->readList($dir.'/'.$name) as $c) {
+                $hash = (string) ($c['identity_hash'] ?? '');
+                if ($hash !== '' && ! isset($texts[$hash])) {
+                    $texts[$hash] = (string) ($c['text'] ?? '');
+                }
+            }
+        }
+        if ($verdicts === [] && $texts === []) {
+            return $empty;
+        }
+
+        $items = [];
+        $counts = ['pass' => 0, 'review' => 0, 'reject' => 0];
+        foreach ($this->readRowsFile($dir.'/rows.json') as $row) {
+            $hash = (string) ($row['identity_hash'] ?? '');
+            if ($hash === '') {
+                continue;
+            }
+            $status = strtoupper((string) ($verdicts[$hash]['status'] ?? ''));
+            $kind = match ($status) {
+                'PASS' => 'pass',
+                'REVIEW' => 'review',
+                'REJECT' => 'reject',
+                default => '',
+            };
+            if ($kind !== '') {
+                $counts[$kind]++;
+            }
+            if (count($items) >= self::VERDICT_ROWS) {
+                continue;   // рахуємо ВСІ, показуємо перші
+            }
+            $items[] = [
+                'hash' => substr($hash, 0, 12),
+                'source' => (string) ($row['source_text'] ?? ''),
+                'text' => $texts[$hash] ?? '',
+                'kind' => $kind,
+                'label' => match ($kind) {
+                    'pass' => 'пройшло',
+                    'review' => 'перегляд',
+                    'reject' => 'відхилено',
+                    default => 'без вироку',
+                },
+                'issue' => (string) ($verdicts[$hash]['issue'] ?? ''),
+                'severity' => (string) ($verdicts[$hash]['severity'] ?? ''),
+            ];
+        }
+
+        return [
+            'items' => $items,
+            'total' => $counts['pass'] + $counts['review'] + $counts['reject'],
+            'pass' => $counts['pass'],
+            'review' => $counts['review'],
+            'reject' => $counts['reject'],
+        ];
+    }
+
+    /**
+     * Список обʼєктів із файла пачки · порожньо, якщо файла ще немає.
+     *
+     * @return list<array<string,mixed>>
+     */
+    private function readList(string $path): array
+    {
+        if (! is_file($path)) {
+            return [];
+        }
+        $data = json_decode((string) file_get_contents($path), true);
+        if (! is_array($data)) {
+            return [];
+        }
+        // Конверт `{"items":[…]}` і голий список · обидві форми трапляються в
+        // теці пачки, і розбирати їх у двох місцях по-різному вже дало D47.
+        $list = array_is_list($data) ? $data : ($data['items'] ?? []);
+
+        return is_array($list) ? array_values(array_filter($list, 'is_array')) : [];
+    }
+
+    /**
+     * Рядки пачки як вони прийшли з API.
+     *
+     * @return list<array<string,mixed>>
+     */
+    private function readRowsFile(string $path): array
+    {
+        if (! is_file($path)) {
+            return [];
+        }
+        $data = json_decode((string) file_get_contents($path), true);
+        $rows = $data['data']['rows'] ?? ($data['rows'] ?? null);
+
+        return is_array($rows) ? array_values(array_filter($rows, 'is_array')) : [];
+    }
+
+    /**
+     * Скільки триває ПРОГІН · для правого кута шапки.
+     *
+     * `state/run-started-at` пише `run-start.sh` при фіксації цілі й знімає при
+     * `--end`. Без цього числа «прогін іде» не має тривалості: «щойно почалось»
+     * і «висить сорок хвилин» на екрані виглядають однаково.
+     *
+     * @return array{elapsed:string,started_at:?string}
+     */
+    private function run(): array
+    {
+        $path = $this->path('run-started-at');
+        if (! is_file($path)) {
+            return ['elapsed' => '', 'started_at' => null];
+        }
+        $raw = trim((string) file_get_contents($path));
+        $started = ctype_digit($raw) ? (int) $raw : (int) strtotime($raw);
+        // Файл пише МІЛІСЕКУНДИ (`1788683788000`). Прочитати їх як секунди
+        // означає дату в 58-му тисячолітті й `elapsed` завжди `0:00` · тобто
+        // число, яке виглядає справним і бреше.
+        if ($started > 100000000000) {
+            $started = intdiv($started, 1000);
+        }
+        if ($started <= 0) {
+            return ['elapsed' => '', 'started_at' => null];
+        }
+        $seconds = max(0, time() - $started);
+        $hours = intdiv($seconds, 3600);
+        $minutes = intdiv($seconds % 3600, 60);
+
+        return [
+            'elapsed' => $hours > 0
+                ? sprintf('%d:%02d:%02d', $hours, $minutes, $seconds % 60)
+                : sprintf('%d:%02d', $minutes, $seconds % 60),
+            'started_at' => gmdate('c', $started),
         ];
     }
 

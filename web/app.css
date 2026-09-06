@@ -31,21 +31,19 @@ h1{font-size:20px;font-weight:500;margin:0 0 4px}
 .mono{font-family:var(--mono);font-size:12.5px;line-height:1.55}
 button{font-family:inherit;font-size:13px;padding:4px 10px;border-radius:8px;border:.5px solid var(--bd);background:transparent;color:var(--tp);cursor:pointer}
 button:hover{background:var(--s2)}
-.steps{display:flex;gap:8px;align-items:stretch;flex-wrap:wrap;margin-bottom:14px}
-.step{display:flex;flex-direction:column;gap:1px;min-width:104px;padding:6px 10px;border-radius:9px;
-  border:.5px solid var(--bd);background:var(--s2)}
-.step .n{font-size:12.5px;font-weight:500}
-.step .s{font-size:11px;color:var(--tm)}
-.step.done{border-color:rgba(59,109,17,.35);background:var(--ok-bg)}
+/* СТРІЧКА КРОКІВ · хлібним слідом, як у прототипі 01.
+   Коробки з підписом «зроблено» під кожним кроком з'їдали чверть екрана й
+   повторювали одне слово шість разів. Стан тепер каже КОЛІР, а місце
+   звільнилось під те, заради чого сторінку й відкривають · роботу ролей. */
+.steps{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:14px;font-size:12.5px;color:var(--tm)}
+.step{display:inline-flex;align-items:center;gap:6px}
+.step .n{font-weight:400}
+.step .s{display:none}
+.step .arrow{color:var(--tm);opacity:.55}
 .step.done .n{color:var(--ok-tx)}
-.step.done .s{color:var(--ok-tx);opacity:.75}
-.step.now{border-color:var(--bda);background:var(--acc-bg)}
-.step.now .n{color:var(--acc-tx)}
-.step.now .s{color:var(--acc-tx);opacity:.85}
-.step.skipped{background:transparent;border-style:dashed}
-.step.skipped .n{color:var(--ts)}
-.step.pending{background:transparent;opacity:.6}
-.step .arrow{display:none}
+.step.now .n{color:var(--acc-tx);font-weight:500}
+.step.skipped .n{color:var(--ts);text-decoration:line-through;opacity:.7}
+.step.pending .n{color:var(--tm)}
 .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin-bottom:4px}
 .card{background:var(--s2);border-radius:8px;padding:10px}
 .card .l{font-size:12px;color:var(--ts)}
@@ -110,3 +108,88 @@ select,input[type=number],input[type=text]{font-family:inherit;font-size:13px;pa
 pre.log.big{max-height:70vh;font-size:13px}
 :fullscreen .wrap.wide{max-width:none;padding:0 24px}
 :fullscreen pre.log.big{max-height:80vh}
+
+/* Рядок вердикту · джерело, переклад і думка QA поруч (прототип 01).
+   Тонка лінія замість картки: рядків десятки, і рамка на кожному
+   перетворила б перелік на смугастий шум. */
+.v-pass{background:var(--ok-bg);color:var(--ok-tx);height:fit-content}
+.v-review{background:var(--wr-bg);color:var(--wr-tx);height:fit-content}
+.v-reject,.v-none{background:var(--dn-bg);color:var(--dn-tx);height:fit-content}
+.vrow{display:flex;gap:10px;padding:9px 0;border-top:.5px solid var(--bd)}
+.vrow:first-child{border-top:0}
+/* Думка QA буває на кілька екранів · і тоді вона топить сам перелік рядків.
+   У макеті зауваження одноряд+кове, у житті модель пише есе (заміряно
+   2026-09-06: 900 слів на одному рядку). Тому підрізаємо трьома рядками, а
+   повний текст лишається за кліком · ховати його не можна, це вирок. */
+.vissue{font-size:12px;color:var(--wr-tx);margin-top:3px;cursor:pointer;
+  display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+.vissue.open{display:block;-webkit-line-clamp:none}
+.vissue::after{content:" ▾";color:var(--tm)}
+.vissue.open::after{content:" ▴";color:var(--tm)}
+
+/* Кнопка-фільтр · та сама форма, що в макеті: натиснута підсвічена акцентом. */
+.chip{font-size:12px;padding:3px 10px;border-radius:999px;border:.5px solid var(--bd);
+  background:transparent;color:var(--ts);cursor:pointer;font-family:inherit}
+.chip:hover{background:var(--s2)}
+.chip[aria-pressed="true"]{background:var(--acc-bg);color:var(--acc-tx);border-color:var(--bda)}
+
+/* Таблиця вибору · рядок є кнопкою (прототип 04: патчі вибирають, дивлячись
+   на число «без ШІ-шару», а не наосліп у випадайці). */
+.tbl.pick tbody tr{cursor:pointer}
+.tbl.pick tbody tr:hover{background:var(--s2)}
+.tbl.pick tbody tr.on{background:var(--acc-bg)}
+.tbl.pick tbody tr.on td{color:var(--acc-tx)}
+
+/* Сесія як картка, що розгортається на своєму місці (макет 02).
+   Окремий блок деталей унизу губив звʼязок «яку сесію я дивлюсь». */
+.sess{border:.5px solid var(--bd);border-radius:12px;background:var(--s2);padding:10px 12px;margin-bottom:8px}
+.sess.on{border-color:var(--bda)}
+.sess .sh{display:flex;align-items:center;gap:10px;flex-wrap:wrap;cursor:pointer;font-size:13px}
+.sess .tog{padding:0 8px;font-size:20px;line-height:1.1;min-width:34px;color:var(--ts)}
+.sess.on .tog{color:var(--acc-tx)}
+.sess .sb{margin-top:10px}
+.sess table{margin-top:0}
+.v-open{background:var(--acc-bg);color:var(--acc-tx)}
+.v-closed{background:var(--s1);color:var(--ts)}
+
+/* ПЕРЕМИКАЧ замість галочки (вимога власника 2026-09-06).
+   Системна галочка дрібна, різна в кожній ОС і не читається з відстані, а тут
+   вона вмикає речі з ціною: роздуми моделі коштують ушестеро довшу генерацію,
+   підтвердження PROD · незворотний запис. Стан має бути видно однозначно.
+
+   Сам `input` лишається справжнім і на місці · лише невидимим: інакше зникли б
+   клавіатура, `:focus` і читалка екрана. */
+.sw{position:relative;display:inline-flex;align-items:center;gap:9px;cursor:pointer;font-size:13px}
+.sw input{position:absolute;opacity:0;width:0;height:0;margin:0}
+.sw .track{flex:0 0 auto;width:38px;height:22px;border-radius:999px;background:var(--s1);
+  border:.5px solid var(--bd);transition:background .12s,border-color .12s;position:relative}
+.sw .track::after{content:"";position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:50%;
+  background:var(--tm);transition:transform .12s,background .12s}
+.sw input:checked + .track{background:var(--acc-bg);border-color:var(--bda)}
+.sw input:checked + .track::after{transform:translateX(16px);background:var(--acc-tx)}
+.sw input:focus-visible + .track{outline:2px solid var(--bda);outline-offset:2px}
+.sw.danger input:checked + .track{background:var(--dn-bg);border-color:var(--dn-tx)}
+.sw.danger input:checked + .track::after{background:var(--dn-tx)}
+.sw:hover .track{border-color:var(--bda)}
+
+/* Вибір одного з двох · сегментами, а не радіокнопками: варіанти взаємовиключні
+   й обидва мусять бути видні одночасно (діалог закриття сесії). */
+.seg{display:flex;gap:0;border:.5px solid var(--bd);border-radius:9px;overflow:hidden;flex-wrap:wrap}
+.seg label{flex:1 1 200px;padding:8px 10px;cursor:pointer;font-size:13px;background:transparent}
+.seg label + label{border-left:.5px solid var(--bd)}
+.seg input{position:absolute;opacity:0;width:0;height:0}
+.seg label:hover{background:var(--s2)}
+.seg label.on{background:var(--acc-bg);color:var(--acc-tx)}
+.seg .h{font-weight:500}
+.seg .d{display:block;font-size:12px;color:var(--ts);margin-top:2px}
+.seg label.on .d{color:var(--acc-tx);opacity:.85}
+
+/* Поле правки перекладу · РОСТЕ під текст.
+   Однорядкове поле показувало опис нагороди на 700 символів по слову за раз
+   (власник назвав це 2026-09-06). Внутрішнього скролу тут немає навмисно:
+   прокручувати всередині поля, яке саме всередині сторінки, гірше за високий
+   блок · сторінка й так прокручується одна. */
+textarea.grow{width:100%;display:block;box-sizing:border-box;resize:vertical;overflow:hidden;
+  font-family:inherit;font-size:14px;line-height:1.5;padding:6px 9px;border-radius:8px;
+  border:.5px solid var(--bd);background:var(--s2);color:var(--tp);min-height:34px}
+textarea.grow:focus{outline:none;border-color:var(--bda)}

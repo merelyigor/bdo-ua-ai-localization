@@ -78,6 +78,9 @@
   var q = new URLSearchParams(location.search);
   var at = q.get('at') || '';
   var role = q.get('role') || '';
+  // Журнал закритої сесії · те саме вікно, інше джерело (кнопка «відкрити
+  // прогін» на екрані сесій). Другої сторінки для цього не заводимо.
+  var session = q.get('session') || '';
 
   // Живий друк · той самий буфер і та сама логіка потоку, що на прогоні.
   // Другої реалізації тут навмисно немає: саме роздвоєння дало D83.
@@ -118,8 +121,10 @@
   }
 
   // --- завершений виклик: беремо роботу цілком -------------------------------
-  if (at && role) {
-    B.get('/api/call?at=' + encodeURIComponent(at) + '&role=' + encodeURIComponent(role))
+  if (session || (at && role)) {
+    B.get(session
+        ? '/api/call?session=' + encodeURIComponent(session)
+        : '/api/call?at=' + encodeURIComponent(at) + '&role=' + encodeURIComponent(role))
       .then(function (d) {
         if (d.error) {
           B.el('subtitle').textContent = d.hint || 'виклик не знайдено';
@@ -138,6 +143,12 @@
         B.el('meta').textContent = d.at;
         show('payload', 'payloadMeta', d.payload);
         show('answer', 'answerMeta', d.answer);
+        if (session) {
+          document.querySelectorAll('.panel .bar > span:first-child').forEach(function (n) {
+            if (n.textContent === 'що пішло в модель') { n.textContent = 'журнал кроків сесії'; }
+            if (n.textContent === 'що модель відповіла') { n.textContent = 'виклики моделі'; }
+          });
+        }
       })
       .catch(function () { B.el('subtitle').textContent = 'сервер не відповів'; });
   }
@@ -163,9 +174,21 @@
   }, function (d) { feed.delta(d); });
 
   // --- зручність перегляду ---------------------------------------------------
-  var wrapped = true;
+  // Перенос рядків · вибір читача, і він мусить пережити наступне відкриття.
+  var CP = B.pref('call');
+  var wrapped = CP.get('wrap', true) !== false;
+  function applyWrap() {
+    B.el('wrapBtn').setAttribute('aria-pressed', wrapped ? 'true' : 'false');
+    B.el('wrapBtn').textContent = wrapped ? 'переносити рядки' : 'не переносити';
+    ['payload', 'answer', 'livebox'].forEach(function (id) {
+      var n = B.el(id);
+      if (n) { n.style.whiteSpace = wrapped ? 'pre-wrap' : 'pre'; }
+    });
+  }
+  applyWrap();
   B.el('wrapBtn').onclick = function () {
     wrapped = !wrapped;
+    CP.set('wrap', wrapped);
     this.setAttribute('aria-pressed', wrapped ? 'true' : 'false');
     this.textContent = wrapped ? 'переносити рядки' : 'не переносити';
     ['payload', 'answer', 'livebox'].forEach(function (id) {

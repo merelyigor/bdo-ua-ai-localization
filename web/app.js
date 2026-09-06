@@ -380,6 +380,42 @@
     } catch (e) { /* нічого не прибрали · це не заважає роботі */ }
   }
 
+  // --- памʼять вибору власника ---------------------------------------------
+  //
+  // Режим, патч, категорія, кількість пачок, «тримаюсь хвоста», фільтр
+  // вердиктів · це ВИБІР, а не стан системи. Скидати його на кожне відкриття
+  // сторінки означає змушувати робити ту саму настройку щоразу; власник
+  // попросив памʼять прямо 2026-09-06.
+  //
+  // `localStorage`, а не `sessionStorage`: вибір має пережити й закриття
+  // браузера, інакше «памʼять» діє лише до кінця вкладки.
+  //
+  // ЩО СЮДИ НЕ КЛАДЕТЬСЯ НІКОЛИ: підтвердження запису в PROD. Це не
+  // налаштування, а згода на незворотну дію, і вона мусить даватися заново
+  // щоразу · памʼять тут перетворила б свідому дію на випадковий клік.
+  var PREF_PREFIX = 'bdo.pref.';
+
+  function pref(screen) {
+    var key = PREF_PREFIX + screen;
+    function all() {
+      try { return JSON.parse(window.localStorage.getItem(key) || '{}') || {}; }
+      catch (e) { return {}; }
+    }
+    return {
+      get: function (name, fallback) {
+        var v = all()[name];
+        return (v === undefined || v === null) ? fallback : v;
+      },
+      set: function (name, value) {
+        try {
+          var d = all();
+          d[name] = value;
+          window.localStorage.setItem(key, JSON.stringify(d));
+        } catch (e) { /* памʼять є зручністю · без неї екран працює так само */ }
+      }
+    };
+  }
+
   // ЗШИВАННЯ ПО ВМІСТУ ТУТ БУЛО · І ЙОГО ПРИБРАНО.
   //
   // Спроба пришити хвіст знімка до накопиченого по найдовшому збігу тексту
@@ -610,6 +646,7 @@
     typer: typer,
     readable: readable,
     streamFeed: streamFeed,
+    pref: pref,
     keep: keep,
     keepPrune: keepPrune,
     screens: SCREENS

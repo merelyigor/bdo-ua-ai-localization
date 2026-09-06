@@ -53,7 +53,8 @@ final class Actions
      */
     public static function names(): array
     {
-        return ['run.start', 'run.stop', 'session.new', 'session.close', 'moderation.approve', 'moderation.reject'];
+        return ['run.start', 'run.stop', 'session.new', 'session.close', 'session.journals.drop',
+            'moderation.approve', 'moderation.reject'];
     }
 
     /**
@@ -149,6 +150,26 @@ final class Actions
                     'detached' => false,
                     'needs_confirm' => false,
                     'label' => 'закрити сесію',
+                ];
+
+            case 'session.journals.drop':
+                // ЖУРНАЛИ ЗАКРИТОЇ СЕСІЇ. Рішення «тримати 7 днів» ухвалюється
+                // в момент закриття, і передумати не було чим: команда існувала
+                // лише як прапорець `close --drop-journals`. Тепер прибрати їх
+                // можна й пізніше · підсумок і перелік пачок не чіпаються.
+                $id = (string) ($payload['id'] ?? '');
+                if (preg_match('/^[0-9]{8}_[0-9]{6}$/', $id) !== 1) {
+                    throw new \InvalidArgumentException(
+                        'session.journals.drop: потрібен ідентифікатор сесії у вигляді 20260906_064420'
+                    );
+                }
+
+                return [
+                    'steps' => [['./bdo', 'session', 'journals', $id, '--drop']],
+                    'env' => [],
+                    'detached' => false,
+                    'needs_confirm' => false,
+                    'label' => 'видалити журнали сесії '.$id,
                 ];
 
             case 'moderation.approve':

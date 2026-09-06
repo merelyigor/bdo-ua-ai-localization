@@ -261,6 +261,45 @@ switch ($path) {
         // файли беруться з НАШОГО ж журналу й додатково звіряються з текою
         // стану. Тому «покажи файл X» ззовні неможливе за побудовою: чужий
         // шлях просто ні з чим не збігається.
+        // ЖУРНАЛ ЗАКРИТОЇ СЕСІЇ · те саме вікно, інше джерело.
+        //
+        // Прогін, який уже завершився, ніде не було подивитись: екран прогону
+        // показує ЖИВИЙ стан, а журнали лежать у теці сесії. Власник попросив
+        // кнопку «відкрити прогін» (макет 02), і це вона.
+        $wantSession = (string) ($_GET['session'] ?? '');
+        if ($wantSession !== '') {
+            if (preg_match('/^[0-9]{8}_[0-9]{6}$/', $wantSession) !== 1) {
+                $fail(400, 'bad_session', 'сесія називається як 20260906_064420');
+
+                return;
+            }
+            $dir = 'sessions/'.$wantSession;
+            $transcript = $snapshot->readWork($dir.'/transcript.log');
+            $calls = $snapshot->readWork($dir.'/model-calls.jsonl');
+            if ($transcript === null && $calls === null) {
+                $fail(404, 'journals_gone', 'журнали цієї сесії прибрані · лишились підсумок і перелік пачок');
+
+                return;
+            }
+            $json([
+                'at' => $wantSession,
+                'role' => 'session',
+                'role_label' => 'прогін сесії '.$wantSession,
+                'unit' => '',
+                'rows' => 0,
+                'batch' => '',
+                'state_label' => '',
+                'model' => '',
+                'verdict' => '',
+                'ms' => 0,
+                'in' => null,
+                'out' => null,
+                'payload' => $transcript,
+                'answer' => $calls,
+            ]);
+
+            return;
+        }
         $wantAt = (string) ($_GET['at'] ?? '');
         $wantRole = (string) ($_GET['role'] ?? '');
         if (preg_match('/^[0-9T:+\-]{10,32}$/', $wantAt) !== 1 || preg_match('/^[a-z0-9-]{1,48}$/', $wantRole) !== 1) {

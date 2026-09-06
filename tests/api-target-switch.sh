@@ -158,4 +158,41 @@ test "$got" = "$want" \
 grep -Fq 'capabilities.sh" --fields' "$ROOT/cli/api/fetch-rows.sh" \
     || fail 'вибірка не звіряє групи полів із ціллю · запит до хаба падатиме цілком'
 
+# --- 6. Глосарій читається з ОБОХ бекендів ----------------------------------
+#
+# Документ переходу обіцяв, що назви полів збігаються. Перевірено запитом
+# 2026-09-06: не збігаються. Старий API кладе `canonical_source` + `ukrainian`,
+# хаб · `term` + `translation` (плюс `matched_form` · знайдена в тексті форма
+# ДЖЕРЕЛА, а не переклад, і плутати їх не можна).
+php -r '
+require $argv[1];
+use Bdo\Translate\Batch\Row;
+$legacy = new Row(["identity_hash" => str_repeat("a", 64), "source_text" => "X", "glossary" => ["terms" => [
+    ["canonical_source" => "Panokseon", "ukrainian" => "Паноксон", "severity" => "mandatory"],
+    ["canonical_source" => "Box", "ukrainian" => null, "severity" => "mandatory"],
+]]]);
+$hub = new Row(["identity_hash" => str_repeat("b", 64), "source_text" => "X", "glossary" => ["terms" => [
+    ["term" => "Panokseon", "matched_form" => "Panokseons", "translation" => "Паноксон", "severity" => "mandatory"],
+    ["term" => "Box", "matched_form" => "Box", "translation" => null, "severity" => "mandatory"],
+]]]);
+$want = ["Panokseon" => "Паноксон"];
+foreach (["старий" => $legacy, "хаб" => $hub] as $label => $row) {
+    if ($row->glossary() !== $want) {
+        fwrite(STDERR, "$label: глосарій ".json_encode($row->glossary(), JSON_UNESCAPED_UNICODE)."\n"); exit(1);
+    }
+    if ($row->pendingTerms() !== ["Box"]) {
+        fwrite(STDERR, "$label: у черзі ".json_encode($row->pendingTerms(), JSON_UNESCAPED_UNICODE)."\n"); exit(1);
+    }
+}
+// `matched_form` · це ФОРМА ДЖЕРЕЛА. Прийняти її за переклад означало б
+// підставити англійське слово як українську назву.
+$trap = new Row(["identity_hash" => str_repeat("c", 64), "source_text" => "X", "glossary" => ["terms" => [
+    ["term" => "Box", "matched_form" => "Boxes", "translation" => null, "severity" => "mandatory"],
+]]]);
+if ($trap->glossary() !== []) {
+    fwrite(STDERR, "matched_form прийнято за переклад: ".json_encode($trap->glossary(), JSON_UNESCAPED_UNICODE)."\n");
+    exit(1);
+}
+' "$ROOT/lib/autoload.php" || fail 'глосарій читається не з обох бекендів'
+
 echo 'api target switch: OK · дві осі дають чотири цілі, ключі не течуть, ціль замикає прогін.'

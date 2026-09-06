@@ -54,6 +54,40 @@
 (function () {
   'use strict';
   var B = window.BDO;
+  // Скільки рядків показувати · вибір власника, а не стан системи.
+  var QP = B.pref('queue');
+
+  // Висота поля під текст. `scrollHeight` замість підрахунку рядків: він
+  // враховує і перенос довгого слова, і фактичну ширину колонки, тобто те, що
+  // насправді видно.
+  function grow(node) {
+    node.style.height = 'auto';
+    node.style.height = (node.scrollHeight + 2) + 'px';
+  }
+  function growAll() {
+    Array.prototype.forEach.call(document.querySelectorAll('textarea.grow'), grow);
+  }
+  // ВИСОТА ЗАЛЕЖИТЬ ВІД ШИРИНИ, і ширина міняється.
+  //
+  // Висота рахується один раз після вставки, але той самий текст у вужчій
+  // колонці займає більше рядків. Гірше: сторінку можна відкрити у ВЗАГАЛІ
+  // нульовій ширині (схована панель, вкладка, відновлена у фоні) · тоді кожен
+  // символ переноситься окремим рядком, і поле на 1 668 символів отримує
+  // 31 892 пікселі висоти. Спіймано виміром 2026-09-06.
+  //
+  // Тому перераховуємо на кожну зміну ширини. `ResizeObserver` бачить і зміну
+  // самої колонки, а не тільки вікна.
+  // Обидва джерела, а не одне через `else`: `ResizeObserver` бачить зміну самої
+  // колонки (згорнута панель, зміна масштабу), а `resize` · зміну вікна. На
+  // емульованій зміні розміру спостерігач мовчав, і поле лишалось із висотою
+  // від попередньої ширини · перевірено 2026-09-06.
+  window.addEventListener('resize', growAll);
+  if (typeof ResizeObserver === 'function') {
+    var ro = new ResizeObserver(function () { growAll(); });
+    // Спостерігаємо після першого малювання: до нього `#rows` порожній, і
+    // перше спрацювання не мало б над чим працювати.
+    setTimeout(function () { ro.observe(B.el('rows')); }, 0);
+  }
   B.renderNav('/queue');
   if (!B.ensureToken()) { return; }
   B.el('app').style.display = 'block';
@@ -83,7 +117,14 @@
       + (r.domain ? '<span class="pill" style="background:var(--wr-bg);color:var(--wr-tx)">' + B.esc(r.domain) + '</span>' : '')
       + '</div>'
       + '<div class="mono" style="color:var(--tm)">' + B.esc(r.source_text) + '</div>'
-      + '<input type="text" class="text" data-id="' + r.id + '" value="' + B.esc(r.text).replace(/"/g, '&quot;') + '" style="width:100%">'
+      // ОДИН РЯДОК ТУТ НЕ ПРАЦЮЄ. Джерело показано блоком і читається, а
+      // пропозиція жила в однорядковому полі: опис нагороди на 700 символів
+      // видно було по слову за раз (власник назвав це 2026-09-06). Тепер це
+      // `textarea`, яка РОСТЕ під текст · без внутрішнього скролу, бо
+      // прокручувати всередині поля, яке саме всередині сторінки, гірше за
+      // високий блок.
+      + '<textarea class="text grow" data-id="' + r.id + '" rows="1">'
+      + B.esc(r.text) + '</textarea>'
       + '<div class="bar" style="margin:6px 0 0">'
       + '<button data-approve="' + r.id + '" style="font-size:12px">схвалити</button>'
       + '<button data-reject="' + r.id + '" style="font-size:12px;color:var(--dn-tx)">відхилити</button>'
@@ -115,6 +156,12 @@
     Array.prototype.forEach.call(document.querySelectorAll('#rows [data-reject]'), function (btn) {
       btn.onclick = function () { reject(Number(btn.getAttribute('data-reject'))); };
     });
+    // Висоту ставимо ПІСЛЯ вставки в документ: до неї `scrollHeight` дорівнює
+    // нулю, і всі поля лишились би однорядковими.
+    growAll();
+    Array.prototype.forEach.call(document.querySelectorAll('textarea.grow'), function (t) {
+      t.addEventListener('input', function () { grow(t); });
+    });
     recount();
   }
 
@@ -144,7 +191,7 @@
     // `./bdo moderation --approve` приймає лише перелік id. Тому якщо текст
     // змінено, кажемо про це прямо, а не робимо вигляд, що правка врахована.
     var edited = ids.filter(function (id) {
-      var input = document.querySelector('input.text[data-id="' + id + '"]');
+      var input = document.querySelector('.text[data-id="' + id + '"]');
       var row = rows.filter(function (r) { return r.id === id; })[0];
       return input && row && input.value !== row.text;
     });
@@ -173,7 +220,9 @@
   }
 
   B.el('reload').onclick = load;
-  B.el('limit').onchange = load;
+  // Скільки показувати · памʼятаємо: власник тримає свій розмір сторінки.
+  B.el('limit').value = String(QP.get('limit', B.el('limit').value));
+  B.el('limit').onchange = function () { QP.set('limit', B.el('limit').value); load(); };
   B.el('approveSel').onclick = function () { decide('moderation.approve', selected()); };
 
   B.get('/api/state').then(function (s) {

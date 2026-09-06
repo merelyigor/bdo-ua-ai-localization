@@ -35,29 +35,27 @@
       <div id="closeDialog" style="display:none;margin:6px 0 12px;border:.5px solid var(--bda);border-radius:10px;padding:12px;background:var(--s2)">
         <div style="font-weight:500;margin-bottom:4px" id="closeTitle">Закрити сесію?</div>
         <div class="empty" style="margin-bottom:6px">Підсумок і перелік пачок лишаються назавжди. Питання лише про журнали: хронологію кроків і потік токенів.</div>
-        <label class="bar" style="cursor:pointer"><input type="radio" name="keep" value="keep" checked>
-          <span>Тримати журнали 7 днів · можна повернутись до прогону</span></label>
-        <label class="bar" style="cursor:pointer"><input type="radio" name="keep" value="drop">
-          <span>Видалити журнали зараз · чисто одразу</span></label>
+        <!-- Два взаємовиключні варіанти · сегментами: обидва видно одночасно,
+             і вибраний позначено кольором, а не крапкою в 12 пікселів. -->
+        <div class="seg" id="keepSeg">
+          <label class="on"><input type="radio" name="keep" value="keep" checked>
+            <span class="h">Тримати журнали 7 днів</span>
+            <span class="d">можна повернутись до прогону; зникнуть самі</span></label>
+          <label><input type="radio" name="keep" value="drop">
+            <span class="h">Видалити журнали зараз</span>
+            <span class="d">чисто одразу; повернутись до кроків буде нізвідки</span></label>
+        </div>
         <div class="bar" style="margin-top:6px">
           <button id="closeOk">закрити сесію</button>
           <button id="closeCancel">скасувати</button>
           <span id="msg" class="empty"></span>
         </div>
       </div>
-      <table>
-        <thead><tr><th>сесія</th><th>стан</th><th class="num">пачок</th><th class="num">у шар</th>
-          <th class="num">до людини</th><th class="num">карантин</th><th></th></tr></thead>
-        <tbody id="list"></tbody>
-      </table>
-    </div>
-
-    <div class="panel" id="detail" style="display:none">
-      <div class="bar" style="margin-bottom:8px">
-        <span style="font-size:13px;font-weight:500" id="detailTitle">сесія</span>
-        <span class="empty" id="detailMeta"></span>
-      </div>
-      <div id="detailBody"></div>
+      <!-- АКОРДЕОН, а не «таблиця + блок деталей знизу» (макет 02).
+           Окремий блок унизу змушував бігати очима між рядком і деталями й
+           губив звʼязок «яку сесію я зараз дивлюсь»: власник назвав це прямо
+           2026-09-06. Тепер сесія розгортається на своєму місці. -->
+      <div id="list"></div>
     </div>
   </div>
 </div>
@@ -73,7 +71,6 @@
   B.setLink('poll', 'оновлюється при дії');
 
   var sessions = [];
-  var chosen = null;
 
   var STATUS = { open: 'відкрита', closed: 'закрита', abandoned: 'покинута' };
 
@@ -81,79 +78,167 @@
     return sessions.filter(function (s) { return s.status === 'open'; })[0] || null;
   }
 
-  function renderList() {
-    B.el('list').innerHTML = sessions.map(function (s) {
-      var mark = s.id === chosen ? ' style="background:var(--acc-bg)"' : '';
-      return '<tr data-id="' + B.esc(s.id) + '"' + mark + ' style="cursor:pointer">'
-        + '<td class="mono">' + B.esc(s.id) + '</td>'
-        + '<td>' + B.esc(STATUS[s.status] || s.status) + '</td>'
-        + '<td class="num">' + B.num(s.batches) + '</td>'
-        + '<td class="num">' + B.num(s.to_layer) + '</td>'
-        + '<td class="num">' + B.num(s.to_human) + '</td>'
-        + '<td class="num">' + B.num(s.quarantine) + '</td>'
-        + '<td class="empty">' + (s.id === chosen ? 'показано нижче' : 'показати') + '</td></tr>';
-    }).join('') || '<tr><td colspan="7" class="empty">Сесій ще немає. Перша відкриється сама з першою пачкою.</td></tr>';
+  // Які сесії розгорнуті. Множина, а не одна: макет дозволяє тримати
+  // відкритими кілька, і порівнювати сесії між собою · саме те, заради чого
+  // цей екран існує.
+  // Які сесії лишились розгорнутими · памʼять переживає перезавантаження.
+  var SP = B.pref('sessions');
+  var open = SP.get('open', {}) || {};
 
-    Array.prototype.forEach.call(B.el('list').querySelectorAll('tr[data-id]'), function (tr) {
-      tr.onclick = function () { choose(tr.getAttribute('data-id')); };
-    });
-
-    var open = openSession();
-    B.el('openInfo').textContent = open
-      ? 'відкрита сесія ' + open.id + ' · пачок ' + B.num(open.batches)
-      : 'відкритої сесії немає · вона почнеться сама з першою пачкою';
-    B.el('sessClose').disabled = !open;
+  function card(label, value, color) {
+    return '<div class="card"><div class="l">' + B.esc(label) + '</div>'
+      + '<div class="v"' + (color ? ' style="color:' + color + '"' : '') + '>'
+      + B.num(value) + '</div></div>';
   }
 
-  function choose(id) {
-    chosen = id;
-    renderList();
-    var s = sessions.filter(function (x) { return x.id === id; })[0];
-    if (!s) { B.el('detail').style.display = 'none'; return; }
-    B.el('detail').style.display = 'block';
-    B.el('detailTitle').textContent = 'сесія ' + s.id + ' · ' + (STATUS[s.status] || s.status);
-    var bits = [];
-    if (s.stamp) { bits.push('почалась ' + s.stamp); }
-    if (s.minutes) { bits.push('тривала ' + s.minutes + ' хв'); }
-    bits.push('журнали: ' + ((s.journals_on_disk && s.journals_on_disk.length) ? s.journals_on_disk.length + ' файли' : 'прибрані'));
-    B.el('detailMeta').textContent = bits.join(' · ');
+  // Скільки журналів ще лежить на диску · від цього залежить, чи є що видаляти.
+  function journals(s) {
+    return (s.journals_on_disk || []).length;
+  }
 
-    var batchRows = s.batch_rows || [];
-    B.el('detailBody').innerHTML = batchRows.length
-      ? '<table><thead><tr><th>пачка</th><th class="num">рядків</th><th class="num">у шар</th>'
-        + '<th class="num">до людини</th><th class="num">карантин</th><th>стан</th></tr></thead><tbody>'
-        + batchRows.map(function (b) {
-            if (b.receipt_gone) {
-              return '<tr><td class="mono">' + B.esc(b.id) + '</td>'
-                + '<td colspan="5" class="empty">квитанцію прибрано · числа втрачені</td></tr>';
-            }
+  function patchesOf(rows) {
+    var seen = [];
+    rows.forEach(function (b) {
+      var p = String(b.patch || '').trim();
+      if (p && seen.indexOf(p) === -1) { seen.push(p); }
+    });
+    return seen;
+  }
+
+  function totals(rows) {
+    var t = { rows: 0, to_layer: 0, to_human: 0, quarantine: 0, gone: 0 };
+    rows.forEach(function (b) {
+      if (b.receipt_gone) { t.gone++; return; }
+      t.rows += Number(b.rows) || 0;
+      t.to_layer += Number(b.to_layer) || 0;
+      t.to_human += Number(b.to_human) || 0;
+      t.quarantine += Number(b.quarantine) || 0;
+    });
+    return t;
+  }
+
+  function sessionBody(s) {
+    var rows = s.batch_rows || [];
+    if (!rows.length) { return '<div class="empty">У цій сесії пачок ще не було.</div>'; }
+    var t = totals(rows);
+    var table = '<table><thead><tr><th>пачка</th><th class="num">рядків</th>'
+      + '<th class="num">у шар</th><th class="num">до людини</th>'
+      + '<th class="num">карантин</th><th>стан</th></tr></thead><tbody>'
+      + rows.map(function (b) {
+          if (b.receipt_gone) {
             return '<tr><td class="mono">' + B.esc(b.id) + '</td>'
-              + '<td class="num">' + B.num(b.rows) + '</td>'
-              + '<td class="num">' + B.num(b.to_layer) + '</td>'
-              + '<td class="num">' + B.num(b.to_human) + '</td>'
-              + '<td class="num">' + B.num(b.quarantine) + '</td>'
-              // Стан УКРАЇНСЬКОЮ, ключ · у підказці: власник читає таблицю, а
-              // не реєстр станів (вимога 2026-09-06). Переклад дає сервер тим
-              // самим словником, що й екран прогону.
-              + '<td class="empty" title="' + B.esc(b.state || '') + '">'
-              + B.esc(b.state_label || b.state || '') + '</td></tr>';
-          }).join('') + '</tbody></table>'
-      : '<div class="empty">У цій сесії пачок ще не було.</div>';
+              + '<td colspan="5" class="empty">квитанцію прибрано · числа втрачені</td></tr>';
+          }
+          var q = Number(b.quarantine) || 0;
+          return '<tr><td class="mono">' + B.esc(b.id) + '</td>'
+            + '<td class="num">' + B.num(b.rows) + '</td>'
+            + '<td class="num">' + B.num(b.to_layer) + '</td>'
+            + '<td class="num">' + B.num(b.to_human) + '</td>'
+            + '<td class="num"' + (q ? ' style="color:var(--dn-tx)"' : '') + '>' + B.num(q) + '</td>'
+            // Стан УКРАЇНСЬКОЮ, ключ · у підказці: власник читає таблицю, а не
+            // реєстр станів (вимога 2026-09-06).
+            + '<td class="empty" title="' + B.esc(b.state || '') + '">'
+            + B.esc(b.state_label || b.state || '') + '</td></tr>';
+        }).join('') + '</tbody></table>';
 
-    if (s.status !== 'open') {
-      B.el('detailBody').innerHTML += '<div class="empty" style="margin-top:10px">'
-        + 'Сесія закрита · дій запису тут немає, лише історія.</div>';
-    }
+    return table
+      + '<div class="cards" style="margin-top:12px">'
+      + card('рядків', t.rows, '')
+      + card('у шар', t.to_layer, 'var(--ok-tx)')
+      + card('до людини', t.to_human, '')
+      + card('карантин', t.quarantine, t.quarantine ? 'var(--dn-tx)' : '')
+      + '</div>'
+      // Пачка з прибраною квитанцією до суми НЕ входить: її числа втрачені, і
+      // мовчазний нуль зробив би підсумок меншим за правду.
+      + (t.gone ? '<div class="empty" style="margin-top:6px">у підсумок не входить пачок із '
+          + 'прибраною квитанцією: ' + B.num(t.gone) + '</div>' : '')
+      // Дії ЗАКРИТОЇ сесії (макет 02). Кожна за собою має команду з реєстру ·
+      // намальована кнопка без команди означала б другу систему поруч.
+      + (s.status !== 'open'
+          ? '<div class="bar" style="margin-top:10px">'
+            + '<a href="/call?session=' + encodeURIComponent(s.id) + '" target="_blank" rel="noopener"'
+            + ' style="font-size:12px;color:var(--acc-tx)">відкрити прогін ↗</a>'
+            + (journals(s)
+                ? '<button class="dropJ" type="button" data-id="' + B.esc(s.id) + '">'
+                  + 'видалити журнали (' + journals(s) + ')</button>'
+                : '<span class="empty">журнали вже прибрані</span>')
+            + '<span class="empty">запис не чіпається ніколи</span></div>'
+          : '');
+  }
+
+  function renderList() {
+    B.el('list').innerHTML = sessions.map(function (s) {
+      var rows = s.batch_rows || [];
+      var t = totals(rows);
+      var patches = patchesOf(rows);
+      var isOpen = !!open[s.id];
+      var head = [];
+      if (patches.length) { head.push((patches.length > 1 ? 'патчі ' : 'патч ') + patches.join(', ')); }
+      head.push(B.num(s.batches) + ' пачок');
+      if (t.rows) { head.push(B.num(t.rows) + ' рядків'); }
+      if (s.minutes) { head.push(s.minutes + ' хв'); }
+
+      return '<div class="sess' + (isOpen ? ' on' : '') + '" data-id="' + B.esc(s.id) + '">'
+        + '<div class="sh">'
+        + '<button class="tog" type="button" aria-expanded="' + (isOpen ? 'true' : 'false') + '">'
+        + (isOpen ? '▾' : '▸') + '</button>'
+        + '<span class="mono" style="font-weight:500">' + B.esc(s.id) + '</span>'
+        + '<span class="pill ' + (s.status === 'open' ? 'v-open' : 'v-closed') + '">'
+        + B.esc(STATUS[s.status] || s.status) + '</span>'
+        + '<span class="empty">' + B.esc(head.join(' · ')) + '</span>'
+        + '<span style="margin-left:auto;font-size:12px;color:var('
+        + (t.quarantine ? '--dn-tx' : '--ok-tx') + ')">карантин ' + B.num(t.quarantine) + '</span>'
+        + '</div>'
+        + '<div class="sb"' + (isOpen ? '' : ' style="display:none"') + '>'
+        + (isOpen ? sessionBody(s) : '') + '</div></div>';
+    }).join('') || '<div class="empty">Сесій ще немає. Перша відкриється сама з першою пачкою.</div>';
+
+    Array.prototype.forEach.call(B.el('list').querySelectorAll('.dropJ'), function (btn) {
+      btn.onclick = function (ev) {
+        ev.stopPropagation();   // клік по кнопці не має згортати сесію
+        // Питання називає СЕСІЮ: власник уже плутався, що саме закрив.
+        if (!window.confirm('Видалити журнали сесії ' + btn.dataset.id + '?\n\n'
+            + 'Підсумок і перелік пачок лишаться. Зникне хронологія кроків, '
+            + 'потік токенів і виклики моделі.')) { return; }
+        act('session.journals.drop', { id: btn.dataset.id });
+      };
+    });
+
+    Array.prototype.forEach.call(B.el('list').querySelectorAll('.sess'), function (node) {
+      node.querySelector('.sh').onclick = function () {
+        var id = node.dataset.id;
+        // Вміст малюємо ЛИШЕ для розгорнутої: сесія тримає десятки пачок, і
+        // будувати таблиці для всіх одразу означало б платити за невидиме.
+        if (open[id]) { delete open[id]; } else { open[id] = true; }
+        SP.set('open', open);
+        renderList();
+      };
+    });
+
+    var opened = openSession();
+    B.el('openInfo').textContent = opened
+      ? 'відкрита сесія ' + opened.id + ' · пачок ' + B.num(opened.batches)
+      : 'відкритої сесії немає · вона почнеться сама з першою пачкою';
+    B.el('sessClose').disabled = !opened;
   }
 
   function load() {
     B.get('/api/sessions').then(function (d) {
       sessions = d.sessions || [];
-      if (!chosen && sessions.length) { chosen = sessions[0].id; }
+      // Відкрита сесія розгорнута одразу · саме її дивляться найчастіше.
+      if (!Object.keys(open).length) {
+        var first = openSession() || sessions[0];
+        if (first) { open[first.id] = true; }
+      }
       renderList();
-      if (chosen) { choose(chosen); }
     }).catch(function (e) {
-      if (e && e.message === 'bad_token') { B.tokenRejected(); }
+      if (e && e.message === 'bad_token') { B.tokenRejected(); return; }
+      // ТИХИЙ CATCH · той самий клас, що вже кусав: помилка малювання зникала
+      // без сліду, і екран просто лишався порожнім без причини. Тепер вона
+      // видима на екрані й потрапляє в `state/web-client.log`.
+      B.el('list').innerHTML = '<div class="empty">не вдалося показати сесії: '
+        + B.esc((e && e.message) || e) + '</div>';
+      throw e;
     });
   }
 
@@ -166,7 +251,6 @@
         ? 'готово'
         : ((res.body && res.body.hint) ? res.body.hint : 'відмова, код ' + res.status);
       B.el('msg').style.color = ok ? 'var(--ok-tx)' : 'var(--dn-tx)';
-      chosen = null;
       load();
       return ok;
     });
@@ -181,6 +265,15 @@
     B.el('closeTitle').textContent = 'Закрити сесію ' + open.id + '?';
     B.el('closeDialog').style.display = 'block';
   };
+  // Підсвітка вибраного сегмента · сам вибір лишається за радіокнопкою, тому
+  // клавіатура й читалка екрана працюють як раніше.
+  Array.prototype.forEach.call(B.el('keepSeg').querySelectorAll('label'), function (l) {
+    l.onclick = function () {
+      Array.prototype.forEach.call(B.el('keepSeg').querySelectorAll('label'), function (o) {
+        o.classList.toggle('on', o === l);
+      });
+    };
+  });
   B.el('closeCancel').onclick = function () { B.el('closeDialog').style.display = 'none'; };
   B.el('closeOk').onclick = function () {
     var drop = document.querySelector('input[name="keep"]:checked').value === 'drop';

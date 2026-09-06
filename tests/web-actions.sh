@@ -66,6 +66,7 @@ foreach (Actions::names() as $name) {
         "run.start" => ["mode" => "patch", "patch" => "1"],
         "moderation.approve" => ["ids" => [1]],
         "moderation.reject" => ["ids" => [1], "reason" => "тест"],
+        "session.journals.drop" => ["id" => "20260101_010101"],
         default => [],
     };
     Actions::plan($name, $payload);

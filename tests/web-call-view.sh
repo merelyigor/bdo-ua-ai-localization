@@ -93,4 +93,41 @@ grep -Fq "'payload' => \$relative(\$payloadPath)" "$ROOT/cli/model/client.php" \
 grep -Fq "'answer' => \$relative(\$responsePath)" "$ROOT/cli/model/client.php" \
     || fail 'клієнт моделі не пише шляху відповіді у журнал викликів'
 
+# --- 6. ЖУРНАЛ ЗАКРИТОЇ СЕСІЇ · те саме вікно, інше джерело -------------------
+#
+# Прогін, який уже завершився, ніде не було подивитись: екран прогону показує
+# ЖИВИЙ стан, а журнали лежать у теці сесії. Власник попросив кнопку «відкрити
+# прогін» (макет 02) · це вона.
+mkdir -p "$BDO_STATE_DIR/sessions/20260101_010101"
+printf '[03:51:55] awaiting_worker · роль translation-worker\n' \
+    > "$BDO_STATE_DIR/sessions/20260101_010101/transcript.log"
+printf '{"role":"translation-worker","ms":1200}\n' \
+    > "$BDO_STATE_DIR/sessions/20260101_010101/model-calls.jsonl"
+body="$(curl -s -m 5 "http://127.0.0.1:$PORT/api/call?t=$TOKEN&session=20260101_010101")"
+printf '%s' "$body" | grep -Fq 'translation-worker' \
+    || fail "журнал сесії не віддано: $body"
+printf '%s' "$body" | grep -Fq 'прогін сесії 20260101_010101' \
+    || fail "вікно не називає, чий це прогін: $body"
+
+# Кривий ідентифікатор і сесія без журналів дають ПРИЧИНУ, а не порожнечу.
+got="$(code "http://127.0.0.1:$PORT/api/call?t=$TOKEN&session=../../etc")"
+test "$got" = 400 || fail "кривий ідентифікатор сесії мусить дати 400, дав $got"
+mkdir -p "$BDO_STATE_DIR/sessions/20260101_020202"
+got="$(code "http://127.0.0.1:$PORT/api/call?t=$TOKEN&session=20260101_020202")"
+test "$got" = 404 || fail "сесія без журналів мусить дати 404 з причиною, дала $got"
+
+# --- 7. Кнопки закритої сесії стоять за СПРАВЖНІМИ командами ------------------
+# Намальована кнопка без команди означала б другу систему поруч із наявною
+# (правило 4 теки прототипів).
+grep -Fq "session.journals.drop" "$ROOT/lib/Run/Actions.php" \
+    || fail 'дії «видалити журнали» немає в планувальнику'
+grep -Fq "'journals', \$id, '--drop'" "$ROOT/lib/Run/Actions.php" \
+    || fail 'дія не веде до справжньої команди ./bdo session journals'
+grep -Fq 'journals [0-9_]' "$ROOT/cli/command-registry.json" \
+    || fail 'команда session journals не оголошена в реєстрі · guard її не пустить'
+grep -Fq 'class="dropJ"' "$ROOT/web/sessions.html" \
+    || fail 'на закритій сесії немає кнопки видалення журналів'
+grep -Fq '/call?session=' "$ROOT/web/sessions.html" \
+    || fail 'на закритій сесії немає посилання «відкрити прогін»'
+
 echo 'web call view: OK · роботу завершеного виклику видно цілком, чужий файл недосяжний, ключ перевіряється.'

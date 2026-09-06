@@ -193,6 +193,48 @@ case "$SUB" in
         ' "$AUTOLOAD" "$STATE_DIR" "$ID"
         ;;
 
+    journals)
+        # ЖУРНАЛИ ЗАКРИТОЇ СЕСІЇ · показати або прибрати.
+        #
+        # Прибрати їх можна було ЛИШЕ в момент закриття (`close --drop-journals`).
+        # Тобто рішення «тримати 7 днів» ставало остаточним: передумати вже не
+        # було чим, і сторінка не могла запропонувати кнопку, бо за нею не стояло
+        # команди. Тепер стоїть.
+        #
+        # Підсумок і перелік пачок НЕ чіпаються ніколи · вони дрібні й є
+        # історією. Питання лише про журнали: хронологію кроків, потік токенів
+        # і виклики моделі.
+        ID="${1:-}"
+        DROP=0
+        test "${2:-}" = --drop && DROP=1
+        php -r '
+        require $argv[1];
+        use Bdo\Translate\Session\Ledger;
+        $ledger = new Ledger($argv[2]);
+        $id = $argv[3] !== "" ? $argv[3] : (string) $ledger->currentId();
+        if ($id === "") { fwrite(STDERR, "session journals: назви ідентифікатор сесії\n"); exit(1); }
+        if (! is_dir($ledger->dir($id))) { fwrite(STDERR, "session journals: немає сесії $id\n"); exit(1); }
+        $files = $ledger->journalsOnDisk($id);
+        if ($argv[4] !== "1") {
+            printf("Сесія %s · журналів на диску: %d\n", $id, count($files));
+            foreach ($files as $f) {
+                printf("  %s  %d КБ\n", $f, (int) round(filesize($ledger->dir($id)."/".$f) / 1024));
+            }
+            if ($files === []) { echo "  журнали вже прибрані\n"; }
+            exit(0);
+        }
+        if ($files === []) { printf("Сесія %s · журнали вже прибрані.\n", $id); exit(0); }
+        $freed = 0;
+        foreach ($files as $f) {
+            $path = $ledger->dir($id)."/".$f;
+            $freed += (int) filesize($path);
+            @unlink($path);
+        }
+        printf("Сесія %s · прибрано журналів: %d (%d КБ). Підсумок і перелік пачок лишились.\n",
+            $id, count($files), (int) round($freed / 1024));
+        ' "$AUTOLOAD" "$STATE_DIR" "$ID" "$DROP"
+        ;;
+
     ensure)
         # Викликає `batch-new.sh`, щоб жодна пачка не лишилась без сесії.
         # Друкує ідентифікатор і нічого більше: це службовий крок.

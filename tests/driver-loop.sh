@@ -152,4 +152,38 @@ scenario '{"ok":true,"state":"awaiting_qa","next":{"kind":"нове_щось"}}'
 out="$(loop)" && fail 'драйвер проковтнув невідомий kind'
 printf '%s' "$out" | grep -q 'невідомий крок' || fail "невідомий kind без причини: $out"
 
+# --- Повтор уже закритого кроку НЕ вбиває драйвер ---------------------------
+#
+# `completeStep` навмисно кидає виняток на повторне закриття тим самим кроком з
+# ІНШИМ artifact · це захист від тихої підміни результату. Але сценарій
+# трапляється сам: крок закрився, наступний упав (контекст пачки недоступний),
+# драйвер пішов на повтор, роль відповіла іншим текстом. Виняток лишався
+# НЕОБРОБЛЕНИМ, `run drive` падав без конверта, а цикл казав «у виводі немає
+# конверта» · тобто називав наслідок замість причини (живий прогін 2026-09-06).
+grep -Fq 'уже закрито о' "$ROOT/cli/run/run-drive.sh" \
+    || fail 'повтор закритого кроку знову вбиває драйвер замість того, щоб іти далі'
+php -r '
+require $argv[1];
+use Bdo\Translate\Batch\Workspace;
+$tmp = sys_get_temp_dir()."/bdo-step-".getmypid();
+@mkdir($tmp."/batches/20260101_000000_abc", 0777, true);
+file_put_contents($tmp."/current-batch", "20260101_000000_abc");
+file_put_contents($tmp."/batches/20260101_000000_abc/manifest.json",
+    json_encode(["id" => "20260101_000000_abc", "rows" => 5, "state" => "awaiting_terminology"]));
+$w = Workspace::requireCurrent($tmp);
+$w->completeStep("terminology", "a.json", str_repeat("1", 64));
+// Той самий artifact · тиша, це не помилка.
+$w->completeStep("terminology", "a.json", str_repeat("1", 64));
+// ІНШИЙ artifact · виняток лишається, бо це справді підміна результату.
+try {
+    $w->completeStep("terminology", "b.json", str_repeat("2", 64));
+    fwrite(STDERR, "підміну результату пропущено мовчки\n");
+    exit(1);
+} catch (RuntimeException $e) {
+    if (! str_contains($e->getMessage(), "вже завершений")) {
+        fwrite(STDERR, "виняток без причини: ".$e->getMessage()."\n"); exit(1);
+    }
+}
+' "$ROOT/lib/autoload.php" || fail 'межа «крок закривається один раз» зникла'
+
 echo "OK: драйвер виконує конверт і зупиняється з причиною."

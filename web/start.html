@@ -39,8 +39,15 @@
       <div class="bar" id="modes" style="align-items:stretch"></div>
 
       <div class="bar" style="margin:12px 0 4px"><span class="lbl">патч</span></div>
-      <div class="bar">
-        <select id="patch" style="min-width:320px"><option value="active">активний патч</option></select>
+      <!-- ТАБЛИЦЯ, А НЕ ВИПАДАЙКА (прототип 04). У випадайці не видно, ДЕ
+           взагалі є робота: власник читає «без ШІ-шару» по всіх патчах одразу
+           й вибирає за числом, а не наосліп. Вибір лишається одним кліком. -->
+      <table class="tbl pick" id="patchTable">
+        <thead><tr><th>патч</th><th>№ у грі</th><th>опубліковано</th>
+          <th class="num">рядків</th><th class="num">без ШІ-шару</th><th></th></tr></thead>
+        <tbody id="patchRows"><tr><td colspan="6" class="empty">перелік патчів вантажиться…</td></tr></tbody>
+      </table>
+      <div class="bar" style="margin-top:10px">
         <label class="empty" for="domain">категорія</label>
         <select id="domain"><option value="">усі</option></select>
         <label class="empty" for="batches">пачок</label>
@@ -49,8 +56,8 @@
       <div class="empty" id="patchHint" style="margin-top:6px"></div>
 
       <div class="bar" style="margin:12px 0 4px"><span class="lbl">роздуми</span></div>
-      <label class="bar" style="font-size:13px;cursor:pointer;margin-bottom:0">
-        <input type="checkbox" id="think">
+      <label class="sw">
+        <input type="checkbox" id="think"><span class="track"></span>
         <span>Дозволити моделі думати вголос перед відповіддю
           <span class="empty">· якість інколи вища, час приблизно вшестеро довший (7.6 с проти 44.8 с на тому самому запиті)</span></span>
       </label>
@@ -58,8 +65,10 @@
       <div class="bar" style="margin:12px 0 4px"><span class="lbl">що запуститься</span></div>
       <div class="box mono" id="preview" style="margin-top:0">—</div>
 
-      <label class="bar" style="margin:10px 0 6px;font-size:13px;cursor:pointer">
-        <input type="checkbox" id="confirm">
+      <!-- Підтвердження PROD · перемикач із іншим кольором: це не налаштування,
+           а згода на незворотний запис, і вона мусить виглядати інакше. -->
+      <label class="sw danger" style="margin:12px 0 8px">
+        <input type="checkbox" id="confirm"><span class="track"></span>
         <span>Запис піде в <b id="confirmEnv" style="font-weight:500">PROD</b>, і це незворотно. Розумію.</span>
       </label>
       <div class="bar">
@@ -89,10 +98,15 @@
     proposal: { name: 'пропозиції', what: 'усе віддати людині', where: 'черга до людини' },
     manual: { name: 'ручний', what: 'вузький набір під підтвердження', where: 'ручний шар і черга' }
   };
-  var mode = 'patch';
+  // Памʼять вибору · режим, патч, категорія, кількість пачок і роздуми.
+  // Підтвердження PROD сюди НЕ входить навмисно: це згода на незворотний
+  // запис, і давати її треба щоразу заново.
+  var P = B.pref('start');
+  var mode = P.get('mode', 'patch');
   var patches = [];
 
-  function selectedPatch() { return B.el('patch').value || 'active'; }
+  var chosenPatch = String(P.get('patch', 'active'));
+  function selectedPatch() { return chosenPatch || 'active'; }
 
   function renderModes() {
     B.el('modes').innerHTML = Object.keys(MODE_INFO).map(function (key) {
@@ -103,18 +117,43 @@
         + '<span class="d">→ ' + B.esc(m.where) + '</span></button>';
     }).join('');
     Array.prototype.forEach.call(B.el('modes').querySelectorAll('.mode'), function (btn) {
-      btn.onclick = function () { mode = btn.getAttribute('data-mode'); renderModes(); refresh(); };
+      btn.onclick = function () {
+        mode = btn.getAttribute('data-mode');
+        P.set('mode', mode);
+        renderModes();
+        refresh();
+      };
     });
   }
 
   function renderPatches() {
-    var sel = B.el('patch');
-    sel.innerHTML = '<option value="active">активний патч</option>'
-      + patches.map(function (p) {
-          var left = p.missing_machine;
-          return '<option value="' + B.esc(p.patch) + '">патч ' + B.esc(p.patch)
-            + ' · без ШІ-шару ' + B.num(left) + (p.active ? ' · активний' : '') + '</option>';
-        }).join('');
+    var rows = '<tr data-patch="active"' + (chosenPatch === 'active' ? ' class="on"' : '') + '>'
+      + '<td>активний</td><td>—</td><td>—</td><td class="num">—</td><td class="num">—</td>'
+      + '<td class="empty">той, що зараз у грі</td></tr>';
+    rows += patches.map(function (p) {
+      var left = Number(p.missing_machine) || 0;
+      return '<tr data-patch="' + B.esc(p.patch) + '"'
+        + (String(chosenPatch) === String(p.patch) ? ' class="on"' : '') + '>'
+        + '<td>' + B.esc(p.patch) + '</td>'
+        + '<td class="empty">' + B.esc(p.game_number || '—') + '</td>'
+        + '<td class="empty">' + B.esc(p.published || '—') + '</td>'
+        + '<td class="num">' + B.num(p.rows) + '</td>'
+        // Нуль без роботи гасимо: рядок «0» серед тисяч читається як помилка,
+        // хоча означає «тут уже все зроблено».
+        + '<td class="num"' + (left ? ' style="color:var(--ok-tx)"' : ' class="num empty"') + '>'
+        + (left ? B.num(left) : '—') + '</td>'
+        + '<td class="empty">' + (p.active ? 'активний' : '') + '</td></tr>';
+    }).join('');
+    B.el('patchRows').innerHTML = rows;
+    Array.prototype.forEach.call(B.el('patchRows').querySelectorAll('tr'), function (tr) {
+      tr.onclick = function () {
+        chosenPatch = tr.dataset.patch;
+        P.set('patch', chosenPatch);
+        renderPatches();
+        patchHint();
+        refresh();
+      };
+    });
   }
 
   function patchHint() {
@@ -123,7 +162,7 @@
     patches.forEach(function (p) { if (String(p.patch) === value) { found = p; } });
     if (!found) {
       B.el('patchHint').textContent = patches.length
-        ? '«активний патч» · той, що зараз у грі. «Неактивний» не означає «неактуальний»: більшість роботи живе в старих патчах.'
+        ? '«Неактивний» не означає «неактуальний»: більшість роботи живе в старих патчах.'
         : 'перелік патчів вантажиться…';
       return;
     }
@@ -155,7 +194,21 @@
     }, 150);
   }
 
-  ['patch', 'domain', 'batches', 'think'].forEach(function (id) {
+  // Відновлюємо збережене ДО першого показу команди, інакше перший рендер
+  // покаже одне, а памʼять · інше.
+  ['domain', 'batches', 'think'].forEach(function (id) {
+    var node = B.el(id);
+    var saved = P.get(id, null);
+    if (saved === null) { return; }
+    if (node.type === 'checkbox') { node.checked = !!saved; } else { node.value = saved; }
+  });
+  ['domain', 'batches', 'think'].forEach(function (id) {
+    var node = B.el(id);
+    node.addEventListener('change', function () {
+      P.set(id, node.type === 'checkbox' ? node.checked : node.value);
+    });
+  });
+  ['domain', 'batches', 'think'].forEach(function (id) {
     B.el(id).onchange = refresh;
     B.el(id).oninput = refresh;
   });

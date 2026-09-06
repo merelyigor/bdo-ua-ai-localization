@@ -78,13 +78,48 @@ final class Row
      *
      * @return array<string,string>
      */
+    /**
+     * НАЗВА ТЕРМІНА · різні бекенди називають це поле по-різному.
+     *
+     * Старий Agent API BDO UA: `canonical_source` (іноді `source`).
+     * Хаб локалізацій 2026-09-06: `term` (плюс `matched_form` · знайдена форма
+     * у тексті, не канонічна). Документ переходу обіцяв, що назви полів
+     * збігаються; насправді ні, і перевірено це запитом.
+     *
+     * Читання терпиме, але в ОДНОМУ місці: інакше три різні `??`-ланцюжки
+     * розійшлися б на першій же зміні контракту.
+     *
+     * @param  array<string,mixed>  $term
+     */
+    private static function termName(array $term): ?string
+    {
+        $name = $term['canonical_source'] ?? $term['source'] ?? $term['term'] ?? null;
+
+        return is_string($name) && $name !== '' ? $name : null;
+    }
+
+    /**
+     * УКРАЇНСЬКИЙ ВІДПОВІДНИК · те саме про назви полів.
+     *
+     * Старий API: `ukrainian`. Хаб: `translation`. `matched_form` сюди НЕ
+     * входить навмисно · це знайдена в тексті форма джерела, а не переклад.
+     *
+     * @param  array<string,mixed>  $term
+     */
+    private static function termUkrainian(array $term): ?string
+    {
+        $value = $term['ukrainian'] ?? $term['translation'] ?? null;
+
+        return is_string($value) && trim($value) !== '' ? $value : null;
+    }
+
     public function glossary(): array
     {
         $terms = [];
         foreach ($this->data['glossary']['terms'] ?? [] as $term) {
-            $name = $term['canonical_source'] ?? $term['source'] ?? null;
-            $ukrainian = $term['ukrainian'] ?? null;
-            if (is_string($name) && $name !== '' && is_string($ukrainian) && trim($ukrainian) !== '') {
+            $name = is_array($term) ? self::termName($term) : null;
+            $ukrainian = is_array($term) ? self::termUkrainian($term) : null;
+            if ($name !== null && $ukrainian !== null) {
                 $terms[$name] = $ukrainian;
             }
         }
@@ -110,9 +145,9 @@ final class Row
     {
         $layers = [];
         foreach ($this->data['glossary']['terms'] ?? [] as $term) {
-            $name = $term['canonical_source'] ?? $term['source'] ?? null;
-            $layer = $term['ukrainian_layer'] ?? null;
-            if (is_string($name) && $name !== '' && is_string($layer) && $layer !== '') {
+            $name = is_array($term) ? self::termName($term) : null;
+            $layer = is_array($term) ? ($term['ukrainian_layer'] ?? null) : null;
+            if ($name !== null && is_string($layer) && $layer !== '') {
                 $layers[$name] = $layer;
             }
         }
@@ -164,11 +199,11 @@ final class Row
     {
         $pending = [];
         foreach ($this->data['glossary']['terms'] ?? [] as $term) {
-            $name = $term['canonical_source'] ?? $term['source'] ?? null;
-            if (! is_string($name) || $name === '') {
+            $name = is_array($term) ? self::termName($term) : null;
+            if ($name === null) {
                 continue;
             }
-            if (($term['ukrainian'] ?? null) === null && ($term['severity'] ?? null) === 'mandatory') {
+            if (self::termUkrainian($term) === null && ($term['severity'] ?? null) === 'mandatory') {
                 $pending[$name] = true;
             }
         }
