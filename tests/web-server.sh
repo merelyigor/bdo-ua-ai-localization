@@ -265,6 +265,48 @@ grep -Fq 'B.typer(' "$ROOT/web/index.html" \
 grep -Fq 'stream.flush()' "$ROOT/web/index.html" \
     || fail 'буфер друку не спорожняється після завершення ролі · хвіст відповіді не буде видно'
 
+# --- На екран іде ТЕКСТ, а не JSON ------------------------------------------
+#
+# Ролі відповідають під strict-схемою, тому модель друкує JSON. 2026-09-06 на
+# живому прогоні власник побачив у вікні друку рівно це:
+#   ext":"[Доса] Оберіть свій комплект зброї\n\n<PAColor0xFFE9BD23>※ …
+# тобто переклад упереміш зі службовими лапками й екранованими переносами.
+if command -v node >/dev/null 2>&1; then
+    cat > "$TMP/readable.js" <<'JS'
+const fs = require('fs');
+global.window = { addEventListener() {}, location: { href: 'http://127.0.0.1/' } };
+global.document = { addEventListener() {}, getElementById() { return null; }, hidden: false };
+global.sessionStorage = { getItem() { return ''; }, setItem() {}, removeItem() {} };
+global.history = { replaceState() {} };
+global.fetch = () => Promise.resolve({});
+eval(fs.readFileSync(process.argv[2], 'utf8'));
+const readable = window.BDO.readable;
+function check(name, got, want) {
+    if (got !== want) {
+        console.error(name + ': отримано ' + JSON.stringify(got) + ', очікувалось ' + JSON.stringify(want));
+        process.exit(1);
+    }
+}
+// 1. Службове зникає, переноси розгортаються.
+check('переклад', readable('{"items":[{"id":"r1","text":"Меч\\nдругий рядок"}]}'), 'Меч\nдругий рядок');
+// 2. Обрив посеред значення · нормальний стан потоку, показуємо що є.
+check('обрив', readable('{"items":[{"id":"r1","text":"Почав пис'), 'Почав пис');
+// 3. Кілька рядків ідуть у ТОМУ порядку, у якому друкувались.
+check('порядок', readable('{"items":[{"text":"перший"},{"text":"другий"}]}'), 'перший\n\nдругий');
+// 4. Екранована лапка не обриває значення.
+check('лапка', readable('{"items":[{"text":"Щит \\"Дуб\\""}]}'), 'Щит "Дуб"');
+// 5. Вирок QA і думка судді теж читаються людиною.
+check('вирок', readable('{"items":[{"id":"r1","status":"REVIEW","issue":"Русизм у слові"}]}'), 'Русизм у слові');
+// 6. Не впізнали формат · мовчати гірше, ніж показати сире.
+check('чужий формат', readable('просто текст'), 'просто текст');
+console.log('ok');
+JS
+    node "$TMP/readable.js" "$ROOT/web/app.js" >/dev/null \
+        || fail 'живий друк показує JSON замість тексту моделі (див. причину вище)'
+fi
+grep -Fq 'B.readable(rawStream)' "$ROOT/web/index.html" \
+    || fail 'екран прогону не проганяє потік через B.readable · у вікні друку знову буде JSON'
+
 # --- «Модель вантажиться» · окремий підпис, а не мовчання --------------------
 #
 # Ollama вивантажує вагу за налаштуванням машини власника, і перший виклик

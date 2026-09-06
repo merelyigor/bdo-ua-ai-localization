@@ -243,6 +243,63 @@
     return { stop: stop };
   }
 
+  // --- живий друк: показуємо ТЕКСТ, а не JSON ------------------------------
+  //
+  // Ролі відповідають під strict-схемою, тому модель друкує JSON. На екрані це
+  // виглядало так: `ext":"[Доса] Оберіть свій комплект зброї\n\n<PAColor…` ·
+  // тобто справжній переклад упереміш зі службовими лапками й екранованими
+  // переносами. Власник побачив це на живому прогоні 2026-09-06.
+  //
+  // Тут витягуються значення полів, які НЕСУТЬ СЕНС для людини, і в них
+  // розгортаються екранування. Розбір навмисно терпимий: потік обривається
+  // посеред рядка, і половина значення · нормальний стан, а не помилка.
+  // Нічого не впізнали · показуємо як є, бо мовчати гірше, ніж показати сире.
+  var READABLE_KEYS = ['text', 'ukrainian_proposal', 'issue', 'reason'];
+
+  function unescapeJsonString(chunk) {
+    var out = '';
+    for (var i = 0; i < chunk.length; i++) {
+      var ch = chunk.charAt(i);
+      if (ch !== '\\') { out += ch; continue; }
+      var next = chunk.charAt(++i);
+      if (next === 'n') { out += '\n'; }
+      else if (next === 't') { out += '\t'; }
+      else if (next === 'r') { out += ''; }
+      else if (next === 'u') { out += String.fromCharCode(parseInt(chunk.substr(i + 1, 4), 16) || 32); i += 4; }
+      else { out += next; }
+    }
+    return out;
+  }
+
+  function readable(raw) {
+    if (!raw) { return ''; }
+    var parts = [];
+    for (var k = 0; k < READABLE_KEYS.length; k++) {
+      var needle = '"' + READABLE_KEYS[k] + '":"';
+      var at = raw.indexOf(needle);
+      while (at !== -1) {
+        var start = at + needle.length;
+        var end = start;
+        // Кінець значення · перша НЕекранована лапка. Обрив потоку означає, що
+        // її ще немає: тоді беремо все до кінця, це і є «друкує зараз».
+        while (end < raw.length) {
+          if (raw.charAt(end) === '"') {
+            var slashes = 0;
+            while (raw.charAt(end - 1 - slashes) === '\\') { slashes++; }
+            if (slashes % 2 === 0) { break; }
+          }
+          end++;
+        }
+        parts.push({ at: at, value: unescapeJsonString(raw.slice(start, end)) });
+        at = raw.indexOf(needle, end);
+      }
+    }
+    if (parts.length === 0) { return raw; }
+    // Порядок · такий, як у потоці: інакше рядки стрибали б місцями.
+    parts.sort(function (a, b) { return a.at - b.at; });
+    return parts.map(function (p) { return p.value; }).join('\n\n');
+  }
+
   // --- живий друк: рівномірно, по символах ---------------------------------
   //
   // Текст приходить ПОРЦІЯМИ: сервер читає журнал токенів раз на такт, тому за
@@ -388,6 +445,7 @@
     live: live,
     follow: follow,
     typer: typer,
+    readable: readable,
     screens: SCREENS
   };
 })(window);

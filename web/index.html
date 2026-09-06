@@ -88,6 +88,12 @@
   // так, як прилетіло: сервер читає журнал токенів тактами, тому за раз
   // приходить десяток символів, і без буфера друк смикає.
   var stream = B.typer(null, { onPaint: paintStream });
+  // Сире СИРЕ тримаємо окремо: ролі відповідають під strict-схемою, тому модель
+  // друкує JSON, і на екран іде лише те, що в ньому має сенс для людини
+  // (`B.readable`). Без цього власник бачив `ext":"[Доса] Оберіть свій…` ·
+  // переклад упереміш зі службовими лапками (виявлено на живому прогоні
+  // 2026-09-06). Темп друку рахується вже по ЛЮДСЬКОМУ тексту.
+  var rawStream = '';
 
   // Кожен крок має ПІДПИС станом. Сірий колір без слова змушував гадати, що
   // сталося з ремонтом · саме це власник і запитав 2026-09-05.
@@ -229,7 +235,8 @@
     // сторінку щойно відкрили або потік на мить обірвався. Буфер сам добере
     // різницю, а не перемалює все стрибком.
     if (s.stream && typeof s.stream.text === 'string' && s.stream.text !== '') {
-      stream.sync(s.stream.text);
+      rawStream = s.stream.text;
+      stream.sync(B.readable(rawStream));
     }
     // Роль договорила · тягнути залишок буфера нема сенсу.
     if (!live || !s.running) { stream.flush(); }
@@ -237,8 +244,10 @@
   }
 
   B.live(render, function (d) {
-    if (d.restarted) { stream.reset(); }
-    stream.push(d.text || '');
+    if (d.restarted) { rawStream = ''; stream.reset(); }
+    rawStream += d.text || '';
+    if (rawStream.length > 24000) { rawStream = rawStream.slice(-16000); }
+    stream.sync(B.readable(rawStream));
   });
 
   B.el('stopBtn').onclick = function () {
