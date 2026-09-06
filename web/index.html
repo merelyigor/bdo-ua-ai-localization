@@ -33,16 +33,17 @@
     <!-- Шапка ОДНИМ рядком, як у прототипі 01: ціль, пачка, стан, час, дії.
          Два рядки з великими підписами «КУДИ ПИШЕМО / ЩО ЗАРАЗ» називали
          очевидне й відсували роботу ролей нижче згину екрана. -->
-    <div class="panel">
+    <div class="panel hero">
       <div class="bar" style="margin-bottom:12px">
         <span class="pill" id="env">—</span>
         <span class="mono" id="batch" style="color:var(--ts)"></span>
-        <span class="pill" id="statePhrase" style="background:var(--acc-bg);color:var(--acc-tx)">пачки немає</span>
+        <span class="pill" id="statePhrase" style="background:var(--acc-bg);color:var(--acc-tx)" aria-live="polite">пачки немає</span>
         <span class="empty" id="elapsed" style="margin-left:auto"></span>
-        <button id="stopBtn" style="color:var(--dn-tx)">зупинити</button>
+        <button id="stopBtn" class="btn-danger">зупинити</button>
         <a href="/start" style="font-size:13px;color:var(--acc-tx)">новий прогін →</a>
       </div>
       <div class="steps" id="steps"></div>
+      <div class="progress" id="batchProgressWrap" style="display:none" title=""><div class="progress-bar" id="batchProgress"></div></div>
       <div class="empty" id="goal" style="margin-bottom:6px"></div>
       <div class="empty" id="meta"></div>
       <div class="empty" id="actionMsg" style="margin-top:6px"></div>
@@ -67,6 +68,7 @@
         <button class="chip" data-f="pass">пройшло</button>
         <button class="chip" data-f="review">на перегляд</button>
         <button class="chip" data-f="reject">відхилено</button>
+        <input type="search" class="search" id="verdictSearch" placeholder="пошук: слово з перекладу…" aria-label="пошук у вердиктах">
         <span class="empty" id="verdictMeta" style="margin-left:auto"></span>
       </div>
       <div id="verdicts"></div>
@@ -220,6 +222,9 @@
   // його щоразу.
   var VP = B.pref('run');
   var verdictFilter = String(VP.get('verdictFilter', 'all'));
+  // Пошуковий запит — теж вибір власника: переживає перезавантаження поруч
+  // із chip-фільтром, але згоду на PROD тут не чіпає (її немає на цьому екрані).
+  var verdictQuery = String(VP.get('verdictQuery', ''));
   var lastVerdictKey = '';
 
   function renderVerdicts(v) {
@@ -280,10 +285,28 @@
   }
 
   function applyVerdictFilter() {
+    var q = verdictQuery.trim().toLowerCase();
     Array.prototype.forEach.call(B.el('verdicts').querySelectorAll('.vrow'), function (r) {
-      r.style.display = (verdictFilter === 'all' || r.dataset.v === verdictFilter) ? 'flex' : 'none';
+      var byChip = verdictFilter === 'all' || r.dataset.v === verdictFilter;
+      // Пошук іде по видимому тексту рядка (джерело + переклад + вирок QA):
+      // окремих data-атрибутів не треба, а chip-фільтр лишається головним.
+      var byText = !q || r.textContent.toLowerCase().indexOf(q) !== -1;
+      r.style.display = (byChip && byText) ? 'flex' : 'none';
     });
   }
+
+  // Поле пошуку підхоплює збережений запит: перезавантаження сторінки не має
+  // губити вибір власника — так само, як chip-фільтр вище.
+  (function () {
+    var input = document.getElementById('verdictSearch');
+    if (!input) { return; }
+    input.value = verdictQuery;
+    input.addEventListener('input', function () {
+      verdictQuery = input.value;
+      VP.set('verdictQuery', verdictQuery);
+      applyVerdictFilter();
+    });
+  })();
 
   Array.prototype.forEach.call(document.querySelectorAll('#verdictPanel .chip'), function (c) {
     c.onclick = function () {
@@ -321,6 +344,29 @@
       B.el('batch').textContent = '';
       B.el('statePhrase').textContent = 'пачки немає';
     }
+    // ПРОГРЕС ПАЧКИ · за КРОКАМИ конвеєра, а не за рядками.
+    //
+    // Перша редакція рахувала `b.rows − s.remaining`, і це було хибно за
+    // побудовою: `remaining` · це рядки, що лишились у ЦІЛІ прогону (29 372 на
+    // патчі 1), а не в пачці на 20 рядків. Різниця виходила відʼємною,
+    // затискалась у нуль, і смуга завжди показувала 0% · тобто число, яке
+    // виглядає осмисленим і бреше. Заміряно 2026-09-06.
+    //
+    // Кроки ж є прямо в знімку й описують саме ЦЮ пачку: `done` і `skipped`
+    // позаду, `now` іде, решта попереду.
+    (function () {
+      var wrap = B.el('batchProgressWrap');
+      var bar = B.el('batchProgress');
+      if (!wrap || !bar) { return; }
+      var steps = s.steps || [];
+      if (!b.id || !steps.length) { wrap.style.display = 'none'; return; }
+      var passed = steps.filter(function (st) {
+        return st.state === 'done' || st.state === 'skipped';
+      }).length;
+      wrap.style.display = 'block';
+      wrap.title = 'пройдено кроків ' + B.num(passed) + ' з ' + B.num(steps.length);
+      bar.style.width = Math.round(passed / steps.length * 100) + '%';
+    })();
     // Скільки триває прогін · у прототипі це `3:41` у правому куті шапки.
     // Показуємо ЛИШЕ поки він іде: `run-target` живе й після завершення, і
     // лічильник, що біжить над зупиненим прогоном, каже неправду.

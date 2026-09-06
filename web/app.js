@@ -14,18 +14,31 @@
   'use strict';
 
   // --- токен ---------------------------------------------------------------
-  // Токен приходить у посиланні ОДИН раз, далі живе в sessionStorage і працює
-  // на всіх екранах: перехід між ними · звичайна навігація в тому ж джерелі.
-  // З адреси прибирається, щоб не осідав в історії браузера.
+  // Токен приходить у посиланні ОДИН раз і працює на всіх екранах: перехід
+  // між ними · звичайна навігація в тому ж джерелі.
+  //
+  // ТОКЕН ЖИВЕ В `localStorage`, А НЕ В `sessionStorage`.
+  //
+  // `sessionStorage` привʼязаний до ВКЛАДКИ. Власник запустив прогін і відкрив
+  // «дивитись роботу» новою вкладкою · вона отримала порожній токен і показала
+  // «Немає токена» замість роботи (2026-09-06). Для локального інструмента, де
+  // сервер слухає лише 127.0.0.1, це чиста шкода без жодної користі.
+  //
+  // Що НЕ змінилось: токен так само прибирається з адреси, щоб не осідати в
+  // історії браузера, а протухлий токен так само дає екран «Токен більше не
+  // діє» · сервер перезапускається з новим, і сторінка це помічає.
   var url = new URL(global.location.href);
   var fromUrl = url.searchParams.get('t');
   if (fromUrl) {
+    try { localStorage.setItem('bdo_token', fromUrl); } catch (e) {}
     try { sessionStorage.setItem('bdo_token', fromUrl); } catch (e) {}
     url.searchParams.delete('t');
     history.replaceState(null, '', url.pathname + (url.search || '') + url.hash);
   }
   var token = '';
-  try { token = sessionStorage.getItem('bdo_token') || ''; } catch (e) {}
+  try { token = localStorage.getItem('bdo_token') || ''; } catch (e) {}
+  // Стара вкладка могла зберегти токен лише посесійно · не втрачаємо його.
+  if (!token) { try { token = sessionStorage.getItem('bdo_token') || ''; } catch (e) {} }
   if (!token) { token = fromUrl || ''; }
 
   function api(path) {
@@ -126,6 +139,7 @@
   }
 
   function tokenRejected() {
+    try { localStorage.removeItem('bdo_token'); } catch (e) {}
     try { sessionStorage.removeItem('bdo_token'); } catch (e) {}
     requireToken({
       title: 'Токен більше не діє',

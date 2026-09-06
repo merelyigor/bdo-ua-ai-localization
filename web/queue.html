@@ -36,6 +36,7 @@
         <span class="empty" id="meta"></span>
         <label class="empty" for="limit">показувати</label>
         <select id="limit"><option>20</option><option>50</option><option>100</option></select>
+        <input type="search" class="search" id="queueSearch" placeholder="пошук у показаних…" aria-label="пошук у черзі">
         <button id="reload" style="margin-left:auto">оновити</button>
         <button id="approveSel" style="display:none">схвалити вибрані <span id="count">0</span></button>
       </div>
@@ -94,6 +95,16 @@
   B.setLink('poll', 'черга вантажиться на запит');
 
   var rows = [];
+
+  var queueQuery = String(QP.get('queueQuery', ''));
+  // Пошук — лише по ВЖЕ показаних рядках: нового запиту в API він не робить,
+  // тому квоту PROD не витрачає. Запит памʼятається, як ліміт.
+  function applyQueueFilter() {
+    var q = queueQuery.trim().toLowerCase();
+    Array.prototype.forEach.call(document.querySelectorAll('#rows .row'), function (r) {
+      r.style.display = (!q || r.textContent.toLowerCase().indexOf(q) !== -1) ? '' : 'none';
+    });
+  }
 
   function selected() {
     return Array.prototype.map.call(
@@ -163,6 +174,7 @@
       t.addEventListener('input', function () { grow(t); });
     });
     recount();
+    applyQueueFilter();
   }
 
   function load() {
@@ -223,6 +235,18 @@
   }
 
   B.el('reload').onclick = load;
+  // Пошуковий запит відновлюємо до першого показу, інакше перший рендер
+  // покаже все, а памʼять — звужений перелік.
+  (function () {
+    var input = B.el('queueSearch');
+    if (!input) { return; }
+    input.value = queueQuery;
+    input.addEventListener('input', function () {
+      queueQuery = input.value;
+      QP.set('queueQuery', queueQuery);
+      applyQueueFilter();
+    });
+  })();
   // Скільки показувати · памʼятаємо: власник тримає свій розмір сторінки.
   B.el('limit').value = String(QP.get('limit', B.el('limit').value));
   B.el('limit').onchange = function () { QP.set('limit', B.el('limit').value); load(); };

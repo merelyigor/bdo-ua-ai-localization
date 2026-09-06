@@ -206,3 +206,47 @@ textarea.grow:focus{outline:none;border-color:var(--bda)}
 @media (prefers-reduced-motion:reduce){
   .spin{animation:none;border-top-color:var(--bd)}
 }
+
+/* --- GUI-полірування 2026-09-06 (план docs/plans/active/2026-09-06_GUI_UX_POLISH.md) ---
+   Тільки ДОДАВАННЯ: жодне правило вище не змінено, тому gates `tests/web-*.sh`
+   бачать ті самі селектори. Нові класи вживаються лише в новій розмітці. */
+:root{
+  --sh:0 1px 2px rgba(0,0,0,.07),0 4px 14px rgba(0,0,0,.06);
+  --r-lg:14px; --r-md:10px;
+}
+/* Навігація липне до верху: статус звʼязку й вихід з екрана завжди під рукою,
+   а не десь вище за скролом. */
+.nav{position:sticky;top:0;z-index:20;background:var(--s0);padding:10px 0}
+/* Hero-картка статусу прогону: відповідь «що зараз» за 5 секунд — ціль, стан
+   і прогрес візуально відокремлені від решти панелей. */
+.hero{background:linear-gradient(180deg,var(--s2),var(--s1));border:.5px solid var(--bd);
+  border-radius:var(--r-lg);box-shadow:var(--sh)}
+.hero #statePhrase{font-weight:500}
+/* Прогрес пачки: тонка смуга, а не ще одне число. Ховається, коли чисел немає
+   (див. index.html: `batchProgressWrap`). */
+.progress{height:6px;border-radius:999px;background:var(--s1);border:.5px solid var(--bd);
+  overflow:hidden;margin:0 0 12px}
+.progress-bar{height:100%;width:0;background:var(--bda);border-radius:999px;
+  transition:width .3s ease}
+/* Первинна дія видно здалеку: зупинка прогону — не звичайна кнопка. */
+.btn-primary{background:var(--acc-bg);color:var(--acc-tx);border-color:var(--bda);font-weight:500}
+.btn-primary:hover{filter:brightness(1.04)}
+.btn-danger{color:var(--dn-tx);border-color:var(--dn-tx)}
+/* Пошук у переліках: той самий вигляд поля, що й решта вводу. */
+.search{min-width:200px}
+/* Рядки, по яких можна пробігти очима: hover тримає звʼязок «де я». */
+.vrow{border-radius:8px;padding-left:8px;padding-right:8px}
+.vrow:hover{background:var(--s2)}
+.sess{transition:border-color .12s}
+.sess:hover{border-color:var(--tm)}
+/* Клавіатура: фокус видно завжди, а не лише мишею. */
+a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{
+  outline:2px solid var(--bda);outline-offset:2px}
+/* Вузький екран: шапка й таблиці не рвуться вбік, а складаються вниз. */
+@media (max-width:640px){
+  body{padding:14px}
+  .bar{gap:8px}
+  .search{min-width:0;flex:1 1 100%}
+  table{display:block;overflow-x:auto}
+  .screen-title .hint{flex-basis:100%}
+}

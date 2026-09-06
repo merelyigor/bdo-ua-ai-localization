@@ -106,6 +106,7 @@
   var patches = [];
 
   var chosenPatch = String(P.get('patch', 'active'));
+  var patchesFromCache = false;
   function selectedPatch() { return chosenPatch || 'active'; }
 
   function renderModes() {
@@ -168,7 +169,8 @@
     }
     var batches = Math.max(1, Math.ceil(found.missing_machine / 50));
     B.el('patchHint').textContent = 'у патчі ' + found.patch + ' лишилось ' + B.num(found.missing_machine)
-      + ' рядків без ШІ-шару · це приблизно ' + B.num(batches) + ' пачок по 50';
+      + ' рядків без ШІ-шару · це приблизно ' + B.num(batches) + ' пачок по 50'
+      + (patchesFromCache ? ' · числа з кешу, оновлюються раз на 5 хв' : ' · числа щойно з API');
   }
 
   function payload() {
@@ -220,10 +222,16 @@
 
   // Патчі їдуть із API · без ознаки роботи порожня таблиця читається як
   // «патчів немає».
+  // ЧАС НАЗВАНИЙ ЧИСЛОМ. Перелік патчів · це десятки запитів до API (на кожен
+  // патч окремо: підсумок і пʼять вибірок), заміряно 10 с на восьми патчах.
+  // Обертач без числа читається як «зависло» · власник саме так і подумав
+  // 2026-09-06. Далі відповідь лежить у кеші пʼять хвилин.
   B.el('patchRows').innerHTML = '<tr><td colspan="6">'
-    + B.loadingHtml('беру перелік патчів з API…') + '</td></tr>';
+    + B.loadingHtml('беру перелік патчів з API · перший раз близько 10 с, далі з кешу')
+    + '</td></tr>';
   B.get('/api/patches').then(function (d) {
     patches = d.patches || [];
+    patchesFromCache = d.cached === true;
     renderPatches();
     refresh();
   }).catch(function () {
@@ -231,10 +239,23 @@
   });
 
   B.get('/api/state').then(function (s) {
-    var target = (s.env || '').toUpperCase() || '—';
+    // Екран СТАРТУ відповідає на питання «куди піде прогін, який я зараз
+    // запускаю», а не «куди пише той, що вже йде». Це різні числа: `run-target`
+    // навмисно переживає завершення пачки, і власник, змінивши `.env` на
+    // legacy, бачив тут `HUB-PROD` і питав, чи це баг (2026-09-06).
+    var target = (s.env_now || s.env || '').toUpperCase() || '—';
     B.el('env').textContent = target;
     B.el('env').style.background = target === 'PROD' ? 'var(--dn-bg)' : 'var(--s2)';
     B.el('env').style.color = target === 'PROD' ? 'var(--dn-tx)' : 'var(--ts)';
+    // Стара зафіксована ціль не помилка · вона знімається сама при старті.
+    // Але мовчати про неї не можна: власник має знати, що бачив інше число.
+    B.el('env').title = (s.env && s.env_now && s.env !== s.env_now)
+      ? 'зафіксована ціль минулого прогону · ' + s.env.toUpperCase()
+        + '; вона зніметься сама при старті'
+      : '';
+    // Згода мусить називати ЦІЛЬ, куди піде цей прогін, а не зафіксовану ціль
+    // минулого. Власник підтвердив «запис у HUB-PROD», а прогін пішов у PROD ·
+    // напис брехав про незворотну дію (2026-09-06).
     B.el('confirmEnv').textContent = target;
     if (s.running) {
       B.el('running').textContent = 'прогін уже йде · старт заблокований';
@@ -279,6 +300,9 @@
       B.el('logToggle').textContent = 'показати вивід';
       if (res.body && res.body.ok) {
         msg.innerHTML = 'прогін запущено · <a href="/" style="color:var(--acc-tx)">дивитись роботу →</a>';
+        // Одразу ведемо на екран прогону: після старту дивитись більше нема на
+        // що, а зайвий клік на порожній сторінці · це ще одне «а де воно?».
+        setTimeout(function () { location.href = '/'; }, 1200);
         msg.style.color = 'var(--ok-tx)';
       } else {
         msg.textContent = 'крок не вдався · дивись вивід';

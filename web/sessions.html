@@ -26,11 +26,14 @@
       <span class="hint">період роботи з N пачок · історія лишається назавжди</span>
     </div>
 
-    <div class="panel">
+    <div class="panel hero">
       <div class="bar">
         <span id="openInfo" style="font-weight:500">—</span>
+        <!-- «Закрити ВІДКРИТУ сесію» тут більше немає: кнопка стояла осторонь
+             від сесій і не називала, яку саме закриває · власник назвав це
+             недопрацюванням UX 2026-09-06. Тепер дія живе В САМІЙ сесії, поруч
+             із її числами, і не може стосуватись іншої. -->
         <button id="sessNew" style="margin-left:auto">нова сесія</button>
-        <button id="sessClose">закрити відкриту сесію</button>
       </div>
       <div id="closeDialog" style="display:none;margin:6px 0 12px;border:.5px solid var(--bda);border-radius:10px;padding:12px;background:var(--s2)">
         <div style="font-weight:500;margin-bottom:4px" id="closeTitle">Закрити сесію?</div>
@@ -152,18 +155,23 @@
       // мовчазний нуль зробив би підсумок меншим за правду.
       + (t.gone ? '<div class="empty" style="margin-top:6px">у підсумок не входить пачок із '
           + 'прибраною квитанцією: ' + B.num(t.gone) + '</div>' : '')
-      // Дії ЗАКРИТОЇ сесії (макет 02). Кожна за собою має команду з реєстру ·
+      // Дії живуть У САМІЙ сесії. Кожна за собою має команду з реєстру ·
       // намальована кнопка без команди означала б другу систему поруч.
-      + (s.status !== 'open'
-          ? '<div class="bar" style="margin-top:10px">'
-            + '<a href="/call?session=' + encodeURIComponent(s.id) + '" target="_blank" rel="noopener"'
+      + '<div class="bar" style="margin-top:10px">'
+      + (s.status === 'open'
+          // ВІДКРИТА · її можна закрити, і кнопка стоїть саме тут, тому питання
+          // «яку сесію я закриваю» не виникає взагалі.
+          ? '<button class="closeS btn-primary" type="button" data-id="' + B.esc(s.id) + '">'
+            + 'закрити сесію</button>'
+            + '<span class="empty">підсумок і пачки лишаться назавжди</span>'
+          : '<a href="/call?session=' + encodeURIComponent(s.id) + '" target="_blank" rel="noopener"'
             + ' style="font-size:12px;color:var(--acc-tx)">відкрити прогін ↗</a>'
             + (journals(s)
                 ? '<button class="dropJ" type="button" data-id="' + B.esc(s.id) + '">'
                   + 'видалити журнали (' + journals(s) + ')</button>'
                 : '<span class="empty">журнали вже прибрані</span>')
-            + '<span class="empty">запис не чіпається ніколи</span></div>'
-          : '');
+            + '<span class="empty">запис не чіпається ніколи</span>')
+      + '</div>';
   }
 
   function renderList() {
@@ -177,6 +185,8 @@
       head.push(B.num(s.batches) + ' пачок');
       if (t.rows) { head.push(B.num(t.rows) + ' рядків'); }
       if (s.minutes) { head.push(s.minutes + ' хв'); }
+      if (!isOpen && t.to_layer) { head.push('у шар ' + B.num(t.to_layer)); }
+      if (!isOpen && t.to_human) { head.push('до людини ' + B.num(t.to_human)); }
 
       return '<div class="sess' + (isOpen ? ' on' : '') + '" data-id="' + B.esc(s.id) + '">'
         + '<div class="sh">'
@@ -190,8 +200,15 @@
         + (t.quarantine ? '--dn-tx' : '--ok-tx') + ')">карантин ' + B.num(t.quarantine) + '</span>'
         + '</div>'
         + '<div class="sb"' + (isOpen ? '' : ' style="display:none"') + '>'
-        + (isOpen ? sessionBody(s) : '') + '</div></div>';
+        + sessionBody(s) + '</div></div>';
     }).join('') || '<div class="empty">Сесій ще немає. Перша відкриється сама з першою пачкою.</div>';
+
+    Array.prototype.forEach.call(B.el('list').querySelectorAll('.closeS'), function (btn) {
+      btn.onclick = function (ev) {
+        ev.stopPropagation();   // клік по кнопці не має згортати сесію
+        askClose(btn.dataset.id);
+      };
+    });
 
     Array.prototype.forEach.call(B.el('list').querySelectorAll('.dropJ'), function (btn) {
       btn.onclick = function (ev) {
@@ -219,7 +236,6 @@
     B.el('openInfo').textContent = opened
       ? 'відкрита сесія ' + opened.id + ' · пачок ' + B.num(opened.batches)
       : 'відкритої сесії немає · вона почнеться сама з першою пачкою';
-    B.el('sessClose').disabled = !opened;
   }
 
   function load() {
@@ -258,14 +274,15 @@
   }
 
   B.el('sessNew').onclick = function () { act('session.new'); };
-  B.el('sessClose').onclick = function () {
-    var open = openSession();
-    if (!open) { return; }
-    // Питання називає СЕСІЮ. Раніше кнопка діяла на поточну, ніде не названу,
-    // і власник не знав, що саме закрив.
-    B.el('closeTitle').textContent = 'Закрити сесію ' + open.id + '?';
+  // Питання називає СЕСІЮ. Раніше кнопка діяла на «відкриту», ніде не названу,
+  // і стояла осторонь від переліку · власник не знав, що саме закриває.
+  function askClose(id) {
+    B.el('closeTitle').textContent = 'Закрити сесію ' + id + '?';
     B.el('closeDialog').style.display = 'block';
-  };
+    // Діалог показується вгорі панелі · ведемо до нього, інакше він лишиться
+    // за межами екрана, коли сесія розгорнута далеко внизу.
+    B.el('closeDialog').scrollIntoView({ block: 'center' });
+  }
   // Підсвітка вибраного сегмента · сам вибір лишається за радіокнопкою, тому
   // клавіатура й читалка екрана працюють як раніше.
   Array.prototype.forEach.call(B.el('keepSeg').querySelectorAll('label'), function (l) {

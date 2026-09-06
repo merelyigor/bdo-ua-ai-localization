@@ -54,6 +54,7 @@ final class Snapshot
         return [
             'at' => gmdate('c'),
             'env' => $this->env(),
+            'env_now' => $this->envNow(),
             'goal' => $this->goal(),
             'remaining' => $this->remaining(),
             'session' => [
@@ -249,6 +250,33 @@ final class Snapshot
         $path = $this->path('run-target');
 
         return is_file($path) ? strtolower(trim((string) file_get_contents($path))) : '';
+    }
+
+    /**
+     * ЦІЛЬ, ЯКУ ЗАДАЄ `.env` ЗАРАЗ · не те саме, що `env()`.
+     *
+     * `env()` читає `state/run-target` · це ЗАФІКСОВАНА ціль прогону, і вона
+     * навмисно переживає завершення пачки. Через це власник змінив `.env` на
+     * legacy, а екран старту й далі показував `HUB-PROD` і питав, чи це баг
+     * (2026-09-06). Баг був не в цілі, а в тому, що екран показував ОДНЕ число
+     * на два різні питання: «куди пише пачка, яка вже йде» і «куди піде та,
+     * яку я зараз запускаю».
+     *
+     * Резолв робить той самий `cli/system/select-env.sh`, що й увесь набір ·
+     * другого правила читання `.env` тут не зʼявляється. Ціна · один короткий
+     * процес на знімок; він дешевий і не ходить у мережу.
+     */
+    private function envNow(): string
+    {
+        $root = dirname(__DIR__, 2);
+        $cmd = 'BDO_STATE_DIR='.escapeshellarg($this->stateDir)
+            .' bash '.escapeshellarg($root.'/cli/system/select-env.sh').' 2>&1 >/dev/null';
+        $out = (string) @shell_exec($cmd);
+        if (preg_match('/Ціль:\s*(ХАБ\s+)?(PROD|DEV)/u', $out, $m) !== 1) {
+            return '';
+        }
+
+        return (trim($m[1] ?? '') !== '' ? 'hub-' : '').strtolower($m[2]);
     }
 
     /**

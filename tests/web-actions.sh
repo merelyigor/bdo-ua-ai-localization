@@ -283,9 +283,15 @@ done <<'CONTROLS'
 /start|id="think"
 /|id="stopBtn"
 /sessions|id="sessNew"
-/sessions|id="sessClose"
 /queue|id="approveSel"
 CONTROLS
+# Закриття сесії живе В САМІЙ сесії й малюється скриптом · у порожній оболонці
+# його немає за побудовою. Тому перевіряємо джерело екрана, а не HTTP-відповідь:
+# кнопка осторонь переліку не називала, яку сесію закриває (UX, 2026-09-06).
+grep -Fq 'class="closeS' "$ROOT/web/sessions.html" \
+    || fail 'у сесії немає кнопки закриття'
+grep -Fq "act('session.close'" "$ROOT/web/sessions.html" \
+    || fail 'кнопка закриття сесії не веде до команди session.close'
 grep -q 'api/client-error' "$ROOT/web/app.js" \
     || fail 'спільний скрипт не надсилає помилок сторінки в журнал'
 grep -q "addEventListener('error'" "$ROOT/web/app.js" \
