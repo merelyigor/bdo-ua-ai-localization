@@ -271,14 +271,35 @@
     return out;
   }
 
+  // Пробіли між ключем і значенням · НЕ дрібниця.
+  //
+  // Термінолог друкує JSON із відступами (`"ukrainian_proposal": "…"`), тому
+  // пошук по `"ключ":"` його не знаходив узагалі, і власник бачив сирий JSON
+  // саме на цій ролі · виявлено оком на живому прогоні 2026-09-06.
+  // Повертає позицію першої лапки значення або -1.
+  function valueStart(raw, from, key) {
+    var at = raw.indexOf('"' + key + '"', from);
+    if (at === -1) { return -1; }
+    var i = at + key.length + 2;
+    while (i < raw.length && (raw.charAt(i) === ' ' || raw.charAt(i) === '\t')) { i++; }
+    if (raw.charAt(i) !== ':') { return -2 - at; }   // це не пара «ключ: значення»
+    i++;
+    while (i < raw.length && (raw.charAt(i) === ' ' || raw.charAt(i) === '\t'
+        || raw.charAt(i) === '\n' || raw.charAt(i) === '\r')) { i++; }
+    if (raw.charAt(i) !== '"') { return -2 - at; }
+    return i + 1;
+  }
+
   function readable(raw) {
     if (!raw) { return ''; }
     var parts = [];
     for (var k = 0; k < READABLE_KEYS.length; k++) {
-      var needle = '"' + READABLE_KEYS[k] + '":"';
-      var at = raw.indexOf(needle);
+      var key = READABLE_KEYS[k];
+      var from = 0;
+      var at = valueStart(raw, from, key);
       while (at !== -1) {
-        var start = at + needle.length;
+        if (at < 0) { from = (-at - 2) + key.length + 2; at = valueStart(raw, from, key); continue; }
+        var start = at;
         var end = start;
         // Кінець значення · перша НЕекранована лапка. Обрив потоку означає, що
         // її ще немає: тоді беремо все до кінця, це і є «друкує зараз».
@@ -290,8 +311,9 @@
           }
           end++;
         }
-        parts.push({ at: at, value: unescapeJsonString(raw.slice(start, end)) });
-        at = raw.indexOf(needle, end);
+        parts.push({ at: start, value: unescapeJsonString(raw.slice(start, end)) });
+        from = end;
+        at = valueStart(raw, from, key);
       }
     }
     if (parts.length === 0) { return raw; }
