@@ -512,8 +512,8 @@ check_shell() {
     if [ -f Makefile ]; then
         local targets bad_bdo
         targets="$(grep -oE '^[a-z][a-z-]*:' Makefile | tr -d ':' | sort -u | tr '\n' ' ')"
-        test "$targets" = 'attach help screen stop web ' \
-            || fail "Makefile має інші цілі, ніж attach/help/screen/stop/web: [$targets]"
+        test "$targets" = 'attach help screen stop web web-stop ' \
+            || fail "Makefile має інші цілі, ніж attach/help/screen/stop/web/web-stop: [$targets]"
         # `./bdo help` і `./bdo review` у ПІДКАЗЦІ дозволені: це вказівник для
         # людини, а не виконання команди. Заборонено саме виконання чогось,
         # крім `watch`, тобто рецепт без `printf`/`@printf`.
@@ -524,7 +524,15 @@ check_shell() {
         test -z "$bad_bdo" || fail "Makefile дублює команду набору замість посилання на ./bdo help: $bad_bdo"
         grep -Fq 'cli/command-registry.json' Makefile \
             || fail 'Makefile не називає єдине джерело дерева команд'
-        note 'Makefile: 5 цілей (інтерфейс і видимість), дерева команд не дублює'
+        # ДВІ ЗУПИНКИ, і кожна мусить існувати. `make stop` прибирає РОБОТУ
+        # (сесію tmux), `make web-stop` · сам ІНТЕРФЕЙС. Другої не було
+        # взагалі: `make web` підіймав сервер, а прибрати його з того самого
+        # місця було нічим (власник назвав це 2026-09-06).
+        grep -Fq './bdo web --stop' Makefile \
+            || fail 'Makefile підіймає інтерфейс, але не вміє його зупинити'
+        grep -Fq './bdo watch --stop' Makefile \
+            || fail 'Makefile не вміє зупинити роботу'
+        note 'Makefile: 6 цілей (інтерфейс і видимість), дерева команд не дублює'
     fi
 
     step 'Bash syntax'
