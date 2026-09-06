@@ -1,39 +1,61 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<!--
-  Значок для Dock: підняти інтерфейс набору одним кліком.
-
-  Бандл лежить У ТЕЦІ НАБОРУ навмисно · виконуваний файл знаходить набір від
-  власного розташування. Dock тримає посилання на оригінал, тому перетягнути
-  значок у Dock можна; КОПІЯ кудись інде втратить набір і скаже про це вікном.
-
-  Логіки тут немає: вона в `cli/system/mac-app.sh`, де її бачать `bash -n`,
-  ShellCheck і gate. Усередині бандла скрипт був би поза всіма перевірками.
--->
 <plist version="1.0">
 <dict>
-  <key>CFBundleName</key>
-  <string>BDO Локалізація</string>
-  <key>CFBundleDisplayName</key>
-  <string>BDO Локалізація</string>
-  <key>CFBundleIdentifier</key>
-  <string>ua.bdo.localization.launcher</string>
-  <key>CFBundleVersion</key>
-  <string>1</string>
-  <key>CFBundleShortVersionString</key>
-  <string>1.0</string>
-  <key>CFBundlePackageType</key>
-  <string>APPL</string>
-  <key>CFBundleExecutable</key>
-  <string>bdo-web</string>
-  <key>LSMinimumSystemVersion</key>
-  <string>11.0</string>
-  <!-- `Resources/BDO.icns`. Без цього ключа Dock показує безликий бланк, і
-       значок неможливо відрізнити від будь-якого іншого саморобного бандла. -->
-  <key>CFBundleIconFile</key>
-  <string>BDO</string>
-  <!-- Значок МУСИТЬ бути в Dock, поки інтерфейс працює: власник закриває
-       саме його, і закриття гасить сервер. З `LSUIElement` додаток не мав би
-       значка, і закривати було б нічого. -->
+	<key>CFBundleAllowMixedLocalizations</key>
+	<true/>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>en</string>
+	<key>CFBundleDisplayName</key>
+	<string>BDO Локалізація</string>
+	<key>CFBundleExecutable</key>
+	<string>applet</string>
+	<key>CFBundleIconFile</key>
+	<string>BDO</string>
+	<key>CFBundleIdentifier</key>
+	<string>ua.bdo.localization.launcher</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundleName</key>
+	<string>BDO Локалізація</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleSignature</key>
+	<string>aplt</string>
+	<key>LSMinimumSystemVersion</key>
+	<string>11.0</string>
+	<key>LSMinimumSystemVersionByArchitecture</key>
+	<dict>
+		<key>x86_64</key>
+		<string>10.6</string>
+	</dict>
+	<key>LSRequiresCarbon</key>
+	<true/>
+	<key>NSAppleEventsUsageDescription</key>
+	<string>This script needs to control other applications to run.</string>
+	<key>NSAppleMusicUsageDescription</key>
+	<string>This script needs access to your music to run.</string>
+	<key>NSCalendarsUsageDescription</key>
+	<string>This script needs access to your calendars to run.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>This script needs access to your camera to run.</string>
+	<key>NSContactsUsageDescription</key>
+	<string>This script needs access to your contacts to run.</string>
+	<key>NSHomeKitUsageDescription</key>
+	<string>This script needs access to your HomeKit Home to run.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>This script needs access to your microphone to run.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>This script needs access to your photos to run.</string>
+	<key>NSRemindersUsageDescription</key>
+	<string>This script needs access to your reminders to run.</string>
+	<key>NSSiriUsageDescription</key>
+	<string>This script needs access to Siri to run.</string>
+	<key>NSSystemAdministrationUsageDescription</key>
+	<string>This script needs access to administer this system to run.</string>
+	<key>OSAAppletShowStartupScreen</key>
+	<false/>
+	<key>OSAAppletStayOpen</key>
+	<true/>
 </dict>
 </plist>

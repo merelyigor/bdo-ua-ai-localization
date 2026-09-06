@@ -573,8 +573,9 @@ web/index.html              сторінка інтерфейсу · один ф
 cli/system/web.sh           сервер сторінки: вільний порт, токен, посилання
 cli/system/web-router.php   межа читання й дій: лише GET, дії лише POST
 bdo.bat                     запуск інтерфейсу з Windows через WSL2
-BDO.app                     значок для Dock на macOS · місток у cli/system/mac-app.sh
-cli/system/mac-app.sh       логіка значка: підняти або перехопити сервер, закрити · зупинити
+BDO.app                     значок для Dock на macOS · applet, збирає scripts/build-mac-app.sh
+cli/system/mac-app.sh       логіка значка: start · підняти або перехопити, alive, stop
+cli/system/mac-app.applescript  джерело значка · бандл є applet, інакше Dock стрибає вічно
 bdo.ico                     значок для ярлика Windows · сам .bat його не несе
 roles/translation-*.md      промпт кожної ролі · самодостатній, без include
 config/roles.json           модель, схема й температура кожної ролі

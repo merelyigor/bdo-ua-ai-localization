@@ -504,24 +504,50 @@ check_shell() {
     # тонким містком: уся логіка живе в `cli/system/mac-app.sh`, бо всередині
     # бандла її не бачать ні `bash -n`, ні ShellCheck, ні цей gate.
     if [ -d BDO.app ]; then
-        local shim='BDO.app/Contents/MacOS/bdo-web'
         test -f 'BDO.app/Contents/Info.plist' || fail 'BDO.app без Info.plist · macOS такий бандл не запустить'
-        test -x "$shim" || fail "$shim не виконуваний · клік у Dock нічого не зробить"
-        grep -Fq 'cli/system/mac-app.sh' "$shim" \
-            || fail 'місток BDO.app не веде в cli/system/mac-app.sh · логіка переїхала в бандл, де її ніхто не перевіряє'
-        # Пояснення для скопійованого бандла мусить бути В МІСТКУ: коли набору
-        # поруч немає, скрипта, який мав би це сказати, теж немає.
-        grep -Fq 'Набір не знайдено поруч із додатком' "$shim" \
-            || fail 'скопійований BDO.app мовчить замість пояснення'
         test -x cli/system/mac-app.sh || fail 'cli/system/mac-app.sh не виконуваний'
-        # ЗАКРИВ ЗНАЧОК · ЗУПИНИВСЯ ІНТЕРФЕЙС (вимога власника 2026-09-06).
-        # Тримається це двома речами разом: пасткою на сигнал і очікуванням.
-        # Без очікування процес зникав би одразу, і в Dock не було б чого
-        # закривати; без пастки закриття лишало б сервер жити далі.
-        grep -Fq 'trap' cli/system/mac-app.sh \
-            || fail 'значок не гасить інтерфейс при закритті · немає пастки на сигнал'
-        grep -Fq 'while [ -n "$(status_url || true)" ]' cli/system/mac-app.sh \
-            || fail 'значок не тримається живим · закривати в Dock буде нічого'
+        # БАНДЛ МУСИТЬ БУТИ APPLET, А НЕ СКРИПТ (D91). Бандл, чий виконуваний
+        # файл є звичайним скриптом, не відкриває зʼєднання з WindowServer,
+        # тому LaunchServices не бачить запуск завершеним і значок у Dock
+        # СТРИБАЄ БЕЗКІНЕЧНО. Доказ мірою, а не думкою: `lsappinfo` показував
+        # `!cgsConnection` у скриптового бандла й не показував в applet.
+        test -x 'BDO.app/Contents/MacOS/applet' \
+            || fail 'BDO.app не є applet · значок у Dock стрибатиме безкінечно (D91)'
+        # ЗАКРИВ ЗНАЧОК · ЗУПИНИВСЯ ІНТЕРФЕЙС, і значок живий, поки живий
+        # сервер. Обидва боки тримає САМ applet: «Завершити» приходить як
+        # `on quit`, а очікування робить `on idle`. Питаємо ЗІБРАНИЙ бандл
+        # розкомпілюванням · джерело могло піти вперед без перезбирання.
+        if have osadecompile; then
+            local applet_src
+            applet_src="$(osadecompile 'BDO.app/Contents/Resources/Scripts/main.scpt' 2>/dev/null || true)"
+            printf '%s' "$applet_src" | grep -q 'on quit' \
+                || fail 'зібраний BDO.app не має on quit · закриття значка лишить інтерфейс жити (D90)'
+            printf '%s' "$applet_src" | grep -q 'on idle' \
+                || fail 'зібраний BDO.app не має on idle · значок не переживе смерті сервера'
+            printf '%s' "$applet_src" | grep -Fq 'cli/system/mac-app.sh' \
+                || fail 'зібраний BDO.app не кличе cli/system/mac-app.sh · логіка переїхала в бандл, де її ніхто не перевіряє'
+            # Пояснення для скопійованого бандла живе в скрипті: коли набору
+            # поруч немає, сказати про це має саме він.
+            grep -Fq 'Набір не знайдено поруч із додатком' cli/system/mac-app.sh \
+                || fail 'скопійований BDO.app мовчить замість пояснення'
+            # Зібране мусить відповідати ДЖЕРЕЛУ. Без цього `BDO.app` тихо
+            # застигне на старій редакції, а правку в `.applescript` ніхто не
+            # помітить · рівно та ситуація, задля якої існує gate генерації
+            # `docs/COMMANDS.md`. Порівнюємо значущі рядки: розкомпілювання
+            # нормалізує відступи й переносить довгі рядки.
+            local built source_norm
+            norm() { grep -v '^[[:space:]]*--' | sed -e 's/[[:space:]]\{1,\}/ /g' -e 's/^ //' -e 's/ $//' -e '/^$/d'; }
+            built="$(printf '%s' "$applet_src" | norm)"
+            source_norm="$(norm < cli/system/mac-app.applescript)"
+            test "$built" = "$source_norm" \
+                || fail 'BDO.app зібрано не з поточного cli/system/mac-app.applescript · перезбери: bash scripts/build-mac-app.sh'
+        fi
+        # Підпис перезакладається останнім кроком збирання. Недійсний підпис ·
+        # це відмова запуску, а не косметика.
+        if have codesign; then
+            codesign --verify --deep BDO.app >/dev/null 2>&1 \
+                || fail 'підпис BDO.app недійсний · macOS відмовиться його запускати'
+        fi
         # Значок мусить бути видимий у Dock · інакше закрити його неможливо.
         # Питаємо САМ ключ, а не слово в тексті: згадка в коментарі не є
         # налаштуванням, і `grep` по назві валив би перевірку на поясненні.
@@ -539,6 +565,10 @@ check_shell() {
             icon="$(plutil -extract CFBundleIconFile raw BDO.app/Contents/Info.plist 2>/dev/null || true)"
             test "$icon" = 'BDO' \
                 || fail "CFBundleIconFile=${icon:-<немає>}, а ресурс зветься BDO.icns · Dock значка не знайде"
+            # `Assets.car` від `osacompile` МАЄ ПРІОРИТЕТ над `CFBundleIconFile`,
+            # тому з ним у Dock лишався типовий значок applet-а.
+            test ! -f 'BDO.app/Contents/Resources/Assets.car' \
+                || fail 'у BDO.app лишився Assets.car · він перебиває наш значок типовим значком applet-а'
         fi
         # Windows-значок лишається в теці набору поруч із `bdo.bat`. Сам `.bat`
         # свого значка нести НЕ МОЖЕ · його чіпляють до ярлика (див. README).
@@ -549,7 +579,7 @@ check_shell() {
         test -f cli/system/gui-path.sh || fail 'немає cli/system/gui-path.sh · кліковий запуск лишиться без Homebrew у PATH'
         grep -Fq 'cli/system/gui-path.sh' bdo \
             || fail 'єдиний вхід не лагодить PATH · значок у Dock помре на «немає php» (D89)'
-        note 'BDO.app: місток у cli/system/mac-app.sh, значок BDO.icns, Windows · bdo.ico'
+        note 'BDO.app: applet, зібраний із cli/system/mac-app.applescript; значок BDO.icns, Windows · bdo.ico'
     fi
 
     # Makefile не має права стати другою копією дерева команд.
