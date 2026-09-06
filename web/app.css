@@ -24,7 +24,7 @@
 body{margin:0;padding:24px;background:var(--s0);color:var(--tp);font-family:var(--sans);font-size:15px;line-height:1.6}
 .wrap{max-width:980px;margin:0 auto}
 h1{font-size:20px;font-weight:500;margin:0 0 4px}
-.sub{font-size:13px;color:var(--ts);margin:0 0 16px}
+.sub{font-size:13px;color:var(--tp);opacity:.82;margin:0 0 16px}
 .panel{background:var(--s1);border-radius:12px;padding:16px;margin-bottom:14px}
 .bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px}
 .pill{font-size:12px;padding:3px 9px;border-radius:6px}
@@ -227,7 +227,10 @@ textarea.grow:focus{outline:none;border-color:var(--bda)}
 .progress{height:6px;border-radius:999px;background:var(--s1);border:.5px solid var(--bd);
   overflow:hidden;margin:0 0 12px}
 .progress-bar{height:100%;width:0;background:var(--bda);border-radius:999px;
-  transition:width .3s ease}
+  transition:width .3s ease,background-color .3s ease}
+/* Пройдені кроки скінчились · смуга міняє колір, бо синій на 100% нічим не
+   відрізнявся від синього, який ось-ось зрушить. */
+.progress-bar.done{background:var(--ok-tx)}
 /* Первинна дія видно здалеку: зупинка прогону — не звичайна кнопка. */
 .btn-primary{background:var(--acc-bg);color:var(--acc-tx);border-color:var(--bda);font-weight:500}
 .btn-primary:hover{filter:brightness(1.04)}
