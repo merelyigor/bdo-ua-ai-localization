@@ -574,7 +574,7 @@ cli/system/web.sh           сервер сторінки: вільний пор
 cli/system/web-router.php   межа читання й дій: лише GET, дії лише POST
 bdo.bat                     запуск інтерфейсу з Windows через WSL2
 BDO.app                     значок для Dock на macOS · місток у cli/system/mac-app.sh
-cli/system/mac-app.sh       логіка значка: підняти, відкрити або зупинити
+cli/system/mac-app.sh       логіка значка: підняти або перехопити сервер, закрити · зупинити
 bdo.ico                     значок для ярлика Windows · сам .bat його не несе
 roles/translation-*.md      промпт кожної ролі · самодостатній, без include
 config/roles.json           модель, схема й температура кожної ролі
