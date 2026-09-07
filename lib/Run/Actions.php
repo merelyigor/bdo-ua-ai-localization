@@ -122,7 +122,7 @@ final class Actions
 
             case 'run.stop':
                 return [
-                    'steps' => [['./bdo', 'watch', '--stop']],
+                    'steps' => [['./bdo', 'run', 'stop', 'натиснуто «зупинити» на сторінці']],
                     'env' => [],
                     'detached' => false,
                     'needs_confirm' => false,

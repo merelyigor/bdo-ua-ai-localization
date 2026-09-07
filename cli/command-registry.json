@@ -49,8 +49,8 @@
           "macOS, Linux або Windows/WSL2 preflight"
         ],
         [
-          "run start|show|end|drive",
-          "зафіксувати / показати / зняти ціль; JSON-крок рушія"
+          "run start|show|end|drive|stop",
+          "зафіксувати / показати / зняти ціль; JSON-крок рушія; stop · зупинка РІШЕННЯМ людини з підписом у журналі пачки"
         ],
         [
           "patches [N|all] [machine|manual|both] [--full]",
@@ -291,7 +291,8 @@
     "^\\.\\/bdo gif( --tape)?$",
     "^\\./bdo loop( --batches [0-9]+)?$",
     "^\\./bdo models-run( [0-9]+)?$",
-    "^\\./bdo timer( (start|status|check))?$"
+    "^\\./bdo timer( (start|status|check))?$",
+    "^\\./bdo run stop( .{1,120})?$"
   ],
   "flow_commands": [
     "./bdo env",

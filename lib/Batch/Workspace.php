@@ -237,6 +237,31 @@ final class Workspace
         }, 'child_dispatch:'.$role.':'.max(0, $items));
     }
 
+    /**
+     * Зафіксувати, що прогін зупинила ЛЮДИНА, а не збій.
+     *
+     * Навіщо. `./bdo watch --stop` убивав сесію роботи й не писав нічого, тому
+     * пачка, яка стоїть, нічого про себе не казала: останній рядок журналу був
+     * однаковий і після натискання «зупинити», і після падіння циклу. Власник
+     * прямо спитав, як їх відрізнити · відрізнити було НІЯК (D98).
+     *
+     * СТАН НЕ МІНЯЄТЬСЯ. Зупинка не є відмовою: пачка лишається на своєму
+     * кроці, і `mode start` продовжить її звідти ж. Тут лише підпис.
+     */
+    public function recordHumanStop(string $reason): array
+    {
+        $note = trim($reason);
+
+        return $this->updateManifest(static function (array $manifest) use ($note): array {
+            $manifest['human_stop'] = [
+                'at' => gmdate('c'),
+                'reason' => $note === '' ? 'без причини' : $note,
+            ];
+
+            return $manifest;
+        }, 'human_stop:'.($note === '' ? 'без причини' : $note));
+    }
+
     /** Збільшити лічильник спроб ролі без втрати попереднього стану. */
     public function incrementAttempt(string $role): array
     {

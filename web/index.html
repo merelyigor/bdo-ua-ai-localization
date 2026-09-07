@@ -40,7 +40,7 @@
         <span class="pill" id="statePhrase" style="background:var(--acc-bg);color:var(--acc-tx)" aria-live="polite">пачки немає</span>
         <span class="empty" id="elapsed" style="margin-left:auto"></span>
         <button id="stopBtn" class="btn-danger">зупинити</button>
-        <a href="/start" style="font-size:13px;color:var(--acc-tx)">новий прогін →</a>
+        <a href="/start" id="startLink" style="font-size:13px;color:var(--acc-tx)">новий прогін →</a>
       </div>
       <div class="steps" id="steps"></div>
       <div class="progress" id="batchProgressWrap" style="display:none" title=""><div class="progress-bar" id="batchProgress"></div></div>
@@ -439,13 +439,33 @@
     // «зупинити» або цикл вийшов сам · і в обох випадках вихід той самий.
     var idle = B.el('actionMsg');
     if (!s.running && b.id && (b.state || '') !== 'closed') {
-      idle.textContent = 'Прогін не йде, а пачка не закрита · вона стоїть на кроці «'
-        + (b.state_label || b.state || '?') + '». Це не зависання: процес циклу завершився '
-        + '(кнопкою «зупинити» або сам). Продовжити або почати заново · на сторінці «почати прогін».';
+      // ХТО ЗУПИНИВ · тепер це ФАКТ із журналу пачки, а не здогад. Раніше
+      // тут стояло «кнопкою „зупинити“ або сам», бо відрізнити було
+      // неможливо: `watch --stop` не писав нічого (D98).
+      var why = b.human_stop && b.human_stop.reason
+        ? 'Зупинив ви: ' + b.human_stop.reason + ' (' + b.human_stop.ago + ').'
+        : 'Підпису про зупинку людиною немає · цикл завершився сам.';
+      // ПРОДОВЖЕННЯ НАЗИВАЄМО ПРЯМО. «Почати прогін» звучить як «з нуля», але
+      // `mode start` при незакритій пачці РОБИТЬ RESUME і веде цю саму пачку
+      // з того самого кроку (`cli/run/run-mode.sh`). Власник питав, чи є
+      // взагалі функціонал продовження · він є, просто так не називався.
+      idle.textContent = 'Пачка не закрита · стоїть на кроці «'
+        + (b.state_label || b.state || '?') + '». Це не зависання. ' + why
+        + ' Щоб ПРОДОВЖИТИ саму цю пачку з цього кроку · посилання «продовжити пачку» вгорі праворуч: '
+        + 'нова пачка не братиметься, поки ця не закрита.';
       idle.style.color = 'var(--wr-tx)';
     } else if (idle.style.color === 'var(--wr-tx)') {
       idle.textContent = '';
       idle.style.color = '';
+    }
+    // Підпис посилання каже, що станеться НАСПРАВДІ.
+    var startLink = B.el('startLink');
+    if (startLink) {
+      var resume = !s.running && b.id && (b.state || '') !== 'closed';
+      startLink.textContent = resume ? 'продовжити пачку →' : 'новий прогін →';
+      startLink.title = resume
+        ? 'mode start побачить незакриту пачку ' + b.id + ' і продовжить її, а не візьме нову'
+        : '';
     }
 
     var key = calls.map(function (c) { return c.at + c.role + c.verdict + c.ms; }).join('|');

@@ -157,7 +157,8 @@ case "$group" in
             show)  sh_run cli/run/run-start.sh --show ;;
             end)   sh_run cli/run/run-start.sh --end ;;
             drive) sh_run cli/run/run-drive.sh "${@:3}" ;;
-            *)     die 'run: потрібно start, show, end або drive' ;;
+            stop)  sh_run cli/run/run-stop.sh "${@:3}" ;;
+            *)     die 'run: потрібно start, show, end, drive або stop' ;;
         esac
         ;;
     mode)

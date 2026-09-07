@@ -455,6 +455,58 @@ final class Snapshot
             'state_phrase' => self::phrase($state),
             'updated_at' => (string) ($manifest['updated_at'] ?? ''),
             'updated_ago' => Clock::ago($manifest['updated_at'] ?? null),
+            // ХТО ЗУПИНИВ · рішення людини чи збій.
+            //
+            // Раніше `./bdo watch --stop` не писав нічого, тому після факту
+            // відрізнити натискання «зупинити» від падіння циклу було
+            // НЕМОЖЛИВО: останній рядок журналу однаковий (D98). Тепер
+            // `./bdo run stop` лишає підпис, і сторінка його показує.
+            //
+            // Підпис ЗАСТАРІВАЄ: пачка, яку після зупинки продовжили, знову
+            // рухається, і казати «зупинено людиною» було б неправдою. Тому
+            // віддаємо його лише поки він СВІЖІШИЙ за останній рух пачки.
+            'human_stop' => $this->humanStop($manifest),
+        ];
+    }
+
+    /**
+     * Підпис ручної зупинки · порожньо, якщо його немає або пачка вже рушила.
+     *
+     * ЧОМУ ЖУРНАЛ, А НЕ `updated_at`. Перша редакція звіряла час підпису з
+     * `updated_at` манифеста · і не працювала НІКОЛИ: сам запис підпису йде
+     * через `updateManifest`, який цей `updated_at` і ставить, тому «рух»
+     * завжди виглядав пізнішим за зупинку. Спіймано власним тестом до першого
+     * показу на екрані.
+     *
+     * Журнал відповідає на питання прямо: остання подія пачки або є зупинкою,
+     * або її вже перекрив наступний крок.
+     *
+     * @param  array<string,mixed>  $manifest
+     * @return array{at:string,ago:string,reason:string}|null
+     */
+    private function humanStop(array $manifest): ?array
+    {
+        $stop = $manifest['human_stop'] ?? null;
+        $at = is_array($stop) ? (string) ($stop['at'] ?? '') : '';
+        $id = (string) ($manifest['id'] ?? '');
+        if ($at === '' || $id === '') {
+            return null;
+        }
+        $last = '';
+        foreach ($this->tailLines($this->path('batches/'.$id.'/journal.jsonl'), 1) as $line) {
+            $entry = json_decode($line, true);
+            if (is_array($entry)) {
+                $last = (string) ($entry['event'] ?? '');
+            }
+        }
+        if (! str_starts_with($last, 'human_stop:')) {
+            return null;   // пачку продовжили після зупинки · підпис застарів
+        }
+
+        return [
+            'at' => $at,
+            'ago' => Clock::ago($at),
+            'reason' => is_array($stop) ? (string) ($stop['reason'] ?? '') : '',
         ];
     }
 
