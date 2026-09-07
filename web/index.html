@@ -40,7 +40,7 @@
         <span class="pill" id="statePhrase" style="background:var(--acc-bg);color:var(--acc-tx)" aria-live="polite">пачки немає</span>
         <span class="empty" id="elapsed" style="margin-left:auto"></span>
         <button id="stopBtn" class="btn-danger">зупинити</button>
-        <a href="/start" id="startLink" style="font-size:13px;color:var(--acc-tx)">новий прогін →</a>
+        <a href="/start" id="startLink" class="as-button">новий прогін →</a>
       </div>
       <div class="steps" id="steps"></div>
       <div class="progress" id="batchProgressWrap" style="display:none" title=""><div class="progress-bar" id="batchProgress"></div></div>
@@ -463,6 +463,11 @@
     if (startLink) {
       var resume = !s.running && b.id && (b.state || '') !== 'closed';
       startLink.textContent = resume ? 'продовжити пачку →' : 'новий прогін →';
+      // ГОЛОВНА ДІЯ ВИГЛЯДАЄ ГОЛОВНОЮ. Поки пачка стоїть, продовжити її ·
+      // єдине, чого власник хоче від цього екрана, тому дія стає первинною
+      // кнопкою (вимога власника 2026-09-07). Класи · наявні, нового вигляду
+      // не заводимо.
+      startLink.classList.toggle('btn-primary', resume);
       startLink.title = resume
         ? 'mode start побачить незакриту пачку ' + b.id + ' і продовжить її, а не візьме нову'
         : '';

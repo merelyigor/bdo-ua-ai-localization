@@ -65,9 +65,13 @@ td.num,th.num{text-align:right;font-family:var(--mono)}
 .head .row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
 .head .lbl{font-size:11.5px;color:var(--tm);text-transform:uppercase;letter-spacing:.04em;min-width:96px}
 .dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--tm)}
-.dot.live{background:#3b6d11}
-.dot.poll{background:#854f0b}
-.dot.dead{background:#a32d2d}
+/* Крапки стану · ТОКЕНАМИ, а не літералами. Тут стояли hex зі СВІТЛОЇ
+   палітри, тому в темній темі індикатор лишався темно-зеленим на темному тлі ·
+   тобто «оновлюється наживо» було майже не видно саме в тій темі, у якій
+   власник працює. Знайдено перевіркою §15.1, а не оком. */
+.dot.live{background:var(--ok-tx)}
+.dot.poll{background:var(--wr-tx)}
+.dot.dead{background:var(--dn-tx)}
 
 /* --- навігація між екранами ------------------------------------------------
    Екрани окремі (рішення власника 2026-09-05: «краще окремі екрани, а не по
@@ -243,6 +247,13 @@ button:disabled{opacity:.45;cursor:not-allowed}
 .btn-primary{background:var(--acc-bg);color:var(--acc-tx);border-color:var(--bda);font-weight:500}
 .btn-primary:hover{filter:brightness(1.04)}
 .btn-danger{color:var(--dn-tx);border-color:var(--dn-tx)}
+/* ПОСИЛАННЯ, ЯКЕ Є ДІЄЮ, виглядає кнопкою · але лишається посиланням, щоб
+   Cmd+клік і далі відкривав нову вкладку. Другого вигляду кнопок тут НЕ
+   зʼявляється: властивості ті самі, що в базового `button`. */
+a.as-button{display:inline-block;font-family:inherit;font-size:13px;padding:4px 10px;
+  border-radius:8px;border:.5px solid var(--bd);background:transparent;color:var(--tp);
+  text-decoration:none;cursor:pointer}
+a.as-button:hover{background:var(--s2)}
 /* Пошук у переліках: той самий вигляд поля, що й решта вводу. */
 .search{min-width:200px}
 /* Рядки, по яких можна пробігти очима: hover тримає звʼязок «де я». */

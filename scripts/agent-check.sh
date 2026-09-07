@@ -473,6 +473,121 @@ check_public_safety() {
     note 'secret detector ловить key/hash fixtures і дозволяє technical identity_hash'
 }
 
+# ЦІЛІСНІСТЬ ДИЗАЙНУ · §15. Вимога власника 2026-09-07: дизайн мусить лишатись
+# одним продуктом після всіх майбутніх правок, і тримати це має код.
+#
+# Дизайн ламається не переробками, а дрібними доповненнями: кожен агент додає
+# «одну маленьку кнопку» зі своїм відтінком, і через десяток правок екран
+# перестає виглядати цілісно. Тому перевіряються рівно ті три речі, які
+# розповзаються першими: КОЛІР, РОЗМІР ТЕКСТУ і ВИГЛЯД КНОПКИ.
+check_design() {
+    step 'Цілісність дизайну (§15)'
+    local css='web/app.css'
+    test -f "$css" || fail "немає $css"
+
+    # §15.1 Палітра одна. Кольори живуть у блоках `:root`; будь-де інде · лише
+    # токени. Літерал на місці використання ламає ТЕМНУ тему тихо: світла
+    # виглядає нормально, і побачити це можна тільки оком.
+    local hex
+    hex="$(rg -n --glob 'web/*.html' -e '#[0-9a-fA-F]{3,8}\b' -e '\brgba?\(' -e '\bhsla?\(' \
+        2>/dev/null | sed -n '1p' || true)"
+    test -z "$hex" \
+        || fail "колір-літерал у розмітці замість var(--токен) · темна тема зламається тихо: $hex"
+
+    # У самому CSS літерали дозволені ЛИШЕ в межах блоків `:root`. Рахуємо
+    # рядки поза ними: вихід із блоку · рядок, що закриває дужку.
+    local stray
+    stray="$(awk '
+        /:root[[:space:]]*\{/ { inroot = 1 }
+        inroot && /^[[:space:]]*\}/ { inroot = 0; next }
+        !inroot && /#[0-9a-fA-F]{3}/ { print NR": "$0; exit }
+        !inroot && /rgba?\(/ { print NR": "$0; exit }
+    ' "$css")"
+    test -z "$stray" \
+        || fail "колір поза :root у $css · палітра розʼїхалась на дві: $stray"
+
+    # §15.2 Типографіка зі шкали. Четвертий рівень тексту, якого немає в
+    # жодному прототипі, зʼявляється саме так · одним `font-size:14px`.
+    local size
+    size="$(rg -o --glob 'web/*.html' 'font-size:[0-9]+px' 2>/dev/null \
+        | grep -vE 'font-size:(11|12|13)px' | sed -n '1p' || true)"
+    test -z "$size" \
+        || fail "розмір тексту поза шкалою 11/12/13 у розмітці: $size"
+
+    # §15.3 Кнопка бере НАЯВНИЙ клас. Інлайн-фон, рамка чи радіус на кнопці ·
+    # це шоста різновидність кнопки, яку потім ніхто не приведе до ладу.
+    local painted
+    painted="$(rg -n --glob 'web/*.html' \
+        '<(button|a)[^>]*style="[^"]*(background|border|border-radius):' 2>/dev/null \
+        | sed -n '1p' || true)"
+    test -z "$painted" \
+        || fail "кнопка перефарбована інлайн замість класу з app.css: $painted"
+
+    # Класи вигляду мусять ІСНУВАТИ в CSS. Клас-привид не падає ніде: кнопка
+    # просто виглядає базовою, і різницю видно лише оком.
+    local klass
+    # МЕЖА СЕЛЕКТОРА ОБОВʼЯЗКОВА. `grep -F .btn-danger` знаходить і
+    # `.btn-dangerX`, тому перевірка на підрядку доводила б нуль · саботаж
+    # перейменуванням класу вона пропускала.
+    for klass in btn-primary btn-danger chip pill as-button; do
+        grep -qE "\.${klass}([^a-zA-Z0-9_-]|$)" "$css" \
+            || fail "клас .$klass використовується, але в $css його немає"
+    done
+
+    # §15.4 Темна тема не другорядна: кожен токен мусить бути в ОБОХ блоках.
+    local light dark missing
+    # Беремо лише КОЛІРНІ токени: `--mono` і `--sans` є шрифтами, і дублювати
+    # їх у темній темі не треба · вимога цього не стосується.
+    light="$(awk '/^:root\{/,/^\}/' "$css" \
+        | grep -oE '\-\-[a-z0-9-]+:[^;]*' \
+        | grep -E ':[[:space:]]*(#|rgba?\()' \
+        | sed -E 's/:.*//' | sort -u)"
+    dark="$(awk '/prefers-color-scheme:dark/,0' "$css" | grep -oE '\-\-[a-z0-9-]+:' | tr -d ':' | sort -u)"
+    missing="$(comm -23 <(printf '%s\n' "$light") <(printf '%s\n' "$dark") | sed -n '1p')"
+    test -z "$missing" \
+        || fail "токен $missing є лише у світлій темі · у темній елемент буде іншого кольору"
+
+    # §16 БРАУЗЕР ВЛАСНИКА · обовʼязкова поверхня перевірки. MCP мусить бути
+    # описаний у ПРОЄКТІ: без цього наступна сесія перевірятиме сторінку в
+    # чужому браузері з чистим профілем, де немає ні токена власника, ні
+    # відкритої вкладки, у якій він тестує переклад.
+    test -f .mcp.json || fail 'немає .mcp.json · агент не дістане Chrome власника (§16.1)'
+    if have php; then
+        php -r '
+            $d = json_decode((string) file_get_contents(".mcp.json"), true);
+            $srv = $d["mcpServers"]["chrome-devtools"] ?? null;
+            if (! is_array($srv)) {
+                fwrite(STDERR, "у .mcp.json немає сервера chrome-devtools
+");
+                exit(1);
+            }
+            $args = implode(" ", (array) ($srv["args"] ?? []));
+            if (! str_contains($args, "chrome-devtools-mcp")) {
+                fwrite(STDERR, "chrome-devtools вказує не на chrome-devtools-mcp: $args
+");
+                exit(1);
+            }
+            // БЕЗ --autoConnect MCP підіймає СВІЙ Chrome із чистим профілем ·
+            // тобто мовчки перестає бути браузером власника (§16.2).
+            if (! str_contains($args, "--autoConnect")) {
+                fwrite(STDERR, "chrome-devtools без --autoConnect · візьме чужий Chrome, а не вкладку власника
+");
+                exit(1);
+            }
+        ' || fail 'конфіг MCP chrome-devtools неправильний (§16)'
+    fi
+    grep -Fq 'У ХРОМІ ВЛАСНИКА' AGENTS.md \
+        || fail 'AGENTS.md не вимагає перевіряти у браузері власника (§16)'
+    grep -Fq '§16 Браузер власника як' "$RULE_REFERENCE" \
+        || fail "у $RULE_REFERENCE немає §16 про браузер власника"
+    grep -Fq '§15 Цілісність дизайну' "$RULE_REFERENCE" \
+        || fail "у $RULE_REFERENCE немає §15 про цілісність дизайну"
+    grep -Fq 'ДИЗАЙН Є СИСТЕМОЮ' AGENTS.md \
+        || fail 'AGENTS.md не фіксує, що дизайн є системою (§15)'
+
+    note 'дизайн: палітра лише в :root, шкала 11/12/13, кнопки з наявних класів; MCP chrome-devtools на місці'
+}
+
 check_whitespace() {
     step 'Whitespace і conflict markers'
     git diff --check
@@ -824,11 +939,11 @@ profile="${1:-}"
 case "$profile" in
     preflight) report_preflight ;;
     docs) check_docs ;;
-    shell) check_rules; check_shell; check_whitespace ;;
+    shell) check_rules; check_shell; check_design; check_whitespace ;;
     agents) check_rules; check_agents; check_whitespace ;;
     runtime) check_rules; check_runtime ;;
     api) check_rules; check_api ;;
-    full) check_docs; check_shell; check_agents ;;
+    full) check_docs; check_shell; check_design; check_agents ;;
     *) printf 'Usage: %s {preflight|docs|shell|agents|runtime|api|full}\n' "$0" >&2; exit 2 ;;
 esac
 
