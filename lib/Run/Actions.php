@@ -68,6 +68,32 @@ final class Actions
      * @param  array<string,mixed>  $payload
      * @return array{steps:list<list<string>>,env:array<string,string>,detached:bool,needs_confirm:bool,label:string}
      */
+    /**
+     * Оточення прогону · роздуми й тестовий режим.
+     *
+     * ТЕСТОВИЙ ПРОГІН (`dry_run`) знімає рівно `--write` на кроці commit
+     * (`cli/run/run-drive.sh`, `BDO_DRY_RUN`). Усі інші кроки · переклад, QA,
+     * суддя, назви, карантин · ідуть ТИМ САМИМ кодом, що й бойовий: власник
+     * просив «усе повністю як у бойовому, просто без виливки на прод»
+     * (2026-09-07). Тому це змінна, а не окрема гілка конвеєра: гілка
+     * розійшлася б із бойовою при першій же зміні.
+     *
+     * @param  array<string,mixed>  $payload
+     * @return array<string,string>
+     */
+    private static function runEnv(array $payload): array
+    {
+        $env = [];
+        if (($payload['think'] ?? false) === true) {
+            $env['BDO_MODEL_THINK'] = '1';
+        }
+        if (($payload['dry_run'] ?? false) === true) {
+            $env['BDO_DRY_RUN'] = '1';
+        }
+
+        return $env;
+    }
+
     public static function plan(string $action, array $payload): array
     {
         switch ($action) {
@@ -112,12 +138,49 @@ final class Actions
                     // Роздуми коштують шестикратного часу (виміряно: 7.6 с
                     // проти 44.8 с на тому самому запиті), тому вмикаються
                     // явно й лише на цей прогін, а не назавжди в `.env`.
-                    'env' => (($payload['think'] ?? false) === true) ? ['BDO_MODEL_THINK' => '1'] : [],
+                    'env' => self::runEnv($payload),
                     'detached' => true,
                     // Запис у PROD незворотний, тому підтвердження вимагає КОД,
                     // а не галочка в розмітці: розмітку видно й можна обійти.
-                    'needs_confirm' => true,
-                    'label' => 'почати прогін',
+                    //
+                    // ТЕСТОВИЙ ПРОГІН підтвердження НЕ вимагає: він проходить
+                    // усі кроки, але нічого не надсилає, тому нема чого
+                    // ставати незворотним.
+                    'needs_confirm' => ($payload['dry_run'] ?? false) !== true,
+                    'label' => ($payload['dry_run'] ?? false) === true
+                        ? 'тестовий прогін (без запису)'
+                        : 'почати прогін',
+                ];
+
+            // ПРОДОВЖИТИ ПАЧКУ, ЩО СТОЇТЬ · дія, а не перехід на форму.
+            //
+            // Спершу тут було лише перейменоване посилання на `/start`, і це
+            // повторило той самий дефект, який воно мало закрити: власник
+            // натиснув «продовжити пачку», а опинився на формі вибору режиму
+            // й патча · причому вибір там усе одно був би ПРОІГНОРОВАНИЙ,
+            // бо `mode start` при незакритій пачці робить resume (D101).
+            //
+            // `mode start` тут НЕ потрібен: ціль уже зафіксована в
+            // `state/run-target`, пачка вже відібрана, а `run drive` веде її з
+            // того самого кроку. Тому крок рівно один · цикл.
+            //
+            // Підтвердження ОБОВʼЯЗКОВЕ: продовження доводить пачку до запису
+            // в PROD так само, як новий прогін.
+            case 'run.continue':
+                return [
+                    'steps' => [
+                        // Завершена сесія tmux лишається навмисно (щоб було
+                        // видно останній екран), тому без цього наступний
+                        // старт падав би на «сесія bdo уже існує» (D72).
+                        ['./bdo', 'watch', '--stop'],
+                        ['./bdo', 'watch', 'loop', '--batches', '1'],
+                    ],
+                    'env' => self::runEnv($payload),
+                    'detached' => true,
+                    'needs_confirm' => ($payload['dry_run'] ?? false) !== true,
+                    'label' => ($payload['dry_run'] ?? false) === true
+                        ? 'продовжити пачку без запису'
+                        : 'продовжити пачку',
                 ];
 
             case 'run.stop':

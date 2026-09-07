@@ -46,8 +46,19 @@ final class Runner
         if ($plan['needs_confirm'] && $confirm !== true) {
             throw new RuntimeException('дія «'.$plan['label'].'» пише в PROD і вимагає підтвердження');
         }
-        if ($action === 'run.start' && (new Snapshot($this->stateDir))->running()) {
+        // Другий прогін поверх живого · межа в КОДІ, а не в розмітці.
+        // Продовження пачки має ту саму ваду, якщо цикл уже йде: два цикли на
+        // одну пачку писали б в один манифест.
+        if (in_array($action, ['run.start', 'run.continue'], true)
+            && (new Snapshot($this->stateDir))->running()) {
             throw new RuntimeException('прогін уже працює · дочекайся кінця або зупини його');
+        }
+        // ПРОДОВЖУВАТИ НЕМА ЧОГО · кажемо це, а не запускаємо цикл наосліп.
+        if ($action === 'run.continue') {
+            $batch = (new Snapshot($this->stateDir))->toArray()['batch'];
+            if (($batch['id'] ?? null) === null || ($batch['id'] ?? '') === '') {
+                throw new RuntimeException('немає незакритої пачки · продовжувати нема чого, починай новий прогін');
+            }
         }
 
         $lock = $this->acquireLock();

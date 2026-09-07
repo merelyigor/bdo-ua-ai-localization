@@ -22,7 +22,26 @@
 # Файл призначений для `source`, тому НЕ має біта виконання · як
 # `cli/system/select-env.sh`.
 
-if ! command -v php >/dev/null 2>&1; then
+# ЧОМУ УМОВА НЕ ЛИШЕ ПРО PHP.
+#
+# Перша редакція лагодила PATH тільки коли не знаходився `php` · і цього
+# виявилось НЕ ДОСИТЬ. Кліковий запуск дав PATH без Homebrew, але з
+# `/usr/local/bin`, де php знайшовся; лагодження не спрацювало, і `bash` у
+# цьому PATH лишився `/bin/bash` 3.2.57. У результаті скрипти, які в терміналі
+# ідуть у bash 5, з-під значка виконувались у bash 3.2 · і пачка власника
+# стала на `qa_args[@]: unbound variable`, чого в bash 5 не буває взагалі
+# (D106). Тобто кліковий запуск міняв не лише доступність команд, а САМ
+# ІНТЕРПРЕТАТОР.
+#
+# Тому умова питає ще й версію bash: 4.4 · рубіж, з якого порожній масив під
+# `set -u` перестав падати.
+_bdo_needs_path=0
+command -v php >/dev/null 2>&1 || _bdo_needs_path=1
+test "${BASH_VERSINFO[0]:-0}" -ge 5 \
+    || { test "${BASH_VERSINFO[0]:-0}" -eq 4 && test "${BASH_VERSINFO[1]:-0}" -ge 4; } \
+    || _bdo_needs_path=1
+
+if [ "$_bdo_needs_path" = 1 ]; then
     # Джерелом правди є ЛОГІН-ОБОЛОНКА власника: саме її `PATH` бачить `./bdo`
     # у терміналі, де набір працює. Відтворювати її здогадом не можна ·
     # Homebrew буває в `/opt/homebrew`, `/usr/local`, а буває й у власній теці.
@@ -40,17 +59,26 @@ if ! command -v php >/dev/null 2>&1; then
         unset _bdo_out _bdo_path
     fi
 
-    # Запасний шлях. Логін-оболонка могла не спрацювати (SHELL не заданий,
-    # `-lc` заборонений політикою, профіль впав). Тоді беремо типові місця ·
-    # це здогад, і саме тому він ДРУГИЙ, а не перший.
-    for _bdo_dir in /opt/homebrew/bin /usr/local/bin /opt/local/bin "$HOME/.local/bin"; do
+    # Запасний шлях, і він ЧАСТО ЄДИНИЙ, що працює.
+    #
+    # `zsh -lc` читає `.zprofile`/`.zlogin`, але НЕ `.zshrc` · а Homebrew у
+    # власника додається саме в `.zshrc`. Тому логін-оболонка віддає системний
+    # PATH від `path_helper`, без Homebrew, і виглядає це як успіх.
+    #
+    # СПЕРЕДУ, А НЕ В КІНЕЦЬ. Дописування в кінець нічого не лагодило: у
+    # клікового PATH уже є `/usr/local/bin` і `/bin`, тому `/bin/bash` 3.2
+    # знаходився РАНІШЕ за homebrew-bash 5, і скрипти далі виконувались старим
+    # інтерпретатором (D106). Ми хочемо саме ті інструменти, якими власник
+    # користується в терміналі, тому вони мусять мати пріоритет.
+    for _bdo_dir in "$HOME/.local/bin" /opt/local/bin /usr/local/bin /opt/homebrew/bin; do
         test -d "$_bdo_dir" || continue
         case ":$PATH:" in
-            *":$_bdo_dir:"*) ;;
-            *) PATH="$PATH:$_bdo_dir" ;;
+            *":$_bdo_dir:"*) PATH="$_bdo_dir:$(printf '%s' "$PATH" | sed -e "s~^$_bdo_dir:~~" -e "s~:$_bdo_dir:~:~g" -e "s~:$_bdo_dir\$~~")" ;;
+            *) PATH="$_bdo_dir:$PATH" ;;
         esac
     done
     unset _bdo_dir
 
     export PATH
 fi
+unset _bdo_needs_path

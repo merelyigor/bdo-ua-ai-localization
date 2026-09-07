@@ -29,7 +29,7 @@ file_put_contents($argv[1], json_encode(["data" => ["rows" => $rows]], JSON_THRO
 for mode in rows qa; do
     args=("$TMP/rows.json")
     test "$mode" = qa && args=(--qa "$TMP/rows.json")
-    BDO_STATE_DIR="$TMP/state" bash "$ROOT/cli/prepare/build-schema.sh" --out "$TMP/schema-$mode.json" "${args[@]}" >/dev/null
+    BDO_STATE_DIR="$TMP/state" bash "$ROOT/cli/prepare/build-schema.sh" --out "$TMP/schema-$mode.json" ${args[@]+"${args[@]}"} >/dev/null
     php -r '
     $s = json_decode((string) file_get_contents($argv[1]), true, 512, JSON_THROW_ON_ERROR);
     $mode = $argv[2];

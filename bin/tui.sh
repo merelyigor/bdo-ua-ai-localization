@@ -261,7 +261,7 @@ run_plan() {
     while IFS= read -r line; do
         if [ -z "$line" ]; then
             if [ "${#argv[@]}" -gt 0 ]; then
-                "${argv[@]}" || step_failed=1
+                ${argv[@]+"${argv[@]}"} || step_failed=1
                 argv=()
             fi
             test "$step_failed" = 0 || break
@@ -277,7 +277,7 @@ run_plan() {
         argv+=("$line")
     done <<< "$planned"
     if [ "$step_failed" = 0 ] && [ "${#argv[@]}" -gt 0 ]; then
-        "${argv[@]}" || step_failed=1
+        ${argv[@]+"${argv[@]}"} || step_failed=1
     fi
 
     return "$step_failed"

@@ -72,4 +72,21 @@ before="$PATH"
 test "$PATH" = "$before" \
     || fail 'gui-path.sh змінює PATH там, де php уже знайдено · зайвий підпроцес на кожен виклик'
 
-printf 'gui path: OK · кліковий запуск бачить php, профіль не отруює PATH, у терміналі змін немає.\n'
+# 5. КЛІКОВИЙ ЗАПУСК ДАЄ ІНШИЙ ІНТЕРПРЕТАТОР · головна частина (D106).
+#
+# PATH значка містить `/usr/local/bin` і `/bin`, тому `php` там знаходився, а
+# `bash` лишався `/bin/bash` 3.2.57 · і скрипти, які в терміналі йдуть у
+# bash 5, з-під значка виконувались старим bash. Пачка власника стала на
+# `qa_args[@]: unbound variable`, чого в bash 5 не буває взагалі.
+#
+# Тому перевіряємо саме ВЕРСІЮ bash, а не наявність php: наявності було не
+# досить, і перша редакція цього не ловила.
+CLICK_PATH='/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin'
+got="$(env -i PATH="$CLICK_PATH" HOME="$HOME" SHELL="${SHELL:-/bin/zsh}" \
+    bash -c '. "$1/cli/system/gui-path.sh"; printf %s "${BASH_VERSINFO[0]}.${BASH_VERSINFO[1]}:$(bash -c "printf %s \"\${BASH_VERSINFO[0]}\"")"' _ "$ROOT" 2>/dev/null)"
+child="${got##*:}"
+test -n "$child" || fail 'не вдалося дізнатись версію bash після відновлення PATH'
+test "$child" -ge 4 \
+    || fail "після відновлення PATH дочірній bash усе одно $child · кліковий запуск виконує скрипти старим інтерпретатором (D106)"
+
+printf 'gui path: OK · кліковий запуск бачить php і НОВИЙ bash, профіль не отруює PATH, у терміналі змін немає.\n'

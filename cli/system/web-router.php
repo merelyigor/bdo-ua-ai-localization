@@ -130,7 +130,7 @@ if ($isAction && $origin === '') {
 // Порожні оболонки екранів і спільна статика · без токена (див. пункт 3):
 // у них немає жодного рядка даних, а без цього оновлення вкладки давало б
 // голий JSON замість сторінки.
-$publicPaths = ['/', '/index.html', '/queue', '/sessions', '/start', '/call', '/app.css', '/app.js', '/api/ping'];
+$publicPaths = ['/', '/index.html', '/queue', '/sessions', '/start', '/call', '/app.css', '/app.js', '/favicon.ico', '/api/ping'];
 $given = (string) ($_GET['t'] ?? ($_SERVER['HTTP_X_BDO_TOKEN'] ?? ''));
 if ($token === '') {
     $fail(500, 'token_missing_on_server', 'сервер запущено без BDO_WEB_TOKEN · запускай через ./bdo web');
@@ -180,6 +180,7 @@ switch ($path) {
     case '/call':
     case '/app.css':
     case '/app.js':
+    case '/favicon.ico':
         // Екрани окремі (рішення власника 2026-09-05), тому файлів кілька.
         // Але відображення «шлях -> файл» лишається ЗАКРИТИМ переліком: імена
         // задані тут, а не складаються з запиту, тому обхід теки неможливий
@@ -193,6 +194,16 @@ switch ($path) {
             '/call' => ['web/call.html', 'text/html; charset=utf-8'],
             '/app.css' => ['web/app.css', 'text/css; charset=utf-8'],
             '/app.js' => ['web/app.js', 'application/javascript; charset=utf-8'],
+            // ЗНАЧОК СТОРІНКИ. Без нього браузер щоразу просив
+            // `/favicon.ico`, а сервер віддавав 403 · у консолі власника
+            // висіла помилка, яка маскувала б справжні (D102).
+            //
+            // Саме `.ico`, а не SVG: цей шлях браузер просить САМ, навіть без
+            // `rel="icon"`, тому 403 повертався б і далі. Файл робиться з того
+            // самого тайла, що `BDO.icns` і `bdo.ico`
+            // (`scripts/build-icons.sh`) · одне обличчя в Dock, у ярлику й у
+            // вкладці, розійтись вони не можуть за побудовою.
+            '/favicon.ico' => ['web/favicon.ico', 'image/x-icon'],
         ];
         [$relative, $type] = $files[$path];
         $file = dirname(__DIR__, 2).'/'.$relative;

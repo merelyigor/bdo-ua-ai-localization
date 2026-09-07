@@ -352,7 +352,7 @@ prepare_worker() {
         # Контекст пачки везе затверджені терміни глосарію, тому його недоступність
         # зупиняє крок, а не робить «слабший payload»: без термінів пачка йде в
         # модерацію цілком (пачка 20260828_100456, 11 рядків одного острова).
-        if ! "$SCRIPT_DIR/cli/prepare/worker-payload.sh" "$rows" "${args[@]}" > "$B/worker-payload.json.new"; then
+        if ! "$SCRIPT_DIR/cli/prepare/worker-payload.sh" "$rows" ${args[@]+"${args[@]}"} > "$B/worker-payload.json.new"; then
             rm -f "$B/worker-payload.json.new"
             emit 0 "$(field state)" '{"kind":"retry","reason":"context_unavailable","hint":"Контекст пачки (терміни глосарію) недоступний. Це минуще: виконай ./bdo run drive ще раз. Якщо повторюється · скажи власнику перевірити API."}'
             exit 1
@@ -433,7 +433,7 @@ dispatch_qa() {
     local clean_rows split_args=()
     test -s "$B/memory-candidate.json" && split_args=(--memory "$B/memory-candidate.json")
     "$SCRIPT_DIR/cli/quality/mechanical-split.sh" "$B/rows.json" "$B/clean.json" \
-        "$B/pre-verdicts.json" "$B/qa-subset.json" "${split_args[@]}" > "$B/mechanical-split.txt" 2>&1 || {
+        "$B/pre-verdicts.json" "$B/qa-subset.json" ${split_args[@]+"${split_args[@]}"} > "$B/mechanical-split.txt" 2>&1 || {
         # Розділювач не є ворітьми: його збій не має зупиняти пачку, лише
         # повертає стару поведінку · QA дивиться всі рядки.
         cp "$B/rows.json" "$B/qa-subset.json"; echo '[]' > "$B/pre-verdicts.json"
@@ -452,7 +452,7 @@ dispatch_qa() {
     fi
     "$SCRIPT_DIR/cli/prepare/build-schema.sh" --qa "$B/qa-subset.json" >/dev/null
     qa_args=(); test "$(field mode)" = improve && qa_args+=(--with-current)
-    "$SCRIPT_DIR/cli/prepare/qa-payload.sh" "$B/qa-subset.json" "$B/clean.json" "${qa_args[@]}" > "$B/qa-payload.json"
+    "$SCRIPT_DIR/cli/prepare/qa-payload.sh" "$B/qa-subset.json" "$B/clean.json" ${qa_args[@]+"${qa_args[@]}"} > "$B/qa-payload.json"
     transition_or_stay awaiting_qa
     child awaiting_qa translation-qa "$B/qa-payload.json" "$B/verdicts.json"
 }
@@ -914,7 +914,20 @@ ready_to_commit|committing)
     test "$state" = committing || transition committing
     judge_args=(); test -s "$B/judge-verdicts.json" && judge_args=(--judge "$B/judge-verdicts.json")
     test -n "$final_validate" && judge_args+=(--api-rejected "$final_validate")
-    if bash "$TIMED" commit "$SCRIPT_DIR/cli/batch/batch-commit.sh" "$B/rows.json" "$B/final-candidate.json" "$B/final-verdicts.json" --channel "$(field channel)" --idempotency-key-prefix "$key" "${judge_args[@]}" --write > "$B/commit-report.txt" 2>&1; then
+    # ТЕСТОВИЙ ПРОГІН · усе як на PROD, крім самого запису (вимога власника
+    # 2026-09-07: «щоб цього не було на проді, але все пройшло так само, всі
+    # етапи перекладу»).
+    #
+    # Механізм не новий: `batch-commit.sh` без `--write` рахує все й формує
+    # карантин, але нічого не надсилає (див. його шапку). Тому тестовий прогін
+    # знімає РІВНО один аргумент, і жоден інший крок не міняється · переклад,
+    # QA, суддя, назви йдуть тим самим кодом, що й на бойовому.
+    write_args=(--write)
+    if [ "${BDO_DRY_RUN:-0}" = 1 ]; then
+        write_args=()
+        printf 'ТЕСТОВИЙ ПРОГІН: запису в API не буде (BDO_DRY_RUN=1)\n' >&2
+    fi
+    if bash "$TIMED" commit "$SCRIPT_DIR/cli/batch/batch-commit.sh" "$B/rows.json" "$B/final-candidate.json" "$B/final-verdicts.json" --channel "$(field channel)" --idempotency-key-prefix "$key" ${judge_args[@]+"${judge_args[@]}"} ${write_args[@]+"${write_args[@]}"} > "$B/commit-report.txt" 2>&1; then
         complete commit "$B/commit-report.txt"; transition committed; transition verified; "$SCRIPT_DIR/cli/prepare/build-schema.sh" --clear >/dev/null
         # Конверт рахується ДО прибирання: `completion` читає commit-report.txt
         # і batch-summary.json із теки, яку prune зараз видалить.

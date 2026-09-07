@@ -576,14 +576,28 @@ check_design() {
             }
         ' || fail 'конфіг MCP chrome-devtools неправильний (§16)'
     fi
-    grep -Fq 'У ХРОМІ ВЛАСНИКА' AGENTS.md \
-        || fail 'AGENTS.md не вимагає перевіряти у браузері власника (§16)'
+    grep -Fq 'вкладці власника' AGENTS.md \
+        || fail 'AGENTS.md не вимагає перевіряти у вкладці власника (§16)'
     # Стан під'єднання мусить питатись КОМАНДОЮ · інакше кожна сесія знову
     # витрачає спроби на діагностику, а `curl` до 9222 вводить в оману (§16.6).
     test -x cli/system/browser-check.sh \
         || fail 'немає cli/system/browser-check.sh · стан під\x27єднання до браузера власника нічим не перевірити'
     grep -Fq 'browser)' bdo \
         || fail 'єдиний вхід не має ./bdo browser · діагностика браузера недосяжна'
+    # ПОРЯДОК закриття зміни в `web/**` мусить стояти в правилах, бо саме їх
+    # агент читає на початку сесії · інакше наступна сесія знову перевірить
+    # сторінку локально й назве це перевіркою (§16.7).
+    grep -Fq 'ЗАКРИВАЄТЬСЯ ПРОГОНОМ У БРАУЗЕРІ ВЛАСНИКА' AGENTS.md \
+        || fail 'AGENTS.md не фіксує обовʼязкового прогону в браузері власника (§16.7)'
+    # МЕЖА НАТИСКАННЯ. Дозвіл тиснути дії з наслідками існує РАЗОМ зі своїм
+    # переліком заборон · без нього наступна сесія видалить сесію власника,
+    # вважаючи це «тестуванням» (§16.4).
+    grep -Fq 'ЗАБОРОНЕНО без окремого слова власника' "$RULE_REFERENCE" \
+        || fail "у $RULE_REFERENCE немає межі для дій з наслідками (§16.4)"
+    grep -Fq 'видалення сесій і журналів' AGENTS.md \
+        || fail 'AGENTS.md не називає, чого агент НЕ тисне сам (§16.4)'
+    grep -Fq '§16.7 ОБОВ' "$RULE_REFERENCE" \
+        || fail "у $RULE_REFERENCE немає §16.7 з порядком кроків"
     grep -Fq '§16 Браузер власника як' "$RULE_REFERENCE" \
         || fail "у $RULE_REFERENCE немає §16 про браузер власника"
     grep -Fq '§15 Цілісність дизайну' "$RULE_REFERENCE" \
@@ -592,6 +606,35 @@ check_design() {
         || fail 'AGENTS.md не фіксує, що дизайн є системою (§15)'
 
     note 'дизайн: палітра лише в :root, шкала 11/12/13, кнопки з наявних класів; MCP chrome-devtools на місці'
+}
+
+# ПОРОЖНІЙ МАСИВ ПІД `set -u` · клас, який ловиться лише на macOS.
+#
+# `/bin/bash` тут 3.2.57, і в ньому `"${arr[@]}"` на ПОРОЖНЬОМУ масиві падає з
+# `unbound variable`. У bash 5.x (homebrew) це працює, тому дефект не видно ні
+# в розробці, ні в `bash -n` · він вилазить рівно на прогоні, коли гілка не
+# додала жодного аргументу. Саме так пачка власника стала на кроці QA
+# (`qa_args[@]: unbound variable`, D106).
+#
+# Запобіжник: `${arr[@]+"${arr[@]}"}` · нічого на порожньому, усі елементи на
+# непорожньому. Працює в обох версіях.
+check_bash32_arrays() {
+    step 'Порожні масиви під set -u (bash 3.2)'
+    local hits
+    # Коментарі не виконуються · пояснення самого правила не є порушенням.
+    hits="$(rg -n '"\$\{[a-z_]+\[@\]\}"' --glob '*.sh' cli bin scripts tests 2>/dev/null \
+        | grep -v '\[@\]+' | grep -vE '^[^:]+:[0-9]+:[[:space:]]*#' | sed -n '1,3p' || true)"
+    test -z "$hits" \
+        || fail "розкриття масиву без запобіжника · упаде на порожньому в bash 3.2: $hits"
+    # Перевірка МУСИТЬ мати чим доводити: без старого bash вона нічого не
+    # значить, і про це треба сказати, а не тихо пройти.
+    if [ -x /bin/bash ] && /bin/bash --version | grep -q 'version 3\.'; then
+        /bin/bash -c 'set -u; a=(); printf "%s" ${a[@]+"${a[@]}"}' >/dev/null 2>&1 \
+            || fail 'запобіжник ${a[@]+...} не працює в /bin/bash · перевірка недійсна'
+        note 'bash 3.2 на місці · запобіжник перевірено ним самим'
+    else
+        note 'bash 3.2 недоступний · перевірено лише статично'
+    fi
 }
 
 check_whitespace() {
@@ -694,6 +737,19 @@ check_shell() {
         # Windows-значок лишається в теці набору поруч із `bdo.bat`. Сам `.bat`
         # свого значка нести НЕ МОЖЕ · його чіпляють до ярлика (див. README).
         test -f bdo.ico || fail 'немає bdo.ico · ярлику Windows нема чого показати'
+        # ОДНЕ ОБЛИЧЧЯ НА ТРИ ПОВЕРХНІ. Перша редакція значків робилась із теки
+        # завантажень власника: ті файли зникнуть, і перегенерувати значок буде
+        # нізвідки, а «схожий» дав би три різні обличчя в Dock, у ярлику й у
+        # вкладці. Тому джерело лежить у репозиторії, а збирач один.
+        test -x scripts/build-icons.sh \
+            || fail 'немає scripts/build-icons.sh · значки нічим перегенерувати'
+        local icon_src
+        icon_src="$(sed -n "s/^readonly SRC='\(.*\)'$/\1/p" scripts/build-icons.sh | sed -n '1p')"
+        test -n "$icon_src" || fail 'scripts/build-icons.sh не називає джерела значків'
+        test -f "$icon_src" \
+            || fail "джерело значків $icon_src немає в репозиторії · перегенерувати буде нізвідки"
+        test -f web/favicon.ico \
+            || fail 'немає web/favicon.ico · браузер просить цей шлях САМ і дістане 403 (D102)'
         # КЛІКОВИЙ ЗАПУСК НЕ МАЄ PATH ТЕРМІНАЛА (D89). Перевірка структурна й
         # доповнює `tests/gui-path.sh`: той тест SKIP-иться там, де php лежить
         # у базовому PATH, а прибрати рядок із `bdo` можна на будь-якій машині.
@@ -945,11 +1001,11 @@ profile="${1:-}"
 case "$profile" in
     preflight) report_preflight ;;
     docs) check_docs ;;
-    shell) check_rules; check_shell; check_design; check_whitespace ;;
+    shell) check_rules; check_shell; check_design; check_bash32_arrays; check_whitespace ;;
     agents) check_rules; check_agents; check_whitespace ;;
     runtime) check_rules; check_runtime ;;
     api) check_rules; check_api ;;
-    full) check_docs; check_shell; check_design; check_agents ;;
+    full) check_docs; check_shell; check_design; check_bash32_arrays; check_agents ;;
     *) printf 'Usage: %s {preflight|docs|shell|agents|runtime|api|full}\n' "$0" >&2; exit 2 ;;
 esac
 

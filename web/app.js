@@ -109,6 +109,26 @@
 
   function num(n) { return (Number(n) || 0).toLocaleString('uk-UA'); }
 
+  // ІГРОВА РОЗМІТКА · НЕ ДЛЯ ОКА. Рядки BDO несуть PA-теги
+  // (`<PAColor0xffe9bd23>`, `<PAOldColor>`, `<TextBind:…>`) і `\n`, і в
+  // блоці вердиктів вони перетворювали переклад у стіну сміття на пів
+  // екрана: власник бачив розмітку, а не текст (D105).
+  //
+  // ЦЕ ПОКАЗ, А НЕ ДАНІ. Ми нічого не змінюємо в тому, що поїде в API ·
+  // чистимо рівно те, що малюємо, а повний рядок лишається в підказці.
+  // Обрізати теги в САМИХ даних заборонено: `keep` і placeholders на них
+  // тримаються.
+  function plain(text, limit) {
+    var out = String(text == null ? '' : text)
+      .replace(/<PA[^>]*>/g, '')
+      .replace(/<TextBind:[^>]*>/g, '')
+      .replace(/\r?\n+/g, ' ')
+      .replace(/\s{2,}/g, ' ')
+      .trim();
+    var max = limit || 220;
+    return out.length > max ? out.slice(0, max - 1) + '…' : out;
+  }
+
   function secs(ms) {
     var s = (Number(ms) || 0) / 1000;
     return s >= 10 ? Math.round(s) + ' с' : s.toFixed(1) + ' с';
@@ -735,6 +755,7 @@
     esc: esc,
     num: num,
     secs: secs,
+    plain: plain,
     when: when,
     ensureToken: ensureToken,
     tokenRejected: tokenRejected,

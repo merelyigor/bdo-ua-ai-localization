@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="referrer" content="no-referrer">
 <title>bdo · почати прогін</title>
+<link rel="icon" href="/favicon.ico" sizes="16x16 32x32 48x48">
 <link rel="stylesheet" href="/app.css">
 <!--
   ЕКРАН СТАРТУ · за макетом `docs/prototypes/04-start.html`.
@@ -73,6 +74,13 @@
       </label>
       <div class="bar">
         <button id="startBtn">почати прогін</button>
+        <!-- ТЕСТОВИЙ ПРОГІН · усі етапи як у бойовому, без запису в API
+             (вимога власника 2026-09-07). Окрема кнопка, а не галочка:
+             галочку легко не помітити, і власник запустив би бойовий,
+             думаючи, що це тест. Підтвердження PROD їй не потрібне · вона
+             нічого не надсилає, тому й незворотності немає. -->
+        <button id="dryBtn">тестовий прогін · без запису</button>
+        <span class="empty" style="font-size:11px">знімає лише <code>--write</code> на кроці запису · решта кроків та сама</span>
         <span id="actionMsg" class="empty"></span>
         <button id="logToggle" style="display:none;margin-left:auto">показати вивід</button>
       </div>
@@ -273,16 +281,21 @@
     this.textContent = short ? 'згорнути вивід' : 'показати вивід';
   };
 
-  B.el('startBtn').onclick = function () {
+  // ОДИН ЗАПУСКАЧ НА ДВІ КНОПКИ. Друга копія цієї функції розійшлася б із
+  // першою при наступній зміні · тестовий прогін мусить іти ТИМ САМИМ шляхом,
+  // інакше він перестане бути «як бойовий».
+  function launch(dry) {
     var msg = B.el('actionMsg');
-    if (!B.el('confirm').checked) {
+    if (!dry && !B.el('confirm').checked) {
       msg.textContent = 'спершу підтверди запис у ' + B.el('confirmEnv').textContent;
       msg.style.color = 'var(--dn-tx)';
       return;
     }
-    msg.textContent = 'запускаю…';
+    var p = payload();
+    if (dry) { p.dry_run = true; }
+    msg.textContent = dry ? 'запускаю тестовий прогін (без запису)…' : 'запускаю…';
     msg.style.color = 'var(--ts)';
-    B.post('/api/action', { action: 'run.start', payload: payload(), confirm: true }).then(function (res) {
+    B.post('/api/action', { action: 'run.start', payload: p, confirm: true }).then(function (res) {
       var steps = (res.body && res.body.steps) || [];
       var log = B.el('actionLog');
       if (res.status >= 400 && !steps.length) {
@@ -309,7 +322,10 @@
         msg.style.color = 'var(--dn-tx)';
       }
     });
-  };
+  }
+
+  B.el('startBtn').onclick = function () { launch(false); };
+  B.el('dryBtn').onclick = function () { launch(true); };
 
   renderModes();
   refresh();

@@ -304,8 +304,93 @@ grep -Fq 'dur(s.minutes)' "$ROOT/web/sessions.html" \
 # друку стояло порожнє майже весь виклик, хоч роль працювала.
 grep -Fq "id=\"thinkbox\"" "$ROOT/web/index.html" \
     || fail 'немає вікна роздумів · власник не побачить, що модель думає'
-grep -Fq 'thinkChip' "$ROOT/web/index.html" \
-    || fail 'немає чипа «роздуми» · вікно неможливо ні показати, ні сховати'
+# РОЗДУМИ ПІДПИСАНІ Й ВИДНО ЗАВЖДИ, коли вони є. Чип тут БУВ і був марний:
+# він живе лише в картці живого виклику, тому поза прогоном його немає, і
+# власник тиснув «нічого не відбувалось» (D103). Відрізняє чернетку від
+# відповіді ПІДПИС, а не кнопка.
+grep -Fq 'роздуми моделі · чернетка, не переклад' "$ROOT/web/index.html" \
+    || fail 'роздуми не підписані · власник читатиме чернетку як переклад'
+
+# ІГРОВА РОЗМІТКА НЕ ДЛЯ ОКА (D105). PA-теги й `\n` робили з блоку вердиктів
+# стіну сміття на пів екрана · власник бачив розмітку, а не переклад.
+grep -Fq 'B.plain(r.source)' "$ROOT/web/index.html" \
+    || fail 'оригінал у вердиктах показується з PA-розміткою · читати неможливо'
+grep -Fq 'B.plain(r.text)' "$ROOT/web/index.html" \
+    || fail 'переклад у вердиктах показується з PA-розміткою'
+grep -Fq '>оригінал<' "$ROOT/web/index.html" \
+    || fail 'у вердиктах немає підпису «оригінал» · два монотипні рядки читаються як один текст'
+# НУЛЬ ВИРОКІВ · НОРМАЛЬНИЙ СТАН (D107). «0 з вироком» поруч із повними
+# текстами читалось як збій, хоч це просто «QA ще не проходив».
+grep -Fq 'вироків ще немає · перевірка якості не проходила' "$ROOT/web/index.html" \
+    || fail 'нуль вироків показується числом · читається як помилка (D107)'
+# РОБОТА РОЛІ НЕ ЗАЙМАЄ ПІВ ЕКРАНА (D108): два технічні файли по 12 КБ при
+# спільній стелі 420 px витісняли все інше.
+grep -Fq 'pre class="log work"' "$ROOT/web/index.html" \
+    || fail 'блок роботи ролі без класу work · сирий JSON знову зʼїсть пів екрана'
+grep -Fq 'pre.log.work{max-height' "$ROOT/web/app.css" \
+    || fail 'немає стелі висоти для роботи ролі'
+
+# ТЕСТОВИЙ ПРОГІН · усі етапи як у бойовому, без запису в API (вимога власника
+# 2026-09-07). Окремою КНОПКОЮ, а не галочкою: галочку легко не помітити й
+# запустити бойовий, думаючи, що це тест.
+grep -Fq 'id="dryBtn"' "$ROOT/web/start.html" \
+    || fail 'немає кнопки тестового прогону'
+grep -Fq 'p.dry_run = true' "$ROOT/web/start.html" \
+    || fail 'кнопка тестового прогону не передає dry_run'
+# ОДИН ЗАПУСКАЧ НА ДВІ КНОПКИ: друга копія розійшлася б, і тестовий прогін
+# перестав би бути «як бойовий».
+test "$(grep -c "action: 'run.start'" "$ROOT/web/start.html")" -eq 1 \
+    || fail 'запуск прогону описаний двічі · тестовий і бойовий розійдуться'
+php -r '
+require "'"$ROOT"'/lib/autoload.php";
+$dry = Bdo\Translate\Run\Actions::plan("run.start", ["mode" => "patch", "dry_run" => true]);
+$live = Bdo\Translate\Run\Actions::plan("run.start", ["mode" => "patch"]);
+if (($dry["env"]["BDO_DRY_RUN"] ?? "") !== "1") {
+    fwrite(STDERR, "тестовий прогін без BDO_DRY_RUN · запис піде в PROD\n"); exit(1);
+}
+if (isset($live["env"]["BDO_DRY_RUN"])) {
+    fwrite(STDERR, "бойовий прогін отримав BDO_DRY_RUN · записувати не буде\n"); exit(1);
+}
+// Кроки мусять бути ТІ САМІ: різниця рівно в змінній, інакше тестовий прогін
+// перестає перевіряти бойовий шлях.
+if (json_encode($dry["steps"]) !== json_encode($live["steps"])) {
+    fwrite(STDERR, "кроки тестового й бойового прогону різні · тест не доводить нічого про бойовий\n"); exit(1);
+}
+if ($dry["needs_confirm"] !== false || $live["needs_confirm"] !== true) {
+    fwrite(STDERR, "підтвердження PROD переплутане між тестовим і бойовим\n"); exit(1);
+}
+' || fail 'план тестового прогону неправильний'
+# Різниця мусить бути РІВНО в одному аргументі кроку commit.
+grep -Fq 'BDO_DRY_RUN' "$ROOT/cli/run/run-drive.sh" \
+    || fail 'драйвер не знає BDO_DRY_RUN · тестовий прогін усе одно запише в API'
+grep -Fq 'write_args=()' "$ROOT/cli/run/run-drive.sh" \
+    || fail 'тестовий прогін не знімає --write'
+# ЧИСТИМО ПОКАЗ, А НЕ ДАНІ: `keep` і placeholders тримаються саме на цих
+# тегах, тому їхнє прибирання в даних зламало б перевірки перед записом.
+grep -Fq 'ЦЕ ПОКАЗ, А НЕ ДАНІ' "$ROOT/web/app.js" \
+    || fail 'не названо межу: очищення розмітки є показом, а не зміною даних'
+# КОЖЕН СТАН МАЄ ВЛАСНЕ РЕЧЕННЯ (D104): склейка «пачка » + мітка давала
+# зламану фразу «пачка механіку перевірено».
+if grep -Fq "'пачка '.mb_strtolower(Labels::state" "$ROOT/lib/Web/Snapshot.php"; then
+    fail 'фраза стану знову склеюється з мітки · буде «пачка механіку перевірено» (D104)'
+fi
+php -r '
+require "'"$ROOT"'/lib/autoload.php";
+$m = new ReflectionMethod(Bdo\Translate\Web\Snapshot::class, "phrase");
+$states = (new ReflectionClass(Bdo\Translate\Ui\Labels::class))->getConstant("STATES");
+foreach (array_keys($states) as $st) {
+    $phrase = $m->invoke(null, $st);
+    if (str_starts_with($phrase, "стан пачки:")) {
+        fwrite(STDERR, "стан $st без власного речення: $phrase\n");
+        exit(1);
+    }
+}
+' || fail 'не кожен стан пачки має власне речення (D104)'
+if grep -Fq 'thinkChip' "$ROOT/web/index.html"; then
+    fail 'повернувся чип «роздуми» · він недосяжний поза живим викликом (D103)'
+fi
+grep -Fq "if (!text) { wrap.style.display = 'none'; return; }" "$ROOT/web/index.html" \
+    || fail 'вікно роздумів показується не за наявністю тексту · знову залежить від прапорця'
 grep -Fq 'streamFeed(stream, thinkStream)' "$ROOT/web/index.html" \
     || fail 'роздуми не мають власної друкарки · вони або зникнуть, або змішаються з відповіддю'
 # ЩО ПІШЛО В МОДЕЛЬ · доступне ПОКИ роль друкує, а не лише після відповіді.
@@ -334,6 +419,46 @@ grep -Fq 'b.human_stop' "$ROOT/web/index.html" \
 # а посилання називалось «новий прогін» · власник питав, чи функціонал узагалі є.
 grep -Fq 'продовжити пачку' "$ROOT/web/index.html" \
     || fail 'екран не називає продовження пачки · «новий прогін» читається як «з нуля»'
+# ПРОДОВЖИТИ · ДІЯ, А НЕ ПЕРЕХІД (D101). Перша редакція лише перейменувала
+# посилання на `/start`, і власник опинявся на формі вибору режиму, де вибір
+# усе одно був би проігнорований: `mode start` при незакритій пачці робить
+# resume. Питаємо ВИКЛИК дії, а не текст кнопки.
+grep -Fq "action: 'run.continue'" "$ROOT/web/index.html" \
+    || fail 'кнопка «продовжити пачку» не виконує дії · веде на форму замість продовження (D101)'
+grep -Fq "case 'run.continue':" "$ROOT/lib/Run/Actions.php" \
+    || fail 'планувальник не знає run.continue · кнопка не має команди з реєстру'
+# ЗНАЧОК СТОРІНКИ. Без нього браузер щоразу просить `/favicon.ico`, сервер
+# віддає 403, і в консолі власника висить помилка, яка МАСКУЄ справжні (D102).
+# Знайдено прогоном у його вкладці, тестами не видно взагалі.
+test -f "$ROOT/web/favicon.ico" || fail 'немає web/favicon.ico · браузер просить цей шлях САМ, і сервер віддасть 403'
+grep -Fq "'/favicon.ico' =>" "$ROOT/cli/system/web-router.php" \
+    || fail 'значок не віддається сервером'
+# Маршрут тримається ДВОМА місцями: гілкою `switch` і переліком файлів. Без
+# гілки шлях падає в 404, і сам перелік цього не рятує · перевірено живим
+# запитом до сервера, а не читанням коду.
+grep -Fq "case '/favicon.ico':" "$ROOT/cli/system/web-router.php" \
+    || fail 'немає гілки switch для /favicon.svg · сервер віддасть 404'
+grep -Fq "'/favicon.ico'," "$ROOT/cli/system/web-router.php" \
+    || fail 'значок не в publicPaths · сервер віддасть 403 замість нього'
+for screen in index queue sessions start call; do
+    grep -Fq 'rel="icon"' "$ROOT/web/$screen.html" \
+        || fail "екран $screen без rel=icon · браузер піде за /favicon.ico і дістане 403"
+done
+# Продовження доводить пачку до запису в PROD, тому підтвердження вимагає КОД.
+php -r '
+require "'"$ROOT"'/lib/autoload.php";
+$p = Bdo\Translate\Run\Actions::plan("run.continue", []);
+if (($p["needs_confirm"] ?? false) !== true) {
+    fwrite(STDERR, "run.continue без needs_confirm · запис у PROD без підтвердження\n");
+    exit(1);
+}
+foreach ($p["steps"] as $argv) {
+    if (in_array("start", $argv, true)) {
+        fwrite(STDERR, "run.continue кличе mode start · візьме нову пачку замість продовження\n");
+        exit(1);
+    }
+}
+' || fail 'план run.continue неправильний (D101)'
 # Кнопка = команда з реєстру. Зупинка мусить іти через `./bdo run stop`, який
 # лишає підпис, а не через голий `watch --stop`.
 grep -Fq "'run', 'stop'" "$ROOT/lib/Run/Actions.php" \

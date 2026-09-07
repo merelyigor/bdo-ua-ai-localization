@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="referrer" content="no-referrer">
 <title>bdo · прогін</title>
+<link rel="icon" href="/favicon.ico" sizes="16x16 32x32 48x48">
 <link rel="stylesheet" href="/app.css">
 <!--
   ЕКРАН ПРОГОНУ · що робиться зараз.
@@ -40,6 +41,11 @@
         <span class="pill" id="statePhrase" style="background:var(--acc-bg);color:var(--acc-tx)" aria-live="polite">пачки немає</span>
         <span class="empty" id="elapsed" style="margin-left:auto"></span>
         <button id="stopBtn" class="btn-danger">зупинити</button>
+        <!-- ПРОДОВЖИТИ · дія прямо тут, а не перехід на форму: власник
+             натиснув «продовжити пачку» й опинився на виборі режиму, де вибір
+             усе одно був би проігнорований (D101). Кнопка й посилання стоять
+             поруч і показуються по одному. -->
+        <button id="continueBtn" class="btn-primary" type="button" style="display:none">продовжити пачку</button>
         <a href="/start" id="startLink" class="as-button">новий прогін →</a>
       </div>
       <div class="steps" id="steps"></div>
@@ -118,8 +124,6 @@
   // ховає. Одна друкарка на двох не годиться · тексти йдуть одночасно.
   var thinkStream = B.typer(null, { onPaint: paintThinking });
   var feed = B.streamFeed(stream, thinkStream);
-  var thinkPref = B.pref('run');
-  var thinkOn = thinkPref.get('think') === '1';
 
   // Пам'ять вікон: сервер тримає лише хвіст, тому початок роботи після
   // перезавантаження сторінки взяти нема звідки. Мітка · пачка (або сесія,
@@ -164,10 +168,11 @@
   // Вікно роздумів. Чернетка моделі · це НЕ відповідь, тому вона приглушена й
   // підписана; ховається чипом і памʼятає вибір власника між сесіями.
   function paintThinking(text) {
+    var wrap = B.el('thinkwrap');
     var box = B.el('thinkbox');
-    if (!box) { return; }
-    if (!text || !thinkOn) { box.style.display = 'none'; return; }
-    box.style.display = 'block';
+    if (!wrap || !box) { return; }
+    if (!text) { wrap.style.display = 'none'; return; }
+    wrap.style.display = 'block';
     box.textContent = text;
     box.scrollTop = box.scrollHeight;
   }
@@ -229,7 +234,9 @@
     var kb = work.size < 1024 ? work.size + ' Б' : Math.round(work.size / 1024) + ' КБ';
     return '<div class="empty" style="margin-top:8px">' + B.esc(title) + ' · '
       + B.esc(work.path) + ' · ' + kb + (work.truncated ? ' · показано перші 2 МБ' : '') + '</div>'
-      + '<pre class="log">' + B.esc(work.text) + '</pre>';
+      // Клас `work` тримає блок нижчим за журнал кроків: два технічні файли
+      // по 12 КБ при спільній стелі 420 px давали пів екрана сирого JSON.
+      + '<pre class="log work">' + B.esc(work.text) + '</pre>';
   }
 
   // Фільтр вердиктів живе поза `render`: перемальовка знімка не має скидати
@@ -268,9 +275,17 @@
         return '<div class="vrow" data-v="' + B.esc(kind) + '">'
           + '<span class="pill v-' + B.esc(kind) + '">' + B.esc(r.label) + '</span>'
           + '<div style="flex:1;min-width:0">'
-          + '<div class="mono" style="color:var(--tm)">' + B.esc(r.source) + '</div>'
-          + (r.text ? '<div class="mono">' + B.esc(r.text) + '</div>'
-                    : '<div class="empty">перекладу ще немає</div>')
+          // ПІДПИСАНО Й ОЧИЩЕНО. Без підпису два монотипні рядки поспіль
+          // читались як один текст, а PA-розмітка робила з них стіну на пів
+          // екрана (D105). Повний рядок · у підказці.
+          + '<div class="empty" style="font-size:11px">оригінал</div>'
+          + '<div class="mono" style="color:var(--tm)" title="' + B.esc(r.source) + '">'
+          + B.esc(B.plain(r.source)) + '</div>'
+          + (r.text
+              ? '<div class="empty" style="font-size:11px;margin-top:4px">переклад</div>'
+                + '<div class="mono" title="' + B.esc(r.text) + '">'
+                + B.esc(B.plain(r.text)) + '</div>'
+              : '<div class="empty" style="margin-top:4px">перекладу ще немає</div>')
           + (r.issue ? '<div class="vissue" title="натисни, щоб розгорнути">'
               + B.esc(r.issue) + '</div>' : '')
           + '</div></div>';
@@ -282,8 +297,16 @@
         n.onclick = function () { n.classList.toggle('open'); };
       });
     }
-    var meta = [B.num(v.total) + ' з вироком'];
-    if (items.length < v.total) { meta.push('показано ' + items.length); }
+    // НУЛЬ ВИРОКІВ · НОРМАЛЬНИЙ СТАН, А НЕ ПОМИЛКА. «0 з вироком» поруч із
+    // повними текстами читалось як збій, хоч це просто «QA ще не проходив»
+    // (знімок власника 2026-09-07, D107).
+    var meta;
+    if (v.total === 0) {
+      meta = ['вироків ще немає · перевірка якості не проходила'];
+    } else {
+      meta = [B.num(v.total) + ' з вироком'];
+      if (items.length < v.total) { meta.push('показано ' + items.length); }
+    }
     B.el('verdictMeta').textContent = meta.join(' · ');
     setChip('all', v.total);
     setChip('pass', v.pass);
@@ -451,27 +474,27 @@
       // взагалі функціонал продовження · він є, просто так не називався.
       idle.textContent = 'Пачка не закрита · стоїть на кроці «'
         + (b.state_label || b.state || '?') + '». Це не зависання. ' + why
-        + ' Щоб ПРОДОВЖИТИ саму цю пачку з цього кроку · посилання «продовжити пачку» вгорі праворуч: '
+        + ' Щоб ПРОДОВЖИТИ саму цю пачку з цього кроку · кнопка «продовжити пачку» вгорі праворуч: '
         + 'нова пачка не братиметься, поки ця не закрита.';
       idle.style.color = 'var(--wr-tx)';
     } else if (idle.style.color === 'var(--wr-tx)') {
       idle.textContent = '';
       idle.style.color = '';
     }
-    // Підпис посилання каже, що станеться НАСПРАВДІ.
+    // ПРОДОВЖИТИ · КНОПКА, ЯКА ПРОДОВЖУЄ. Поки пачка стоїть, вона головна й
+    // видима, а «новий прогін» ховається: два схожі виходи поруч і дали
+    // плутанину, через яку власник опинився на формі замість прогону (D101).
+    var contBtn = B.el('continueBtn');
     var startLink = B.el('startLink');
-    if (startLink) {
-      var resume = !s.running && b.id && (b.state || '') !== 'closed';
-      startLink.textContent = resume ? 'продовжити пачку →' : 'новий прогін →';
-      // ГОЛОВНА ДІЯ ВИГЛЯДАЄ ГОЛОВНОЮ. Поки пачка стоїть, продовжити її ·
-      // єдине, чого власник хоче від цього екрана, тому дія стає первинною
-      // кнопкою (вимога власника 2026-09-07). Класи · наявні, нового вигляду
-      // не заводимо.
-      startLink.classList.toggle('btn-primary', resume);
-      startLink.title = resume
-        ? 'mode start побачить незакриту пачку ' + b.id + ' і продовжить її, а не візьме нову'
+    var resume = !s.running && !!b.id && (b.state || '') !== 'closed';
+    if (contBtn) {
+      contBtn.style.display = resume ? '' : 'none';
+      contBtn.title = resume
+        ? 'веде пачку ' + b.id + ' далі з кроку «' + (b.state_label || b.state || '?')
+          + '» · нова пачка не братиметься'
         : '';
     }
+    if (startLink) { startLink.style.display = resume ? 'none' : ''; }
 
     var key = calls.map(function (c) { return c.at + c.role + c.verdict + c.ms; }).join('|');
     var live = (s.stream && s.stream.role_label && s.stream.fresh) ? s.stream.role_label : '';
@@ -522,10 +545,7 @@
           + '<span class="meta" id="liveNote">' + (loading
               ? 'модель вантажиться, ' + waiting + ' с · перший виклик після паузи тягне вагу з диска'
               : 'друкує…') + '</span>'
-          // Чип «роздуми» · як у прототипі 01. Показує чернетку моделі, поки
-          // вона думає: без нього вікно стоїть порожнє майже весь виклик.
-          + '<button class="chip" id="thinkChip" type="button" style="margin-left:auto"'
-          + ' aria-pressed="' + (thinkOn ? 'true' : 'false') + '">роздуми</button>'
+
           // ЩО ПІШЛО В МОДЕЛЬ · доступне поки роль ще друкує, а не лише після.
           // Шлях дає сервер (`stream.payload`), сторінка його не вгадує.
           + ((s.stream && s.stream.payload)
@@ -533,7 +553,17 @@
               : '')
           + '</div>'
           + '<div class="box mono" id="reqbox" style="display:none"></div>'
-          + '<div class="box mono" id="thinkbox" style="display:none;color:var(--tm)"></div>'
+          // РОЗДУМИ ПІДПИСАНІ Й ВИДНО ЗАВЖДИ, коли вони є.
+          //
+          // Чип тут БУВ і виявився марним: він живе лише в картці ЖИВОГО
+          // виклику, тому поза прогоном його немає взагалі · власник тиснув
+          // і «нічого не відбувалось» (D103). Ховати чернетку теж не треба:
+          // вона потрібна саме тоді, коли роль думає. Лишається одне ·
+          // ВІДРІЗНИТИ її від відповіді, і це робить підпис, а не кнопка.
+          + '<div id="thinkwrap" style="display:none">'
+          + '<div class="empty" style="margin-top:6px;color:var(--wr-tx)">'
+          + 'роздуми моделі · чернетка, не переклад</div>'
+          + '<div class="box mono" id="thinkbox" style="color:var(--tm)"></div></div>'
           + (loading
               ? '<div class="empty" style="margin-top:6px">Це не зависання: Ollama вивантажує модель за своїм '
                 + 'налаштуванням, і наступні виклики підуть без цієї паузи.</div>'
@@ -556,15 +586,6 @@
           }).catch(function (e) {
             box.textContent = 'не вдалося взяти запит: ' + e;
           });
-        };
-      }
-      var chip = B.el('thinkChip');
-      if (chip) {
-        chip.onclick = function () {
-          thinkOn = !thinkOn;
-          chip.setAttribute('aria-pressed', thinkOn ? 'true' : 'false');
-          thinkPref.set('think', thinkOn ? '1' : '0');
-          paintThinking(thinkStream.text());
         };
       }
       B.el('callsMeta').textContent = !calls.length ? ''
@@ -628,6 +649,23 @@
   }
 
   B.live(render, function (d) { feed.delta(d); });
+
+  B.el('continueBtn').onclick = function () {
+    var msg = B.el('actionMsg');
+    // Підтвердження питає КОД (`needs_confirm` у плані), але людині теж треба
+    // сказати, що це доведе пачку до запису в PROD · так само, як новий прогін.
+    if (!window.confirm('Продовжити пачку з поточного кроку?\n\n'
+        + 'Ролі поїдуть далі, і завершена пачка ЗАПИШЕТЬСЯ в PROD.\n'
+        + 'Нова пачка не братиметься · лише ця.')) { return; }
+    msg.style.color = '';
+    msg.textContent = 'продовжую…';
+    B.post('/api/action', { action: 'run.continue', confirm: true }).then(function (res) {
+      msg.textContent = res.status >= 400
+        ? (res.body && res.body.hint ? res.body.hint : 'відмова, код ' + res.status)
+        : 'пачка продовжена · дивись кроки нижче';
+      msg.style.color = res.status >= 400 ? 'var(--dn-tx)' : 'var(--ok-tx)';
+    });
+  };
 
   B.el('stopBtn').onclick = function () {
     var msg = B.el('actionMsg');

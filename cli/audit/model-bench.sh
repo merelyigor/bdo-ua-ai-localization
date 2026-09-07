@@ -166,7 +166,7 @@ for model in "${MODELS[@]}"; do
 
             set +e
             BDO_ROLES_CONFIG="$WORK/roles-$$.json" BDO_STATE_DIR="$box" \
-                php "$SCRIPT_DIR/cli/model/client.php" "${args[@]}" >"$box/out.txt" 2>"$box/err.txt"
+                php "$SCRIPT_DIR/cli/model/client.php" ${args[@]+"${args[@]}"} >"$box/out.txt" 2>"$box/err.txt"
             code=$?
             set -e
 
