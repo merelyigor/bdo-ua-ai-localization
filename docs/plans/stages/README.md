@@ -25,4 +25,4 @@
 
 | Етап | Мета | Статус |
 |---|---|---|
-| [2026-09-07_PHP_ORCHESTRATION.md](2026-09-07_PHP_ORCHESTRATION.md) | Windows без WSL2: оркестрація переїжджає з bash у PHP | не починався |
+| [2026-09-07_PHP_ORCHESTRATION.md](2026-09-07_PHP_ORCHESTRATION.md) | Windows без WSL2: оркестрація переїжджає з bash у PHP | у роботі |

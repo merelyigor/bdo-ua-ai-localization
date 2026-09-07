@@ -56,16 +56,6 @@ sh_run() {
     exec bash "$script" "$@"
 }
 
-usage() {
-    php -r '
-        $r=json_decode((string)file_get_contents($argv[1]),true,512,JSON_THROW_ON_ERROR);
-        echo "bdo · переклад рядків BDO: Agent API, локальні моделі, скриптовий конвеєр\n\n";
-        echo "  ./bdo help flow      порядок команд однієї пачки\n  ./bdo help <команда> довідка самого скрипта\n";
-        foreach($r["sections"] as $s){echo "\n".(string)$s["title"]."\n";foreach($s["entries"] as $e){printf("  %-38s %s\n",$e[0],$e[1]);}}
-        echo "\nРеєстр команд: cli/command-registry.json\n";
-    ' "$ROOT/cli/command-registry.json"
-}
-
 flow() {
     cat <<'TXT'
 ПЕРЕКЛАД ЗАПУСКАЄТЬСЯ ЧЕРЕЗ `./bdo` · меню вибере режим, патч і кількість пачок.

@@ -29,7 +29,7 @@ final class Kernel
     public function run(array $arguments): int
     {
         $name = (string) ($arguments[0] ?? 'help');
-        $commandArguments = $arguments === [] ? [] : array_slice($arguments, 1);
+        $commandArguments = array_slice($arguments, 1);
         try {
             $command = $this->command($name);
             if ($command === null) {
