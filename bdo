@@ -135,7 +135,7 @@ case "$group" in
     web)      sh_run cli/system/web.sh "${@:2}" ;;
     help|-h|--help)
         case "${2:-}" in
-            '')      usage ;;
+            '')      exec php "$ROOT/cli/bdo.php" "$@" ;;
             flow)    flow ;;
             *)       BDO_SHOW_HELP=1 exec "$0" "${@:2}" ;;
         esac
@@ -145,7 +145,7 @@ case "$group" in
     # --- прогін і середовище -------------------------------------------------
     # `sh_run` використовує exec для односкриптових команд, тому тут потрібні
     # два звичайні виклики: спочатку ціль/API, потім синхронізація child-моделі.
-    env)      sh_run cli/system/select-env.sh ;;
+    env)      exec php "$ROOT/cli/bdo.php" "$@" ;;
     capabilities) sh_run cli/api/capabilities.sh "${@:2}" ;;
     sync)     sh_run cli/runtime/env-sync.sh ;;
     platform) sh_run cli/system/check-platform.sh "${@:2}" ;;
