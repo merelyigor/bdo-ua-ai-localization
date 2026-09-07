@@ -578,6 +578,12 @@ check_design() {
     fi
     grep -Fq 'У ХРОМІ ВЛАСНИКА' AGENTS.md \
         || fail 'AGENTS.md не вимагає перевіряти у браузері власника (§16)'
+    # Стан під'єднання мусить питатись КОМАНДОЮ · інакше кожна сесія знову
+    # витрачає спроби на діагностику, а `curl` до 9222 вводить в оману (§16.6).
+    test -x cli/system/browser-check.sh \
+        || fail 'немає cli/system/browser-check.sh · стан під\x27єднання до браузера власника нічим не перевірити'
+    grep -Fq 'browser)' bdo \
+        || fail 'єдиний вхід не має ./bdo browser · діагностика браузера недосяжна'
     grep -Fq '§16 Браузер власника як' "$RULE_REFERENCE" \
         || fail "у $RULE_REFERENCE немає §16 про браузер власника"
     grep -Fq '§15 Цілісність дизайну' "$RULE_REFERENCE" \

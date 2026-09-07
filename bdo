@@ -151,6 +151,10 @@ case "$group" in
     platform) sh_run cli/system/check-platform.sh "${@:2}" ;;
     runtime)  sh_run cli/runtime/check-runtime.sh "${@:2}" ;;
     gate)     sh_run scripts/agent-check.sh "${@:2}" ;;
+    # Чи можна перевіряти сторінку в браузері ВЛАСНИКА · чотири передумови
+    # одним екраном. Без цього кожна сесія витрачає спроби на діагностику,
+    # причому `curl` до 9222 вводить в оману: Chrome 144+ віддає 404 завжди.
+    browser)  sh_run cli/system/browser-check.sh "${@:2}" ;;
     run)
         case "${2:-}" in
             start) sh_run cli/run/run-start.sh "${@:3}" ;;

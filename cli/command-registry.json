@@ -63,6 +63,10 @@
         [
           "gate [профіль]",
           "quality gate: preflight docs shell agents runtime api full"
+        ],
+        [
+          "browser",
+          "чи можна перевіряти сторінку в браузері власника: MCP, Chrome, remote debugging, піднятий інтерфейс"
         ]
       ]
     },
@@ -292,7 +296,8 @@
     "^\\./bdo loop( --batches [0-9]+)?$",
     "^\\./bdo models-run( [0-9]+)?$",
     "^\\./bdo timer( (start|status|check))?$",
-    "^\\./bdo run stop( .{1,120})?$"
+    "^\\./bdo run stop( .{1,120})?$",
+    "^\\./bdo browser$"
   ],
   "flow_commands": [
     "./bdo env",

@@ -22,6 +22,7 @@
 | `./bdo patches [N&#124;all] [machine&#124;manual&#124;both] [--full]` | де ще є робота за патчами |
 | `./bdo mode status&#124;start <mode> [N] [patch] [категорія]` | preset або наступна пачка; категорія звужує вибірку |
 | `./bdo gate [профіль]` | quality gate: preflight docs shell agents runtime api full |
+| `./bdo browser` | чи можна перевіряти сторінку в браузері власника: MCP, Chrome, remote debugging, піднятий інтерфейс |
 
 ## ВИБІРКА Й ПАЧКА
 
