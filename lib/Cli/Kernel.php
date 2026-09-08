@@ -20,6 +20,13 @@ use Bdo\Translate\Cli\Command\Api\TermNotesSubmitCommand;
 use Bdo\Translate\Cli\Command\Api\ValidateCommand;
 use Bdo\Translate\Cli\Command\EnvCommand;
 use Bdo\Translate\Cli\Command\HelpCommand;
+use Bdo\Translate\Cli\Command\Quality\BuildItemsCommand;
+use Bdo\Translate\Cli\Command\Quality\CheckRussianismsCommand;
+use Bdo\Translate\Cli\Command\Quality\MechanicalSplitCommand;
+use Bdo\Translate\Cli\Command\Quality\MergeItemsCommand;
+use Bdo\Translate\Cli\Command\Quality\NormalizeCandidateCommand;
+use Bdo\Translate\Cli\Command\Quality\QaCoverageFillCommand;
+use Bdo\Translate\Cli\Command\Quality\QaFixesCommand;
 
 /**
  * Єдиний PHP-шов запуску: приймає argv без імені скрипта й повертає exit code.
@@ -79,6 +86,13 @@ final class Kernel
             'capabilities' => new CapabilitiesCommand(),
             'fetch-rows' => new FetchRowsCommand(),
             'validate' => new ValidateCommand(),
+            'mechanical-split' => new MechanicalSplitCommand(),
+            'qa-fixes' => new QaFixesCommand(),
+            'build-items' => new BuildItemsCommand(),
+            'qa-coverage-fill' => new QaCoverageFillCommand(),
+            'check-russianisms' => new CheckRussianismsCommand(),
+            'normalize-candidate' => new NormalizeCandidateCommand(),
+            'merge-items' => new MergeItemsCommand(),
             default => null,
         };
     }

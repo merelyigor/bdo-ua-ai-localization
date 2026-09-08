@@ -898,6 +898,7 @@ $braceless"
     run bash tests/cli-api-reports.sh
     run bash tests/cli-api-glossary.sh
     run bash tests/cli-api-fetch.sh
+    run bash tests/cli-quality-parity.sh
     run bash tests/batch-summary.sh
     run bash tests/drive-memory-layers.sh
     run bash tests/judge-flow.sh
@@ -926,6 +927,7 @@ $braceless"
     run bash tests/domain-filter.sh
     run bash tests/audit-response-shape.sh
     run bash tests/mechanical-before-qa.sh
+    run bash tests/cli-quality-parity.sh
     run bash tests/heal-attempts.sh
     run bash tests/payload-shared-examples.sh
     run bash tests/registry-hygiene.sh

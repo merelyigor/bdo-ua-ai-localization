@@ -1,4 +1,8 @@
 #!/usr/bin/env bash
+if [ "${BDO_ORCHESTRATOR:-php}" != sh ]; then
+    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+    exec php "$SCRIPT_DIR/cli/bdo.php" qa-fixes "$@"
+fi
 # Витягти БЕЗПЕЧНІ виправлення з вердиктів QA у формат для cli/quality/merge-items.sh.
 #
 #   ./qa-fixes.sh verdicts.json rows.json candidate.json > fixes.json

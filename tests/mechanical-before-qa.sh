@@ -80,7 +80,22 @@ php -r 'require $argv[1];
 grep -Fq 'обовʼязковий для КОЖНОГО рядка зі статусом' "$ROOT/roles/translation-qa.md" \
     || fail 'QA і далі дає fix лише за бажанням'
 # Причини відмов FixPolicy мусить бачити не лише stderr пачки, яку зітре автоочистка.
-grep -Fq 'fix-policy.jsonl' "$ROOT/cli/quality/qa-fixes.sh" || fail 'відмови FixPolicy ніде не журналюються'
+# Перевіряємо самий PHP-шлях поведінкою: відхилений русизм має зʼявитись у
+# журналі, а не лише в тексті замороженого shell-скрипта.
+FIX_STATE="$TMP/fix-policy-state"
+mkdir -p "$FIX_STATE"
+FIX_HASH="$(hash_for 3)"
+cat > "$TMP/fix-rows.json" <<JSON
+{"data":{"rows":[{"identity_hash":"$FIX_HASH","source_hash":"c","source_text":"Dark Sail"}]}}
+JSON
+printf '[{"identity_hash":"%s","text":"Парус Тёмного"}]' "$FIX_HASH" > "$TMP/fix-candidate.json"
+printf '[{"identity_hash":"%s","status":"REVIEW","severity":"minor","issue":"перевірити","fix":"Парус камень"}]' "$FIX_HASH" > "$TMP/fix-verdicts.json"
+BDO_STATE_DIR="$FIX_STATE" bash "$ROOT/cli/quality/qa-fixes.sh" \
+    "$TMP/fix-verdicts.json" "$TMP/fix-rows.json" "$TMP/fix-candidate.json" \
+    > /dev/null 2>"$TMP/fix-policy.err" || fail 'qa-fixes відмовився обробити відхилений fix'
+test -s "$FIX_STATE/fix-policy.jsonl" || fail 'відмовлений FixPolicy не записаний у журнал'
+jq -e '.reasons | keys | any(.[]; contains("русизм"))' "$FIX_STATE/fix-policy.jsonl" >/dev/null \
+    || fail 'журнал FixPolicy не називає причину відмови'
 
 # 6. Дебаг прогону мусить існувати як команда, а не як разовий SQL у голові.
 #    2026-08-28 я дивився на стан пачки й лічильники токенів, побачив «нічого не

@@ -1,4 +1,8 @@
 #!/usr/bin/env bash
+if [ "${BDO_ORCHESTRATOR:-php}" != sh ]; then
+    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+    exec php "$SCRIPT_DIR/cli/bdo.php" merge-items "$@"
+fi
 # Влити виправлення repair у наявний кандидат без повторного перекладу пачки.
 #
 #   ./merge-items.sh candidate.json fixes.json merged.json

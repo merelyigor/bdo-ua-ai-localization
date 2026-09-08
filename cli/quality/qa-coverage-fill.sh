@@ -1,4 +1,8 @@
 #!/usr/bin/env bash
+if [ "${BDO_ORCHESTRATOR:-php}" != sh ]; then
+    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+    exec php "$SCRIPT_DIR/cli/bdo.php" qa-coverage-fill "$@"
+fi
 # Добити покриття QA, коли модель уперто пропускає той самий рядок.
 #
 #   ./qa-coverage-fill.sh rows.json verdicts.json

@@ -1,4 +1,8 @@
 #!/usr/bin/env bash
+if [ "${BDO_ORCHESTRATOR:-php}" != sh ]; then
+    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+    exec php "$SCRIPT_DIR/cli/bdo.php" build-items "$@"
+fi
 # Створити безпечний items.json із rows JSON.
 # Hashes беруться тільки з API-вибірки; ручне введення identity/source hash не потрібне.
 # Використання: ./build-items.sh rows.json translations.json items.json

@@ -1,4 +1,8 @@
 #!/usr/bin/env bash
+if [ "${BDO_ORCHESTRATOR:-php}" != sh ]; then
+    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+    exec php "$SCRIPT_DIR/cli/bdo.php" mechanical-split "$@"
+fi
 # Розділити кандидата на «механічно дефектні» й «чисті» ДО виклику QA.
 #
 #   ./mechanical-split.sh rows.json clean.json pre-verdicts.json qa-subset.json [--memory memory-candidate.json]
