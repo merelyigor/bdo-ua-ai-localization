@@ -40,7 +40,7 @@ final class FetchRowsCommand implements Command
         if (! is_dir($outputDir) && ! @mkdir($outputDir, 0777, true) && ! is_dir($outputDir)) {
             throw new RuntimeException('Не вдалося створити каталог output: '.$outputDir);
         }
-        $out = $outputDir.'/rows_'.(new \DateTimeImmutable('now', new \DateTimeZone('Europe/Kyiv')))->format('Ymd_His').'.json';
+        $out = $outputDir.'/rows_'.\Bdo\Translate\Cli\LocalTime::stamp().'.json';
         $wantFields = 'classification,tokens,constraints,glossary,reference,patch';
         $capabilities = new TargetCapabilities($root);
         $fields = $capabilities->fields($wantFields);

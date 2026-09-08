@@ -47,7 +47,7 @@ final class ValidateCommand implements Command
         if (! is_dir($outputDir) && ! @mkdir($outputDir, 0777, true) && ! is_dir($outputDir)) {
             throw new RuntimeException('Не вдалося створити каталог output: '.$outputDir);
         }
-        $out = $outputDir.'/validate_'.(new \DateTimeImmutable('now', new \DateTimeZone('Europe/Kyiv')))->format('Ymd_His').'.json';
+        $out = $outputDir.'/validate_'.\Bdo\Translate\Cli\LocalTime::stamp().'.json';
         $payload = json_encode(['layer' => 'machine', 'auto_repair' => true, 'items' => $items], JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
         file_put_contents($out, $payload);
         $output->stdout('Підготовлено '.count($items)." елементів\n");

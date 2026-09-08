@@ -159,6 +159,18 @@ done
 rows="$(ls -t "$ROOT"/output/rows_*.json | head -1)"
 test "$(jq '.data.rows | length' "$rows")" -eq 2 || fail 'fetch не зберіг рядки'
 
+# ПРАВИЛО: обидві реалізації беруть ОДНУ зону часу · ту саму, що й `date`.
+# САБОТАЖ, який це валить: прибити зону літералом у PHP (як було до D112,
+# `Europe/Kyiv`) · тоді на будь-якій машині поза Києвом імена файлів розійдуться.
+# Локальний прогін цього не ловить, бо машина власника живе в Києві, тому зона
+# підставляється ЯВНО, і саме обома значеннями.
+for zone in UTC Europe/Kyiv; do
+    stamp_sh="$(TZ="$zone" date +%Y%m%d_%H%M%S)"
+    stamp_php="$(TZ="$zone" php -r 'require $argv[1]; echo Bdo\Translate\Cli\LocalTime::stamp();' "$ROOT/lib/autoload.php")"
+    test "${stamp_sh:0:12}" = "${stamp_php:0:12}" \
+        || fail "зона $zone: date дає $stamp_sh, PHP дає $stamp_php · імена файлів розійдуться"
+done
+
 for size in 15 19 101; do
     set +e
     invalid_err="$(TRANSLATE_ENV_FILE="$TMP/env" BDO_STATE_DIR="$TMP/invalid-$size" bash "$ROOT/cli/api/fetch-rows.sh" "$size" 2>&1 >/dev/null)"
