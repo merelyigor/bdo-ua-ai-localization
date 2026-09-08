@@ -47,13 +47,19 @@ final class GlossaryListCommand implements Command
         $maxPagesValue = max(1, (int) $maxPages);
         $cacheTmp = $cache.'.tmp.'.bin2hex(random_bytes(5));
         $cacheHandle = null;
-        if (! is_dir(dirname($cache))) {
-            @mkdir(dirname($cache), 0777, true);
+        $cacheDirectory = dirname($cache);
+        $cacheDirectoryReady = is_dir($cacheDirectory)
+            || @mkdir($cacheDirectory, 0777, true)
+            || is_dir($cacheDirectory);
+        if (! $cacheDirectoryReady) {
+            $output->stderr('Кеш глосарію не пишеться: '.$cacheDirectory." недоступний.\n");
         }
-        $cacheHandle = @fopen($cacheTmp, 'wb');
-        if ($cacheHandle === false) {
-            $cacheHandle = null;
-            $output->stderr('Кеш глосарію не пишеться: '.dirname($cache)." недоступний.\n");
+        if ($cacheDirectoryReady) {
+            $cacheHandle = @fopen($cacheTmp, 'wb');
+            if ($cacheHandle === false) {
+                $cacheHandle = null;
+                $output->stderr('Кеш глосарію не пишеться: '.$cacheDirectory." недоступний.\n");
+            }
         }
 
         $total = 0;
@@ -116,9 +122,18 @@ final class GlossaryListCommand implements Command
             if ($capped) {
                 @unlink($cacheTmp);
             } else {
-                @mkdir(dirname($cache), 0777, true);
-                rename($cacheTmp, $cache);
+                $cacheDirectoryReady = is_dir($cacheDirectory)
+                    || @mkdir($cacheDirectory, 0777, true)
+                    || is_dir($cacheDirectory);
+                if (! $cacheDirectoryReady || ! @rename($cacheTmp, $cache)) {
+                    @unlink($cacheTmp);
+                    $output->stderr("Кеш глосарію не записано: {$cacheDirectory} недоступний.\n");
+
+                    return 1;
+                }
             }
+        } elseif (! $cacheDirectoryReady) {
+            return 1;
         }
 
         return 0;

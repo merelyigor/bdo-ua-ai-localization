@@ -79,4 +79,23 @@ test ! -s "$TMP/fail.out" || fail 'при помилці залишився stdo
 test ! -e "$BDO_STATE_DIR/glossary-full.json" || fail 'кеш зʼявився після невдалого обходу'
 grep -q 'недоступний' "$TMP/fail.err" || fail 'причина недоступності не названа'
 
-echo 'glossary listing: 4 сценарії OK'
+printf 'ok\n' > "$TMP/mode"
+printf 'not a directory\n' > "$TMP/blocked-state"
+set +e
+BDO_STATE_DIR="$TMP/blocked-state" BDO_ORCHESTRATOR=php bash "$ROOT/cli/api/glossary-list.sh" --fresh \
+    >"$TMP/blocked.out" 2>"$TMP/blocked.err"
+code=$?
+set -e
+test "$code" -ne 0 || fail 'неможливу теку кеша прийнято за успішний обхід'
+grep -q 'Кеш глосарію не пишеться' "$TMP/blocked.err" || fail 'причина неможливої теки не названа'
+
+mkdir -p "$TMP/rename-state/glossary-full.json"
+set +e
+BDO_STATE_DIR="$TMP/rename-state" BDO_ORCHESTRATOR=php bash "$ROOT/cli/api/glossary-list.sh" --fresh \
+    >"$TMP/rename.out" 2>"$TMP/rename.err"
+code=$?
+set -e
+test "$code" -ne 0 || fail 'невдалий rename прийнято за успішний обхід'
+grep -q 'Кеш глосарію не записано' "$TMP/rename.err" || fail 'причина невдалого rename не названа'
+
+echo 'glossary listing: 6 сценаріїв OK'
