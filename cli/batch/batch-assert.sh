@@ -1,4 +1,8 @@
 #!/usr/bin/env bash
+if [ "${BDO_ORCHESTRATOR:-php}" != sh ]; then
+    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+    exec php "$SCRIPT_DIR/cli/bdo.php" batch-assert "$@"
+fi
 # Перевірити, що файли належать поточній пачці.
 #
 #   ./batch-assert.sh rows.json [candidate.json]

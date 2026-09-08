@@ -1,4 +1,8 @@
 #!/usr/bin/env bash
+if [ "${BDO_ORCHESTRATOR:-php}" != sh ]; then
+    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+    exec php "$SCRIPT_DIR/cli/bdo.php" subset-rows "$@"
+fi
 # Вирізати підмножину рядків із rows.json для повтору лише проблемної частини пачки.
 #
 #   ./subset-rows.sh rows.json hash1,hash2,... subset.json

@@ -1,4 +1,8 @@
 #!/usr/bin/env bash
+if [ "${BDO_ORCHESTRATOR:-php}" != sh ]; then
+    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+    exec php "$SCRIPT_DIR/cli/bdo.php" batch-new "$@"
+fi
 # Почати пачку: створити ізольовану теку під її робочі файли.
 #
 #   ./batch-new.sh rows.json      # почати пачку з цієї вибірки

@@ -18,7 +18,12 @@ use Bdo\Translate\Cli\Command\Api\TermNotesDescribeCommand;
 use Bdo\Translate\Cli\Command\Api\TermNotesQueueCommand;
 use Bdo\Translate\Cli\Command\Api\TermNotesSubmitCommand;
 use Bdo\Translate\Cli\Command\Api\ValidateCommand;
+use Bdo\Translate\Cli\Command\Batch\BatchAssertCommand;
+use Bdo\Translate\Cli\Command\Batch\BatchDirCommand;
+use Bdo\Translate\Cli\Command\Batch\BatchNewCommand;
+use Bdo\Translate\Cli\Command\Batch\SubsetRowsCommand;
 use Bdo\Translate\Cli\Command\EnvCommand;
+use Bdo\Translate\Cli\Command\Heal\HealPlanCommand;
 use Bdo\Translate\Cli\Command\HelpCommand;
 use Bdo\Translate\Cli\Command\Quality\BuildItemsCommand;
 use Bdo\Translate\Cli\Command\Quality\CheckRussianismsCommand;
@@ -113,6 +118,11 @@ final class Kernel
             'qa-payload' => new QaPayloadCommand(),
             'terminology-payload' => new TerminologyPayloadCommand(),
             'names-payload' => new NamesPayloadCommand(),
+            'batch-dir' => new BatchDirCommand(),
+            'batch-assert' => new BatchAssertCommand(),
+            'batch-new' => new BatchNewCommand(),
+            'subset-rows' => new SubsetRowsCommand(),
+            'heal-plan' => new HealPlanCommand(),
             default => null,
         };
     }
