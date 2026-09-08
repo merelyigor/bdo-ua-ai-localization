@@ -31,6 +31,17 @@ if ($scenario === '404') {
     echo 'not-found';
     return;
 }
+if ($scenario === '501') {
+    http_response_code(501);
+    echo 'not-implemented';
+    return;
+}
+if ($scenario === '503' && $count === 1) {
+    http_response_code(503);
+    header('Retry-After: 0');
+    echo 'temporary';
+    return;
+}
 if ($scenario === 'redirect') {
     http_response_code(302);
     header('Location: /?case=raw');
@@ -59,8 +70,45 @@ for _ in $(seq 1 40); do
 done
 kill -0 "$SERVER" 2>/dev/null || { cat "$TMP/server.log" >&2; exit 1; }
 
+run_bounded() {
+    local output="$1" meta="$2"
+    shift 2
+    local started=$SECONDS pid watchdog code elapsed
+    "$@" >"$output" 2>"$output.err" &
+    pid=$!
+    (sleep 2; kill "$pid" 2>/dev/null || true) &
+    watchdog=$!
+    set +e
+    wait "$pid"
+    code=$?
+    set -e
+    kill "$watchdog" 2>/dev/null || true
+    wait "$watchdog" 2>/dev/null || true
+    elapsed=$((SECONDS - started))
+    printf '%s %s\n' "$elapsed" "$code" >"$meta"
+}
+
 URL="http://127.0.0.1:$PORT/?case="
 printf 'raw\0line\n\377' > "$TMP/expected-body"
+
+run_bounded "$TMP/dead.out" "$TMP/dead.meta" \
+    "$ROOT/cli/api/http-request.sh" -sS -X POST -H 'X-API-Key: test' \
+    --data '{"x":1}' 'http://127.0.0.1:1/glossary/terms/resolve'
+read -r dead_seconds dead_code <"$TMP/dead.meta"
+test "$dead_code" -eq 7 || { echo "FAIL: dead port code=$dead_code time=${dead_seconds}s" >&2; exit 1; }
+test "$dead_seconds" -lt 2 || { echo "FAIL: dead port time=${dead_seconds}s" >&2; exit 1; }
+
+: > "$TMP/counts"
+run_bounded "$TMP/501.out" "$TMP/501.meta" "$ROOT/cli/api/http-request.sh" -sS "${URL}501"
+read -r not_implemented_seconds not_implemented_code <"$TMP/501.meta"
+test "$not_implemented_code" -eq 0 || { echo "FAIL: 501 code=$not_implemented_code" >&2; exit 1; }
+test "$not_implemented_seconds" -lt 2 || { echo "FAIL: 501 повторився за ${not_implemented_seconds}s" >&2; exit 1; }
+test "$(grep -c '^501$' "$TMP/counts" || true)" -eq 1 || { echo 'FAIL: 501 повторився' >&2; exit 1; }
+
+: > "$TMP/counts"
+"$ROOT/cli/api/http-request.sh" -sS "${URL}503" >"$TMP/503.out"
+grep -Fq raw "$TMP/503.out" || { echo 'FAIL: 503 не завершився повтором' >&2; exit 1; }
+test "$(grep -c '^503$' "$TMP/counts" || true)" -gt 1 || { echo 'FAIL: 503 не повторився' >&2; exit 1; }
 
 "$ROOT/cli/api/http-request.sh" -sS -H 'X-API-Key: test-key' "${URL}raw" >"$TMP/body"
 cmp -s "$TMP/expected-body" "$TMP/body" || { echo 'FAIL: 200 тіло змінилось побайтово' >&2; exit 1; }
@@ -101,4 +149,11 @@ if grep -Fq 'super-secret-key' "$TMP/bad.err"; then
     exit 1
 fi
 
-echo 'http client: byte body, -o, -w, headers/data, timeout, redirect and safe errors: OK'
+set +e
+php -d disable_functions=curl_init "$ROOT/cli/api/http-client.php" "${URL}raw" >"$TMP/no-curl.out" 2>"$TMP/no-curl.err"
+no_curl_code=$?
+set -e
+test "$no_curl_code" -ne 0 || { echo 'FAIL: вимкнений ext-curl прийнятий' >&2; exit 1; }
+grep -Fq 'ext-curl' "$TMP/no-curl.err" || { echo 'FAIL: вимкнений ext-curl не названий' >&2; exit 1; }
+
+echo "http client: dead port=${dead_seconds}s, 501=${not_implemented_seconds}s, 503 retry, byte body, -o, -w, headers/data, timeout, redirect, ext-curl guard: OK"

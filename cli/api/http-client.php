@@ -2,6 +2,11 @@
 
 declare(strict_types=1);
 
+if (! extension_loaded('curl') || ! function_exists('curl_init')) {
+    fwrite(STDERR, "http-client: увімкніть розширення PHP ext-curl у php.ini\n");
+    exit(1);
+}
+
 /**
  * Сумісна точка входу для колишнього http-request.sh.
  *

@@ -7,9 +7,8 @@ namespace Bdo\Translate\Http;
 /**
  * Визначає повтори HTTP-запиту й часові межі старої обгортки.
  *
- * Рішення винесене з curl-виклику, щоб 404/400/401/403 ніколи не крутились у
- * повторі, а мережеві збої, 408, 429 і 5xx зберігали вікно 570 секунд у межах
- * загального бюджету 600 секунд.
+ * Рішення винесене з curl-виклику, щоб повторювати лише його білий список
+ * тимчасових HTTP-відповідей і таймаутів, а постійні помилки завершувати одразу.
  */
 final class RetryPolicy
 {
@@ -25,11 +24,11 @@ final class RetryPolicy
     public function shouldRetry(?int $statusCode, int $transportCode): bool
     {
         if ($statusCode !== null && $statusCode > 0) {
-            return $statusCode === 408 || $statusCode === 429 || ($statusCode >= 500 && $statusCode <= 599);
+            return in_array($statusCode, [408, 429, 500, 502, 503, 504], true);
         }
 
-        // URL із помилкою формату та невідомий протокол не є тимчасовою мережею.
-        return ! in_array($transportCode, [3, 4, 43], true);
+        // curl повторює лише таймаут; решта кодів транспорту повертається одразу.
+        return $transportCode === 28;
     }
 
     /** Backoff із пріоритетом числового Retry-After. */

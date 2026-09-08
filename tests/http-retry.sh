@@ -50,15 +50,32 @@ for _ in $(seq 1 40); do
 done
 kill -0 "$SERVER" 2>/dev/null || { cat "$TMP/server.log" >&2; exit 1; }
 
+run_bounded() {
+    local output="$1" meta="$2"
+    shift 2
+    local started=$SECONDS pid watchdog code elapsed
+    "$@" >"$output" 2>"$output.err" &
+    pid=$!
+    (sleep 2; kill "$pid" 2>/dev/null || true) &
+    watchdog=$!
+    set +e
+    wait "$pid"
+    code=$?
+    set -e
+    kill "$watchdog" 2>/dev/null || true
+    wait "$watchdog" 2>/dev/null || true
+    elapsed=$((SECONDS - started))
+    printf '%s %s\n' "$elapsed" "$code" >"$meta"
+}
+
 count() { grep -c "^$1$" "$TMP/counts" || true; }
 URL="http://127.0.0.1:$PORT/?case="
 
 : > "$TMP/counts"
-set +e
-"$ROOT/cli/api/http-request.sh" -fsS "${URL}404" >"$TMP/404.out" 2>"$TMP/404.err"
-code=$?
-set -e
-test "$code" -eq 22 || { echo "FAIL: 404 code=$code" >&2; exit 1; }
+run_bounded "$TMP/404.out" "$TMP/404.meta" "$ROOT/cli/api/http-request.sh" -fsS "${URL}404"
+read -r code_seconds code <"$TMP/404.meta"
+test "$code" -eq 22 || { echo "FAIL: 404 code=$code time=${code_seconds}s" >&2; exit 1; }
+test "$code_seconds" -lt 2 || { echo "FAIL: 404 time=${code_seconds}s" >&2; exit 1; }
 test "$(count 404)" -eq 1 || { echo 'FAIL: 404 повторився' >&2; exit 1; }
 
 for scenario in 429 503; do
@@ -73,4 +90,4 @@ done
 grep -Fxq ok "$TMP/timeout.out" || { echo 'FAIL: timeout не відновився повтором' >&2; exit 1; }
 test "$(count timeout)" -gt 1 || { echo 'FAIL: timeout не мав другої спроби' >&2; exit 1; }
 
-echo 'http retry: 404 одна спроба; 429/503 і timeout повторені: OK'
+echo "http retry: 404=${code_seconds}s одна спроба; 429/503 і timeout повторені: OK"
