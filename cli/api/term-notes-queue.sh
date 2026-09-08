@@ -1,4 +1,8 @@
 #!/usr/bin/env bash
+if [ "${BDO_ORCHESTRATOR:-php}" != sh ]; then
+    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+    exec php "$SCRIPT_DIR/cli/bdo.php" term-notes-queue "$@"
+fi
 # Черга термінів, яким бракує опису · збирається під час прогону, нічого не шле.
 #
 #   ./term-notes-queue.sh <terms.json> <rows.json>   # додати терміни пачки

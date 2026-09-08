@@ -1,4 +1,8 @@
 #!/usr/bin/env bash
+if [ "${BDO_ORCHESTRATOR:-php}" != sh ]; then
+    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+    exec php "$SCRIPT_DIR/cli/bdo.php" term-notes-describe "$@"
+fi
 # Підготувати завдання для child `translation-glossary`: описати терміни з черги.
 #
 #   ./term-notes-describe.sh          # payload + envelope для наступного Task

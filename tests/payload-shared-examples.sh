@@ -295,9 +295,25 @@ for role in worker qa; do
     grep -Fq 'СИЛЬНОЮ ПІДКАЗКОЮ, а не затвердженим відповідником' "$ROOT/roles/translation-$role.md" \
         || fail "child $role вважає поняття затвердженим відповідником"
 done
-# Перелік тягнеться ОДИН раз на прогін, а не на кожну пачку.
+# Перелік тягнеться ОДИН раз на прогін, а не на кожну пачку: другий виклик
+# читає свіжий кеш і тому не доходить до мертвого API.
 grep -Fq 'glossary-concepts.sh' "$ROOT/cli/run/run-drive.sh" || fail 'рушій не оновлює перелік понять'
-grep -Fq 'BDO_CONCEPTS_TTL_HOURS' "$ROOT/cli/api/glossary-concepts.sh" || fail 'перелік понять не кешується'
+mkdir -p "$TMP/concepts-state"
+cat > "$TMP/concepts-state/game-concepts.json" <<'JSON'
+{"fetched_at":"now","concepts":[{"term":"AP","gist":"Сила атаки."}]}
+JSON
+touch "$TMP/concepts-state/game-concepts.json"
+cat > "$TMP/concepts-env" <<'ENV'
+BDO_ENV=DEV
+BDO_API_TARGET=legacy
+BDO_API_BASE_DEV=http://127.0.0.1:1
+BDO_API_KEY_DEV=test-key
+ENV
+concepts_err="$TMP/concepts.err"
+TRANSLATE_ENV_FILE="$TMP/concepts-env" BDO_STATE_DIR="$TMP/concepts-state" \
+    bash "$ROOT/cli/api/glossary-concepts.sh" 2>"$concepts_err" >/dev/null \
+    || fail 'свіжий кеш понять не читається'
+grep -q 'із кешу' "$concepts_err" || fail 'TTL-кеш понять не захищає від мережевого запиту'
 
 # Черга термінів без опису: рахуємо, але НІЧОГО не надсилаємо. Рішення власника
 # 2026-08-28 · часу на довгу модерацію немає, глосарій наповнений, тому новий
@@ -333,8 +349,16 @@ jq -e '[.terms[].canonical_source] | index("Ancient Relic") == null' "$TMP/state
 # Прапорець будується лише тоді, коли API справді відповів про поле.
 grep -Fq 'array_key_exists("definition", $term)' "$ROOT/cli/prepare/worker-payload.sh" \
     || fail 'payload не розрізняє «опису немає» і «сервер не сказав»'
-# Найдорожче правило: черга НІЧОГО не надсилає в API.
-grep -Fq 'http-request.sh' "$ROOT/cli/api/term-notes-queue.sh" && fail 'черга термінів звертається до API'
+# Найдорожче правило: черга НІЧОГО не надсилає в API. Мертвий порт робить
+# порушення видимим поведінково, навіть якщо старий текст лишився еталоном.
+mkdir -p "$TMP/queue-state"
+printf '[{"canonical_source":"Offline Term","ukrainian":"Офлайн термін","has_definition":false}]\n' > "$TMP/offline-terms.json"
+printf '{"data":{"rows":[{"identity_hash":"%s","source_text":"Offline Term"}]} }\n' "$H1" > "$TMP/offline-rows.json"
+BDO_API_BASE=http://127.0.0.1:1 BDO_STATE_DIR="$TMP/queue-state" \
+    bash "$ROOT/cli/api/term-notes-queue.sh" "$TMP/offline-terms.json" "$TMP/offline-rows.json" \
+    >/dev/null 2>"$TMP/queue-offline.err" \
+    || fail 'черга звертається до API або не збирається офлайн'
+test -s "$TMP/queue-state/term-notes-queue.json" || fail 'офлайн-черга не записала результат'
 grep -Fq 'term-notes-queue.sh' "$ROOT/cli/run/run-drive.sh" || fail 'рушій не наповнює чергу термінів'
 
 # Описувач термінів: завдання будується лише з придатних кандидатів, а
@@ -360,11 +384,11 @@ printf '{"items":[{"canonical_source":"Tears of the Falling Moon","gist":"g","de
 out="$(BDO_STATE_DIR="$TMP/state" bash "$ROOT/cli/api/term-notes-submit.sh" 2>/dev/null)" || true
 printf '%s' "$out" | grep -q 'Пропозицій надіслано: 0' || fail "опис із впевненістю 45 надіслано: $out"
 printf '%s' "$out" | grep -q 'низька впевненість 1' || fail 'причину пропуску не названо'
-# Найдорожче правило: перед записом стан терміна перечитується з API.
-grep -Fq 'glossary/terms?q=' "$ROOT/cli/api/term-notes-submit.sh" \
-    || fail 'відправник не перечитує свіжий стан терміна перед пропозицією'
-grep -Fq 'array_key_exists("definition", $term)' "$ROOT/cli/api/term-notes-submit.sh" \
-    || fail 'відправник приймає відсутність поля за порожній опис'
+# Найдорожче правило: перед записом стан терміна перечитується з API, а
+# відсутнє поле definition не вважається порожнім. Це охороняє stub-тест із
+# трьома різними відповідями сервера, а не згадка рядка в мертвому shell-коді.
+bash "$ROOT/tests/cli-api-glossary.sh" >/dev/null \
+    || fail 'поведінкова перевірка свіжого стану терміна не пройшла'
 
 # Описи вмикаються САМІ й лише за потреби · власник нічого не каже диригенту.
 DRIVE="$TMP/drive"; mkdir -p "$DRIVE/batches/b"

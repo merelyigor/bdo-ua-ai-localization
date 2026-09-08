@@ -867,6 +867,7 @@ $braceless"
     run php tests/pipeline-faults.php
     run bash tests/cli-kernel.sh
     run bash tests/cli-api-reports.sh
+    run bash tests/cli-api-glossary.sh
     run bash tests/batch-summary.sh
     run bash tests/drive-memory-layers.sh
     run bash tests/judge-flow.sh

@@ -9,6 +9,12 @@ use Bdo\Translate\Cli\Command\Api\PatchInfoCommand;
 use Bdo\Translate\Cli\Command\Api\RowContextCommand;
 use Bdo\Translate\Cli\Command\Api\ShowRowsCommand;
 use Bdo\Translate\Cli\Command\Api\TestApiCommand;
+use Bdo\Translate\Cli\Command\Api\GlossaryConceptsCommand;
+use Bdo\Translate\Cli\Command\Api\GlossaryListCommand;
+use Bdo\Translate\Cli\Command\Api\GlossaryResolveCommand;
+use Bdo\Translate\Cli\Command\Api\TermNotesDescribeCommand;
+use Bdo\Translate\Cli\Command\Api\TermNotesQueueCommand;
+use Bdo\Translate\Cli\Command\Api\TermNotesSubmitCommand;
 use Bdo\Translate\Cli\Command\EnvCommand;
 use Bdo\Translate\Cli\Command\HelpCommand;
 
@@ -61,6 +67,12 @@ final class Kernel
             'show' => $this->registry->hasCommand('show') ? new ShowRowsCommand() : null,
             'patch' => $this->registry->hasCommand('patch') ? new PatchInfoCommand() : null,
             'patches' => $this->registry->hasCommand('patches') ? new PatchesOverviewCommand() : null,
+            'glossary-list' => new GlossaryListCommand(),
+            'glossary-concepts' => new GlossaryConceptsCommand(),
+            'glossary-resolve' => new GlossaryResolveCommand(),
+            'term-notes-queue' => new TermNotesQueueCommand(),
+            'term-notes-describe' => new TermNotesDescribeCommand(),
+            'term-notes-submit' => new TermNotesSubmitCommand(),
             default => null,
         };
     }

@@ -1,4 +1,13 @@
 #!/usr/bin/env bash
+if [ "${BDO_ORCHESTRATOR:-php}" != sh ]; then
+    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+    STATE_DIR="${BDO_STATE_DIR:-$SCRIPT_DIR/state}"
+    RESPONSE="$STATE_DIR/term-notes-response.json"
+    test -s "$RESPONSE" || { echo 'Немає відповіді child · спочатку ./bdo terms describe і Task.' >&2; exit 1; }
+    # shellcheck source=/dev/null
+    source "$SCRIPT_DIR/cli/system/select-env.sh"
+    exec php "$SCRIPT_DIR/cli/bdo.php" term-notes-submit "$@"
+fi
 # Надіслати описи термінів як пропозиції · з повторною перевіркою перед записом.
 #
 #   ./term-notes-submit.sh

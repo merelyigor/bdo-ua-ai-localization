@@ -1,4 +1,10 @@
 #!/usr/bin/env bash
+if [ "${BDO_ORCHESTRATOR:-php}" != sh ]; then
+    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+    # shellcheck source=/dev/null
+    source "$SCRIPT_DIR/cli/system/select-env.sh"
+    exec php "$SCRIPT_DIR/cli/bdo.php" glossary-resolve "$@"
+fi
 # Перевірити immutable identity канонічної назви через POST /glossary/terms/resolve.
 #
 #   ./glossary-resolve.sh "Agris Gold Coin"

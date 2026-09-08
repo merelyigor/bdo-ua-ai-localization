@@ -1,4 +1,25 @@
 #!/usr/bin/env bash
+if [ "${BDO_ORCHESTRATOR:-php}" != sh ]; then
+    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+    STATE_DIR="${BDO_STATE_DIR:-$SCRIPT_DIR/state}"
+    CACHE="$STATE_DIR/game-concepts.json"
+    if [ "${1:-}" != --path ] && [ -s "$CACHE" ]; then
+        TTL_HOURS="${BDO_CONCEPTS_TTL_HOURS:-24}"
+        AGE_MIN="$(php -r 'echo (int) ((time() - filemtime($argv[1])) / 60);' "$CACHE")"
+        if [ "$AGE_MIN" -lt $((TTL_HOURS * 60)) ]; then
+            exec php "$SCRIPT_DIR/cli/bdo.php" glossary-concepts "$@"
+        fi
+    fi
+    if [ "${1:-}" != --path ]; then
+        if ! bash "$SCRIPT_DIR/cli/system/select-env.sh" >/dev/null 2>&1; then
+            export BDO_CONCEPTS_ENV_UNAVAILABLE=1
+        else
+            # shellcheck source=/dev/null
+            source "$SCRIPT_DIR/cli/system/select-env.sh"
+        fi
+    fi
+    exec php "$SCRIPT_DIR/cli/bdo.php" glossary-concepts "$@"
+fi
 # Поняття гри з глосарія · один запит на прогін, далі з кешу.
 #
 #   ./glossary-concepts.sh              # оновити кеш за потреби й показати підсумок
