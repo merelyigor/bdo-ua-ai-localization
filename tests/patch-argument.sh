@@ -14,8 +14,19 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
+TMPDIR_PATCH="$(mktemp -d)"
+trap 'rm -rf "$TMPDIR_PATCH"' EXIT
+
 # 1. Наскрізь: диспетчер -> run-spec.sh -> RunSpec::filterFor.
-out="$(./bdo mode status patch 3 2>/dev/null | tail -1)"
+# Голе `x="$(cmd 2>/dev/null)"` під `set -e` тут уже дало тихий провал: на CI
+# без `.env` тест помирав із НУЛЕМ байтів виводу, і причина «немає файлу з
+# ключами» зникала разом зі stderr (§12). Тому причина зберігається й друкується.
+err="$TMPDIR_PATCH/mode-status.err"
+set +e
+out="$(./bdo mode status patch 3 2>"$err" | tail -1)"
+status=$?
+set -e
+test "$status" -eq 0 || { echo "FAIL: mode status не виконався (код $status): $(cat "$err")" >&2; exit 1; }
 echo "$out" | grep -q '"patch":"3"' || { echo "FAIL: mode status загубив номер патча: $out" >&2; exit 1; }
 echo "$out" | grep -q 'patch=3&missing=machine' || { echo "FAIL: фільтр не наведений на патч 3: $out" >&2; exit 1; }
 

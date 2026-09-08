@@ -55,6 +55,21 @@ jobs:
       - name: Теки прогону
         run: mkdir -p output state
 
+      # Набір відмовляється працювати без файла цілі, і це правильно: інакше
+      # прогін мовчки пішов би нікуди. На runner справжнього `.env` немає й бути
+      # не може, тому підставляємо СИНТЕТИЧНИЙ · DEV на мертвий порт і ключ-
+      # заглушку. Мережа з нього недосяжна за побудовою, тож жоден тест не
+      # дотягнеться до живого API навіть помилково.
+      - name: Синтетична ціль (DEV, мертвий порт)
+        run: |
+          set -euo pipefail
+          printf '%s\n' \
+            'BDO_ENV=DEV' \
+            'BDO_API_TARGET=legacy' \
+            'BDO_API_BASE_DEV=http://127.0.0.1:1' \
+            'BDO_API_KEY_DEV=ci-not-a-real-key' > "$RUNNER_TEMP/bdo-ci.env"
+          echo "TRANSLATE_ENV_FILE=$RUNNER_TEMP/bdo-ci.env" >> "$GITHUB_ENV"
+
       - name: gate full
         run: ./bdo gate full
 
@@ -80,6 +95,21 @@ jobs:
 
       - name: Теки прогону
         run: mkdir -p output state
+
+      # Набір відмовляється працювати без файла цілі, і це правильно: інакше
+      # прогін мовчки пішов би нікуди. На runner справжнього `.env` немає й бути
+      # не може, тому підставляємо СИНТЕТИЧНИЙ · DEV на мертвий порт і ключ-
+      # заглушку. Мережа з нього недосяжна за побудовою, тож жоден тест не
+      # дотягнеться до живого API навіть помилково.
+      - name: Синтетична ціль (DEV, мертвий порт)
+        run: |
+          set -euo pipefail
+          printf '%s\n' \
+            'BDO_ENV=DEV' \
+            'BDO_API_TARGET=legacy' \
+            'BDO_API_BASE_DEV=http://127.0.0.1:1' \
+            'BDO_API_KEY_DEV=ci-not-a-real-key' > "$RUNNER_TEMP/bdo-ci.env"
+          echo "TRANSLATE_ENV_FILE=$RUNNER_TEMP/bdo-ci.env" >> "$GITHUB_ENV"
 
       # Один прогін цього класу дефектів не ловить: D111 падав раз із трьох, і
       # саме тому серія тут окремим завданням. Перший ненульовий код валить усе.
