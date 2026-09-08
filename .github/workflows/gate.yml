@@ -1,0 +1,92 @@
+# Незалежна перевірка набору.
+#
+# Навіщо. Рев'ю веде АРХІТЕКТОР із браузера: він має доступ ЛИШЕ до
+# репозиторію й не може запустити ні тест, ні гейт, ні саботаж. Без цього
+# прогону єдиним доказом лишається слово ВИКОНАВЦЯ, а саме так у наборі вже
+# проїхав BLOCKER (повтори на «connection refused» коштували 570 секунд
+# замість 0.7) і нестабільний тест D111, який падав раз із трьох.
+#
+# Секретів тут НЕМАЄ і не буде: `./bdo gate full` ключа не читає · він потрібен
+# лише категорії `api` (`scripts/agent-check.sh`, `check_api`).
+#
+# ЗАБОРОНЕНО додавати `continue-on-error`, `|| true` чи будь-що, що ковтає код
+# виходу. CI, який зеленіє легше за локальний гейт, гірший за відсутній: рев'юер
+# спиратиметься на значок, за яким нічого немає.
+
+name: gate
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  full:
+    name: ./bdo gate full
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      # Версія прибита числом навмисно: мовчазне оновлення рантайму зробило б
+      # CI нестабільним, а нестабільний CI починають ігнорувати.
+      - name: PHP 8.5
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.5'
+          extensions: curl, json, mbstring, posix, pcntl
+          coverage: none
+
+      # Перелік зміряний: `scripts/agent-check.sh` вимагає git bash php jq curl
+      # shellcheck perl, тести додають tmux і ripgrep.
+      - name: Залежності runner
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends jq ripgrep tmux shellcheck
+          for tool in git bash php jq curl shellcheck perl tmux rg; do
+            command -v "$tool" >/dev/null || { echo "немає $tool"; exit 1; }
+          done
+          bash --version | head -1
+          php -v | head -1
+
+      - name: Теки прогону
+        run: mkdir -p output state
+
+      - name: gate full
+        run: ./bdo gate full
+
+  stability:
+    name: cli-api-fetch × 5
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: PHP 8.5
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.5'
+          extensions: curl, json, mbstring, posix, pcntl
+          coverage: none
+
+      - name: Залежності runner
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends jq ripgrep tmux
+
+      - name: Теки прогону
+        run: mkdir -p output state
+
+      # Один прогін цього класу дефектів не ловить: D111 падав раз із трьох, і
+      # саме тому серія тут окремим завданням. Перший ненульовий код валить усе.
+      - name: Пʼять прогонів підряд
+        run: |
+          set -euo pipefail
+          for i in 1 2 3 4 5; do
+            echo "── прогін $i ──"
+            bash tests/cli-api-fetch.sh
+          done
