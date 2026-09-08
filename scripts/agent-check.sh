@@ -876,6 +876,7 @@ $braceless"
     run bash tests/run-target-env.sh
     run bash tests/api-target-switch.sh
     run bash tests/http-retry.sh
+    run bash tests/http-client.sh
     run bash tests/rotation.sh
     run bash tests/session-lifecycle.sh
     run bash tests/web-server.sh
