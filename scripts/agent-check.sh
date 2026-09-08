@@ -900,6 +900,7 @@ $braceless"
     run bash tests/cli-api-fetch.sh
     run bash tests/cli-quality-parity.sh
     run bash tests/cli-prepare-parity.sh
+    run bash tests/cli-payload-parity.sh
     run bash tests/batch-summary.sh
     run bash tests/drive-memory-layers.sh
     run bash tests/judge-flow.sh

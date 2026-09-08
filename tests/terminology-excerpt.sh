@@ -103,8 +103,8 @@ foreach (Items::rows(json_decode($argv[2], true)) as $item) {
 
 # Відповідь каталогу теж не має тягнути хеш у модель: `resolve.source_identity`
 # це той самий хеш, лише загорнутий у рядок JSON.
-grep -Fq '"source_identity"' "$ROOT/cli/prepare/terminology-payload.sh" \
-    && fail 'у payload знову береться resolve.source_identity · це той самий хеш для моделі'
+printf '%s' "$out" | jq -e '[.[] | has("source_identity")] | any | not' >/dev/null \
+    || fail 'у payload знову береться resolve.source_identity · це той самий хеш для моделі'
 
 # Схема відповіді теж не має його просити.
 php -r '

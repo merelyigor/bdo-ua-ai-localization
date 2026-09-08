@@ -295,8 +295,8 @@ if ($trap->glossary() !== []) {
 # читання «в лоб» МОВЧКИ викидало б термін, назви якого не впізнало: порожня
 # назва просто пропускається, пачка їде без термінів, і ніхто не дізнається до
 # першого русизму в шарі. Тому правило одне · `Api\Term`.
-grep -Fq 'Bdo\Translate\Api\Term::name' "$ROOT/cli/prepare/worker-payload.sh" \
-    || fail 'контекст рядка читає назви термінів власним правилом · терміни хаба зникнуть мовчки'
+php -r 'require $argv[1]; foreach ([["term" => "Box", "translation" => "Скринька"], ["canonical_source" => "Box", "ukrainian" => "Скринька"]] as $term) { if (Bdo\Translate\Api\Term::name($term) !== "Box") { fwrite(STDERR, "хабове поле term не стало canonical_source\n"); exit(1); } }' "$ROOT/lib/autoload.php" \
+    || fail 'терміни хаба зникли мовчки'
 grep -Fq 'Term::name(' "$ROOT/lib/Batch/Row.php" \
     || fail 'глосарій рядка читає назви термінів власним правилом'
 php -r '

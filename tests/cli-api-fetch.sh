@@ -66,6 +66,20 @@ export BDO_API_TARGET=legacy
 export STUB_LOG="$TMP/requests.log"
 run() { env BDO_ORCHESTRATOR="$1" BDO_STATE_DIR="$2" bash "$ROOT/$3" "${@:4}"; }
 
+normalize_result() {
+    sed -E 's#output/(rows|validate)_[0-9]{8}_[0-9]{6}\.json#output/\1_TIMESTAMP.json#g' "$1" > "$2"
+}
+
+assert_timestamp_normalizer_is_narrow() {
+    printf '%s\n' 'Збережено: /tmp/output/rows_20260908_120000.json' 'Код: 1' > "$TMP/normalizer-left"
+    printf '%s\n' 'Збережено: /tmp/output/rows_20260908_120001.json' 'Код: 2' > "$TMP/normalizer-right"
+    normalize_result "$TMP/normalizer-left" "$TMP/normalizer-left.normalized"
+    normalize_result "$TMP/normalizer-right" "$TMP/normalizer-right.normalized"
+    if cmp -s "$TMP/normalizer-left.normalized" "$TMP/normalizer-right.normalized"; then
+        fail 'нормалізація часової мітки приховала байт поза іменем файла'
+    fi
+}
+
 pair() {
     local name="$1" script="$2" state="$TMP/state-$1"; shift 2
     local setup="$1"; shift
@@ -88,8 +102,17 @@ pair() {
         set -e
         printf '%s\n' "$sh_code" > "$TMP/$name.sh.code"
         printf '%s\n' "$php_code" > "$TMP/$name.php.code"
-        cmp -s "$TMP/$name.sh.out" "$TMP/$name.php.out" || continue
-        cmp -s "$TMP/$name.sh.err" "$TMP/$name.php.err" || continue
+        if [ "$name" = fetch ] || [ "$name" = validate ]; then
+            normalize_result "$TMP/$name.sh.out" "$TMP/$name.sh.out.normalized"
+            normalize_result "$TMP/$name.php.out" "$TMP/$name.php.out.normalized"
+            normalize_result "$TMP/$name.sh.err" "$TMP/$name.sh.err.normalized"
+            normalize_result "$TMP/$name.php.err" "$TMP/$name.php.err.normalized"
+            cmp -s "$TMP/$name.sh.out.normalized" "$TMP/$name.php.out.normalized" || continue
+            cmp -s "$TMP/$name.sh.err.normalized" "$TMP/$name.php.err.normalized" || continue
+        else
+            cmp -s "$TMP/$name.sh.out" "$TMP/$name.php.out" || continue
+            cmp -s "$TMP/$name.sh.err" "$TMP/$name.php.err" || continue
+        fi
         cmp -s "$TMP/$name.sh.code" "$TMP/$name.php.code" || continue
         diff -qr "$TMP/$name.sh.files" "$state" >/dev/null || continue
         : # sabotage-only: isolate the path-contract assertion from pair comparison
@@ -119,12 +142,19 @@ test -f "$TMP/state-capabilities/api-capabilities.local.json" || fail 'capabilit
 test "$(jq -r '.target' "$TMP/state-capabilities/api-capabilities.local.json")" = local || fail 'cache capabilities має неправильну ціль'
 
 pair validate cli/api/validate.sh setup_validate "$TMP/items.json"
-test -s "$ROOT"/output/validate_*.json || fail 'validate не створила файл відповіді'
+validate_file="$(ls -t "$ROOT"/output/validate_*.json 2>/dev/null | head -1 || true)"
+test -n "$validate_file" && test -s "$validate_file" || fail 'validate не створила файл відповіді'
 
 pair fetch cli/api/fetch-rows.sh setup_fetch 20
+assert_timestamp_normalizer_is_narrow
 for path_output in sh php; do
     path="$(grep -oE '/[^ ]*/output/rows_[0-9_]+\.json' "$TMP/fetch.$path_output.out" | tail -1 || true)"
     test -n "$path" && test -f "$path" || fail "шлях rows у $path_output-виводі не відповідає контракту run-mode.sh:65"
+done
+for repeat in 1 2 3 4 5; do
+    pair "fetch-stability-$repeat" cli/api/fetch-rows.sh setup_fetch 20
+    test "$(cat "$TMP/fetch-stability-$repeat.sh.code")" -eq 0 || fail "fetch stability run $repeat: shell code is not zero"
+    test "$(cat "$TMP/fetch-stability-$repeat.php.code")" -eq 0 || fail "fetch stability run $repeat: PHP code is not zero"
 done
 rows="$(ls -t "$ROOT"/output/rows_*.json | head -1)"
 test "$(jq '.data.rows | length' "$rows")" -eq 2 || fail 'fetch не зберіг рядки'

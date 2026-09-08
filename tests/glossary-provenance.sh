@@ -72,8 +72,14 @@ for payload in worker qa; do
 done
 
 # 3. Спільний блок `terms` несе походження · без нього поділ на рівні пачки німий.
-grep -Fq '"ukrainian_layer", "policy"' "$ROOT/cli/prepare/worker-payload.sh" \
-    || fail 'worker-payload не передає ukrainian_layer у спільні терміни'
+mkdir -p "$TMP/terms-state/batches/b"
+printf 'b\n' > "$TMP/terms-state/current-batch"
+printf '%s\n' '{"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb":[{"en":"x","ua":"y"}]}' > "$TMP/terms-state/batches/b/context.json"
+printf '%s\n' '[{"canonical_source":"Timing","ukrainian":"Час","ukrainian_layer":"machine","policy":"profile_default"}]' > "$TMP/terms-state/batches/b/terms.json"
+terms_payload="$(BDO_STATE_DIR="$TMP/terms-state" bash "$ROOT/cli/prepare/worker-payload.sh" "$TMP/rows.json" 2>/dev/null)" \
+    || fail 'worker-payload не прочитав спільні терміни'
+printf '%s' "$terms_payload" | jq -e '.terms[0].ukrainian_layer == "machine" and .terms[0].policy == "profile_default"' >/dev/null \
+    || fail 'worker-payload не передав ukrainian_layer і policy у спільні терміни'
 
 # 4. Промпти трактують блоки РІЗНО, і це саме те, чого бракувало.
 grep -Fq 'Невживання такої назви' "$ROOT/roles/translation-qa.md" \
@@ -92,8 +98,11 @@ grep -Fq 'glossary_hint' "$ROOT/cli/heal/heal-plan.sh" \
     && fail 'у payload ремонту зʼявилась машинна підказка · машинна здогадка не має шляху в текст через ремонт'
 grep -Fq 'Машинних підказок тут немає навмисно' "$ROOT/roles/translation-repair.md" \
     || fail 'промпт ремонтника не каже, що машинних підказок у payload немає'
-grep -Fq 'glossary_hint' "$ROOT/cli/prepare/names-payload.sh" \
-    && fail 'у payload проходу по назвах зʼявилась машинна підказка'
+printf '%s\n' '{"success":true,"data":{"results":[{"identity_hash":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","status":"rejected","code":"glossary_violation","details":{"glossary":[{"canonical":"Panokseon","expected":"Паноксон"}]}}]}}' > "$TMP/names-validate.json"
+names_out="$(bash "$ROOT/cli/prepare/names-payload.sh" "$TMP/rows.json" "$TMP/cand.json" "$TMP/names-validate.json" 2>/dev/null)" \
+    || fail 'payload проходу по назвах не зібрався'
+printf '%s' "$names_out" | jq -e '[.items[] | has("glossary_hint")] | any | not' >/dev/null \
+    || fail 'у payload проходу по назвах зʼявилась машинна підказка'
 grep -Fq 'підставою для `moderation` НЕ є' "$ROOT/roles/translation-judge.md" \
     || fail 'суддя досі може віддати рядок людині за машинну назву'
 

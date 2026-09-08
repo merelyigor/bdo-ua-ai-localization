@@ -1,4 +1,8 @@
 #!/usr/bin/env bash
+if [ "${BDO_ORCHESTRATOR:-php}" != sh ]; then
+    exec php "$(cd "$(dirname "$0")/../.." && pwd)/cli/bdo.php" names-payload "$@"
+fi
+
 # Payload для короткого проходу САМЕ ПО НАЗВАХ · для translation-names.
 #
 #   ./names-payload.sh rows.json final-candidate.json validate.json > names-payload.json

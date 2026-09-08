@@ -33,6 +33,10 @@ use Bdo\Translate\Cli\Command\Prepare\JudgePayloadCommand;
 use Bdo\Translate\Cli\Command\Prepare\MemoryApplyCommand;
 use Bdo\Translate\Cli\Command\Prepare\MemoryExpandCommand;
 use Bdo\Translate\Cli\Command\Prepare\MemoryLookupCommand;
+use Bdo\Translate\Cli\Command\Prepare\NamesPayloadCommand;
+use Bdo\Translate\Cli\Command\Prepare\QaPayloadCommand;
+use Bdo\Translate\Cli\Command\Prepare\TerminologyPayloadCommand;
+use Bdo\Translate\Cli\Command\Prepare\WorkerPayloadCommand;
 
 /**
  * Єдиний PHP-шов запуску: приймає argv без імені скрипта й повертає exit code.
@@ -105,6 +109,10 @@ final class Kernel
             'glossary-gaps' => new GlossaryGapsCommand(),
             'memory-lookup' => new MemoryLookupCommand(),
             'memory-expand' => new MemoryExpandCommand(),
+            'worker-payload' => new WorkerPayloadCommand(),
+            'qa-payload' => new QaPayloadCommand(),
+            'terminology-payload' => new TerminologyPayloadCommand(),
+            'names-payload' => new NamesPayloadCommand(),
             default => null,
         };
     }

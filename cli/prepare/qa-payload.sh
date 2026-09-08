@@ -1,4 +1,8 @@
 #!/usr/bin/env bash
+if [ "${BDO_ORCHESTRATOR:-php}" != sh ]; then
+    exec php "$(cd "$(dirname "$0")/../.." && pwd)/cli/bdo.php" qa-payload "$@"
+fi
+
 # Побудувати компактний payload для translation-qa.
 #
 #   ./qa-payload.sh rows.json candidate.json [--with-current]  # + поточний ШІ-текст

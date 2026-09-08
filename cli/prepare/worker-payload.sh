@@ -1,4 +1,8 @@
 #!/usr/bin/env bash
+if [ "${BDO_ORCHESTRATOR:-php}" != sh ]; then
+    exec php "$(cd "$(dirname "$0")/../.." && pwd)/cli/bdo.php" worker-payload "$@"
+fi
+
 # Побудувати компактний payload для translation-worker або translation-repair.
 #
 #   ./worker-payload.sh rows.json                 # з прикладами (за замовчуванням)

@@ -185,10 +185,10 @@ if (! isset($filtered["examples"]["h2"])) $fail("здоровий приклад
 if ($filtered["terms"] !== ["Cheongsa Island"]) $fail("причина відкидання не названа");
 ' "$ROOT/lib/autoload.php" || fail 'фільтр прикладів за глосарієм не тримає контракт'
 
-grep -Fq 'GlossaryExamples::filter' "$ROOT/cli/prepare/worker-payload.sh" \
-    || fail 'payload воркера не фільтрує приклади за глосарієм'
-grep -Fq 'відкинуто %d, що суперечать затвердженим термінам' "$ROOT/cli/prepare/worker-payload.sh" \
-    || fail 'відкидання прикладів мовчазне'
+bash "$ROOT/tests/cli-payload-parity.sh" >"$TMP/filter-parity.out" 2>"$TMP/filter-parity.err" \
+    || fail "payload parity не довів фільтрацію прикладів: $(cat "$TMP/filter-parity.err")"
+grep -Fq 'cli payload parity' "$TMP/filter-parity.out" \
+    || fail 'фільтрація прикладів не пройдена поведінково'
 
 # Підозрілий запис глосарію не подається моделі як закон.
 #
@@ -240,16 +240,15 @@ foreach ($expected as $name => $reason) {
 }
 ' "$ROOT/lib/autoload.php" || fail 'детектор підозрілих термінів не тримає контракт'
 
-grep -Fq 'Терміни під підозрою пропущено' "$ROOT/cli/prepare/worker-payload.sh" \
-    || fail 'payload мовчки подає підозрілі терміни як закон'
-grep -Fq 'glossary-suspects.json' "$ROOT/cli/prepare/worker-payload.sh" \
-    || fail 'payload не читає позначки підозрілих термінів'
-grep -Fq 'empty($mark["withhold"])' "$ROOT/cli/prepare/worker-payload.sh" \
-    || fail 'payload прибирає терміни, не питаючи про позначку withhold'
+# Парний локальний stub окремо доводить обидві гілки `withhold`: true пропускає
+# підозрілий термін, false лишає його у спільному payload і називає причину.
+bash "$ROOT/tests/cli-payload-parity.sh" >/dev/null \
+    || fail 'правило withhold не пройдено поведінково'
 
-# Один пачковий запит замість запиту на кожен рядок.
-grep -Fq '/rows/context' "$ROOT/cli/prepare/worker-payload.sh" || fail 'контекст береться не пачковим запитом'
-grep -Fq 'max_context_rows' "$ROOT/cli/prepare/worker-payload.sh" || fail 'ліміт пачки контексту зашитий у клієнт замість /me'
+# Один пачковий запит і ліміт із `/me`: це поведінково доводить локальний stub
+# парного тесту, а не текст старого shell-тіла.
+bash "$ROOT/tests/cli-payload-parity.sh" >/dev/null \
+    || fail 'worker не виконав пачковий /rows/context із лімітом /me'
 
 # Обидва промпти мусять знати нову форму, інакше слабка модель шукатиме масив.
 for role in worker qa; do
@@ -348,8 +347,14 @@ grep -q 'не сказав, чи є в них опис' "$TMP/queue-err.txt" \
 jq -e '[.terms[].canonical_source] | index("Ancient Relic") == null' "$TMP/state/term-notes-queue.json" >/dev/null \
     || fail 'термін з невідомим станом опису потрапив у чергу · так псуються чужі дані'
 # Прапорець будується лише тоді, коли API справді відповів про поле.
-grep -Fq 'array_key_exists("definition", $term)' "$ROOT/cli/prepare/worker-payload.sh" \
-    || fail 'payload не розрізняє «опису немає» і «сервер не сказав»'
+mkdir -p "$TMP/definition-state/batches/b"
+printf 'b\n' > "$TMP/definition-state/current-batch"
+printf '%s\n' '{}' > "$TMP/definition-state/batches/b/context.json"
+printf '%s\n' '[{"canonical_source":"Unknown","ukrainian":"Невідомо"}]' > "$TMP/definition-state/batches/b/terms.json"
+definition_out="$(BDO_STATE_DIR="$TMP/definition-state" bash "$ROOT/cli/prepare/worker-payload.sh" "$TMP/rows.json" 2>/dev/null)" \
+    || fail 'payload не зібрався для терміна без definition'
+printf '%s' "$definition_out" | jq -e '.terms[0] | has("has_definition") | not' >/dev/null \
+    || fail 'відсутність definition помилково стала false'
 # Найдорожче правило: черга НІЧОГО не надсилає в API. Мертвий порт робить
 # порушення видимим поведінково, навіть якщо старий текст лишився еталоном.
 mkdir -p "$TMP/queue-state"

@@ -46,7 +46,7 @@ build --with-reference | has reference_ru && fail 'порожня RU-довід�
 # самий контракт.
 grep -Fq 'current' "$ROOT/roles/translation-qa.md" \
     || fail 'QA-промпт не знає про поле current, яке приходить у режимі improve'
-grep -Fq '"current"' "$ROOT/cli/prepare/qa-payload.sh" \
+build --with-current | has current \
     || fail 'qa-payload більше не кладе current · перевірку треба переглянути'
 
 echo 'worker reference: OK'

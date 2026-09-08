@@ -162,8 +162,11 @@ grep -Fq 'names-pass.done' "$ROOT/cli/run/run-drive.sh" || fail 'немає ме
 # Репарувальник мусить знати, що означає наказ · це виміряний дефект промпта, а не смак.
 grep -Fq 'Дефект виду «ужий «X» для «Y»» означає' "$ROOT/roles/translation-repair.md" \
     || fail 'промпт repair не пояснює наказ «ужий»'
-# Межа стоїть у КОДІ, а не в промпті: промпт можна вмовити, перевірку · ні.
-grep -Fq 'glossaryLayers' "$ROOT/cli/prepare/names-payload.sh" \
-    || fail 'прохід по назвах не перевіряє походження назви'
+# Межа стоїть у КОДІ, а не в промпті: machine-вимога не стає наказом.
+php -r '$d=json_decode(file_get_contents($argv[1]),true);$d["data"]["rows"][0]["glossary"]["terms"][0]["ukrainian_layer"]="machine";file_put_contents($argv[1],json_encode($d,JSON_UNESCAPED_UNICODE));' "$STATE/rows.json"
+machine_payload="$(bash "$ROOT/cli/prepare/names-payload.sh" "$STATE/rows.json" "$STATE/final-candidate.json" "$STATE/validate.json" 2>/dev/null)" \
+    || fail 'прохід по назвах упав на машинному походженні'
+test "$(jq '.items | length' <<<"$machine_payload")" = 0 \
+    || fail 'машинна назва потрапила в наказ проходу по назвах'
 
 echo 'names pass: OK · один прохід по назвах перед записом, без повтору.'
