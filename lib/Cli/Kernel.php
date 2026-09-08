@@ -4,6 +4,11 @@ declare(strict_types=1);
 
 namespace Bdo\Translate\Cli;
 
+use Bdo\Translate\Cli\Command\Api\PatchesOverviewCommand;
+use Bdo\Translate\Cli\Command\Api\PatchInfoCommand;
+use Bdo\Translate\Cli\Command\Api\RowContextCommand;
+use Bdo\Translate\Cli\Command\Api\ShowRowsCommand;
+use Bdo\Translate\Cli\Command\Api\TestApiCommand;
 use Bdo\Translate\Cli\Command\EnvCommand;
 use Bdo\Translate\Cli\Command\HelpCommand;
 
@@ -51,6 +56,11 @@ final class Kernel
         return match ($name) {
             'help' => new HelpCommand($this->registry),
             'env' => $this->registry->hasCommand('env') ? new EnvCommand() : null,
+            'api' => $this->registry->hasCommand('api') ? new TestApiCommand() : null,
+            'context' => $this->registry->hasCommand('context') ? new RowContextCommand() : null,
+            'show' => $this->registry->hasCommand('show') ? new ShowRowsCommand() : null,
+            'patch' => $this->registry->hasCommand('patch') ? new PatchInfoCommand() : null,
+            'patches' => $this->registry->hasCommand('patches') ? new PatchesOverviewCommand() : null,
             default => null,
         };
     }
