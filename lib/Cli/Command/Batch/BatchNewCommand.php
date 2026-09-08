@@ -7,6 +7,7 @@ namespace Bdo\Translate\Cli\Command\Batch;
 use Bdo\Translate\Batch\RowSet;
 use Bdo\Translate\Batch\Workspace;
 use Bdo\Translate\Cli\Command;
+use Bdo\Translate\Cli\LocalTime;
 use Bdo\Translate\Cli\Output;
 use Bdo\Translate\Session\Ledger;
 use RuntimeException;
@@ -48,14 +49,9 @@ final class BatchNewCommand implements Command
             return 1;
         }
 
-        // Старий shell бере час через системний `date`, який працює в часовій
-        // зоні власника; PHP CLI на цій машині за замовчуванням UTC. Беремо
-        // той самий stamp, щоб manifest і ID не розходилися на кілька годин.
-        exec('date +%Y%m%d_%H%M%S', $stampOutput, $stampCode);
-        $stamp = trim((string) ($stampOutput[0] ?? ''));
-        if ($stampCode !== 0 || $stamp === '') {
-            throw new RuntimeException('Не вдалося отримати час для створення пачки.');
-        }
+        // Беремо ту саму системну зону й формат, але без Unix-процесу: PHP має
+        // працювати нативно на Windows, а session.sh лишається тимчасовим seam.
+        $stamp = LocalTime::stamp();
         $this->ensureSession();
         $rows = RowSet::fromFile($mode);
         $rows->identityHashes();

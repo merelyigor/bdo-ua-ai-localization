@@ -9,6 +9,11 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 fail() { printf 'FAIL: %s\n' "$1" >&2; exit 1; }
+REAL_PHP="$(command -v php)"
+REAL_BASH="$(command -v bash)"
+ORIGINAL_PATH="$PATH"
+test -x "$REAL_PHP" || fail 'не знайдено абсолютний PHP до зміни PATH'
+test -x "$REAL_BASH" || fail 'не знайдено абсолютний bash до зміни PATH'
 
 H1='1111111111111111111111111111111111111111111111111111111111111111'
 H2='2222222222222222222222222222222222222222222222222222222222222222'
@@ -137,6 +142,32 @@ FAKE
     test "$code" -eq 0 || fail "routing $route: fake php відмовив ($code): $(cat "$TMP/route-$route.err")"
     grep -Fq "__ROUTE__$route" "$TMP/route-$route.out" || fail "routing $route: marker відсутній"
 done
+
+# ПРАВИЛО: BatchNewCommand не запускає зовнішній `date`; єдиний дозволений
+# subprocess у цьому підетапі — session.sh ensure.
+# САБОТАЖ: якщо PHP знову викличе `date`, PATH лише з fake bash має швидко
+# зупинити прогін і назвати заборонену Unix-залежність.
+NO_DATE_BIN="$TMP/no-date-bin"
+mkdir -p "$NO_DATE_BIN"
+cat >"$NO_DATE_BIN/bash" <<FAKE
+#!$REAL_BASH
+if [ "\${#}" -eq 2 ] && [ "\${1:-}" = "$ROOT/cli/system/session.sh" ] && [ "\${2:-}" = ensure ]; then
+    PATH="$ORIGINAL_PATH" "$REAL_BASH" "\$@"
+    exit \$?
+fi
+printf 'FAIL: заборонений subprocess через fake bash: %s\n' "\$*" >&2
+exit 1
+FAKE
+chmod +x "$NO_DATE_BIN/bash"
+mkdir -p "$TMP/no-date/state"
+set +e
+PATH="$NO_DATE_BIN" BDO_ENV=DEV BDO_STATE_DIR="$TMP/no-date/state" \
+    "$REAL_PHP" "$ROOT/cli/bdo.php" batch-new "$TMP/rows.json" \
+    >"$TMP/no-date/out" 2>"$TMP/no-date/err"
+NO_DATE_CODE=$?
+set -e
+test "$NO_DATE_CODE" -eq 0 || fail "batch-new залежить від зовнішнього date (code $NO_DATE_CODE): $(cat "$TMP/no-date/err")"
+test -s "$TMP/no-date/state/current-batch" || fail 'batch-new без date не створив current batch'
 
 # ПРАВИЛО: batch-dir без current batch має порожній stdout і код 1.
 # САБОТАЖ: мовчазний успіх або сторонній шлях порушить контракт драйвера.
