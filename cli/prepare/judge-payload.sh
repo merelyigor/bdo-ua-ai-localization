@@ -1,4 +1,8 @@
 #!/usr/bin/env bash
+if [ "${BDO_ORCHESTRATOR:-php}" != sh ]; then
+    exec php "$(cd "$(dirname "$0")/../.." && pwd)/cli/bdo.php" judge-payload "$@"
+fi
+
 # Побудувати payload для translation-judge · лише спірні рядки пачки.
 #
 #   ./judge-payload.sh rows.json candidate.json verdicts.json [validate.json]

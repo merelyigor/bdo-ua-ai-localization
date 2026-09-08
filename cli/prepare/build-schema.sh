@@ -1,4 +1,8 @@
 #!/usr/bin/env bash
+if [ "${BDO_ORCHESTRATOR:-php}" != sh ]; then
+    exec php "$(cd "$(dirname "$0")/../.." && pwd)/cli/bdo.php" build-schema "$@"
+fi
+
 # Створити JSON Schema для constrained decoding із rows.json і поставити її як активну.
 #
 # Схема робить структурно неможливим втратити або вигадати identity_hash: список хешів

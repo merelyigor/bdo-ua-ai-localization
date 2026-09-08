@@ -1,4 +1,8 @@
 #!/usr/bin/env bash
+if [ "${BDO_ORCHESTRATOR:-php}" != sh ]; then
+    exec php "$(cd "$(dirname "$0")/../.." && pwd)/cli/bdo.php" memory-apply "$@"
+fi
+
 # Закрити памʼяттю те, що вже перекладено, і лишити моделі тільки решту.
 #
 #   ./memory-apply.sh rows.json memory.json

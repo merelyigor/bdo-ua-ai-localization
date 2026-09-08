@@ -33,6 +33,7 @@ cat > "$TMP/state/batches/b/context.json" <<JSON
  "$H2":[{"en":"Iron Ore","ua":"Залізна руда"}],
  "$H3":[{"en":"Iron Ore","ua":"Залізна руда"},{"en":"Steel Ore","ua":"Сталева руда"}]}
 JSON
+cp "$TMP/state/batches/b/context.json" "$TMP/context-backup.json"
 
 # shellcheck disable=SC2120  # прапорці передаються не в кожному виклику
 build() { BDO_STATE_DIR="$TMP/state" bash "$ROOT/cli/prepare/worker-payload.sh" "$TMP/rows.json" "$@" 2>"$TMP/err.txt"; }
@@ -432,8 +433,19 @@ grep -Fq 'BDO_SESSION_HINT_BATCHES' "$ROOT/cli/run/run-drive.sh" \
     && fail 'у рушій повернулась підказка про сесію диригента'
 grep -Fq 'staged_kb' "$ROOT/cli/run/run-drive.sh" \
     && fail 'у конверт повернувся лічильник ваги транскрипту'
-# Суддя бачить ту саму форму, що воркер і QA: одна форма · одне правило.
-grep -Fq '"examples" => $sharedExamples' "$ROOT/cli/prepare/judge-payload.sh" \
-    || fail 'payload судді лишився з дубльованими прикладами'
+# Суддя бачить той самий набір спільних прикладів, що й перекладач. Перевіряємо
+# живу поведінку обох будівників, бо старий текст shell лишається rollback-шляхом.
+printf '[{"identity_hash":"%s","text":"Iron Sword"},{"identity_hash":"%s","text":"Iron Shield"},{"identity_hash":"%s","text":"Iron Helmet"}]\n' \
+    "$H1" "$H2" "$H3" > "$TMP/judge-candidate.json"
+printf '[{"identity_hash":"%s","status":"PASS","severity":"none","issue":"","fix":""},{"identity_hash":"%s","status":"PASS","severity":"none","issue":"","fix":""},{"identity_hash":"%s","status":"PASS","severity":"none","issue":"","fix":""}]\n' \
+    "$H1" "$H2" "$H3" > "$TMP/judge-verdicts.json"
+worker_examples="$(build | jq -cS '.examples // []')" \
+    || fail 'worker payload для диференційної перевірки не зібрався'
+judge_examples="$(BDO_STATE_DIR="$TMP/state" bash "$ROOT/cli/prepare/judge-payload.sh" \
+    "$TMP/rows.json" "$TMP/judge-candidate.json" "$TMP/judge-verdicts.json" 2>"$TMP/judge-err.txt" \
+    | jq -cS '.examples // []')" \
+    || fail 'payload судді для диференційної перевірки не зібрався'
+test "$worker_examples" = "$judge_examples" \
+    || fail 'payload судді має інший набір прикладів, ніж payload перекладача'
 
 echo 'payload shared examples: OK'

@@ -1,4 +1,8 @@
 #!/usr/bin/env bash
+if [ "${BDO_ORCHESTRATOR:-php}" != sh ]; then
+    exec php "$(cd "$(dirname "$0")/../.." && pwd)/cli/bdo.php" memory-expand "$@"
+fi
+
 # Зібрати повного кандидата: переклад моделі + близнюки + те, що дала памʼять.
 #
 #   ./memory-expand.sh candidate.json twins.json memory-candidate.json > full.json

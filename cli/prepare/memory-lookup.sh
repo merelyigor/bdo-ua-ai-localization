@@ -1,4 +1,8 @@
 #!/usr/bin/env bash
+if [ "${BDO_ORCHESTRATOR:-php}" != sh ]; then
+    exec php "$(cd "$(dirname "$0")/../.." && pwd)/cli/bdo.php" memory-lookup "$@"
+fi
+
 # Спитати API, чи цей самий англійський оригінал уже перекладено деінде.
 #
 #   ./memory-lookup.sh rows.json [memory.json]

@@ -1,4 +1,8 @@
 #!/usr/bin/env bash
+if [ "${BDO_ORCHESTRATOR:-php}" != sh ]; then
+    exec php "$(cd "$(dirname "$0")/../.." && pwd)/cli/bdo.php" glossary-gaps "$@"
+fi
+
 # Показати терміни пачки, для яких канонічний відповідник ще не затверджено.
 #
 #   ./glossary-gaps.sh rows.json

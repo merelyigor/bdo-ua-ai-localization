@@ -27,6 +27,12 @@ use Bdo\Translate\Cli\Command\Quality\MergeItemsCommand;
 use Bdo\Translate\Cli\Command\Quality\NormalizeCandidateCommand;
 use Bdo\Translate\Cli\Command\Quality\QaCoverageFillCommand;
 use Bdo\Translate\Cli\Command\Quality\QaFixesCommand;
+use Bdo\Translate\Cli\Command\Prepare\BuildSchemaCommand;
+use Bdo\Translate\Cli\Command\Prepare\GlossaryGapsCommand;
+use Bdo\Translate\Cli\Command\Prepare\JudgePayloadCommand;
+use Bdo\Translate\Cli\Command\Prepare\MemoryApplyCommand;
+use Bdo\Translate\Cli\Command\Prepare\MemoryExpandCommand;
+use Bdo\Translate\Cli\Command\Prepare\MemoryLookupCommand;
 
 /**
  * Єдиний PHP-шов запуску: приймає argv без імені скрипта й повертає exit code.
@@ -93,6 +99,12 @@ final class Kernel
             'check-russianisms' => new CheckRussianismsCommand(),
             'normalize-candidate' => new NormalizeCandidateCommand(),
             'merge-items' => new MergeItemsCommand(),
+            'build-schema' => new BuildSchemaCommand(),
+            'memory-apply' => new MemoryApplyCommand(),
+            'judge-payload' => new JudgePayloadCommand(),
+            'glossary-gaps' => new GlossaryGapsCommand(),
+            'memory-lookup' => new MemoryLookupCommand(),
+            'memory-expand' => new MemoryExpandCommand(),
             default => null,
         };
     }
