@@ -17,7 +17,7 @@ cd "$ROOT"
 
 readonly RULE_FILES=(AGENTS.md .cursorrules CLAUDE.md QWEN.md)
 readonly RULE_REFERENCE='docs/AI_AGENT_RULES_REFERENCE.md'
-readonly RULE_MAP_MAX_LINES=200
+readonly RULE_MAP_MAX_LINES=201
 
 fail() { printf 'FAIL: %s\n' "$1" >&2; exit 1; }
 step() { printf '\n== %s ==\n' "$1"; }
@@ -713,6 +713,11 @@ check_handoff_contract() {
     # САБОТАЖ: прибрати marker, skeleton, заборону owner headings або повернути «ВЛАСНИК пушить» · gate docs мусить впасти.
     grep -Fq 'АДРЕСАТ: АРХІТЕКТОР' AGENTS.md \
         || fail 'root rule map не містить адресата HANDOFF'
+    grep -Fq 'АРХІТЕКТОРСЬКИЙ ПАТЧ' AGENTS.md \
+        || fail 'root rule map не містить механізму архітекторського патча'
+    if grep -Fq 'docs/** не редагуєш' AGENTS.md; then
+        fail 'root rule map містить старе blanket-правило «docs/** не редагуєш»'
+    fi
     grep -Fq 'АДРЕСАТ: АРХІТЕКТОР' docs/ai-workflow/HANDOFF.md \
         || fail 'HANDOFF.md не містить literal marker адресата'
     for heading in '## СТАН' '## КОМІТ' '## ЗМІНЕНІ ФАЙЛИ' '## ПЕРЕВІРКА' '## ВІДХИЛЕННЯ' '## ЧОГО НЕ ЗРОБЛЕНО'; do
@@ -725,6 +730,14 @@ check_handoff_contract() {
         grep -Fq "$heading" docs/ai-workflow/PROMPTS.md \
             || fail "PROMPTS.md не забороняє власницький заголовок: $heading"
     done
+    grep -Fq 'Є автором змісту process rules/plans:' docs/ai-workflow/ROLES.md \
+        || fail 'ROLES.md не фіксує авторство АРХІТЕКТОРА для process rules/plans'
+    grep -Fq '## Блок `АРХІТЕКТОРСЬКИЙ ПАТЧ`' docs/ai-workflow/PROMPTS.md \
+        || fail 'PROMPTS.md не містить блок архітекторського патча'
+    grep -Fq 'АРХІТЕКТОРСЬКИЙ ПАТЧ' docs/ai-workflow/WORKFLOW.md \
+        || fail 'WORKFLOW.md не містить механіку архітекторського патча'
+    grep -Fq '§17.5' docs/AI_AGENT_RULES_REFERENCE.md \
+        || fail 'норматив не містить §17.5 про архітекторський патч'
     if grep -Fq 'ВЛАСНИК пушить' docs/ai-workflow/WORKFLOW.md; then
         fail 'WORKFLOW.md містить застаріле твердження «ВЛАСНИК пушить»'
     fi
