@@ -654,6 +654,35 @@ check_bash32_arrays() {
     fi
 }
 
+# ЖИВИЙ PHP, а не заморожені shell-тіла. Результат mkdir має бути перевірений,
+# а count() не має виконуватись у кожній ітерації заголовка циклу.
+check_php_runtime_guards() {
+    step 'PHP runtime guards'
+    local count_in_loop mkdir_hits file line text context following start
+    count_in_loop="$(rg -n --pcre2 --glob '*.php' 'for\s*\([^;\n]*;[^;\n]*\bcount\s*\(' lib cli 2>/dev/null || true)"
+    test -z "$count_in_loop" \
+        || fail "count() у умові заголовка PHP-циклу · обчисли довжину перед циклом:\n$count_in_loop"
+    mkdir_hits="$(rg -n --pcre2 --glob '*.php' 'mkdir\s*\(' lib cli 2>/dev/null || true)"
+    while IFS=: read -r file line text; do
+        test -n "$file" || continue
+        start=$((line > 3 ? line - 3 : 1))
+        context="$(sed -n "${start},$((line + 3))p" "$file" | tr '\n' ' ')"
+        if printf '%s' "$context" | grep -Eq 'is_dir.*mkdir.*is_dir'; then
+            continue
+        fi
+        if printf '%s' "$text" | grep -Eq '= *@?mkdir\s*\('; then
+            following="$(sed -n "$((line + 1)),$((line + 4))p" "$file")"
+            printf '%s' "$following" | grep -Eq 'if .*is_dir' \
+                || fail "результат mkdir() не перевірено перед записом: $file:$line"
+            continue
+        fi
+        fail "mkdir() без перевірки результату в живому PHP-коді: $file:$line"
+    done <<EOF
+$mkdir_hits
+EOF
+    note 'PHP: count() у loop-condition немає; кожен mkdir() має перевірку результату'
+}
+
 check_whitespace() {
     step 'Whitespace і conflict markers'
     git diff --check
@@ -1023,11 +1052,11 @@ profile="${1:-}"
 case "$profile" in
     preflight) report_preflight ;;
     docs) check_docs ;;
-    shell) check_rules; check_shell; check_design; check_bash32_arrays; check_whitespace ;;
+    shell) check_rules; check_shell; check_design; check_bash32_arrays; check_php_runtime_guards; check_whitespace ;;
     agents) check_rules; check_agents; check_whitespace ;;
     runtime) check_rules; check_runtime ;;
     api) check_rules; check_api ;;
-    full) check_docs; check_shell; check_design; check_bash32_arrays; check_agents ;;
+    full) check_docs; check_shell; check_design; check_bash32_arrays; check_php_runtime_guards; check_agents ;;
     *) printf 'Usage: %s {preflight|docs|shell|agents|runtime|api|full}\n' "$0" >&2; exit 2 ;;
 esac
 

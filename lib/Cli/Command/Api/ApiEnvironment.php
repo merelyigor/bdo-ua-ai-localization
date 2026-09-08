@@ -69,7 +69,7 @@ final class ApiEnvironment
             throw new RuntimeException('Не задана адреса '.$baseName.'.');
         }
         if ($resolvedKey === '') {
-            throw new RuntimeException('Немає ключа для '.$target.' і '.$env.'.');
+            throw new RuntimeException('Немає ключа для '.$target.' і '.$env.': задайте '.$keyName.'.');
         }
 
         $resolvedEnvironment = ($target === 'hub' ? 'hub-' : '').($env === 'PROD' ? 'prod' : 'local');

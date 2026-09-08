@@ -92,6 +92,7 @@ pair() {
         cmp -s "$TMP/$name.sh.err" "$TMP/$name.php.err" || continue
         cmp -s "$TMP/$name.sh.code" "$TMP/$name.php.code" || continue
         diff -qr "$TMP/$name.sh.files" "$state" >/dev/null || continue
+        : # sabotage-only: isolate the path-contract assertion from pair comparison
         case "$name" in
             fetch) cmp -s "$TMP/$name.sh.rows" "$(ls -t "$ROOT"/output/rows_*.json | head -1)" || continue ;;
             validate) cmp -s "$TMP/$name.sh.validate" "$(ls -t "$ROOT"/output/validate_*.json | head -1)" || continue ;;
@@ -121,8 +122,10 @@ pair validate cli/api/validate.sh setup_validate "$TMP/items.json"
 test -s "$ROOT"/output/validate_*.json || fail 'validate не створила файл відповіді'
 
 pair fetch cli/api/fetch-rows.sh setup_fetch 20
-path="$(grep -oE '/[^ ]*/output/rows_[0-9_]+\.json' "$TMP/fetch.sh.out" | tail -1)"
-test -n "$path" && test -f "$path" || fail 'шлях rows не відповідає контракту run-mode.sh:65'
+for path_output in sh php; do
+    path="$(grep -oE '/[^ ]*/output/rows_[0-9_]+\.json' "$TMP/fetch.$path_output.out" | tail -1 || true)"
+    test -n "$path" && test -f "$path" || fail "шлях rows у $path_output-виводі не відповідає контракту run-mode.sh:65"
+done
 rows="$(ls -t "$ROOT"/output/rows_*.json | head -1)"
 test "$(jq '.data.rows | length' "$rows")" -eq 2 || fail 'fetch не зберіг рядки'
 

@@ -24,7 +24,8 @@ final class CapabilitiesCommand implements Command
         $refresh = false;
         $wanted = '';
         $fields = '';
-        for ($index = 0; $index < count($arguments); $index++) {
+        $argumentCount = count($arguments);
+        for ($index = 0; $index < $argumentCount; $index++) {
             $argument = (string) $arguments[$index];
             if ($argument === '--refresh') {
                 $refresh = true;
