@@ -12,9 +12,12 @@ use Bdo\Translate\Cli\Command\Api\TestApiCommand;
 use Bdo\Translate\Cli\Command\Api\GlossaryConceptsCommand;
 use Bdo\Translate\Cli\Command\Api\GlossaryListCommand;
 use Bdo\Translate\Cli\Command\Api\GlossaryResolveCommand;
+use Bdo\Translate\Cli\Command\Api\CapabilitiesCommand;
+use Bdo\Translate\Cli\Command\Api\FetchRowsCommand;
 use Bdo\Translate\Cli\Command\Api\TermNotesDescribeCommand;
 use Bdo\Translate\Cli\Command\Api\TermNotesQueueCommand;
 use Bdo\Translate\Cli\Command\Api\TermNotesSubmitCommand;
+use Bdo\Translate\Cli\Command\Api\ValidateCommand;
 use Bdo\Translate\Cli\Command\EnvCommand;
 use Bdo\Translate\Cli\Command\HelpCommand;
 
@@ -73,6 +76,9 @@ final class Kernel
             'term-notes-queue' => new TermNotesQueueCommand(),
             'term-notes-describe' => new TermNotesDescribeCommand(),
             'term-notes-submit' => new TermNotesSubmitCommand(),
+            'capabilities' => new CapabilitiesCommand(),
+            'fetch-rows' => new FetchRowsCommand(),
+            'validate' => new ValidateCommand(),
             default => null,
         };
     }

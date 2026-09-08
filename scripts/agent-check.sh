@@ -95,10 +95,10 @@ check_rules() {
     # Розмір пачки зафіксовано на 50 (рішення власника 2026-08-28) і це стеля
     # запису API (`/me` -> `max_items`). Джерело правди · валідатор fetch.
     local fetch_min fetch_max plan_size composers
-    fetch_min="$(sed -n 's/.*BATCH < \([0-9]\{1,3\}\).*/\1/p' cli/api/fetch-rows.sh | sed -n '1p')"
-    fetch_max="$(sed -n 's/.*BATCH > \([0-9]\{1,3\}\).*/\1/p' cli/api/fetch-rows.sh | sed -n '1p')"
+    fetch_min="$(php -r 'require $argv[1]; echo Bdo\Translate\Cli\Command\Api\FetchRowsCommand::MIN_BATCH;' lib/autoload.php 2>/dev/null || true)"
+    fetch_max="$(php -r 'require $argv[1]; echo Bdo\Translate\Cli\Command\Api\FetchRowsCommand::MAX_BATCH;' lib/autoload.php 2>/dev/null || true)"
     test -n "$fetch_min" && test -n "$fetch_max" \
-        || fail 'не вдалося прочитати діапазон розміру пачки з cli/api/fetch-rows.sh'
+        || fail 'не вдалося прочитати діапазон розміру пачки з живої FetchRowsCommand'
     # Розмір пачки бере ПЛАНУВАЛЬНИК, а не поверхня: після 2026-09-05 і сторінка,
     # і вікно просять план у `Bdo\Translate\Run\Actions`, тому єдине число живе
     # там. Раніше воно читалось із `bin/tui.sh` · тобто з однієї з двох поверхонь.
@@ -868,6 +868,7 @@ $braceless"
     run bash tests/cli-kernel.sh
     run bash tests/cli-api-reports.sh
     run bash tests/cli-api-glossary.sh
+    run bash tests/cli-api-fetch.sh
     run bash tests/batch-summary.sh
     run bash tests/drive-memory-layers.sh
     run bash tests/judge-flow.sh

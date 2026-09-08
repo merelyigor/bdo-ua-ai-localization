@@ -153,10 +153,45 @@ got="$(fields_for '' prod "$legacy_prod" "$want")"
 test "$got" = "$want" \
     || fail "ціль без оголошених груп мусить отримати перелік як є: «${got}»"
 
-# І сама вибірка мусить цим користуватись · інакше перевірка вище стосується
-# лише бібліотеки, а не запиту.
-grep -Fq 'capabilities.sh" --fields' "$ROOT/cli/api/fetch-rows.sh" \
-    || fail 'вибірка не звіряє групи полів із ціллю · запит до хаба падатиме цілком'
+# І сама вибірка мусить цим користуватись · перевіряємо реальний URL до rows.
+FETCH_PORT=$((30000 + RANDOM % 1000))
+cat > "$TMP/fetch-router.php" <<'PHP'
+<?php
+$path = (string) parse_url((string) ($_SERVER['REQUEST_URI'] ?? '/'), PHP_URL_PATH);
+$log = (string) getenv('FETCH_LOG');
+file_put_contents($log, (string) ($_SERVER['REQUEST_URI'] ?? '')."\n", FILE_APPEND);
+header('Content-Type: application/json');
+if ($path === '/rows') {
+    echo '{"data":{"rows":[]},"meta":{"has_more":false,"next_cursor":null,"total_matching":0}}';
+    return;
+}
+http_response_code(404);
+echo '{}';
+PHP
+cat > "$TMP/fetch-env" <<EOF
+BDO_ENV=DEV
+BDO_API_TARGET=legacy
+BDO_API_BASE_DEV=http://127.0.0.1:$FETCH_PORT
+BDO_API_KEY_DEV=test-key
+EOF
+FETCH_STATE="$TMP/fetch-state"; mkdir -p "$FETCH_STATE"
+printf '%s\n' '{"target":"local","base":"stub","at":"2026-01-01T00:00:00Z","field_groups":"core,layers,coordinates","items":{}}' > "$FETCH_STATE/api-capabilities.local.json"
+: > "$TMP/fetch.log"
+FETCH_LOG="$TMP/fetch.log" php -S "127.0.0.1:$FETCH_PORT" "$TMP/fetch-router.php" >"$TMP/fetch-server.log" 2>&1 &
+FETCH_SERVER=$!
+for _ in $(seq 1 40); do
+    php -r '$s=@fsockopen("127.0.0.1",(int)$argv[1],$e,$m,.2); if(is_resource($s)){fclose($s);exit(0);}exit(1);' "$FETCH_PORT" && break
+    sleep .1
+done
+set +e
+FETCH_OUTPUT="$(TRANSLATE_ENV_FILE="$TMP/fetch-env" BDO_STATE_DIR="$FETCH_STATE" BDO_FETCH_MAX_PAGES=1 bash "$ROOT/cli/api/fetch-rows.sh" 20 2>"$TMP/fetch.err")"
+FETCH_CODE=$?
+set -e
+kill "$FETCH_SERVER" 2>/dev/null || true
+test "$FETCH_CODE" -eq 0 || fail "fetch на вузькій цілі впав: $(cat "$TMP/fetch.err")"
+printf '%s' "$FETCH_OUTPUT" | grep -Fq 'Отримано: 0 рядків' || fail 'fetch не завершився на відповіді звуженої цілі'
+grep -Fq 'fields=core' "$TMP/fetch.log" || fail 'fetch не звузив fields під можливості цілі'
+grep -Fq 'Ціль приймає не всі групи полів' "$TMP/fetch.err" || fail 'звуження fields не назване в stderr'
 
 # --- 6. Глосарій читається з ОБОХ бекендів ----------------------------------
 #
