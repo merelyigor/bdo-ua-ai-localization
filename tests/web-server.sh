@@ -63,7 +63,7 @@ TOKEN="$(printf '%s' "$URL" | sed -n 's~.*t=\([0-9a-f]*\).*~\1~p')"
 test "$PORT" = "$BASE_PORT" || fail "вільний типовий порт мусив бути взятий: очікувався $BASE_PORT, у посиланні $PORT"
 
 page="$(curl -s -m 5 "$URL")" || fail 'сторінка за надрукованим посиланням не відкрилась'
-printf '%s' "$page" | grep -q 'bdo · прогін' \
+grep -q 'bdo · прогін' <<<"$page" \
     || fail 'за посиланням віддано не нашу сторінку'
 
 # Екрани окремі (рішення власника 2026-09-05), тому кожен мусить відкриватись
@@ -72,9 +72,9 @@ printf '%s' "$page" | grep -q 'bdo · прогін' \
 while IFS='|' read -r screen_path screen_title; do
     body="$(curl -s -m 5 "http://127.0.0.1:$PORT${screen_path}")" \
         || fail "екран $screen_path не відкрився"
-    printf '%s' "$body" | grep -Fq "$screen_title" \
+    grep -Fq "$screen_title" <<<"$body" \
         || fail "за шляхом $screen_path віддано не той екран (немає «${screen_title}»)"
-    printf '%s' "$body" | grep -q "$TOKEN" \
+    grep -q "$TOKEN" <<<"$body" \
         && fail "токен вшитий в екран $screen_path · він мусить приходити лише в посиланні"
 done <<'SCREENS'
 /|bdo · прогін
@@ -115,7 +115,7 @@ done
 for page_path in / /queue /sessions /start; do
     shell="$(curl -s -m 5 "http://127.0.0.1:$PORT$page_path")"
     for secret in 'batch-summary' 'identity_hash' 'write-log' 'model-calls'; do
-        printf '%s' "$shell" | grep -q "$secret" \
+        grep -q "$secret" <<<"$shell" \
             && fail "в оболонці екрана $page_path лежать дані ($secret) · вона мусить бути порожньою"
     done
 done
@@ -144,7 +144,7 @@ expect 200 'своє походження' -H "Origin: http://127.0.0.1:$PORT" "
 printf 'BDO_WEB_TEST_SECRET=super-secret-value\n' >"$TMP/state/.env"
 for probe in "/.env" "/state/.env" "/api/state" "/api/sessions" "/"; do
     body="$(curl -s -m 5 "http://127.0.0.1:$PORT${probe}?t=$TOKEN" || true)"
-    printf '%s' "$body" | grep -q 'super-secret-value' \
+    grep -q 'super-secret-value' <<<"$body" \
         && fail "вміст .env видно за шляхом $probe"
 done
 
@@ -154,12 +154,12 @@ done
 # за сам виняток: `/api/state` віддавав HTML-помилку з кодом 200, сторінка
 # мовчки показувала застарілий знімок, а причину не бачив ніхто (D70).
 state_body="$(curl -s -m 10 "http://127.0.0.1:$PORT/api/state?t=$TOKEN")"
-printf '%s' "$state_body" | grep -qi 'Fatal error\|Undefined constant\|<br />' \
+grep -qi 'Fatal error\|Undefined constant\|<br />' <<<"$state_body" \
     && fail "у відповіді /api/state лежить PHP-помилка замість стану: $(printf '%s' "$state_body" | head -c 200)"
 printf '%s' "$state_body" | php -r 'exit(is_array(json_decode(stream_get_contents(STDIN), true)) ? 0 : 1);' \
     || fail "/api/state віддав не JSON: $(printf '%s' "$state_body" | head -c 200)"
 # Складання потоку живе на сервері: сирих рядків журналу сторінка бачити не має.
-printf '%s' "$state_body" | grep -q '{\\"content\\"' \
+grep -q '{\\"content\\"' <<<"$state_body" \
     && fail 'у зібраному тексті потоку лежить сирий NDJSON · сторінка показала б службові рядки (D67)'
 grep -Fq 'assemble' "$ROOT/lib/Web/Snapshot.php" \
     || fail 'сервер не складає текст потоку · розбір поїхав би в кожну поверхню окремо (D67)'
@@ -435,9 +435,9 @@ grep -q "$TOKEN" "$TMP/fake/opened.txt" \
 rm -f "$TMP/fake/opened.txt"
 PATH="$TMP/fake:$PATH" web --no-open >/dev/null 2>&1 || true
 test ! -s "$TMP/fake/opened.txt" || fail '--no-open усе одно відкрив браузер'
-printf '%s' "$second" | grep -q 'уже працює' \
+grep -q 'уже працює' <<<"$second" \
     || fail "другий запуск мусив сказати, що сервер уже працює. Отримано: $second"
-printf '%s' "$second" | grep -q "$PORT" || fail "другий запуск не назвав чинного порту: $second"
+grep -q "$PORT" <<<"$second" || fail "другий запуск не назвав чинного порту: $second"
 # Рахуємо не рядки (їх стільки, скільки воркерів), а САМ ФАКТ нового старту:
 # журнал не має рости після повторного запуску.
 started_now="$(grep -c 'Development Server' "$BDO_STATE_DIR/web.log" || true)"
@@ -448,9 +448,9 @@ test "$started_now" = "$started_before" \
 cp "$BDO_STATE_DIR/web.json" "$TMP/web.json.bak"
 rm -f "$BDO_STATE_DIR/web.json"
 lost="$(web --background --no-open 2>&1 || true)"
-printf '%s' "$lost" | grep -q 'уже працює' \
+grep -q 'уже працює' <<<"$lost" \
     || fail "без запису й із живим сервером треба віддати чинне посилання, а не підняти другий: $lost"
-printf '%s' "$lost" | grep -q "$TOKEN" \
+grep -q "$TOKEN" <<<"$lost" \
     || fail "втрачений запис · посилання мусить лишитись тим самим (токен живе окремим файлом): $lost"
 lost_started="$(grep -c 'Development Server' "$BDO_STATE_DIR/web.log" || true)"
 test "$lost_started" = "$started_before" \
@@ -459,8 +459,8 @@ cp "$TMP/web.json.bak" "$BDO_STATE_DIR/web.json"
 
 # --- --status і --stop ------------------------------------------------------
 status="$(web --status)" || fail "--status упав: $status"
-printf '%s' "$status" | grep -q "порт $PORT" || fail "--status не назвав порт: $status"
-printf '%s' "$status" | grep -q '/api/health -> 200' || fail "--status не перевіряє живу відповідь: $status"
+grep -q "порт $PORT" <<<"$status" || fail "--status не назвав порт: $status"
+grep -q '/api/health -> 200' <<<"$status" || fail "--status не перевіряє живу відповідь: $status"
 
 web --stop >/dev/null || fail '--stop упав'
 test ! -e "$BDO_STATE_DIR/web.json" || fail '--stop не прибрав state/web.json'
@@ -482,7 +482,7 @@ fi
 grep -Fq 'port_owners' "$ROOT/cli/system/web.sh" \
     || fail 'зупинка не цілиться у власників порту · без цього вона або не звільнить порт, або вбʼє зайве'
 again="$(web --stop)" || fail 'повторний --stop упав'
-printf '%s' "$again" | grep -q 'Зупиняти нічого' || fail "повторний --stop мусить сказати, що зупиняти нічого: $again"
+grep -q 'Зупиняти нічого' <<<"$again" || fail "повторний --stop мусить сказати, що зупиняти нічого: $again"
 
 # --- Токен переживає перезапуск (D75) --------------------------------------
 # Новий токен на кожен запуск робив мертвими і відкриту вкладку, і закладку:
