@@ -447,7 +447,7 @@ check_private_hosts() {
     # публічному файлі, і перевірка ловить власний вихідний код. Той самий
     # прийом уже вживається для фікстур детектора секретів нижче.
     local fixture='https://example''.dev/api'
-    printf '%s\n' "$fixture" | grep -qE 'https?://[A-Za-z0-9.-]+\.dev(/|$)' \
+    grep -qE 'https?://[A-Za-z0-9.-]+\.dev(/|$)' <<<"$fixture" \
         || fail 'negative test: детектор dev-хоста не спрацював'
     note 'dev-хостів немає; детектор перевірений фікстурою'
 }
@@ -463,11 +463,11 @@ check_public_safety() {
         fi
     done < <(public_files)
     sample='sk-''AAAAAAAAAAAAAAAAAAAA'
-    printf '%s\n' "$sample" | grep -Eq "$pattern" || fail 'negative test: API key pattern не спрацював'
+    grep -Eq "$pattern" <<<"$sample" || fail 'negative test: API key pattern не спрацював'
     sample='$2b$12$''AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA'
-    printf '%s\n' "$sample" | grep -Eq "$pattern" || fail 'negative test: credential hash pattern не спрацював'
+    grep -Eq "$pattern" <<<"$sample" || fail 'negative test: credential hash pattern не спрацював'
     sample='identity_hash=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef'
-    if printf '%s\n' "$sample" | grep -Eq "$pattern"; then
+    if grep -Eq "$pattern" <<<"$sample"; then
         fail 'negative test: technical identity_hash помилково класифікований як credential'
     fi
     note 'secret detector ловить key/hash fixtures і дозволяє technical identity_hash'
@@ -656,6 +656,23 @@ check_bash32_arrays() {
 
 # ЖИВИЙ PHP, а не заморожені shell-тіла. Результат mkdir має бути перевірений,
 # а count() не має виконуватись у кожній ітерації заголовка циклу.
+check_sigpipe_pipelines() {
+    step 'Конвеєри printf у grep -q'
+    # ПРАВИЛО: `printf ... | grep -q` під `set -o pipefail` є гонитвою, а не
+    # перевіркою: `grep -q` виходить на першому збігу, `printf` отримує SIGPIPE
+    # і повертає ненульовий код, а pipefail віддає код конвеєра саме за ним.
+    # УСПІШНИЙ пошук читається як провал, і повідомлення бреше про причину.
+    # САБОТАЖ, який це валить: повернути будь-який такий конвеєр назад.
+    # Зміряно на D114: на macOS 0 хибних падінь, на CI-runner · одразу.
+    # Безпечна форма · `grep -q ПАТЕРН <<<"$var"`: конвеєра немає, SIGPIPE теж.
+    local hits
+    hits="$(rg -n --pcre2 "printf '%s(\\\\n)?' \"\\\$\\w+\" \\| grep -[a-zA-Z]*q" \
+        tests scripts cli 2>/dev/null || true)"
+    test -z "$hits" \
+        || fail "конвеєр printf у grep -q ловить SIGPIPE замість результату:\n$hits"
+    note 'жодного printf у grep -q: успішний пошук не читається як провал'
+}
+
 check_php_runtime_guards() {
     step 'PHP runtime guards'
     local count_in_loop mkdir_hits file line text context following start
@@ -667,12 +684,12 @@ check_php_runtime_guards() {
         test -n "$file" || continue
         start=$((line > 3 ? line - 3 : 1))
         context="$(sed -n "${start},$((line + 3))p" "$file" | tr '\n' ' ')"
-        if printf '%s' "$context" | grep -Eq 'is_dir.*mkdir.*is_dir'; then
+        if grep -Eq 'is_dir.*mkdir.*is_dir' <<<"$context"; then
             continue
         fi
-        if printf '%s' "$text" | grep -Eq '= *@?mkdir\s*\('; then
+        if grep -Eq '= *@?mkdir\s*\(' <<<"$text"; then
             following="$(sed -n "$((line + 1)),$((line + 4))p" "$file")"
-            printf '%s' "$following" | grep -Eq 'if .*is_dir' \
+            grep -Eq 'if .*is_dir' <<<"$following" \
                 || fail "результат mkdir() не перевірено перед записом: $file:$line"
             continue
         fi
@@ -730,11 +747,11 @@ check_shell() {
         if have osadecompile; then
             local applet_src
             applet_src="$(osadecompile 'BDO.app/Contents/Resources/Scripts/main.scpt' 2>/dev/null || true)"
-            printf '%s' "$applet_src" | grep -q 'on quit' \
+            grep -q 'on quit' <<<"$applet_src" \
                 || fail 'зібраний BDO.app не має on quit · закриття значка лишить інтерфейс жити (D90)'
-            printf '%s' "$applet_src" | grep -q 'on idle' \
+            grep -q 'on idle' <<<"$applet_src" \
                 || fail 'зібраний BDO.app не має on idle · значок не переживе смерті сервера'
-            printf '%s' "$applet_src" | grep -Fq 'cli/system/mac-app.sh' \
+            grep -Fq 'cli/system/mac-app.sh' <<<"$applet_src" \
                 || fail 'зібраний BDO.app не кличе cli/system/mac-app.sh · логіка переїхала в бандл, де її ніхто не перевіряє'
             # Пояснення для скопійованого бандла живе в скрипті: коли набору
             # поруч немає, сказати про це має саме він.
@@ -1056,11 +1073,11 @@ profile="${1:-}"
 case "$profile" in
     preflight) report_preflight ;;
     docs) check_docs ;;
-    shell) check_rules; check_shell; check_design; check_bash32_arrays; check_php_runtime_guards; check_whitespace ;;
+    shell) check_rules; check_shell; check_design; check_bash32_arrays; check_php_runtime_guards; check_sigpipe_pipelines; check_whitespace ;;
     agents) check_rules; check_agents; check_whitespace ;;
     runtime) check_rules; check_runtime ;;
     api) check_rules; check_api ;;
-    full) check_docs; check_shell; check_design; check_bash32_arrays; check_php_runtime_guards; check_agents ;;
+    full) check_docs; check_shell; check_design; check_bash32_arrays; check_php_runtime_guards; check_sigpipe_pipelines; check_agents ;;
     *) printf 'Usage: %s {preflight|docs|shell|agents|runtime|api|full}\n' "$0" >&2; exit 2 ;;
 esac
 

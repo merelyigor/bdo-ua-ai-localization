@@ -67,7 +67,7 @@ reject() {
     # і без розділювача grep читає його як власний прапорець.
     # `${expect}` у дужках · §13.7: багатобайтова лапка після імені змінної
     # під `set -u` дає `unbound variable`.
-    printf '%s' "$out" | grep -Fq -- "$expect" \
+    grep -Fq -- "$expect" <<<"$out" \
         || fail "watch $* відмовив без причини «${expect}»: $out"
     tmux has-session -t "$SESSION" 2>/dev/null \
         && fail "watch $* відмовив, але сесію все одно створив"
@@ -82,7 +82,7 @@ reject 'щонайбільше --batches N' loop --batches 1 --once
 
 # 2. Дозволений виклик створює сесію й КАЖЕ власникові, як її побачити.
 out="$(watch tui)" || fail "дозволений виклик відхилено: $out"
-printf '%s' "$out" | grep -Fq "tmux attach -t $SESSION" \
+grep -Fq "tmux attach -t $SESSION" <<<"$out" \
     || fail "watch не сказав, як підключитись до сесії: $out"
 tmux has-session -t "$SESSION" 2>/dev/null || fail 'watch не створив tmux-сесію'
 
@@ -99,7 +99,7 @@ watch --show 2>/dev/null | grep -Fq 'головне меню' \
 if out="$(watch tui 2>&1)"; then
     fail "другий watch поверх живої сесії мусив відмовити: $out"
 fi
-printf '%s' "$out" | grep -Fq -- 'уже існує' \
+grep -Fq -- 'уже існує' <<<"$out" \
     || fail "друга спроба відмовила без причини «уже існує»: $out"
 tmux has-session -t "$SESSION" 2>/dev/null \
     || fail 'друга спроба прибрала живу сесію замість відмови'
@@ -122,7 +122,7 @@ bash "$GIF" --tape | grep -qE '^Type "1"$' || fail 'сценарій не нат
 bash "$GIF" --tape | grep -qE '^Type "[3-8]"$' && fail 'сценарій натискає пункт, який запускає прогін або сервер'
 if ! command -v vhs >/dev/null 2>&1; then
     out="$(bash "$GIF" 2>&1 || true)"
-    printf '%s' "$out" | grep -Fq 'brew install vhs' \
+    grep -Fq 'brew install vhs' <<<"$out" \
         || fail "без vhs скрипт мусить давати інструкцію: $out"
     test ! -e "$ROOT/docs/assets/tui-status.gif" \
         || fail 'без vhs зʼявився файл GIF · порожній артефакт читався б як готовий запис'

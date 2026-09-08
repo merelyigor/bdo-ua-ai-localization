@@ -59,11 +59,11 @@ printf '%s\n' \
     > "$TMP/state/quarantine.jsonl"
 
 report="$(BDO_STATE_DIR="$TMP/state" bash "$ROOT/cli/audit/quarantine-report.sh")"
-printf '%s' "$report" | grep -q 'api_source_equivalent        2' || fail "зведення не порахувало причини: $report"
-printf '%s' "$report" | grep -q 'machine  *1' || fail "зведення не розділило канали: $report"
+grep -q 'api_source_equivalent        2' <<<"$report" || fail "зведення не порахувало причини: $report"
+grep -q 'machine  *1' <<<"$report" || fail "зведення не розділило канали: $report"
 
 listing="$(BDO_STATE_DIR="$TMP/state" bash "$ROOT/cli/audit/quarantine-report.sh" --list 1)"
-printf '%s' "$listing" | grep -q 'Kamasylvia' || fail "--list не показав кандидата: $listing"
+grep -q 'Kamasylvia' <<<"$listing" || fail "--list не показав кандидата: $listing"
 
 # `--clear` дозволений агентові (рішення власника 2026-09-04), тому він мусить
 # ЗСУВАТИ слід в архів, а не знищувати: рівно цим слідом доведені D53, D56, D58.

@@ -33,13 +33,13 @@ ME='{"data":{"user":{"role":"super_admin"},"effective_abilities":["translations:
   "auto_approve_glossary_proposals":true}}}'
 
 out="$(php "$TMP/check.php" "$ME" machine machine direct 2>&1)" || fail "machine заблоковано: $out"
-printf '%s' "$out" | grep -Fq 'результат запису · machine' || fail "machine не назвав результат: $out"
+grep -Fq 'результат запису · machine' <<<"$out" || fail "machine не назвав результат: $out"
 out="$(php "$TMP/check.php" "$ME" manual manual proposal 2>&1)" || fail "manual заблоковано: $out"
-printf '%s' "$out" | grep -Fq 'результат запису · manual' || fail "manual не назвав результат: $out"
+grep -Fq 'результат запису · manual' <<<"$out" || fail "manual не назвав результат: $out"
 # `proposal` ділить пару layer+mode з `manual`; різницю робить auto_approve у
 # нашому запиті, тому очікуваний результат мусить бути іншим.
 out="$(php "$TMP/check.php" "$ME" proposal manual proposal 2>&1)" || fail "proposal заблоковано: $out"
-printf '%s' "$out" | grep -Fq 'pending_review' || fail "proposal обіцяє не той результат: $out"
+grep -Fq 'pending_review' <<<"$out" || fail "proposal обіцяє не той результат: $out"
 
 # Пара, якої немає в переліку, мусить лишатись забороненою.
 set +e

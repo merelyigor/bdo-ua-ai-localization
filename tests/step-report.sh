@@ -48,7 +48,7 @@ file_put_contents("$dir/empty.json", "[]");
 #    названа причина (§12).
 out="$(report --before translation-worker "$TMP/payload.json")" \
     || fail 'звіт про запит завершився ненульовим кодом'
-printf '%s' "$out" | grep -Fq 'перекладач → 2 рядки' || fail "запит не назвав роль і обсяг: $out"
+grep -Fq 'перекладач → 2 рядки' <<<"$out" || fail "запит не назвав роль і обсяг: $out"
 
 # Одиниця роботи · РОЛІ, а не звіту.
 #
@@ -73,41 +73,41 @@ foreach ($cases as [$role, $n, $want]) {
         fwrite(STDERR, "{$role} {$n} дало «{$got}», очікувалось «{$want}»\n"); exit(1);
     }
 }' "$ROOT/lib/autoload.php" || fail 'одиниця роботи ролі названа неправильно'
-printf '%s' "$out" | grep -Fq 'затверджених термінів 1' || fail "запит не назвав контекст: $out"
-printf '%s' "$out" | grep -Fq 'Ancient Armor of the Deep' || fail "запит не показав джерела: $out"
-printf '%s' "$out" | grep -Fq "$H1" && fail 'у звіт просочився повний identity_hash замість тексту'
+grep -Fq 'затверджених термінів 1' <<<"$out" || fail "запит не назвав контекст: $out"
+grep -Fq 'Ancient Armor of the Deep' <<<"$out" || fail "запит не показав джерела: $out"
+grep -Fq "$H1" <<<"$out" && fail 'у звіт просочився повний identity_hash замість тексту'
 
 # 2. ВІДПОВІДЬ воркера · пара «джерело → переклад», а не JSON.
 out="$(report --after translation-worker "$TMP/payload.json" "$TMP/candidate.json")"
-printf '%s' "$out" | grep -Fq '→ Стародавні обладунки глибин' || fail "відповідь воркера не показала перекладу: $out"
-printf '%s' "$out" | grep -Fq 'Ancient Armor of the Deep' || fail 'відповідь не привʼязана до джерела'
+grep -Fq '→ Стародавні обладунки глибин' <<<"$out" || fail "відповідь воркера не показала перекладу: $out"
+grep -Fq 'Ancient Armor of the Deep' <<<"$out" || fail 'відповідь не привʼязана до джерела'
 
 # 3. QA · розкладка вердиктів і ПОКАЗ саме проблемного рядка з виправленням.
 out="$(report --after translation-qa "$TMP/payload.json" "$TMP/verdicts.json")"
-printf '%s' "$out" | grep -Fq 'REVIEW/minor · неприродна назва' || fail "QA не показала дефект: $out"
-printf '%s' "$out" | grep -Fq 'виправлення: Обладунки безодні' || fail "QA не показала готового виправлення: $out"
-printf '%s' "$out" | grep -Fq 'розкладка: PASS/none 1 | REVIEW/minor 1' || fail "QA не дала розкладки: $out"
+grep -Fq 'REVIEW/minor · неприродна назва' <<<"$out" || fail "QA не показала дефект: $out"
+grep -Fq 'виправлення: Обладунки безодні' <<<"$out" || fail "QA не показала готового виправлення: $out"
+grep -Fq 'розкладка: PASS/none 1 | REVIEW/minor 1' <<<"$out" || fail "QA не дала розкладки: $out"
 
 # 4. Суддя · маршрут УКРАЇНСЬКОЮ, впевненість і підстава.
 out="$(report --after translation-judge "$TMP/payload.json" "$TMP/judge.json")"
-printf '%s' "$out" | grep -Fq 'у ШІ-шар (78%)' || fail "суддя не показав маршрут і впевненість: $out"
-printf '%s' "$out" | grep -Fq 'ai_layer 1' || fail 'немає розкладки маршрутів'
-printf '%s' "$out" | grep -Fq 'destination' && fail 'суддя показаний англійським ключем замість підпису'
+grep -Fq 'у ШІ-шар (78%)' <<<"$out" || fail "суддя не показав маршрут і впевненість: $out"
+grep -Fq 'ai_layer 1' <<<"$out" || fail 'немає розкладки маршрутів'
+grep -Fq 'destination' <<<"$out" && fail 'суддя показаний англійським ключем замість підпису'
 
 # 5. Термінолог · власна форма «канонікал → пропозиція».
 out="$(report --after translation-terminology "$TMP/payload.json" "$TMP/terms.json")"
-printf '%s' "$out" | grep -Fq 'Panokseon → Паноксон (ready)' || fail "термінолог показаний не своєю формою: $out"
+grep -Fq 'Panokseon → Паноксон (ready)' <<<"$out" || fail "термінолог показаний не своєю формою: $out"
 
 # 6. Порожня відповідь не вигадується: це названий стан, а не тиша.
 out="$(report --after translation-worker "$TMP/payload.json" "$TMP/empty.json")"
-printf '%s' "$out" | grep -Fq 'відповіді ще немає' || fail "порожню відповідь не названо: $out"
+grep -Fq 'відповіді ще немає' <<<"$out" || fail "порожню відповідь не названо: $out"
 
 # 7. Стеля рядків: показане обмежене, приховане названо числом.
 php -r '$items = []; for ($i = 0; $i < 30; $i++) { $items[] = ["identity_hash" => str_pad((string) $i, 64, "0", STR_PAD_LEFT), "source_text" => "Row $i"]; }
     file_put_contents($argv[1], json_encode(["items" => $items], JSON_UNESCAPED_UNICODE));' "$TMP/big.json"
 out="$(BDO_STEP_REPORT_ROWS=3 report --before translation-worker "$TMP/big.json")"
-test "$(printf '%s' "$out" | grep -c 'Row ')" = 3 || fail "стеля рядків не діє: $out"
-printf '%s' "$out" | grep -Fq 'і ще 27 рядків' || fail "приховане не названо числом: $out"
+test "$(grep -c 'Row ' <<<"$out")" = 3 || fail "стеля рядків не діє: $out"
+grep -Fq 'і ще 27 рядків' <<<"$out" || fail "приховане не названо числом: $out"
 
 # 7а. Стеля рахує НАПЕЧАТАНІ рядки, а не переглянуті.
 #
@@ -121,9 +121,9 @@ $items[] = ["identity_hash" => str_repeat("f", 64), "status" => "REVIEW", "sever
 file_put_contents($argv[1], json_encode($items, JSON_UNESCAPED_UNICODE));' "$TMP/late-review.json"
 out="$(BDO_STEP_REPORT_ROWS=3 report --after translation-qa "$TMP/payload.json" "$TMP/late-review.json")" \
     || fail 'звіт про пізній REVIEW упав'
-printf '%s' "$out" | grep -Fq 'русизм: тревожні' \
+grep -Fq 'русизм: тревожні' <<<"$out" \
     || fail "єдиний REVIEW після восьми PASS не показано · стеля рахує не те: $out"
-printf '%s' "$out" | grep -Fq 'PASS/none 8 | REVIEW/minor 1' \
+grep -Fq 'PASS/none 8 | REVIEW/minor 1' <<<"$out" \
     || fail "розкладка мусить рахувати ВСІ відповіді: $out"
 
 # 7б. Без керуючого термінала звіт працює, а не падає.
@@ -139,7 +139,7 @@ else
     out="$(bash "$ROOT/cli/run/step-report.sh" --before translation-worker "$TMP/payload.json" < /dev/null 2>&1)" \
         || fail "звіт упав без stdin-термінала: $out"
 fi
-printf '%s' "$out" | grep -Fq 'перекладач → 2 рядки' \
+grep -Fq 'перекладач → 2 рядки' <<<"$out" \
     || fail "без термінала звіт не намалював крок: $out"
 
 # 8. Драйвер справді ходить цим шляхом, і вимикач існує · інакше gate і тести,
@@ -154,6 +154,6 @@ grep -Fq 'run-transcript.log' "$ROOT/cli/run/run-loop.sh" \
     || fail 'звіт не дублюється в журнал прогону · після прибирання пачки його не лишиться нізвідки'
 # Збій рендерера не має валити прогін: це звіт, а не крок конвеєра.
 out="$(report --after translation-worker "$TMP/payload.json" "$TMP/немає-такого.json" 2>&1 || true)"
-printf '%s' "$out" | grep -Fq 'відповіді ще немає' || fail "відсутній файл відповіді не названо: $out"
+grep -Fq 'відповіді ще немає' <<<"$out" || fail "відсутній файл відповіді не названо: $out"
 
 echo 'step report: OK · кожна роль показана власною формою, приховане названо числом.'

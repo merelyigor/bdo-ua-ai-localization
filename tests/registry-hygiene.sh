@@ -80,7 +80,7 @@ mkdir -p "$work/docs/plans/active" "$work/state"
 cp "$ROOT/docs/plans/README.md" "$ROOT/docs/plans/DEFECTS.md" "$ROOT/docs/plans/BACKLOG.md" "$work/docs/plans/"
 out="$(BDO_STATE_DIR="$work/state" bash "$ROOT/cli/audit/project-review.sh" 2>&1)" \
     || fail "екран стану впав при порожній теці active/: $out"
-printf '%s' "$out" | grep -q 'Дефекти' \
+grep -q 'Дефекти' <<<"$out" \
     || fail "екран стану обірвався до розділу дефектів при порожній active/: $out"
 rm -rf "$work"
 

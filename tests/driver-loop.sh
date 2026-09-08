@@ -94,20 +94,20 @@ grep -q 'rm -rf' "$WORK/state/calls.log" && fail 'драйвер виконав 
 # 3. Невідомий режим у цілі · зупинка, а не спроба вгадати.
 scenario '{"ok":true,"state":"verified","next":{"kind":"continue_run","remaining":10,"goal":{"mode":"чужий-режим","patch":"7","domain":""}}}'
 out="$(loop)" && fail 'драйвер прийняв невідомий режим цілі'
-printf '%s' "$out" | grep -q 'невідомий режим' || fail "зупинка без причини: $out"
+grep -q 'невідомий режим' <<<"$out" || fail "зупинка без причини: $out"
 
 # 3б. Українська назва режиму до драйвера доходити не мусить: переклад робить
 #     меню один раз. Якщо вона тут зʼявилась · щось передало людський підпис
 #     замість ключа, і мовчки вгадувати його не можна.
 scenario '{"ok":true,"state":"verified","next":{"kind":"continue_run","remaining":10,"goal":{"mode":"патч","patch":"7","domain":""}}}'
 out="$(loop)" && fail 'драйвер прийняв українську назву режиму замість ключа'
-printf '%s' "$out" | grep -q 'невідомий режим' || fail "зупинка без причини: $out"
+grep -q 'невідомий режим' <<<"$out" || fail "зупинка без причини: $out"
 
 # 4. Категорія з підозрілими символами · зупинка (сюди підставляється значення,
 #    що піде в командний рядок).
 scenario '{"ok":true,"state":"verified","next":{"kind":"continue_run","remaining":10,"goal":{"mode":"patch","patch":"7","domain":"quest;rm"}}}'
 out="$(loop)" && fail 'драйвер прийняв категорію зі стороннім символом'
-printf '%s' "$out" | grep -q 'підозріла категорія' || fail "зупинка без причини: $out"
+grep -q 'підозріла категорія' <<<"$out" || fail "зупинка без причини: $out"
 
 # 4б. Звіт рушія перед конвертом не має ламати драйвер.
 #
@@ -128,13 +128,13 @@ rm -f "$WORK/state/noise"
 printf 'самий лише людський текст без JSON\n' > "$WORK/state/noise"
 scenario 'ще один рядок без конверта'
 out="$(loop)" && fail 'драйвер пішов далі без конверта'
-printf '%s' "$out" | grep -q 'немає конверта' || fail "відсутній конверт без причини: $out"
+grep -q 'немає конверта' <<<"$out" || fail "відсутній конверт без причини: $out"
 rm -f "$WORK/state/noise"
 
 # 5. `blocked` зупиняє негайно й називає причину.
 scenario '{"ok":false,"state":"no_batch","next":{"kind":"blocked","reason":"no_current_batch"}}'
 out="$(loop)" && fail 'драйвер пішов далі після blocked'
-printf '%s' "$out" | grep -q 'no_current_batch' || fail "blocked без причини: $out"
+grep -q 'no_current_batch' <<<"$out" || fail "blocked без причини: $out"
 
 # 6. Нескінченний `retry` на тому самому стані зупиняється лічильником.
 #    Без цього драйвер повторював би крок вічно · рівно те, за що автопілот
@@ -146,12 +146,12 @@ printf '%s' "$out" | grep -q 'no_current_batch' || fail "blocked без прич
 start=$(date +%s)
 out="$(cd "$WORK" && BDO_LOOP_SPIN_LIMIT=3 bash cli/run/run-loop.sh 2>&1)" && fail 'нескінченний retry не зупинив драйвер'
 test $(( $(date +%s) - start )) -lt 30 || fail 'зупинка на retry зайняла надто довго'
-printf '%s' "$out" | grep -q 'не рухається' || fail "retry-зупинка без причини: $out"
+grep -q 'не рухається' <<<"$out" || fail "retry-зупинка без причини: $out"
 
 # 7. Відмова ролі зупиняє прогін, а не йде далі з порожньою відповіддю.
 scenario '{"ok":true,"state":"awaiting_worker","next":{"kind":"child","role":"translation-worker","payload_path":"p","response_path":"r"}}'
 out="$(cd "$WORK" && FAKE_CHILD_FAILS=1 bash cli/run/run-loop.sh 2>&1)" && fail 'драйвер пішов далі після відмови ролі'
-printf '%s' "$out" | grep -q 'не дала відповіді' || fail "відмова ролі без причини: $out"
+grep -q 'не дала відповіді' <<<"$out" || fail "відмова ролі без причини: $out"
 
 # 7b. ЗУПИНКА НАЗИВАЄ ПРИЧИНУ, А НЕ НАСЛІДОК.
 #
@@ -161,21 +161,21 @@ printf '%s' "$out" | grep -q 'не дала відповіді' || fail "від�
 scenario '{"ok":true,"state":"awaiting_worker","next":{"kind":"stop"}}'
 out="$(cd "$WORK" && FAKE_DRIVE_BOOM='рушій зламався тут' bash cli/run/run-loop.sh 2>&1)" \
     && fail 'драйвер пішов далі, хоч конверта не було'
-printf '%s' "$out" | grep -q 'рушій зламався тут' \
+grep -q 'рушій зламався тут' <<<"$out" \
     || fail "причину зупинки проковтнуто: $out"
-printf '%s' "$out" | grep -q 'код 1' || fail "зупинка без коду виходу: $out"
+grep -q 'код 1' <<<"$out" || fail "зупинка без коду виходу: $out"
 
 # Перервали ззовні (кнопка «зупинити» вбиває сесію роботи) · це НЕ несправність.
 out="$(cd "$WORK" && FAKE_DRIVE_SIGNAL=130 bash cli/run/run-loop.sh 2>&1)" \
     && fail 'драйвер пішов далі після переривання'
-printf '%s' "$out" | grep -q 'перервано ззовні' \
+grep -q 'перервано ззовні' <<<"$out" \
     || fail "штатну зупинку названо несправністю: $out"
 
 # 8. Невідомий `kind` · зупинка. Мовчазний `continue` тут означав би, що новий
 #    стан у машині пройшов повз драйвер.
 scenario '{"ok":true,"state":"awaiting_qa","next":{"kind":"нове_щось"}}'
 out="$(loop)" && fail 'драйвер проковтнув невідомий kind'
-printf '%s' "$out" | grep -q 'невідомий крок' || fail "невідомий kind без причини: $out"
+grep -q 'невідомий крок' <<<"$out" || fail "невідомий kind без причини: $out"
 
 # --- Повтор уже закритого кроку НЕ вбиває драйвер ---------------------------
 #

@@ -161,33 +161,33 @@ test "$got" = 400 || fail "тіло не-JSON мусить бути 400, отр�
 # під час фальсифікації цієї самої перевірки сервер пішов виконувати
 # `./bdo mode start patch 50 1` проти PROD.
 body="$(post_body /api/action '{"action":"run.start","payload":{"mode":"patch","patch":"999999"}}' -H "$ORIGIN")"
-printf '%s' "$body" | grep -q 'вимагає підтвердження' \
+grep -q 'вимагає підтвердження' <<<"$body" \
     || fail "старт без confirm мусить бути відмовлений із причиною. Отримано: $body"
-printf '%s' "$body" | grep -q 'action_refused' \
+grep -q 'action_refused' <<<"$body" \
     || fail "відмова мусить мати машиночитаний код. Отримано: $body"
 
 body="$(post_body /api/action '{"action":"moderation.approve","payload":{"ids":[1]}}' -H "$ORIGIN")"
-printf '%s' "$body" | grep -q 'вимагає підтвердження' \
+grep -q 'вимагає підтвердження' <<<"$body" \
     || fail "схвалення без confirm мусить бути відмовлене. Отримано: $body"
 
 # 4. Небезпечний ввід не доходить до команди навіть через сервер.
 body="$(post_body /api/action '{"action":"run.start","payload":{"mode":"patch","patch":"1; touch /tmp/bdo-pwned"},"confirm":true}' -H "$ORIGIN")"
-printf '%s' "$body" | grep -q 'patch: потрібно' \
+grep -q 'patch: потрібно' <<<"$body" \
     || fail "підстановка в патч мусить бути відмовлена з причиною. Отримано: $body"
 test ! -e /tmp/bdo-pwned || { rm -f /tmp/bdo-pwned; fail 'підстановка в патч виконалась · рядок став командою'; }
 
 body="$(post_body /api/action '{"action":"bogus.action","payload":{}}' -H "$ORIGIN")"
-printf '%s' "$body" | grep -q 'невідома дія' || fail "невідома дія мусить бути названа. Отримано: $body"
+grep -q 'невідома дія' <<<"$body" || fail "невідома дія мусить бути названа. Отримано: $body"
 
 # --- Дії, які МОЖНА виконати в тесті: сесія живе в теці стану ---------------
 body="$(post_body /api/action '{"action":"session.new"}' -H "$ORIGIN")"
-printf '%s' "$body" | grep -q '"ok":true' || fail "session.new не виконалась: $body"
-printf '%s' "$body" | grep -q './bdo session new' \
+grep -q '"ok":true' <<<"$body" || fail "session.new не виконалась: $body"
+grep -q './bdo session new' <<<"$body" \
     || fail "відповідь мусить називати ВИКОНАНУ команду, а не лише результат: $body"
 test -f "$BDO_STATE_DIR/current-session" || fail 'session.new не відкрила сесію на диску'
 
 body="$(post_body /api/action '{"action":"session.close"}' -H "$ORIGIN")"
-printf '%s' "$body" | grep -q '"ok":true' || fail "session.close не виконалась: $body"
+grep -q '"ok":true' <<<"$body" || fail "session.close не виконалась: $body"
 test ! -e "$BDO_STATE_DIR/current-session" || fail 'session.close не закрила сесію'
 
 # Замок: дві дії одночасно неможливі. Перевіряємо сам механізм, а не гонку ·
@@ -276,7 +276,7 @@ grep -q ':42' "$BDO_STATE_DIR/web-client.log" \
 # на СВОЄМУ екрані: інакше зниклий елемент сховався б за сусідньою сторінкою.
 while IFS='|' read -r screen_path marker; do
     body="$(curl -s -m 10 "http://127.0.0.1:$PORT$screen_path")"
-    printf '%s' "$body" | grep -q "$marker" \
+    grep -q "$marker" <<<"$body" \
         || fail "на екрані $screen_path немає елемента $marker"
 done <<'CONTROLS'
 /start|id="startBtn"

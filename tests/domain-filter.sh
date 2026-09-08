@@ -46,10 +46,10 @@ if (count($domains) !== 13) $fail("очікували 13 категорій, м�
 #    Саме на цьому 2026-08-25 згорів патч-аргумент: скрипт його підтримував,
 #    guard пропускав, документація описувала, а `bdo` не передавав далі.
 out="$(BDO_STATE_DIR="$(mktemp -d)" "$ROOT/bdo" mode status patch 1 premium_shop 2>/dev/null | tail -1)"
-printf '%s' "$out" | grep -q '"domain":"premium_shop"' || fail "dispatcher загубив категорію: $out"
-printf '%s' "$out" | grep -q 'domain=premium_shop' || fail "категорія не дійшла у фільтр: $out"
+grep -q '"domain":"premium_shop"' <<<"$out" || fail "dispatcher загубив категорію: $out"
+grep -q 'domain=premium_shop' <<<"$out" || fail "категорія не дійшла у фільтр: $out"
 out="$(BDO_STATE_DIR="$(mktemp -d)" "$ROOT/bdo" mode status patch 1 2>/dev/null | tail -1)"
-printf '%s' "$out" | grep -q '"domain":null' || fail "без категорії домен мусить бути null: $out"
+grep -q '"domain":null' <<<"$out" || fail "без категорії домен мусить бути null: $out"
 
 # 3. Категорії мусить знати ІНТЕРФЕЙС, бо тепер їх вибирає людина в меню, а не
 #    модель у промпті. Раніше цей блок перевіряв чотири primary-промпти; вони

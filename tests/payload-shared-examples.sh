@@ -388,8 +388,8 @@ jq -e '[.items[].canonical_source] == ["Tears of the Falling Moon"]' "$TMP/state
 printf '{"items":[{"canonical_source":"Tears of the Falling Moon","gist":"g","definition":"d","confidence":45}]}' \
     > "$TMP/state/term-notes-response.json"
 out="$(BDO_STATE_DIR="$TMP/state" bash "$ROOT/cli/api/term-notes-submit.sh" 2>/dev/null)" || true
-printf '%s' "$out" | grep -q 'Пропозицій надіслано: 0' || fail "опис із впевненістю 45 надіслано: $out"
-printf '%s' "$out" | grep -q 'низька впевненість 1' || fail 'причину пропуску не названо'
+grep -q 'Пропозицій надіслано: 0' <<<"$out" || fail "опис із впевненістю 45 надіслано: $out"
+grep -q 'низька впевненість 1' <<<"$out" || fail 'причину пропуску не названо'
 # Найдорожче правило: перед записом стан терміна перечитується з API, а
 # відсутнє поле definition не вважається порожнім. Це охороняє stub-тест із
 # трьома різними відповідями сервера, а не згадка рядка в мертвому shell-коді.

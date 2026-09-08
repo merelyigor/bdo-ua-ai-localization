@@ -81,7 +81,7 @@ drive() { TRANSLATE_ENV_FILE="$TMP/.env" BDO_AUTO_CLEAN=0 BDO_TERM_RESOLVE_TIMEO
 php -r '$m=json_decode(file_get_contents($argv[1]),true);$m["state"]="selected";
     file_put_contents($argv[1],json_encode($m,JSON_PRETTY_PRINT|JSON_UNESCAPED_UNICODE));' "$B/manifest.json"
 out="$(drive)"
-printf '%s' "$out" | grep -q '"role":"translation-terminology"' \
+grep -q '"role":"translation-terminology"' <<<"$out" \
     || fail "рушій не пішов у термінолога зі стану selected: $out"
 test -s "$B/terminology-payload.full.json" \
     || fail 'рушій не зберіг ПОВНОГО payload · частини нема з чого брати'
@@ -116,7 +116,7 @@ seen_continue=0
 for step in 1 2 3; do
     answer_current
     out="$(drive)"
-    if printf '%s' "$out" | grep -q '"reason":"terminology_chunk_'; then
+    if grep -q '"reason":"terminology_chunk_' <<<"$out"; then
         seen_continue=$((seen_continue + 1))
         size="$(php -r 'require $argv[2]; echo Bdo\Translate\Payload\Items::count($argv[1]);' "$B/terminology-payload.json" "$ROOT/lib/autoload.php")"
         test "$size" -le 40 || fail "частина ${step} містить ${size} термінів · більше за стелю"
@@ -162,7 +162,7 @@ out="$(starve)"
 after="$(cat "$B/terminology-chunk")"
 test "$after" -gt 0 \
     || fail "вичерпана частина не пропущена (курсор ${after}) · робота стане на ній назавжди: $out"
-printf '%s' "$out" | grep -qE '"reason":"terminology_chunk_|"role":"translation-terminology"|"kind":"child"' \
+grep -qE '"reason":"terminology_chunk_|"role":"translation-terminology"|"kind":"child"' <<<"$out" \
     || fail "після пропуску частини рушій не пішов далі: $out"
 
 # І бюджет мусить бути ОКРЕМИЙ на кожну частину · інакше одна невдала частина

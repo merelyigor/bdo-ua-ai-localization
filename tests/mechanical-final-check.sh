@@ -150,14 +150,14 @@ JSON
 out="$(BDO_STATE_DIR="$FINAL_TMP/state" bash "$ROOT/cli/batch/batch-commit.sh" "$FINAL_TMP/rows.json" \
     "$FINAL_TMP/candidate.json" "$FINAL_TMP/verdicts.json" --channel machine \
     --api-rejected "$FINAL_TMP/validate.json" 2>&1 || true)"
-printf '%s' "$out" | grep -Eq 'До запису: 0' \
+grep -Eq 'До запису: 0' <<<"$out" \
     || fail "рядок із відмовою API пішов у запис: $out"
-printf '%s' "$out" | grep -Eq 'у модерацію: 1' \
+grep -Eq 'у модерацію: 1' <<<"$out" \
     || fail "рядок із відмовою API не потрапив до людини: $out"
 # Без прапорця поведінка лишається старою: PASS іде в запис.
 out="$(BDO_STATE_DIR="$FINAL_TMP/state" bash "$ROOT/cli/batch/batch-commit.sh" "$FINAL_TMP/rows.json" \
     "$FINAL_TMP/candidate.json" "$FINAL_TMP/verdicts.json" --channel machine 2>&1 || true)"
-printf '%s' "$out" | grep -Eq 'До запису: 1' \
+grep -Eq 'До запису: 1' <<<"$out" \
     || fail "без відмови API рядок мусить іти в запис: $out"
 rm -rf "$FINAL_TMP"
 

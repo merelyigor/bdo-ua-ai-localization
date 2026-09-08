@@ -24,7 +24,7 @@ out="$(BDO_STATE_DIR="$TMP/state" bash cli/run/run-drive.sh 2>/dev/null || true)
 test -n "$out" || { echo 'FAIL: run drive без пачки нічого не надрукував' >&2; exit 1; }
 state="$(printf '%s' "$out" | json_field state)"
 test "$state" = no_batch || { echo "FAIL: очікували state=no_batch, отримали '$state' у: $out" >&2; exit 1; }
-printf '%s' "$out" | grep -Fq 'mode start' \
+grep -Fq 'mode start' <<<"$out" \
     || { echo 'FAIL: envelope no_batch не підказує, як почати пачку' >&2; exit 1; }
 
 # 2. `mode start` із розміром поза дозволеним діапазоном.
@@ -39,7 +39,7 @@ ENV
 out="$(TRANSLATE_ENV_FILE="$TMP/.env" BDO_STATE_DIR="$TMP/state" bash cli/run/run-mode.sh patch 15 2 2>/dev/null | tail -1 || true)"
 reason="$(printf '%s' "$out" | json_field reason)"
 test "$reason" = fetch_failed || { echo "FAIL: очікували reason=fetch_failed, отримали '$reason' у: $out" >&2; exit 1; }
-printf '%s' "$out" | grep -Fq 'detail' \
+grep -Fq 'detail' <<<"$out" \
     || { echo 'FAIL: fetch_failed не передає detail, причина знову невидима' >&2; exit 1; }
 
 # 3. `./bdo batch check` без аргументу відповідає на питання, а не сипле bash.
@@ -50,9 +50,9 @@ printf '%s' "$out" | grep -Fq 'detail' \
 # навіть у діагностичній команді, інакше агент переказує власнику «сталася
 # помилка».
 out="$(BDO_STATE_DIR="$TMP/state" bash cli/batch/batch-assert.sh 2>&1 || true)"
-printf '%s' "$out" | grep -Fq 'ПОМИЛКА: пачку не розпочато' \
+grep -Fq 'ПОМИЛКА: пачку не розпочато' <<<"$out" \
     || { echo "FAIL: batch check без пачки не назвав причину: $out" >&2; exit 1; }
-printf '%s' "$out" | grep -Fqv 'line ' \
+grep -Fqv 'line ' <<<"$out" \
     || { echo "FAIL: у виводі лишилось сире посилання на рядок скрипта: $out" >&2; exit 1; }
 
 

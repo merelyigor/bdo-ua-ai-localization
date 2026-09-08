@@ -49,7 +49,7 @@ JSON
 
 # 1. Сесії ще немає · list не падає й каже це людською мовою.
 out="$(session list)"
-printf '%s' "$out" | grep -q 'Сесій ще немає' \
+grep -q 'Сесій ще немає' <<<"$out" \
     || fail "порожній list мусить сказати, що сесій немає, отримано: $out"
 
 # Пачка відкриває сесію сама: цей крок робить `batch-new.sh` через `ensure`.
@@ -94,7 +94,7 @@ ln -s 999999 "$BDO_STATE_DIR/batches/20260904_150000_lock/drive.lock"
 # 4. Закриття. `--keep-files` тримає прибирання пачок осторонь: тут перевіряємо
 #    саму сесію, а квитанції потрібні наступним крокам тесту.
 close_out="$(session close --keep-files)"
-printf '%s' "$close_out" | grep -q "Сесію $SID закрито" \
+grep -q "Сесію $SID закрито" <<<"$close_out" \
     || fail "close не назвав сесію: $close_out"
 
 SDIR="$BDO_STATE_DIR/sessions/$SID"
@@ -121,7 +121,7 @@ if (($s["status"] ?? "") !== "closed" || ($s["journals"] ?? "") !== "kept") {
 }
 ' "$SDIR/summary.json" || fail 'підсумок сесії не сходиться з квитанціями пачок'
 
-printf '%s' "$close_out" | grep -q '20260904_120154_bbb' \
+grep -q '20260904_120154_bbb' <<<"$close_out" \
     || fail 'close мусить сказати ВГОЛОС, що квитанцію пачки вже прибрано'
 
 # 4. Журнали перенесені, живі файли чисті, недоторкане · на місці.
@@ -138,18 +138,18 @@ done
 
 # 6. Повторний close безпечний.
 again="$(session close)"
-printf '%s' "$again" | grep -q 'закривати нічого' \
+grep -q 'закривати нічого' <<<"$again" \
     || fail "повторний close мусить сказати, що закривати нічого, отримано: $again"
 
 # `list` показує закриту сесію з її числами.
 list_out="$(session list)"
-printf '%s' "$list_out" | grep -q "$SID" || fail "list не показує сесію $SID"
-printf '%s' "$list_out" | grep -q 'закрита' || fail 'list не показує стан «закрита» українською'
+grep -q "$SID" <<<"$list_out" || fail "list не показує сесію $SID"
+grep -q 'закрита' <<<"$list_out" || fail 'list не показує стан «закрита» українською'
 
 # `show` показує пачки, включно з утраченою квитанцією.
 show_out="$(session show "$SID")"
-printf '%s' "$show_out" | grep -q '20260904_110133_aaa' || fail 'show не показує пачки сесії'
-printf '%s' "$show_out" | grep -q 'квитанцію прибрано' \
+grep -q '20260904_110133_aaa' <<<"$show_out" || fail 'show не показує пачки сесії'
+grep -q 'квитанцію прибрано' <<<"$show_out" \
     || fail 'show мусить позначити пачку, чиї числа втрачені'
 
 # 5. Строк журналів. Стара сесія (закрита 30 днів тому) втрачає журнали,
@@ -217,7 +217,7 @@ foreach ($found as $rule) {
 session ensure >/dev/null
 SECOND="$(cat "$BDO_STATE_DIR/current-session")"
 new_out="$(session new)"
-printf '%s' "$new_out" | grep -q "Попередню сесію $SECOND закрито" \
+grep -q "Попередню сесію $SECOND закрито" <<<"$new_out" \
     || fail "new мусить закрити поточну сесію сам, отримано: $new_out"
 THIRD="$(cat "$BDO_STATE_DIR/current-session")"
 test "$THIRD" != "$SECOND" || fail 'new не відкрив нову сесію'

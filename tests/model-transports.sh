@@ -131,17 +131,17 @@ php -r 'exit(is_array(json_decode(file_get_contents($argv[1]), true)) ? 0 : 1);'
 
 # 2. Запит мусить бути у формі ЦЬОГО протоколу, а не Ollama.
 request="$(cat "$SCENARIO_FILE.request")"
-printf '%s' "$request" | grep -q '"response_format"' \
+grep -q '"response_format"' <<<"$request" \
     || fail "схема не передана як response_format: $request"
-printf '%s' "$request" | grep -q '"json_schema"' || fail 'схема не у формі json_schema'
-printf '%s' "$request" | grep -q '"stream_options"' \
+grep -q '"json_schema"' <<<"$request" || fail 'схема не у формі json_schema'
+grep -q '"stream_options"' <<<"$request" \
     || fail 'не попросили лічильники (stream_options.include_usage) · журнал лишиться без токенів'
-printf '%s' "$request" | grep -q '"model":"зовнішня-модель"' \
+grep -q '"model":"зовнішня-модель"' <<<"$request" \
     || fail "модель ролі не дійшла до провайдера: $request"
-printf '%s' "$request" | grep -q '"num_ctx"' \
+grep -q '"num_ctx"' <<<"$request" \
     && fail 'у зовнішній API пішло поле Ollama (num_ctx) · транспорти змішались'
 headers="$(cat "$SCENARIO_FILE.headers")"
-printf '%s' "$headers" | grep -q 'Bearer test-key' \
+grep -q 'Bearer test-key' <<<"$headers" \
     || fail 'ключ не пішов заголовком Authorization'
 
 # 3. Лічильники з окремого чанка дійшли в журнал.
@@ -158,14 +158,14 @@ for case_reason in "truncated:truncated" "empty:empty_content" "reasoning:empty_
     expected="${case_reason##*:}"
     run "$scenario"
     test "$CODE" = 1 || fail "сценарій $scenario мусив упасти, а дав код $CODE"
-    printf '%s' "$STDERR" | grep -q "^$expected" \
+    grep -q "^$expected" <<<"$STDERR" \
         || fail "сценарій $scenario: чекали причину «${expected}», маємо «${STDERR}»"
     test ! -e "$WORK/response.json" || fail "сценарій $scenario створив файл відповіді попри відмову"
 done
 
 # 5. Роздуми названі окремо: інакше власник шукатиме дефект у промпті.
 run reasoning
-printf '%s' "$STDERR" | grep -q 'thinking' \
+grep -q 'thinking' <<<"$STDERR" \
     || fail "порожній content при роздумах не назвав причини: $STDERR"
 
 # 6. Без потоку той самий шлях перевірок.
@@ -191,8 +191,8 @@ STDERR="$(BDO_ROLES_CONFIG="$WORK/roles.json" BDO_STATE_DIR="$WORK/state" BDO_MO
 CODE=$?
 set -e
 test "$CODE" = 1 || fail "виклик без ключа дав код $CODE"
-printf '%s' "$STDERR" | grep -q '^provider_key_missing' || fail "відмова без ключа не назвала причини: $STDERR"
-printf '%s' "$STDERR" | grep -q 'BDO_TEST_KEY' || fail 'відмова не назвала, ЯКОЇ саме змінної немає'
+grep -q '^provider_key_missing' <<<"$STDERR" || fail "відмова без ключа не назвала причини: $STDERR"
+grep -q 'BDO_TEST_KEY' <<<"$STDERR" || fail 'відмова не назвала, ЯКОЇ саме змінної немає'
 
 # 8. Невідомий провайдер · відмова, а не тихий Ollama.
 sed 's/"provider": "openai"/"provider": "вигаданий"/' "$WORK/roles.json" > "$WORK/bogus.json"
@@ -203,7 +203,7 @@ STDERR="$(BDO_ROLES_CONFIG="$WORK/bogus.json" BDO_STATE_DIR="$WORK/state" BDO_MO
 CODE=$?
 set -e
 test "$CODE" = 1 || fail "невідомий провайдер дав код $CODE"
-printf '%s' "$STDERR" | grep -q '^unknown_provider' || fail "невідомий провайдер без причини: $STDERR"
+grep -q '^unknown_provider' <<<"$STDERR" || fail "невідомий провайдер без причини: $STDERR"
 
 # 9. Модель не названа · відмова до запиту, а не помилка чужого API.
 php -r '
@@ -218,7 +218,7 @@ STDERR="$(BDO_ROLES_CONFIG="$WORK/nomodel.json" BDO_STATE_DIR="$WORK/state" \
 CODE=$?
 set -e
 test "$CODE" = 1 || fail "виклик без назви моделі дав код $CODE"
-printf '%s' "$STDERR" | grep -q '^missing_model' || fail "відсутня модель без причини: $STDERR"
+grep -q '^missing_model' <<<"$STDERR" || fail "відсутня модель без причини: $STDERR"
 
 # 10. Старий конфіг БЕЗ блока providers мусить працювати як раніше (Ollama).
 #     Інакше зміна транспорту зупинила б прогін на першій ролі, а «спершу онови

@@ -53,12 +53,12 @@ export TRANSLATE_ENV_FILE="$TMP/env"
 export BDO_STATE_DIR="$TMP/state"
 mkdir -p "$BDO_STATE_DIR"
 out="$(env BDO_ORCHESTRATOR=sh bash "$ROOT/cli/api/glossary-list.sh" --fresh 2>"$TMP/ok.err")" || { cat "$TMP/ok.err" >&2; fail 'повний обхід не завершився'; }
-test "$(printf '%s\n' "$out" | grep -c .)" -eq 3 || fail "обхід зібрав не всі сторінки: $out"
+test "$(grep -c . <<<"$out")" -eq 3 || fail "обхід зібрав не всі сторінки: $out"
 test "$(printf '%s\n' "$out" | jq -r '.canonical_source' | paste -sd, -)" = 'Iron Sword,GO,Week' || fail 'зіпсовано порядок сторінок'
 
 printf 'fail\n' > "$TMP/mode"
 cached="$(BDO_ORCHESTRATOR=php bash "$ROOT/cli/api/glossary-list.sh" 2>"$TMP/cache.err")" || fail 'кеш не використано при 404'
-test "$(printf '%s\n' "$cached" | grep -c .)" -eq 3 || fail 'кеш повного обходу не повернув усі рядки'
+test "$(grep -c . <<<"$cached")" -eq 3 || fail 'кеш повного обходу не повернув усі рядки'
 rm -f "$BDO_STATE_DIR/glossary-full.json"
 
 printf 'loop\n' > "$TMP/mode"

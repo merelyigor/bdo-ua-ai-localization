@@ -114,7 +114,7 @@ if ($max < (int) $argv[3]) {
 have_models="$(curl -s -m 10 "${OLLAMA_URL:-http://127.0.0.1:11434}/api/tags" || true)"
 test -n "$have_models" || die 'Ollama не відповідає · порівнювати нічого'
 for m in "${MODELS[@]}"; do
-    printf '%s' "$have_models" | grep -Fq "\"$m\"" \
+    grep -Fq "\"$m\"" <<<"$have_models" \
         || die "моделі «${m}» на машині немає · спершу ollama pull $m (вимір інакше поміряє завантаження, а не роботу)"
 done
 

@@ -109,12 +109,12 @@ test "$(resolve "$hub_prod" BDO_API_BASE)" = 'https://hub.example/api/bdo/agent/
 mixed="$(env_file mixed 'BDO_ENV=PROD' 'BDO_API_TARGET=hub' \
     'HUB_API_BASE_PROD=https://hub.example/api/bdo/agent/v1' 'BDO_API_KEY_PROD=bdo_p')"
 out="$(resolve_err "$mixed")"
-printf '%s' "$out" | grep -Fq 'HUB_API_KEY_PROD' \
+grep -Fq 'HUB_API_KEY_PROD' <<<"$out" \
     || fail "ключ старого API мовчки пішов у хаб замість відмови: $out"
 
 no_base="$(env_file no-base 'BDO_ENV=PROD' 'BDO_API_TARGET=hub' 'HUB_API_KEY_PROD=hub_p')"
 out="$(resolve_err "$no_base")"
-printf '%s' "$out" | grep -Fq 'HUB_API_BASE_PROD' \
+grep -Fq 'HUB_API_BASE_PROD' <<<"$out" \
     || fail "адреса хаба не названа у відмові: $out"
 # Вбудованої адреси в хаба бути не має: домен ще змінюється.
 if grep -Fq 'HUB_API_BASE_PROD_DEFAULT' "$ROOT/cli/system/select-env.sh"; then
@@ -123,7 +123,7 @@ fi
 
 bad="$(env_file bad 'BDO_ENV=PROD' 'BDO_API_TARGET=щось' 'BDO_API_KEY_PROD=x')"
 out="$(resolve_err "$bad")"
-printf '%s' "$out" | grep -Fq 'legacy або hub' \
+grep -Fq 'legacy або hub' <<<"$out" \
     || fail "невідомий бекенд не названо: $out"
 
 # `bdo` як синонім legacy · саме так власник називає старий проєкт.
@@ -165,7 +165,7 @@ printf '20260101_000000_aaaaaaaa\n' > "$STATE/current-batch"
 if out="$(start "$legacy_prod")"; then
     fail "пачка хаба мовчки переїхала на старий API: $out"
 fi
-printf '%s' "$out" | grep -Fq 'ЗАБЛОКОВАНО' \
+grep -Fq 'ЗАБЛОКОВАНО' <<<"$out" \
     || fail "перехід між бекендами посеред пачки не названо причиною: $out"
 test "$(head -1 "$STATE/run-target")" = hub-prod \
     || fail 'заблокований перехід усе одно змінив зафіксовану ціль'
@@ -204,7 +204,7 @@ test "$got" = "$want" \
 got="$(fields_for 'core,layers,coordinates' hub-prod "$hub_prod" "$want")"
 test "$got" = core \
     || fail "на вужчій цілі перелік не звузився до дозволеного: «${got}»"
-printf '%s' "$got" | grep -Fq core \
+grep -Fq core <<<"$got" \
     || fail 'у звуженому переліку немає core · рядок прийде без source_text'
 
 got="$(fields_for '' prod "$legacy_prod" "$want")"
@@ -247,7 +247,7 @@ FETCH_CODE=$?
 set -e
 kill "$FETCH_SERVER" 2>/dev/null || true
 test "$FETCH_CODE" -eq 0 || fail "fetch на вузькій цілі впав: $(cat "$TMP/fetch.err")"
-printf '%s' "$FETCH_OUTPUT" | grep -Fq 'Отримано: 0 рядків' || fail 'fetch не завершився на відповіді звуженої цілі'
+grep -Fq 'Отримано: 0 рядків' <<<"$FETCH_OUTPUT" || fail 'fetch не завершився на відповіді звуженої цілі'
 grep -Fq 'fields=core' "$TMP/fetch.log" || fail 'fetch не звузив fields під можливості цілі'
 grep -Fq 'Ціль приймає не всі групи полів' "$TMP/fetch.err" || fail 'звуження fields не назване в stderr'
 

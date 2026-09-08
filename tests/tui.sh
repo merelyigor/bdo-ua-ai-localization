@@ -87,47 +87,47 @@ tui() { (cd "$WORK" && NO_COLOR=1 bash bin/tui.sh "$@" 2>&1); }
 #    і не казав нічого. Причина мусить бути названа.
 out="$(printf '\n' | tui --status)" \
     || fail "екран стану завершився ненульовим кодом · вікно впало замість повернення в меню (D62). Намальовано: $out"
-printf '%s' "$out" | grep -q 'Ціль: PROD' || fail "екран стану не показав ціль: $out"
-printf '%s' "$out" | grep -q 'Профіль синхронізовано' \
+grep -q 'Ціль: PROD' <<<"$out" || fail "екран стану не показав ціль: $out"
+grep -q 'Профіль синхронізовано' <<<"$out" \
     && fail 'у полі «Ціль» опинився рядок синхронізації профілю'
 
 # 2. Стан пачки береться з manifest, а не вигадується, і показується
 #    УКРАЇНСЬКОЮ: `awaiting_qa` не каже власникові, чого пачка чекає.
-printf '%s' "$out" | grep -q 'чекає на перевірку якості' \
+grep -q 'чекає на перевірку якості' <<<"$out" \
     || fail "екран стану не показав стан пачки українською: $out"
-printf '%s' "$out" | grep -q 'awaiting_qa' \
+grep -q 'awaiting_qa' <<<"$out" \
     && fail "екран стану показав власникові англійський ключ стану: $out"
-printf '%s' "$out" | grep -q 'рядків: 50' || fail "екран стану не показав кількість рядків: $out"
+grep -q 'рядків: 50' <<<"$out" || fail "екран стану не показав кількість рядків: $out"
 # Екран мусить ДОЙТИ до підказки повернення, а не обірватись на середині.
-printf '%s' "$out" | grep -q 'Enter · назад' \
+grep -q 'Enter · назад' <<<"$out" \
     || fail "екран стану не дійшов до підказки повернення · вікно впало (D62): $out"
 # Стеля рядків розділу лишається: інакше довгий звіт витіснить решту екрана.
-test "$(printf '%s' "$out" | grep -c 'рядків 50   у шар 35')" -le 12 \
+test "$(grep -c 'рядків 50   у шар 35' <<<"$out")" -le 12 \
     || fail 'розділ останніх пачок не обмежений стелею рядків'
 # Вивід ПІСЛЯ стоп-рядка на екран не потрапляє.
-printf '%s' "$out" | grep -q 'збоїв моделі' \
+grep -q 'збоїв моделі' <<<"$out" \
     && fail 'на екран стану просочився вивід після стоп-рядка'
-printf '%s' "$out" | grep -q 'CHECKLIST' \
+grep -q 'CHECKLIST' <<<"$out" \
     && fail 'на екран стану просочився хвіст звіту review'
 
 # 3. Журнал рахує збої окремо: виклик із вердиктом `truncated` мусить бути
 #    видимим, інакше екран показує лише хороші новини.
 out="$(printf '\n' | tui --journal)"
-printf '%s' "$out" | grep -q 'truncated' || fail "журнал сховав невдалий виклик: $out"
-printf '%s' "$out" | grep -qE 'перекладач +1 +1' \
+grep -q 'truncated' <<<"$out" || fail "журнал сховав невдалий виклик: $out"
+grep -qE 'перекладач +1 +1' <<<"$out" \
     || fail "журнал не порахував збій ролі: $out"
-printf '%s' "$out" | grep -q 'translation-worker' \
+grep -q 'translation-worker' <<<"$out" \
     && fail "журнал показав власникові англійський ключ ролі: $out"
 
 # 4. Порожній журнал не ламає екран.
 rm "$WORK/state/model-calls.jsonl"
 out="$(printf '\n' | tui --journal)"
-printf '%s' "$out" | grep -q 'журнал порожній' || fail "порожній журнал зламав екран: $out"
+grep -q 'журнал порожній' <<<"$out" || fail "порожній журнал зламав екран: $out"
 
 # 5. Меню відкривається й закривається, нічого не запускаючи.
 : > "$WORK/state/calls.log"
 out="$(printf 'q\n' | tui)"
-printf '%s' "$out" | grep -q 'головне меню' || fail "меню не показалось: $out"
+grep -q 'головне меню' <<<"$out" || fail "меню не показалось: $out"
 grep -q '^mode start' "$WORK/state/calls.log" && fail 'вихід із меню запустив прогін'
 
 # 6. Небезпечний ввід у полі патча й категорії відкидається, а не потрапляє в
@@ -162,7 +162,7 @@ grep -Fq 'cli/run/plan-args.php' "$ROOT/bin/tui.sh" \
 # 8. Основний інтерфейс названий у самому вікні: власник мусить бачити, куди
 #    йти, а не згадувати команду.
 out="$(printf 'q\n' | tui)"
-printf '%s' "$out" | grep -q 'інтерфейс' \
+grep -q 'інтерфейс' <<<"$out" \
     || fail "меню не пропонує відкрити сторінку в браузері: $out"
 
 # 9. Чистий ввід навпаки доходить повністю.
@@ -182,9 +182,9 @@ grep -q '^loop --batches 2$' "$WORK/state/calls.log" \
 for locale in C POSIX en_US.US-ASCII; do
     out="$(cd "$WORK" && LC_ALL="$locale" LC_CTYPE="$locale" NO_COLOR=1 \
         bash bin/tui.sh --status 2>&1 < /dev/null)"
-    printf '%s' "$out" | grep -q 'illegal byte' \
+    grep -q 'illegal byte' <<<"$out" \
         && fail "локаль $locale ламає екран стану: $out"
-    printf '%s' "$out" | grep -q 'Ціль: PROD' \
+    grep -q 'Ціль: PROD' <<<"$out" \
         || fail "локаль $locale: екран стану не показав цілі"
 done
 
@@ -203,16 +203,16 @@ fi
 printf '%s\n' '{"at":"2026-01-01T10:00:00+00:00","role":"translation-qa","model":"m","verdict":"ok","ms":1500,"in":10,"out":20}' \
     > "$WORK/state/model-calls.jsonl"
 out="$(cd "$WORK" && BDO_TZ=Europe/Kiev NO_COLOR=1 bash bin/tui.sh --status < /dev/null 2>&1)"
-printf '%s' "$out" | grep -q '12:00:00' \
+grep -q '12:00:00' <<<"$out" \
     || fail "екран стану не перевів UTC 10:00 у київські 12:00: $out"
-printf '%s' "$out" | grep -q '10:00:00' \
+grep -q '10:00:00' <<<"$out" \
     && fail "екран стану лишив UTC-годинник як локальний: $out"
-printf '%s' "$out" | grep -q 'останній рух' \
+grep -q 'останній рух' <<<"$out" \
     || fail "екран стану не показав вік останнього руху пачки: $out"
 
 # Пояс беремо саме з оточення, тому UTC мусить лишатись UTC.
 out="$(cd "$WORK" && BDO_TZ=UTC NO_COLOR=1 bash bin/tui.sh --status < /dev/null 2>&1)"
-printf '%s' "$out" | grep -q '10:00:00' || fail "з BDO_TZ=UTC екран мусив показати 10:00:00: $out"
+grep -q '10:00:00' <<<"$out" || fail "з BDO_TZ=UTC екран мусив показати 10:00:00: $out"
 
 # 11. Межа класу: жодне місце більше не друкує `at` підрядком.
 if grep -rnE 'substr\(\(string\) \(\$[a-z]+\["at"\]' "$ROOT/bin" "$ROOT/cli"; then

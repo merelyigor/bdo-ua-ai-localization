@@ -149,7 +149,7 @@ for case_reason in "truncated:truncated" "empty:empty_content" "thinking:empty_c
     expected="${case_reason##*:}"
     run "$scenario"
     test "$CODE" = 1 || fail "сценарій $scenario мусив упасти, а дав код $CODE"
-    printf '%s' "$STDERR" | grep -q "^$expected" \
+    grep -q "^$expected" <<<"$STDERR" \
         || fail "сценарій $scenario: чекали причину «${expected}», маємо «${STDERR}»"
     test ! -e "$WORK/response.json" \
         || fail "сценарій $scenario створив файл відповіді попри відмову"
@@ -158,7 +158,7 @@ done
 # 8. Думання окремо: причина мусить називати саме його, інакше власник шукатиме
 #    дефект у промпті, а не у `think`.
 run thinking
-printf '%s' "$STDERR" | grep -q 'thinking' || fail "порожній content через думання не назвав причини: $STDERR"
+grep -q 'thinking' <<<"$STDERR" || fail "порожній content через думання не назвав причини: $STDERR"
 
 # 9. Журнал бачить КОЖЕН виклик, і успішний, і невдалий.
 lines="$(wc -l < "$WORK/state/model-calls.jsonl" | tr -d ' ')"
@@ -215,7 +215,7 @@ STDERR="$(BDO_ROLES_CONFIG="$WORK/dead.json" BDO_STATE_DIR="$WORK/state" \
 CODE=$?
 set -e
 test "$CODE" = 1 || fail "мертвий endpoint дав код $CODE"
-printf '%s' "$STDERR" | grep -q 'model_unreachable' || fail "мертвий endpoint без причини: $STDERR"
+grep -q 'model_unreachable' <<<"$STDERR" || fail "мертвий endpoint без причини: $STDERR"
 
 # 11. Хеші не виходять за межу клієнта: модель бачить `r1`, `r2`, а конвеєр ·
 #     повні identity_hash. Заміряно 2026-09-04: на QA з 49 рядків ~2 000 із
@@ -229,10 +229,10 @@ php -r 'file_put_contents($argv[1], json_encode(["type"=>"object","properties"=>
 run alias
 test "$CODE" = 0 || fail "виклик з аліасами впав: $STDERR"
 request="$(cat "$SCENARIO_FILE.request")"
-printf '%s' "$request" | grep -q "$H1" && fail 'модель побачила повний identity_hash у payload'
-printf '%s' "$request" | grep -q '\\"id\\":\\"r1\\"' || fail "у payload для моделі немає короткого ключа r1: $request"
-printf '%s' "$request" | grep -q '"enum":\["r1","r2"\]' || fail "схема для моделі не обмежує id переліком r1,r2: $request"
-printf '%s' "$request" | grep -q '"required":\["id","text"\]' || fail "схема для моделі вимагає не id, а щось інше: $request"
+grep -q "$H1" <<<"$request" && fail 'модель побачила повний identity_hash у payload'
+grep -q '\\"id\\":\\"r1\\"' <<<"$request" || fail "у payload для моделі немає короткого ключа r1: $request"
+grep -q '"enum":\["r1","r2"\]' <<<"$request" || fail "схема для моделі не обмежує id переліком r1,r2: $request"
+grep -q '"required":\["id","text"\]' <<<"$request" || fail "схема для моделі вимагає не id, а щось інше: $request"
 php -r '$a=json_decode(file_get_contents($argv[1]),true);
     if (($a[0]["identity_hash"]??"")!==$argv[3] || ($a[0]["text"]??"")!=="Щит") { fwrite(STDERR, json_encode($a)); exit(1); }
     if (($a[1]["identity_hash"]??"")!==$argv[2] || isset($a[1]["id"])) { fwrite(STDERR, json_encode($a)); exit(1); }' \
@@ -241,7 +241,7 @@ php -r '$a=json_decode(file_get_contents($argv[1]),true);
 # 12. Чужий короткий ключ · відмова з причиною, а не здогад про «найближчий» хеш.
 run alias_unknown
 test "$CODE" = 1 || fail "чужий id мусив дати відмову, а дав код $CODE"
-printf '%s' "$STDERR" | grep -q '^unknown_id' || fail "чужий id без причини unknown_id: $STDERR"
+grep -q '^unknown_id' <<<"$STDERR" || fail "чужий id без причини unknown_id: $STDERR"
 test ! -e "$WORK/response.json" || fail 'чужий id створив файл відповіді'
 
 # 12б. Роль, чия відповідь хеша не несе (термінологія, smoke), бачить payload як є:
@@ -268,13 +268,13 @@ grep -q '"think":false' "$SCENARIO_FILE.request" || fail 'думання мус�
 #      Зібраний JSON тут ВАЛІДНИЙ, тому спокуса вважати це успіхом реальна.
 run stream_cut
 test "$CODE" = 1 || fail "обірваний потік дав код $CODE замість відмови"
-printf '%s' "$STDERR" | grep -q '^stream_incomplete' || fail "обрив потоку без причини: $STDERR"
+grep -q '^stream_incomplete' <<<"$STDERR" || fail "обрив потоку без причини: $STDERR"
 test ! -e "$WORK/response.json" || fail 'обірваний потік створив файл відповіді'
 
 # 12д. Роздуми не є відповіддю: порожній `content` лишається відмовою.
 run think_only
 test "$CODE" = 1 || fail "порожній content при довгих роздумах мусив упасти"
-printf '%s' "$STDERR" | grep -q '^empty_content' || fail "роздуми підмінили відповідь: $STDERR"
+grep -q '^empty_content' <<<"$STDERR" || fail "роздуми підмінили відповідь: $STDERR"
 
 # 12е. Думання ВКЛЮЧАЄТЬСЯ явно й тільки явно.
 printf '%s' ok > "$SCENARIO_FILE"; rm -f "$WORK/response.json"

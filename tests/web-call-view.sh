@@ -45,9 +45,9 @@ TOKEN="$(printf '%s' "$URL" | sed -n 's~.*t=\([0-9a-f]*\).*~\1~p')"
 
 # --- 1. Екран існує й не носить токена ---------------------------------------
 page="$(curl -s -m 5 "http://127.0.0.1:$PORT/call")" || fail 'екран /call не відкрився'
-printf '%s' "$page" | grep -Fq 'bdo · робота ролі' \
+grep -Fq 'bdo · робота ролі' <<<"$page" \
     || fail 'за шляхом /call віддано не той екран'
-printf '%s' "$page" | grep -q "$TOKEN" \
+grep -q "$TOKEN" <<<"$page" \
     && fail 'токен вшитий в екран /call'
 # Розгорнути на весь екран і відкрити вкладкою · саме те, що просив власник.
 grep -Fq 'requestFullscreen' "$ROOT/web/call.html" \
@@ -59,22 +59,22 @@ grep -Fq 'B.streamFeed(stream)' "$ROOT/web/call.html" \
 
 # --- 2. Робота завершеного виклику видна ЦІЛКОМ ------------------------------
 body="$(curl -s -m 5 "http://127.0.0.1:$PORT/api/call?t=$TOKEN&at=$(php -r 'echo rawurlencode($argv[1]);' "$AT")&role=translation-worker")"
-printf '%s' "$body" | grep -Fq 'Вальків меч' \
+grep -Fq 'Вальків меч' <<<"$body" \
     || fail "відповідь ролі не віддано: $body"
-printf '%s' "$body" | grep -Fq 'Меч Валька' \
+grep -Fq 'Меч Валька' <<<"$body" \
     || fail "запит до ролі не віддано: $body"
-printf '%s' "$body" | grep -Fq 'перекладач' \
+grep -Fq 'перекладач' <<<"$body" \
     || fail "роль не названо українською: $body"
 
 # --- 3. ЧУЖИЙ ФАЙЛ не показується, навіть якщо його просить журнал -----------
 # Журнал теж є файлом. Одного джерела довіри для читання файлів мало, тому шлях
 # звіряється з текою стану вже на сервері.
 body="$(curl -s -m 5 "http://127.0.0.1:$PORT/api/call?t=$TOKEN&at=$(php -r 'echo rawurlencode($argv[1]);' '2026-09-06T09:01:00+00:00')&role=translation-qa")"
-printf '%s' "$body" | grep -Fq 'секрет власника' \
+grep -Fq 'секрет власника' <<<"$body" \
     && fail 'сервер віддав файл ПОЗА текою стану'
-printf '%s' "$body" | grep -q 'localhost' \
+grep -q 'localhost' <<<"$body" \
     && fail 'сервер віддав /etc/hosts'
-printf '%s' "$body" | grep -Fq '"payload":null' \
+grep -Fq '"payload":null' <<<"$body" \
     || fail "шлях за межі теки стану мусить дати null: $body"
 
 # --- 4. Невідомий виклик і кривий ключ дають ПРИЧИНУ --------------------------
@@ -104,9 +104,9 @@ printf '[03:51:55] awaiting_worker · роль translation-worker\n' \
 printf '{"role":"translation-worker","ms":1200}\n' \
     > "$BDO_STATE_DIR/sessions/20260101_010101/model-calls.jsonl"
 body="$(curl -s -m 5 "http://127.0.0.1:$PORT/api/call?t=$TOKEN&session=20260101_010101")"
-printf '%s' "$body" | grep -Fq 'translation-worker' \
+grep -Fq 'translation-worker' <<<"$body" \
     || fail "журнал сесії не віддано: $body"
-printf '%s' "$body" | grep -Fq 'прогін сесії 20260101_010101' \
+grep -Fq 'прогін сесії 20260101_010101' <<<"$body" \
     || fail "вікно не називає, чий це прогін: $body"
 
 # Кривий ідентифікатор і сесія без журналів дають ПРИЧИНУ, а не порожнечу.

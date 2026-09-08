@@ -102,7 +102,14 @@ pair() {
         set -e
         printf '%s\n' "$sh_code" > "$TMP/$name.sh.code"
         printf '%s\n' "$php_code" > "$TMP/$name.php.code"
-        if [ "$name" = fetch ] || [ "$name" = validate ]; then
+        # Нормалізація вмикається за ПРЕФІКСОМ, а не за точним іменем: сценарії
+        # стабільності звуться `fetch-stability-N`, і саме вони випадали з неї ·
+        # тобто перевірка, додана проти нестабільності, сама була нестабільною.
+        case "$name" in
+            fetch*|validate*) local normalize=1 ;;
+            *) local normalize=0 ;;
+        esac
+        if [ "$normalize" -eq 1 ]; then
             normalize_result "$TMP/$name.sh.out" "$TMP/$name.sh.out.normalized"
             normalize_result "$TMP/$name.php.out" "$TMP/$name.php.out.normalized"
             normalize_result "$TMP/$name.sh.err" "$TMP/$name.sh.err.normalized"
@@ -177,7 +184,7 @@ for size in 15 19 101; do
     invalid_code=$?
     set -e
     test "$invalid_code" -eq 2 || fail "розмір $size не відхилено кодом 2"
-    printf '%s' "$invalid_err" | grep -Fq 'від 20 до 100' || fail "для розміру $size немає пояснення межі"
+    grep -Fq 'від 20 до 100' <<<"$invalid_err" || fail "для розміру $size немає пояснення межі"
 done
 
 echo 'cli api fetch: 3 команди, stdout/stderr, коди й файли: OK'

@@ -83,7 +83,7 @@ out="$(TRANSLATE_ENV_FILE="$TMP/env" BDO_STATE_DIR="$STATE" BDO_FETCH_MAX_PAGES=
 code=$?
 set -e
 test "$code" -eq 0 || fail "fetch з фільтром завершився кодом $code: $(cat "$TMP/fetch.err")"
-printf '%s' "$out" | grep -Fq 'Отримано: 1 рядків' || fail "вичерпаний рядок потрапив у результат: $out"
+grep -Fq 'Отримано: 1 рядків' <<<"$out" || fail "вичерпаний рядок потрапив у результат: $out"
 grep -Fq 'Пропущено 1 рядків із вичерпаними спробами' "$TMP/fetch.err" || fail 'stderr не назвав число пропущених рядків'
 test "$(grep -c '^/rows$' "$TMP/rows.log")" -eq 2 || fail 'порожня сторінка не зупинила обхід'
 kill "$SERVER" 2>/dev/null || true

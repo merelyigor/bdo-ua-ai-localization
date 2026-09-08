@@ -98,7 +98,7 @@ test -s "$TMP/state/glossary-full.json" \
 printf 'stale\n' > "$TMP/state/glossary-full.json"
 touch -t 202601010000 "$TMP/state/glossary-full.json"
 out="$(run)"
-printf '%s' "$out" | grep -Fq 'прострочений кеш' || fail "показ не назвав простроченого кеша: $out"
+grep -Fq 'прострочений кеш' <<<"$out" || fail "показ не назвав простроченого кеша: $out"
 test -s "$TMP/state/glossary-full.json" || fail 'показ без --apply видалив кеш'
 
 # 6г. Журнал спроб і карантин прибирання не чіпає НІКОЛИ: їх чистить лише
