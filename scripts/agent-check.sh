@@ -298,11 +298,16 @@ check_references() {
     # Один рядок навмисно: перевірка нижче робить `case " $external " in *" $ref "*`,
     # тобто шукає імʼя, оточене ПРОБІЛАМИ. Перенос рядка всередині списку робить
     # перше імʼя наступного рядка невидимим для match.
+    # ПРАВИЛО: `/tmp/*` із verification evidence не є repo reference.
+    # САБОТАЖ: прибрати цей skip; fixture з гарантовано відсутнім `/tmp/*.md` мусить зробити `gate docs` червоним.
     local -r external='docs/AGENT_TRANSLATION_API.md YYYY-MM-DD_SLUG.md translate-patch.sh translate-menu.sh agent-call.sh merge-verdicts.sh inspect.sh'
     local doc ref plan base checked=0
     while IFS= read -r doc; do
         test -f "$doc" || continue
         while IFS= read -r ref; do
+            case "$ref" in
+                /tmp/*) continue ;;
+            esac
             case " $external " in *" $ref "*) continue ;; esac
             resolve_reference "$ref" "$(dirname "$doc")" \
                 || fail "$doc посилається на відсутній $ref"
