@@ -1,4 +1,8 @@
 #!/usr/bin/env bash
+if [ "${BDO_ORCHESTRATOR:-php}" != sh ]; then
+    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+    exec php "$SCRIPT_DIR/cli/bdo.php" batch-clean "$@"
+fi
 # Прибрати все, що флоу вже не може використати.
 #
 #   ./batch-clean.sh                 # показати, що буде прибрано, і нічого не робити

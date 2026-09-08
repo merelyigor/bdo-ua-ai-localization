@@ -19,6 +19,7 @@ use Bdo\Translate\Cli\Command\Api\TermNotesQueueCommand;
 use Bdo\Translate\Cli\Command\Api\TermNotesSubmitCommand;
 use Bdo\Translate\Cli\Command\Api\ValidateCommand;
 use Bdo\Translate\Cli\Command\Batch\BatchAssertCommand;
+use Bdo\Translate\Cli\Command\Batch\BatchCleanCommand;
 use Bdo\Translate\Cli\Command\Batch\BatchDirCommand;
 use Bdo\Translate\Cli\Command\Batch\BatchNewCommand;
 use Bdo\Translate\Cli\Command\Batch\SubsetRowsCommand;
@@ -120,6 +121,7 @@ final class Kernel
             'names-payload' => new NamesPayloadCommand(),
             'batch-dir' => new BatchDirCommand(),
             'batch-assert' => new BatchAssertCommand(),
+            'batch-clean' => new BatchCleanCommand(),
             'batch-new' => new BatchNewCommand(),
             'subset-rows' => new SubsetRowsCommand(),
             'heal-plan' => new HealPlanCommand(),
