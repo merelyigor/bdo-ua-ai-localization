@@ -364,6 +364,19 @@ passed за 199 с; `phpstorm lint_files` · 0 ERROR; жоден із 17 вик�
 
 ### Підетап 5 · `cli/batch/**`, `cli/heal/**`, `cli/write/**` (9 файлів, 1 482 рядки)
 
+**Статус:** у роботі.
+
+Прийнято рев'ю: перша non-PROD batch/heal порція `92cf048` + corrective
+`2cc58bb`; `batch-clean` · `f785fcb`, `6.4.1`, CI success.
+
+Залишок підетапу 5:
+
+- `cli/batch/batch-commit.sh`
+- `cli/write/moderation-queue.sh`
+- `cli/write/write-translations.sh`
+
+Це остання PROD/API-write межа підетапу 5, і вона ще НЕ прийнята.
+
 **Мета.** Пачка, ремонт, запис · у PHP.
 
 **РИЗИК НАЙВИЩИЙ:** тут живе запис у PROD.

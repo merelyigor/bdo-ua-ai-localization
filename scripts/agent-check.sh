@@ -707,9 +707,36 @@ check_whitespace() {
     note 'git diff --check: чисто'
 }
 
+check_handoff_contract() {
+    step 'Development HANDOFF contract'
+    # ПРАВИЛО: технічний звіт ВИКОНАВЦЯ має одного адресата, фіксовану коротку форму і не змішується з власницьким висновком.
+    # САБОТАЖ: прибрати marker, skeleton, заборону owner headings або повернути «ВЛАСНИК пушить» · gate docs мусить впасти.
+    grep -Fq 'АДРЕСАТ: АРХІТЕКТОР' AGENTS.md \
+        || fail 'root rule map не містить адресата HANDOFF'
+    grep -Fq 'АДРЕСАТ: АРХІТЕКТОР' docs/ai-workflow/HANDOFF.md \
+        || fail 'HANDOFF.md не містить literal marker адресата'
+    for heading in '## СТАН' '## КОМІТ' '## ЗМІНЕНІ ФАЙЛИ' '## ПЕРЕВІРКА' '## ВІДХИЛЕННЯ' '## ЧОГО НЕ ЗРОБЛЕНО'; do
+        grep -Fq "$heading" docs/ai-workflow/PROMPTS.md \
+            || fail "PROMPTS.md не вимагає short-form skeleton: $heading"
+    done
+    grep -Fq 'АДРЕСАТ: АРХІТЕКТОР' docs/ai-workflow/PROMPTS.md \
+        || fail 'PROMPTS.md не вимагає literal marker адресата'
+    for heading in '## Підсумок' '## Що зробив' '## Що далі'; do
+        grep -Fq "$heading" docs/ai-workflow/PROMPTS.md \
+            || fail "PROMPTS.md не забороняє власницький заголовок: $heading"
+    done
+    if grep -Fq 'ВЛАСНИК пушить' docs/ai-workflow/WORKFLOW.md; then
+        fail 'WORKFLOW.md містить застаріле твердження «ВЛАСНИК пушить»'
+    fi
+    perl -0ne 'exit 1 unless /CI на\s+точному SHA перевіряє АРХІТЕКТОР/' docs/ai-workflow/WORKFLOW.md \
+        || fail 'WORKFLOW.md не покладає перевірку CI на АРХІТЕКТОРА'
+    note 'Development HANDOFF contract: marker, skeleton, owner-heading prohibition і CI ownership присутні'
+}
+
 check_docs() {
     run bash tests/command-registry.sh
     check_rules
+    check_handoff_contract
     check_references
     check_env_contract
     check_private_hosts
