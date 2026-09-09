@@ -705,6 +705,43 @@ EOF
     note 'PHP: count() у loop-condition немає; кожен mkdir() має перевірку результату'
 }
 
+# ПРАВИЛО: write-тести працюють лише в тимчасовому harness і не мають права
+# чистити production-root output/state.
+# САБОТАЖ: literal $ROOT/output або $ROOT/state у цих тестах має зупинити gate
+# до будь-якого запуску write-сценарію.
+check_write_test_safety() {
+    step 'Write-test safety'
+    local file hits
+    for file in tests/cli-write-parity.sh tests/write-channel-rights.sh; do
+        test -f "$file" || fail "відсутній write-тест: $file"
+        grep -Fq 'ПРАВИЛО:' "$file" || fail "у $file немає коментаря ПРАВИЛО:"
+        grep -Fq 'САБОТАЖ:' "$file" || fail "у $file немає коментаря САБОТАЖ:"
+        hits="$(grep -nE '\$ROOT/(output|state)' "$file" || true)"
+        test -z "$hits" || fail "write-тест має production-root cleanup: $hits"
+    done
+    note 'write-тести ізолюють state/output у тимчасовому harness'
+}
+
+# ПРАВИЛО: write orchestration у PHP не запускає Unix-процеси; HTTP і файлові
+# операції виконуються через PHP/runtime-класи.
+# САБОТАЖ: доданий виклик exec()/shell_exec()/system()/passthru()/popen()/proc_open()
+# у будь-якому з чотирьох production-файлів має зупинити gate.
+check_write_php_subprocess_guards() {
+    step 'Write PHP subprocess guard'
+    local file hits
+    for file in lib/Api/TranslationWriter.php \
+        lib/Cli/Command/Batch/BatchCommitCommand.php \
+        lib/Cli/Command/Write/WriteTranslationsCommand.php \
+        lib/Cli/Command/Write/ModerationCommand.php; do
+        test -f "$file" || fail "відсутній write PHP-файл: $file"
+        grep -Fq 'ПРАВИЛО:' "$file" || fail "у $file немає коментаря ПРАВИЛО:"
+        grep -Fq 'САБОТАЖ:' "$file" || fail "у $file немає коментаря САБОТАЖ:"
+        hits="$(rg -n --pcre2 '\b(exec|shell_exec|system|passthru|popen|proc_open)\s*\(' "$file" || true)"
+        test -z "$hits" || fail "заборонений subprocess у $file:\n$hits"
+    done
+    note 'write PHP-файли не запускають зовнішніх процесів'
+}
+
 check_whitespace() {
     step 'Whitespace і conflict markers'
     git diff --check
@@ -964,6 +1001,8 @@ $braceless"
     run bash tests/cli-prepare-parity.sh
     run bash tests/cli-batch-heal-parity.sh
     run bash tests/cli-batch-clean-parity.sh
+    check_write_test_safety
+    check_write_php_subprocess_guards
     run bash tests/cli-write-parity.sh
     run bash tests/cli-payload-parity.sh
     run bash tests/batch-summary.sh
@@ -1121,11 +1160,11 @@ profile="${1:-}"
 case "$profile" in
     preflight) report_preflight ;;
     docs) check_docs ;;
-    shell) check_rules; check_shell; check_design; check_bash32_arrays; check_php_runtime_guards; check_sigpipe_pipelines; check_whitespace ;;
+    shell) check_rules; check_shell; check_design; check_bash32_arrays; check_php_runtime_guards; check_write_test_safety; check_write_php_subprocess_guards; check_sigpipe_pipelines; check_whitespace ;;
     agents) check_rules; check_agents; check_whitespace ;;
     runtime) check_rules; check_runtime ;;
     api) check_rules; check_api ;;
-    full) check_docs; check_shell; check_design; check_bash32_arrays; check_php_runtime_guards; check_sigpipe_pipelines; check_agents ;;
+    full) check_docs; check_shell; check_design; check_bash32_arrays; check_php_runtime_guards; check_write_php_subprocess_guards; check_sigpipe_pipelines; check_agents ;;
     *) printf 'Usage: %s {preflight|docs|shell|agents|runtime|api|full}\n' "$0" >&2; exit 2 ;;
 esac
 

@@ -22,6 +22,9 @@ use RuntimeException;
  */
 final class ModerationCommand implements Command
 {
+    // ПРАВИЛО: moderation використовує лише PHP Http\Client і не обходить API guard.
+    // САБОТАЖ: альтернативний transport або fail-fast decision змінює контракт.
+
     public function execute(array $arguments, Output $output): int
     {
         $limit = '20';
@@ -34,12 +37,12 @@ final class ModerationCommand implements Command
         $json = false;
         for ($index = 0, $length = count($arguments); $index < $length; $index++) {
             switch ($arguments[$index]) {
-                case '--limit': $limit = (string) ($arguments[++$index] ?? ''); break;
-                case '--row': $row = (string) ($arguments[++$index] ?? ''); break;
-                case '--approve': $approve = (string) ($arguments[++$index] ?? ''); break;
-                case '--reject': $reject = (string) ($arguments[++$index] ?? ''); break;
-                case '--reason': $reason = (string) ($arguments[++$index] ?? ''); break;
-                case '--approve-batch': $batch = (string) ($arguments[++$index] ?? ''); break;
+                case '--limit': $limit = $this->requiredOption($arguments, ++$index, '--limit потребує число'); break;
+                case '--row': $row = $this->requiredOption($arguments, ++$index, '--row потребує identity_hash'); break;
+                case '--approve': $approve = $this->requiredOption($arguments, ++$index, '--approve потребує перелік id через кому'); break;
+                case '--reject': $reject = $this->requiredOption($arguments, ++$index, '--reject потребує перелік id через кому'); break;
+                case '--reason': $reason = $this->requiredOption($arguments, ++$index, '--reason потребує текст'); break;
+                case '--approve-batch': $batch = $this->requiredOption($arguments, ++$index, '--approve-batch потребує число'); break;
                 case '--dry': $dry = true; break;
                 case '--json': $json = true; break;
                 case '-h':
@@ -208,5 +211,15 @@ final class ModerationCommand implements Command
     private function notNumber(string $value): bool
     {
         return $value === '' || preg_match('/^[0-9]+$/', $value) !== 1;
+    }
+
+    private function requiredOption(array $arguments, int $index, string $message): string
+    {
+        $value = $arguments[$index] ?? '';
+        if (! is_string($value) || $value === '') {
+            throw new RuntimeException($message);
+        }
+
+        return $value;
     }
 }

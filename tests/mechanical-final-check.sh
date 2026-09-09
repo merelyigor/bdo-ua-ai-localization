@@ -122,6 +122,45 @@ if (ChannelRouter::route("machine", "PASS", "none", false, false) !== ChannelRou
 }
 ' "$ROOT/lib/autoload.php" || fail 'маршрут ігнорує механічний дефект'
 
+# ПРАВИЛО: actual batch-commit лишає чистий рядок у PASS, а фінальний механічний
+# дефект переводить відповідний рядок у модерацію.
+# САБОТАЖ: source grep або обхід actual command має зробити цю composition-перевірку червоною.
+MECH_TMP="$(mktemp -d)"
+M1="$(printf '%064d' 31)"
+M2="$(printf '%064d' 32)"
+cat > "$MECH_TMP/rows.json" <<JSON
+{"data":{"rows":[
+  {"identity_hash":"$M1","source_hash":"source-31","source_text":"Clean source"},
+  {"identity_hash":"$M2","source_hash":"source-32","source_text":"Armor Set"}
+]}}
+JSON
+cat > "$MECH_TMP/candidate.json" <<JSON
+[
+  {"identity_hash":"$M1","text":"Чистий переклад"},
+  {"identity_hash":"$M2","text":"Комплект доспехів"}
+]
+JSON
+cat > "$MECH_TMP/verdicts.json" <<JSON
+[
+  {"identity_hash":"$M1","status":"PASS","severity":"none","issue":"","fix":""},
+  {"identity_hash":"$M2","status":"PASS","severity":"none","issue":"","fix":""}
+]
+JSON
+cat > "$MECH_TMP/env" <<'ENV'
+BDO_ENV=DEV
+BDO_API_TARGET=legacy
+BDO_API_BASE_DEV=http://127.0.0.1:1
+BDO_API_KEY_DEV=test-key
+ENV
+MECH_OUT="$(TRANSLATE_ENV_FILE="$MECH_TMP/env" BDO_ENV=DEV BDO_STATE_DIR="$MECH_TMP/state" \
+    BDO_ORCHESTRATOR=php bash "$ROOT/cli/batch/batch-commit.sh" \
+    "$MECH_TMP/rows.json" "$MECH_TMP/candidate.json" "$MECH_TMP/verdicts.json" 2>&1 || true)"
+grep -Fq 'До запису: 1' <<<"$MECH_OUT" \
+    || fail "actual batch-commit не лишив clean row у PASS: $MECH_OUT"
+grep -Fq 'у модерацію: 1' <<<"$MECH_OUT" \
+    || fail "actual batch-commit не перевів mechanical defect у moderation: $MECH_OUT"
+rm -rf "$MECH_TMP"
+
 # ПРАВИЛО: actual batch-commit має знімати механічний дефект із запису.
 # САБОТАЖ: обхід ChannelRouter або механічної перевірки має змінити цей output.
 

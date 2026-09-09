@@ -3,10 +3,20 @@
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 TMP="$(mktemp -d)"; SERVER=''; REAL_PHP="$(command -v php)"
-trap '[ -z "$SERVER" ] || kill "$SERVER" 2>/dev/null || true; find "$ROOT/output" -maxdepth 1 -type f -name "write_*.json" -delete 2>/dev/null || true; rm -rf "$TMP"' EXIT
+SOURCE_ROOT="$ROOT"
+HARNESS="$TMP/repo"
+mkdir -p "$HARNESS"
+cp -R "$SOURCE_ROOT/cli" "$HARNESS/cli"
+cp -R "$SOURCE_ROOT/lib" "$HARNESS/lib"
+cp -R "$SOURCE_ROOT/config" "$HARNESS/config"
+cp -R "$SOURCE_ROOT/roles" "$HARNESS/roles"
+mkdir -p "$HARNESS/state" "$HARNESS/output"
+ROOT="$HARNESS"
+trap '[ -z "$SERVER" ] || kill "$SERVER" 2>/dev/null || true; rm -rf "$TMP"' EXIT
 fail() { printf 'FAIL: %s\n' "$1" >&2; exit 1; }
 
 PORT=$((29000 + RANDOM % 500))
+BASE_URL="http://127.0.0.1:$PORT"
 cat > "$TMP/router.php" <<'PHP'
 <?php
 $path = (string) parse_url((string) ($_SERVER['REQUEST_URI'] ?? '/'), PHP_URL_PATH);
@@ -33,6 +43,8 @@ http_response_code(404); echo json_encode(['success'=>false]);
 PHP
 "$REAL_PHP" -S "127.0.0.1:$PORT" "$TMP/router.php" >"$TMP/server.log" 2>&1 & SERVER=$!
 for _ in $(seq 1 30); do "$REAL_PHP" -r '$s=@fsockopen("127.0.0.1",(int)$argv[1],$e,$m,.2);if(is_resource($s)){fclose($s);exit(0);}exit(1);' "$PORT" && break; sleep .1; done
+"$REAL_PHP" -r '$u=parse_url($argv[1]);exit(($u["scheme"]??"")==="http"&&($u["host"]??"")==="127.0.0.1"?0:1);' "$BASE_URL" \
+    || fail 'write-channel URL не є localhost DEV'
 cat > "$TMP/env" <<ENV
 BDO_ENV=DEV
 BDO_API_TARGET=legacy
@@ -42,7 +54,7 @@ ENV
 printf '[{"identity_hash":"%064d","source_hash":"%064d","text":"Тест"}]\n' 1 2 > "$TMP/items.json"
 run() {
     local mode="$1" state="$2" stub="$3" channel="$4"; mkdir -p "$state"
-    printf '%s\n' "BDO_ENV=DEV" "BDO_API_TARGET=legacy" "BDO_API_BASE_DEV=http://127.0.0.1:$PORT/$stub" "BDO_API_KEY_DEV=test-key" > "$TMP/env-$stub"
+    printf '%s\n' "BDO_ENV=DEV" "BDO_API_TARGET=legacy" "BDO_API_BASE_DEV=$BASE_URL/$stub" "BDO_API_KEY_DEV=test-key" > "$TMP/env-$stub"
     TRANSLATE_ENV_FILE="$TMP/env-$stub" BDO_STATE_DIR="$state" BDO_ORCHESTRATOR="$mode" \
         bash "$ROOT/cli/write/write-translations.sh" --channel "$channel" --idempotency-key stable "$TMP/items.json"
 }

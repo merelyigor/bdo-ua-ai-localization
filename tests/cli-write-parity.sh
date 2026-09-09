@@ -3,10 +3,37 @@
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 TMP="$(mktemp -d)"
+TMP_REAL="$(cd "$TMP" && pwd -P)"
 SERVER=''
 REAL_PHP="$(command -v php)"
-trap '[ -z "$SERVER" ] || kill "$SERVER" 2>/dev/null || true; find "$ROOT/output" -maxdepth 1 -type f -name "write_*.json" -delete 2>/dev/null || true; rm -rf "$TMP"' EXIT
+SOURCE_ROOT="$ROOT"
+HARNESS="$TMP/repo"
+mkdir -p "$HARNESS"
+cp -R "$SOURCE_ROOT/cli" "$HARNESS/cli"
+cp -R "$SOURCE_ROOT/lib" "$HARNESS/lib"
+cp -R "$SOURCE_ROOT/config" "$HARNESS/config"
+cp -R "$SOURCE_ROOT/roles" "$HARNESS/roles"
+mkdir -p "$HARNESS/state" "$HARNESS/output"
+ROOT="$HARNESS"
+HARNESS_OUTPUT="$ROOT/${HARNESS_OUTPUT_DIR:-output}"
+trap '[ -z "$SERVER" ] || kill "$SERVER" 2>/dev/null || true; rm -rf "$TMP"' EXIT
 fail() { printf 'FAIL: %s\n' "$1" >&2; exit 1; }
+
+# ПРАВИЛО: routing proof працює на synthetic DEV env, а не читає production `.env`.
+# САБОТАЖ: відсутній dispatcher не має дістатися до реального target або ключа.
+PORT=$((28000 + RANDOM % 1000))
+BASE_URL="http://127.0.0.1:$PORT"
+cat > "$TMP/env" <<ENV
+BDO_ENV=DEV
+BDO_API_TARGET=legacy
+BDO_API_BASE_DEV=$BASE_URL
+BDO_API_KEY_DEV=test-key
+ENV
+export TRANSLATE_ENV_FILE="$TMP/env"
+# ПРАВИЛО: кожен можливий POST у тесті дозволений лише до http://127.0.0.1.
+# САБОТАЖ: зміна scheme або host мусить зупинити тест до першого write.
+"$REAL_PHP" -r '$u=parse_url($argv[1]);exit(($u["scheme"]??"")==="http"&&($u["host"]??"")==="127.0.0.1"?0:1);' "$BASE_URL" \
+    || fail 'write-test URL не є localhost DEV'
 
 # ПРАВИЛО: default/php wrapper мусить передати internal route у Kernel.
 # САБОТАЖ: вилучення dispatcher має зробити routing proof червоним.
@@ -19,7 +46,6 @@ for pair in 'cli/batch/batch-commit.sh commit' 'cli/write/write-translations.sh 
     grep -Fq "__ROUTE__ $2" <<<"$route" || fail "routing $1 не дала $2"
 done
 
-PORT=$((28000 + RANDOM % 1000))
 printf 'list\n' > "$TMP/stub-mode"
 cat > "$TMP/router.php" <<'PHP'
 <?php
@@ -29,13 +55,25 @@ $log = (string) getenv('STUB_LOG');
 $body = (string) file_get_contents('php://input');
 $stubMode = trim((string) @file_get_contents((string) getenv('STUB_MODE_FILE')));
 $remaining = $stubMode === 'quota' ? 0 : 100;
-file_put_contents($log, json_encode(['method'=>$_SERVER['REQUEST_METHOD'] ?? '', 'path'=>$uri, 'body'=>$body], JSON_UNESCAPED_UNICODE)."\n", FILE_APPEND);
+$headers = [];
+foreach (getallheaders() ?: [] as $name => $value) {
+    $lower = strtolower($name);
+    if (in_array($lower, ['content-type', 'idempotency-key'], true)) $headers[$lower] = $value;
+}
+ksort($headers);
+file_put_contents($log, json_encode(['method'=>$_SERVER['REQUEST_METHOD'] ?? '', 'path'=>$uri, 'headers'=>$headers, 'body'=>$body], JSON_UNESCAPED_UNICODE)."\n", FILE_APPEND);
 header('Content-Type: application/json');
 if ($path === '/me') {
-    echo json_encode(['data'=>['user'=>['role'=>'super_admin'], 'effective_abilities'=>['translations:write-machine'], 'limits'=>['rows_remaining_today'=>$remaining], 'writes'=>['channels'=>[
-        ['layer'=>'machine','mode'=>'direct','allowed'=>true,'result'=>'machine'],
-        ['layer'=>'manual','mode'=>'proposal','allowed'=>true,'result'=>'manual'],
-    ]]]], JSON_UNESCAPED_UNICODE);
+    $data = ['user'=>['role'=>'super_admin'], 'effective_abilities'=>['translations:write-machine'], 'limits'=>['rows_remaining_today'=>$remaining]];
+    if ($stubMode === 'legacy') {
+        echo json_encode(['data'=>$data], JSON_UNESCAPED_UNICODE);
+    } else {
+        $data['writes'] = ['channels'=>[
+            ['layer'=>'machine','mode'=>'direct','allowed'=>true,'result'=>'machine'],
+            ['layer'=>'manual','mode'=>'proposal','allowed'=>true,'result'=>'manual'],
+        ]];
+        echo json_encode(['data'=>$data], JSON_UNESCAPED_UNICODE);
+    }
     return;
 }
 if ($path === '/translations') {
@@ -45,7 +83,9 @@ if ($path === '/translations') {
     foreach ($items as $index => $item) $results[] = ['index'=>$index, 'identity_hash'=>$item['identity_hash'] ?? '', 'status'=>'ok'];
     $rejected = (($items[0]['identity_hash'] ?? '') === 'reject') ? 1 : 0;
     if ($rejected > 0) $results = [['index'=>0, 'identity_hash'=>'reject', 'status'=>'rejected', 'code'=>'invalid', 'message'=>'відхилено']];
-    echo json_encode(['data'=>['meta'=>['layer'=>$request['layer'] ?? '', 'mode'=>$request['mode'] ?? '', 'auto_approve'=>$request['auto_approve'] ?? false, 'items'=>count($items), 'written'=>count($items)-$rejected, 'skipped'=>0, 'rejected'=>$rejected, 'rows_remaining_today'=>$remaining-count($items)], 'results'=>$results]], JSON_UNESCAPED_UNICODE);
+    $meta = ['layer'=>$request['layer'] ?? '', 'mode'=>$request['mode'] ?? '', 'auto_approve'=>$request['auto_approve'] ?? false, 'items'=>count($items), 'written'=>count($items)-$rejected, 'skipped'=>0, 'rejected'=>$rejected, 'rows_remaining_today'=>$remaining-count($items)];
+    if ($stubMode === 'no-meta') unset($meta['layer'], $meta['mode'], $meta['auto_approve']);
+    echo json_encode(['data'=>['meta'=>$meta, 'results'=>$results]], JSON_UNESCAPED_UNICODE);
     return;
 }
 if ($path === '/translations/proposals') {
@@ -60,7 +100,6 @@ if (preg_match('~^/translations/proposals/[0-9]+/(approve|reject)$~', $path) ===
 http_response_code(404);
 echo json_encode(['success'=>false, 'error'=>['code'=>'not_found','message'=>$path]]);
 PHP
-: > "$TMP/requests.log"
 STUB_LOG="$TMP/requests.log" STUB_MODE_FILE="$TMP/stub-mode" "$REAL_PHP" -S "127.0.0.1:$PORT" "$TMP/router.php" >"$TMP/server.log" 2>&1 &
 SERVER=$!
 for _ in $(seq 1 40); do
@@ -68,14 +107,6 @@ for _ in $(seq 1 40); do
     sleep .1
 done
 kill -0 "$SERVER" 2>/dev/null || { cat "$TMP/server.log" >&2; exit 1; }
-cat > "$TMP/env" <<ENV
-BDO_ENV=DEV
-BDO_API_TARGET=legacy
-BDO_API_BASE_DEV=http://127.0.0.1:$PORT
-BDO_API_KEY_DEV=test-key
-ENV
-export TRANSLATE_ENV_FILE="$TMP/env"
-
 H1="$(printf '%064d' 1)"
 H2="$(printf '%064d' 2)"
 H3="$(printf '%064d' 3)"
@@ -87,34 +118,50 @@ printf '[{"identity_hash":"%s","text":"Переклад 1"},{"identity_hash":"%s
 printf '[{"identity_hash":"%s","status":"PASS","severity":"none","issue":"","fix":""},{"identity_hash":"%s","status":"PASS","severity":"none","issue":"","fix":""},{"identity_hash":"%s","status":"PASS","severity":"none","issue":"","fix":""}]\n' "$H1" "$H2" "$H3" > "$TMP/verdicts.json"
 
 normalize() {
-    sed -E -e "s|$TMP/state-[^ ]+|STATE|g" -e "s|$TMP|TMP|g" -e 's|/tmp/[^ ]+|TMP|g' -e 's|write_[0-9]{8}_[0-9]{6}\.json|write_TIMESTAMP.json|g' -e 's/"at":"[^"]+"/"at":"TIME"/g' -e 's/"at": "[^"]+"/"at": "TIME"/g'
+    sed -E -e "s|$TMP_REAL/state-[^ ]+|STATE|g" -e "s|$TMP/state-[^ ]+|STATE|g" -e "s|$TMP_REAL|TMP|g" -e "s|$TMP|TMP|g" -e 's|write_[0-9]{8}_[0-9]{6}\.json|write_TIMESTAMP.json|g' -e 's/"at":"[^"]+"/"at":"TIME"/g' -e 's/"at": "[^"]+"/"at": "TIME"/g' -e 's|(Карантин:[^()]*)\([[:space:]]+([0-9]+ рядків усього\))|\1(\2|g'
 }
+
+# ПРАВИЛО: normalizer прибирає лише власні шляхи, timestamps і legacy padding.
+# САБОТАЖ: зміна identity, channel, reason або numeric count мусить залишитись видимою.
+normalizer_self_test() {
+    local padded='Карантин: STATE (       0 рядків усього)'
+    local plain='Карантин: STATE (0 рядків усього)'
+    cmp -s <(normalize <<<"$padded") <(normalize <<<"$plain") || fail 'normalizer не прибирає лише legacy padding'
+    test "$(normalize <<<"Карантин: A (0 рядків усього) reason=x")" != "$(normalize <<<"Карантин: B (0 рядків усього) reason=x")" || fail 'normalizer сховав identity'
+    test "$(normalize <<<"Карантин: A (0 рядків усього) channel=x")" != "$(normalize <<<"Карантин: A (0 рядків усього) channel=y")" || fail 'normalizer сховав channel'
+    test "$(normalize <<<"Карантин: A (0 рядків усього) reason=x")" != "$(normalize <<<"Карантин: A (0 рядків усього) reason=y")" || fail 'normalizer сховав reason'
+    test "$(normalize <<<"Карантин: A (0 рядків усього)")" != "$(normalize <<<"Карантин: A (1 рядків усього)")" || fail 'normalizer сховав count'
+}
+normalizer_self_test
 run_capture() {
     local label="$1" state="$2" orchestrator="$3" script="$4"; shift 4
     mkdir -p "$state"
+    : > "$TMP/requests.log"
     set +e
     STUB_LOG="$TMP/requests.log" BDO_STATE_DIR="$state" BDO_ORCHESTRATOR="$orchestrator" bash "$ROOT/$script" "$@" >"$TMP/$label.out" 2>"$TMP/$label.err"
     printf '%s\n' "$?" > "$TMP/$label.code"
+    cp "$TMP/requests.log" "$TMP/$label.log"
     set -e
 }
 compare_pair() {
     local name="$1"
     cmp -s <(normalize < "$TMP/$name.sh.out") <(normalize < "$TMP/$name.php.out") || { diff -u <(normalize < "$TMP/$name.sh.out") <(normalize < "$TMP/$name.php.out") >&2 || true; fail "$name stdout"; }
-    cmp -s <(normalize < "$TMP/$name.sh.err") <(normalize < "$TMP/$name.php.err") || fail "$name stderr"
+    cmp -s <(normalize < "$TMP/$name.sh.err") <(normalize < "$TMP/$name.php.err") || { diff -u <(normalize < "$TMP/$name.sh.err") <(normalize < "$TMP/$name.php.err") >&2 || true; fail "$name stderr"; }
     cmp -s "$TMP/$name.sh.code" "$TMP/$name.php.code" || fail "$name code"
+    cmp -s "$TMP/$name.sh.log" "$TMP/$name.php.log" || { diff -u "$TMP/$name.sh.log" "$TMP/$name.php.log" >&2 || true; fail "$name request log"; }
 }
 
 # ПРАВИЛО: channel mapping і LIST data.writes.channels є source of truth.
 # САБОТАЖ: інша форма body/mapping мусить змінити captured request.
 for channel in machine manual proposal; do
     printf 'list\n' > "$TMP/stub-mode"
-    rm -f "$ROOT/output"/write_*.json; : > "$TMP/requests.log"
+    find "$HARNESS_OUTPUT" -maxdepth 1 -type f -name 'write_*.json' -delete; : > "$TMP/requests.log"
     run_capture "write-$channel.sh" "$TMP/state-write-$channel-sh" sh cli/write/write-translations.sh --channel "$channel" --idempotency-key stable "$TMP/items.json"
-    receipt="$(find "$ROOT/output" -maxdepth 1 -name 'write_*.json' -print | sort | tail -1)"; test -n "$receipt" || { cat "$TMP/write-$channel.sh.out" "$TMP/write-$channel.sh.err" "$TMP/requests.log" "$TMP/server.log" >&2; fail "write $channel shell receipt"; }
+    receipt="$(find "$HARNESS_OUTPUT" -maxdepth 1 -name 'write_*.json' -print | sort | tail -1)"; test -n "$receipt" || { cat "$TMP/write-$channel.sh.out" "$TMP/write-$channel.sh.err" "$TMP/requests.log" "$TMP/server.log" >&2; fail "write $channel shell receipt"; }
     cp "$receipt" "$TMP/write-$channel.sh.receipt"
-    rm -f "$ROOT/output"/write_*.json; : > "$TMP/requests.log"
+    find "$HARNESS_OUTPUT" -maxdepth 1 -type f -name 'write_*.json' -delete; : > "$TMP/requests.log"
     run_capture "write-$channel.php" "$TMP/state-write-$channel-php" php cli/write/write-translations.sh --channel "$channel" --idempotency-key stable "$TMP/items.json"
-    receipt="$(find "$ROOT/output" -maxdepth 1 -name 'write_*.json' -print | sort | tail -1)"; test -n "$receipt" || fail "write $channel php receipt"
+    receipt="$(find "$HARNESS_OUTPUT" -maxdepth 1 -name 'write_*.json' -print | sort | tail -1)"; test -n "$receipt" || fail "write $channel php receipt"
     cp "$receipt" "$TMP/write-$channel.php.receipt"
     compare_pair "write-$channel"
     cmp -s <(normalize < "$TMP/write-$channel.sh.receipt") <(normalize < "$TMP/write-$channel.php.receipt") || fail "write $channel receipt"
@@ -125,30 +172,176 @@ for channel in machine manual proposal; do
         manual) grep -Fq 'layer' <<<"$request" && grep -Fq 'manual' <<<"$request" && grep -Fq 'auto_approve' <<<"$request" && grep -Fq 'true' <<<"$request" || fail 'manual mapping' ;;
         proposal) grep -Fq 'layer' <<<"$request" && grep -Fq 'manual' <<<"$request" && grep -Fq 'auto_approve' <<<"$request" && grep -Fq 'false' <<<"$request" || fail 'proposal mapping' ;;
     esac
+    test -f "$TMP/state-write-$channel-sh/write-log.jsonl" || fail "write $channel shell write-log"
+    test -f "$TMP/state-write-$channel-php/write-log.jsonl" || fail "write $channel php write-log"
+    cmp -s <(normalize < "$TMP/state-write-$channel-sh/write-log.jsonl") <(normalize < "$TMP/state-write-$channel-php/write-log.jsonl") || fail "write $channel write-log"
 done
+
+# ПРАВИЛО: legacy /me fallback має бути паритетним для кожного channel.
+# САБОТАЖ: PHP вимагатиме data.writes або змінить fallback mapping — shell/PHP red.
+for channel in machine manual proposal; do
+    printf 'legacy\n' > "$TMP/stub-mode"
+    find "$HARNESS_OUTPUT" -maxdepth 1 -type f -name 'write_*.json' -delete
+    run_capture "legacy-$channel.sh" "$TMP/state-legacy-$channel-sh" sh cli/write/write-translations.sh --channel "$channel" --idempotency-key stable "$TMP/items.json"
+    find "$HARNESS_OUTPUT" -maxdepth 1 -type f -name 'write_*.json' -delete
+    run_capture "legacy-$channel.php" "$TMP/state-legacy-$channel-php" php cli/write/write-translations.sh --channel "$channel" --idempotency-key stable "$TMP/items.json"
+    compare_pair "legacy-$channel"
+done
+printf 'list\n' > "$TMP/stub-mode"
+
+# ПРАВИЛО: candidate безпосередньо в output/benchmark не є перекладом і
+# відхиляється до ApiEnvironment та будь-якого HTTP-запиту.
+# САБОТАЖ: вилучення benchmark preflight має дати code 1 і captured POST 0.
+mkdir -p "$HARNESS_OUTPUT/benchmark"
+cp "$TMP/candidate.json" "$HARNESS_OUTPUT/benchmark/candidate.json"
+run_capture benchmark "$TMP/state-benchmark" php cli/batch/batch-commit.sh \
+    "$TMP/rows.json" "$HARNESS_OUTPUT/benchmark/candidate.json" "$TMP/verdicts.json" --write
+test "$(cat "$TMP/benchmark.code")" -eq 1 || fail 'benchmark candidate прийнято'
+grep -Fq 'Це файл виміру (output/benchmark/), а не переклад. Записувати його не можна.' "$TMP/benchmark.err" \
+    || fail 'benchmark guard не назвав причину'
+test ! -s "$TMP/benchmark.log" || fail 'benchmark guard зробив HTTP-запит'
+rm -f "$HARNESS_OUTPUT/benchmark/candidate.json"
+
+# ПРАВИЛО: required option values відхиляються так само до API, як shell ${2:?}.
+# САБОТАЖ: прийняте missing/empty значення дає safety-sensitive шлях без парності.
+for spec in \
+    'write-channel cli/write/write-translations.sh --channel' \
+    'write-key cli/write/write-translations.sh --idempotency-key' \
+    'commit-channel cli/batch/batch-commit.sh --channel' \
+    'commit-prefix cli/batch/batch-commit.sh --idempotency-key-prefix' \
+    'commit-judge cli/batch/batch-commit.sh --judge' \
+    'commit-api-rejected cli/batch/batch-commit.sh --api-rejected' \
+    'moderation-limit cli/write/moderation-queue.sh --limit' \
+    'moderation-row cli/write/moderation-queue.sh --row' \
+    'moderation-approve cli/write/moderation-queue.sh --approve' \
+    'moderation-reject cli/write/moderation-queue.sh --reject' \
+    'moderation-reason cli/write/moderation-queue.sh --reason' \
+    'moderation-batch cli/write/moderation-queue.sh --approve-batch'; do
+    read -r name script option <<<"$spec"
+    case "$name" in
+        write-*) args=("$option") ;;
+        commit-*) args=("$TMP/rows.json" "$TMP/candidate.json" "$TMP/verdicts.json" "$option") ;;
+        moderation-*) args=("$option") ;;
+    esac
+    for form in missing empty; do
+        if test "$form" = empty; then args+=(""); fi
+        run_capture "required-$name-$form.sh" "$TMP/state-required-$name-$form-sh" sh "$script" "${args[@]+"${args[@]}"}"
+        run_capture "required-$name-$form.php" "$TMP/state-required-$name-$form-php" php "$script" "${args[@]+"${args[@]}"}"
+        test "$(cat "$TMP/required-$name-$form.sh.code")" -ne 0 || fail "required $name $form shell прийнято"
+        test "$(cat "$TMP/required-$name-$form.php.code")" -eq "$(cat "$TMP/required-$name-$form.sh.code")" || fail "required $name $form code"
+        test -s "$TMP/required-$name-$form.sh.err" || fail "required $name $form shell без причини"
+        test -s "$TMP/required-$name-$form.php.err" || fail "required $name $form PHP без причини"
+        if test "$name" = write-key; then
+            grep -Fq 'idempotency-key' "$TMP/required-$name-$form.sh.err" || fail "required $name $form shell без назви option"
+            grep -Fq 'idempotency-key' "$TMP/required-$name-$form.php.err" || fail "required $name $form PHP без назви option"
+        fi
+        test ! -s "$TMP/required-$name-$form.php.log" || fail "required $name $form зробив POST/HTTP"
+        if test "$form" = empty; then args=("${args[@]:0:${#args[@]}-1}"); fi
+    done
+done
+
+# ПРАВИЛО: response meta є єдиним джерелом audit facts; відсутні layer/mode/
+# auto_approve лишаються null, а не підміняються request intent.
+# САБОТАЖ: fallback у TranslationWriter має розійтися на missing-meta fixture.
+printf 'no-meta\n' > "$TMP/stub-mode"
+find "$HARNESS_OUTPUT" -maxdepth 1 -type f -name 'write_*.json' -delete
+run_capture no-meta.sh "$TMP/state-no-meta-sh" sh cli/write/write-translations.sh --channel machine --idempotency-key stable "$TMP/items.json"
+find "$HARNESS_OUTPUT" -maxdepth 1 -type f -name 'write_*.json' -delete
+run_capture no-meta.php "$TMP/state-no-meta-php" php cli/write/write-translations.sh --channel machine --idempotency-key stable "$TMP/items.json"
+compare_pair no-meta
+grep -Fq '"layer":null' "$TMP/state-no-meta-php/write-log.jsonl" || fail 'missing layer не став null'
+grep -Fq '"mode":null' "$TMP/state-no-meta-php/write-log.jsonl" || fail 'missing mode не став null'
+grep -Fq '"auto_approve":null' "$TMP/state-no-meta-php/write-log.jsonl" || fail 'missing auto_approve не став null'
+printf 'list\n' > "$TMP/stub-mode"
+
+# ПРАВИЛО: current workspace визначає receipt provenance і summary location;
+# route без slash має provider=model=route.
+# САБОТАЖ: candidate-directory receipt або provider-only split мають змінити
+# captured payload і місце batch-summary.
+make_current_workspace() {
+    local state="$1" route="$2" id="$3"
+    mkdir -p "$state/batches/$id"
+    printf '%s\n' "$id" > "$state/current-batch"
+    printf '{"route":"%s"}\n' "$route" > "$state/batches/$id/candidate.json.session.json"
+    printf '{"id":"%s","identity_key":"fixture","rows":1}\n' "$id" > "$state/batches/$id/manifest.json"
+    printf 'local\n' > "$state/run-target"
+}
+mkdir -p "$TMP/candidate-dir"
+cp "$TMP/candidate.json" "$TMP/candidate-dir/candidate.json"
+printf '{"route":"wrong-provider/wrong-model"}\n' > "$TMP/candidate-dir/candidate.json.session.json"
+make_current_workspace "$TMP/state-current-sh" 'fixture-provider/fixture-model' current-sh
+make_current_workspace "$TMP/state-current-php" 'fixture-provider/fixture-model' current-php
+find "$HARNESS_OUTPUT" -maxdepth 1 -type f -name 'write_*.json' -delete
+run_capture current-write.sh "$TMP/state-current-sh" sh cli/batch/batch-commit.sh "$TMP/rows.json" "$TMP/candidate-dir/candidate.json" "$TMP/verdicts.json" --write --idempotency-key-prefix current
+find "$HARNESS_OUTPUT" -maxdepth 1 -type f -name 'write_*.json' -delete
+run_capture current-write.php "$TMP/state-current-php" php cli/batch/batch-commit.sh "$TMP/rows.json" "$TMP/candidate-dir/candidate.json" "$TMP/verdicts.json" --write --idempotency-key-prefix current
+compare_pair current-write
+test -f "$TMP/state-current-sh/batches/current-sh/batch-summary.json" || fail 'shell summary не в current workspace'
+test -f "$TMP/state-current-php/batches/current-php/batch-summary.json" || fail 'PHP summary не в current workspace'
+cmp -s "$TMP/state-current-sh/batches/current-sh/batch-summary.json" "$TMP/state-current-php/batches/current-php/batch-summary.json" || fail 'current summary розійшовся'
+grep -Fq 'fixture-provider' "$TMP/current-write.php.log" || { cat "$TMP/current-write.php.out" "$TMP/current-write.php.err" "$TMP/current-write.php.log" >&2; fail 'current receipt route не використано'; }
+grep -Fq 'fixture-model' "$TMP/current-write.php.log" || { cat "$TMP/current-write.php.out" "$TMP/current-write.php.err" "$TMP/current-write.php.log" >&2; fail 'current model provenance не використано'; }
+make_current_workspace "$TMP/state-bare-sh" 'bare-route' bare-sh
+make_current_workspace "$TMP/state-bare-php" 'bare-route' bare-php
+find "$HARNESS_OUTPUT" -maxdepth 1 -type f -name 'write_*.json' -delete
+run_capture bare-route.sh "$TMP/state-bare-sh" sh cli/batch/batch-commit.sh "$TMP/rows.json" "$TMP/candidate-dir/candidate.json" "$TMP/verdicts.json" --write --idempotency-key-prefix bare
+find "$HARNESS_OUTPUT" -maxdepth 1 -type f -name 'write_*.json' -delete
+run_capture bare-route.php "$TMP/state-bare-php" php cli/batch/batch-commit.sh "$TMP/rows.json" "$TMP/candidate-dir/candidate.json" "$TMP/verdicts.json" --write --idempotency-key-prefix bare
+compare_pair bare-route
+grep -Fq '\"provider\":\"bare-route\"' "$TMP/bare-route.php.log" || fail 'bare route provider'
+grep -Fq '\"model\":\"bare-route\"' "$TMP/bare-route.php.log" || fail 'bare route model'
+
+# ПРАВИЛО: moderation list/json/dry/approve/reject/batch мають однакові HTTP,
+# output і individual-failure semantics на shell та PHP.
+# САБОТАЖ: fail-fast або змінений method/path/body має зробити differential red.
+for spec in \
+    'list --limit 2' \
+    'json --limit 2 --json' \
+    'approve-dry --approve 12,15 --dry' \
+    'reject-dry --reject 12,15 --reason причина --dry' \
+    'approve --approve 12' \
+    'reject --reject 12 --reason причина' \
+    'batch --approve-batch 2'; do
+    read -r name rest <<<"$spec"
+    # shell word splitting тут навмисне відтворює argv тестової матриці, не JSON/body.
+    read -r -a args <<<"$rest"
+    : > "$TMP/requests.log"
+    run_capture "moderation-$name.sh" "$TMP/state-moderation-$name-sh" sh cli/write/moderation-queue.sh "${args[@]+"${args[@]}"}"
+    : > "$TMP/requests.log"
+    run_capture "moderation-$name.php" "$TMP/state-moderation-$name-php" php cli/write/moderation-queue.sh "${args[@]+"${args[@]}"}"
+    compare_pair "moderation-$name"
+done
+printf 'list\n' > "$TMP/stub-mode"
 
 # ПРАВИЛО: без --write commit не робить POST; склад 20 rows лишається незмінним.
 # САБОТАЖ: non-write POST або зміна composition валить dry-run assertion.
 "$REAL_PHP" -r '$a=[];for($i=1;$i<=20;$i++){$h=str_pad((string)$i,64,"0",STR_PAD_LEFT);$a[]=["identity_hash"=>$h,"source_hash"=>"s$i","source_text"=>"Source $i"];}echo json_encode(["data"=>["rows"=>$a]],JSON_UNESCAPED_UNICODE);' > "$TMP/rows20.json"
 "$REAL_PHP" -r '$a=[];for($i=1;$i<=20;$i++){$h=str_pad((string)$i,64,"0",STR_PAD_LEFT);$a[]=["identity_hash"=>$h,"text"=>"Text $i"];}echo json_encode($a,JSON_UNESCAPED_UNICODE);' > "$TMP/candidate20.json"
-"$REAL_PHP" -r '$a=[];for($i=1;$i<=20;$i++){$h=str_pad((string)$i,64,"0",STR_PAD_LEFT);$a[]=["identity_hash"=>$h,"status"=>"PASS","severity"=>"none","issue"=>"","fix"=>""];}echo json_encode($a,JSON_UNESCAPED_UNICODE);' > "$TMP/verdicts20.json"
+"$REAL_PHP" -r '$a=[];for($i=1;$i<=20;$i++){$h=str_pad((string)$i,64,"0",STR_PAD_LEFT);$status=$i<=10?"PASS":($i<=15?"REVIEW":($i<=18?"REVIEW":"REJECT"));$severity=($i>=11&&$i<=15)?"major":(($i>=16&&$i<=18)?"minor":"none");$a[]=["identity_hash"=>$h,"status"=>$status,"severity"=>$severity,"issue"=>"","fix"=>""];}echo json_encode($a,JSON_UNESCAPED_UNICODE);' > "$TMP/verdicts20.json"
 : > "$TMP/requests.log"
-run_capture commit-dry.sh "$TMP/state-commit-sh" sh cli/batch/batch-commit.sh "$TMP/rows20.json" "$TMP/candidate20.json" "$TMP/verdicts20.json"
+run_capture commit-dry.sh "$TMP/state-commit-sh" sh cli/batch/batch-commit.sh "$TMP/rows20.json" "$TMP/candidate20.json" "$TMP/verdicts20.json" --channel manual
 : > "$TMP/requests.log"
-run_capture commit-dry.php "$TMP/state-commit-php" php cli/batch/batch-commit.sh "$TMP/rows20.json" "$TMP/candidate20.json" "$TMP/verdicts20.json"
+run_capture commit-dry.php "$TMP/state-commit-php" php cli/batch/batch-commit.sh "$TMP/rows20.json" "$TMP/candidate20.json" "$TMP/verdicts20.json" --channel manual
 compare_pair commit-dry
 grep -Fq 'Пачка: 20 рядків' "$TMP/commit-dry.php.out" || fail 'dry-run 20 rows'
-    test "$(grep -c '"method":"POST"' "$TMP/requests.log" || true)" -eq 0 || fail 'dry-run POST'
+grep -Fq 'До запису: 13 | у модерацію: 7 (з них нерозпізнані назви: 0) | у карантин (збої): 0' "$TMP/commit-dry.php.out" || fail 'dry-run mixed composition'
+if grep -Eq 'Карантин:[^()]*\([[:space:]]+[0-9]+ рядків усього\)' "$TMP/commit-dry.php.out"; then
+    fail 'PHP quarantine count має бути без legacy padding'
+fi
+test "$(grep -c '"method":"POST"' "$TMP/commit-dry.php.log" || true)" -eq 0 || fail 'dry-run POST'
 
 # ПРАВИЛО: no_run/env_mismatch/quota guard забороняє POST.
 # САБОТАЖ: ослаблення guard дає captured POST.
 for blocker in no-run env-mismatch quota; do
     printf '%s\n' "$blocker" > "$TMP/stub-mode"
     state="$TMP/state-$blocker"; mkdir -p "$state"
-    [ "$blocker" = no-run ] || printf '%s\n' "$([ "$blocker" = quota ] && echo DEV || echo PROD)" > "$state/run-target"
+    [ "$blocker" = no-run ] || printf '%s\n' "$([ "$blocker" = quota ] && echo local || echo PROD)" > "$state/run-target"
     : > "$TMP/requests.log"
     run_capture "block-$blocker" "$state" php cli/batch/batch-commit.sh "$TMP/rows.json" "$TMP/candidate.json" "$TMP/verdicts.json" --write
     test "$(grep -c '"method":"POST"' "$TMP/requests.log" || true)" -eq 0 || fail "$blocker POST"
+    if test "$blocker" = quota; then
+        grep -Fq 'quota:' "$TMP/block-quota.out" || fail 'quota branch не названа'
+    fi
 done
 printf 'list\n' > "$TMP/stub-mode"
 

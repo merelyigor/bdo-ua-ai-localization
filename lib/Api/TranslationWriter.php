@@ -24,6 +24,9 @@ use RuntimeException;
  */
 final class TranslationWriter
 {
+    // ПРАВИЛО: actual write має йти лише через PHP Http\Client без Unix subprocess.
+    // САБОТАЖ: зовнішня команда в цьому service обходить контрольований transport.
+
     public function __construct(
         private readonly string $root,
         private readonly ?Client $client = null,
@@ -183,9 +186,9 @@ final class TranslationWriter
             'at' => $result['timestamp'],
             'env' => $environment['environment'],
             'channel' => $result['channel'],
-            'layer' => $meta['layer'] ?? $result['layer'],
-            'mode' => $meta['mode'] ?? $result['mode'],
-            'auto_approve' => $meta['auto_approve'] ?? $result['auto_approve'],
+            'layer' => $meta['layer'] ?? null,
+            'mode' => $meta['mode'] ?? null,
+            'auto_approve' => $meta['auto_approve'] ?? null,
             'items' => $meta['items'] ?? null,
             'written' => $meta['written'] ?? null,
             'rejected' => $meta['rejected'] ?? null,
@@ -200,6 +203,7 @@ final class TranslationWriter
         $quarantine = $stateDir.'/quarantine.jsonl';
         $attempts = new RowAttempts($stateDir);
         $lost = 0;
+        $rejectedAt = gmdate('c');
         foreach ($result['results'] as $row) {
             if (in_array($row['status'] ?? '', ['ok', 'repaired', 'unchanged', 'skipped'], true)) {
                 continue;
@@ -213,7 +217,7 @@ final class TranslationWriter
                 'reason' => $reason,
                 'detail' => mb_substr((string) ($row['message'] ?? ''), 0, 200),
                 'candidate' => $item['text'] ?? null,
-                'at' => gmdate('c'),
+                'at' => $rejectedAt,
                 'env' => $environment['environment'],
                 'channel' => $result['channel'],
             ], JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR)."\n", FILE_APPEND | LOCK_EX);

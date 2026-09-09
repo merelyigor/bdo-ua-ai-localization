@@ -29,6 +29,9 @@ use RuntimeException;
  */
 final class BatchCommitCommand implements Command
 {
+    // ПРАВИЛО: commit перевіряє benchmark і blockers до будь-якого write.
+    // САБОТАЖ: обхід preflight може дозволити небезпечний або заборонений POST.
+
     public function execute(array $arguments, Output $output): int
     {
         $rowsFile = $this->required($arguments, 0, 'Потрібен rows.json');
@@ -42,6 +45,15 @@ final class BatchCommitCommand implements Command
             }
         }
 
+        $candidateDirectory = realpath(dirname($candidateFile));
+        if ($candidateDirectory !== false
+            && basename($candidateDirectory) === 'benchmark'
+            && basename(dirname($candidateDirectory)) === 'output') {
+            $output->stderr("Це файл виміру (output/benchmark/), а не переклад. Записувати його не можна.\n");
+
+            return 1;
+        }
+
         $doWrite = in_array('--write', $arguments, true);
         $namesToModeration = in_array('--names-to-moderation', $arguments, true) ? 1 : 0;
         $channel = 'machine';
@@ -51,15 +63,27 @@ final class BatchCommitCommand implements Command
         for ($index = 3, $length = count($arguments); $index < $length; $index++) {
             switch ($arguments[$index]) {
                 case '--channel':
+                    if (! array_key_exists($index + 1, $arguments) || $arguments[$index + 1] === '') {
+                        throw new RuntimeException('machine|manual');
+                    }
                     $channel = (string) ($arguments[++$index] ?? '');
                     break;
                 case '--idempotency-key-prefix':
+                    if (! array_key_exists($index + 1, $arguments) || $arguments[$index + 1] === '') {
+                        throw new RuntimeException('потрібен ключ');
+                    }
                     $idempotencyPrefix = (string) ($arguments[++$index] ?? '');
                     break;
                 case '--judge':
+                    if (! array_key_exists($index + 1, $arguments) || $arguments[$index + 1] === '') {
+                        throw new RuntimeException('потрібен файл вироків судді');
+                    }
                     $judgeFile = (string) ($arguments[++$index] ?? '');
                     break;
                 case '--api-rejected':
+                    if (! array_key_exists($index + 1, $arguments) || $arguments[$index + 1] === '') {
+                        throw new RuntimeException('потрібен файл відповіді validate');
+                    }
                     $apiRejectedFile = (string) ($arguments[++$index] ?? '');
                     break;
             }
@@ -223,7 +247,8 @@ final class BatchCommitCommand implements Command
                 $pass = [];
             }
 
-            $batchId = basename(dirname($candidateFile));
+            $currentWorkspace = Workspace::current($stateDir);
+            $batchId = $currentWorkspace?->id() ?? basename(dirname($candidateFile));
             if ($judgeLog !== []) {
                 $this->appendJsonl($stateDir.'/judge-decisions.jsonl', $judgeLog);
             }
@@ -239,8 +264,12 @@ final class BatchCommitCommand implements Command
             $moderationCounts = ['written' => 0, 'skipped' => 0, 'rejected' => 0];
             if ($doWrite && $pass !== []) {
                 $key = $idempotencyPrefix === '' ? null : $idempotencyPrefix.'-pass';
+                $this->announceTarget($output, $environment);
                 $result = (new TranslationWriter($root))->write($pass, $channel, $worker['provider'], $worker['model'], $key);
                 $targetCounts = ['written' => $result['written'], 'skipped' => $result['skipped'], 'rejected' => $result['rejected']];
+                if ($result['channel_result'] !== null) {
+                    $output->stderr("Канал {$channel}: результат запису · {$result['channel_result']}\n");
+                }
                 $this->printWriterFacts($output, $result);
                 if ($result['code'] !== 0) {
                     return $result['code'];
@@ -249,8 +278,12 @@ final class BatchCommitCommand implements Command
             }
             if ($doWrite && $moderation !== []) {
                 $key = $idempotencyPrefix === '' ? null : $idempotencyPrefix.'-proposal';
+                $this->announceTarget($output, $environment);
                 $result = (new TranslationWriter($root))->write($moderation, 'proposal', $worker['provider'], $worker['model'], $key);
                 $moderationCounts = ['written' => $result['written'], 'skipped' => $result['skipped'], 'rejected' => $result['rejected']];
+                if ($result['channel_result'] !== null) {
+                    $output->stderr("Канал proposal: результат запису · {$result['channel_result']}\n");
+                }
                 $this->printWriterFacts($output, $result);
                 if ($result['code'] !== 0) {
                     return $result['code'];
@@ -262,9 +295,9 @@ final class BatchCommitCommand implements Command
             }
             $quarantine = $stateDir.'/quarantine.jsonl';
             $quarantineLines = is_file($quarantine) ? count(file($quarantine, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) ?: []) : 0;
-            $output->stdout(sprintf("Карантин: %s (%8d рядків усього)\n", $quarantine, $quarantineLines));
+            $output->stdout(sprintf("Карантин: %s (%d рядків усього)\n", $quarantine, $quarantineLines));
             if ($doWrite) {
-                $batchDir = dirname($candidateFile);
+                $batchDir = $currentWorkspace?->dir() ?? dirname($candidateFile);
                 $summary = [
                     'rows' => count($rows), 'channel' => $channel,
                     'target_written' => $targetCounts['written'], 'target_skipped' => $targetCounts['skipped'], 'target_rejected' => $targetCounts['rejected'],
@@ -285,8 +318,8 @@ final class BatchCommitCommand implements Command
     /** @return array{provider:string,model:string} */
     private function worker(string $stateDir, string $root, string $candidateFile): array
     {
-        $batchDir = dirname($candidateFile);
-        $receipt = $batchDir.'/candidate.json.session.json';
+        $currentWorkspace = Workspace::current($stateDir);
+        $receipt = $currentWorkspace?->path('candidate.json.session.json') ?? '';
         $route = is_file($receipt) ? (json_decode((string) file_get_contents($receipt), true)['route'] ?? '') : '';
         $route = is_string($route) ? $route : '';
         if ($route === '') {
@@ -294,11 +327,14 @@ final class BatchCommitCommand implements Command
             $route = (string) ($config['roles']['translation-worker']['model'] ?? $config['default_model'] ?? '');
             if ($route === '') {
                 $route = 'unknown/agent';
-            } elseif (! str_contains($route, '/')) {
-                $route = 'ollama/'.$route;
             }
         }
-        [$provider, $model] = array_pad(explode('/', $route, 2), 2, '');
+        if (str_contains($route, '/')) {
+            [$provider, $model] = explode('/', $route, 2);
+        } else {
+            $provider = $route;
+            $model = $route;
+        }
 
         return ['provider' => $provider, 'model' => $model];
     }

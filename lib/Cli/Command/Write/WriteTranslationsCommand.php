@@ -19,6 +19,9 @@ use RuntimeException;
  */
 final class WriteTranslationsCommand implements Command
 {
+    // ПРАВИЛО: CLI adapter передає actual write до TranslationWriter in-process.
+    // САБОТАЖ: shell/process transport або розбір human output порушує єдиний write path.
+
     public function execute(array $arguments, Output $output): int
     {
         $channel = 'machine';
@@ -28,11 +31,21 @@ final class WriteTranslationsCommand implements Command
         while ($index < $argumentCount) {
             $argument = $arguments[$index];
             if ($argument === '--channel') {
+                if (! array_key_exists($index + 1, $arguments) || $arguments[$index + 1] === '') {
+                    $output->stderr("--channel потребує machine|manual|proposal\n");
+
+                    return 1;
+                }
                 $channel = (string) ($arguments[++$index] ?? '');
                 $index++;
                 continue;
             }
             if ($argument === '--idempotency-key') {
+                if (! array_key_exists($index + 1, $arguments) || $arguments[$index + 1] === '') {
+                    $output->stderr("--idempotency-key потребує непорожній ключ\n");
+
+                    return 1;
+                }
                 $idempotencyKey = (string) ($arguments[++$index] ?? '');
                 $index++;
                 continue;
