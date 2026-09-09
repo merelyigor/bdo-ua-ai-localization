@@ -1,4 +1,8 @@
 #!/usr/bin/env bash
+if [ "${BDO_ORCHESTRATOR:-php}" != sh ]; then
+    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+    exec php "$SCRIPT_DIR/cli/bdo.php" run-spec "$@"
+fi
 # Керувати immutable RunSpec для чотирьох готових режимів прогону.
 #
 #   ./run-spec.sh status patch

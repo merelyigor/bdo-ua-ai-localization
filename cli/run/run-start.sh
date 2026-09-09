@@ -1,4 +1,8 @@
 #!/usr/bin/env bash
+if [ "${BDO_ORCHESTRATOR:-php}" != sh ]; then
+    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+    exec php "$SCRIPT_DIR/cli/bdo.php" run-start "$@"
+fi
 # Зафіксувати ціль прогону перекладу. Ціль НЕ обирається тут і не виводиться з
 # формулювання власника · вона вже оголошена в `.env` константою BDO_ENV.
 #

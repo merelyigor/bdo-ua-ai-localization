@@ -393,6 +393,11 @@ blocker, config fallback втрачав `ollama` provenance, а D120 safety-chec
 фальсифікував неправильний alias. Corrective 6.4.7 виправляє обидва
 orchestrator routes для blocker і не робить бойового PROD write.
 
+**Ревʼю 6.4.7:** `ACCEPTED`. Exact CI `0d62fad` зелений; D126 блокує
+PASS і moderation при `no_run/env_mismatch/quota`, D127 відновлює
+`ollama/<model>` для config fallback, D128 охороняє фактичний production-root
+alias до запуску write-тестів. Підетап 5 закритий цілком.
+
 **Мета.** Пачка, ремонт, запис · у PHP.
 
 **РИЗИК НАЙВИЩИЙ:** тут живе запис у PROD.
@@ -407,6 +412,12 @@ orchestrator routes для blocker і не робить бойового PROD wr
 перемикач · змінна `BDO_ORCHESTRATOR=php|sh`.
 
 ### Підетап 6 · `cli/run/**` (7 файлів, 1 773 рядки)
+
+**Статус:** у роботі.
+
+**Пакет 6.5.0:** safe pilot підетапу 6 · `run-spec.sh` і `run-start.sh`.
+Вони переносять preset/target foundation без driver loop, викликів моделей або
+PROD write; rollback лишається через `BDO_ORCHESTRATOR=sh`.
 
 **Мета.** Драйвер і цикл · у PHP.
 

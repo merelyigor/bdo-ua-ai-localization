@@ -705,6 +705,23 @@ EOF
     note 'PHP: count() у loop-condition немає; кожен mkdir() має перевірку результату'
 }
 
+# ПРАВИЛО: native Run PHP orchestration не запускає зовнішніх Unix/process helpers.
+# САБОТАЖ: function call exec()/shell_exec()/system()/passthru()/popen()/proc_open()
+# у перенесеній Run-команді має зупинити shell і full gate.
+check_run_php_subprocess_guards() {
+    step 'Run PHP subprocess guard'
+    local file hits
+    for file in lib/Cli/Command/Run/RunSpecCommand.php \
+        lib/Cli/Command/Run/RunStartCommand.php; do
+        test -f "$file" || fail "відсутній Run PHP-файл: $file"
+        grep -Fq 'ПРАВИЛО:' "$file" || fail "у $file немає коментаря ПРАВИЛО:"
+        grep -Fq 'САБОТАЖ:' "$file" || fail "у $file немає коментаря САБОТАЖ:"
+        hits="$(rg -n --pcre2 '\b(exec|shell_exec|system|passthru|popen|proc_open)\s*\(' "$file" || true)"
+        test -z "$hits" || fail "заборонений subprocess у $file:\n$hits"
+    done
+    note 'Run PHP-файли не запускають зовнішніх процесів'
+}
+
 # ПРАВИЛО: write-тести працюють лише в тимчасовому harness і не мають права
 # чистити production-root output/state.
 # САБОТАЖ: SOURCE_ROOT у cleanup або копіювання не за дозволеним складом має
@@ -1017,6 +1034,7 @@ $braceless"
     run bash tests/cli-prepare-parity.sh
     run bash tests/cli-batch-heal-parity.sh
     run bash tests/cli-batch-clean-parity.sh
+    run bash tests/cli-run-foundation-parity.sh
     check_write_test_safety
     check_write_php_subprocess_guards
     run bash tests/cli-write-parity.sh
@@ -1176,11 +1194,11 @@ profile="${1:-}"
 case "$profile" in
     preflight) report_preflight ;;
     docs) check_docs ;;
-    shell) check_rules; check_shell; check_design; check_bash32_arrays; check_php_runtime_guards; check_write_test_safety; check_write_php_subprocess_guards; check_sigpipe_pipelines; check_whitespace ;;
+    shell) check_rules; check_shell; check_design; check_bash32_arrays; check_php_runtime_guards; check_run_php_subprocess_guards; check_write_test_safety; check_write_php_subprocess_guards; check_sigpipe_pipelines; check_whitespace ;;
     agents) check_rules; check_agents; check_whitespace ;;
     runtime) check_rules; check_runtime ;;
     api) check_rules; check_api ;;
-    full) check_docs; check_shell; check_design; check_bash32_arrays; check_php_runtime_guards; check_write_php_subprocess_guards; check_sigpipe_pipelines; check_agents ;;
+    full) check_docs; check_shell; check_design; check_bash32_arrays; check_php_runtime_guards; check_run_php_subprocess_guards; check_write_php_subprocess_guards; check_sigpipe_pipelines; check_agents ;;
     *) printf 'Usage: %s {preflight|docs|shell|agents|runtime|api|full}\n' "$0" >&2; exit 2 ;;
 esac
 
