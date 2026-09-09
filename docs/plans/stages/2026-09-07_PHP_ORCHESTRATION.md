@@ -387,6 +387,12 @@ PROD-запис у пакет НЕ входить і дозволяється л
 тестів, фіктивне/неповне parity-покриття та fail-closed/provenance розходження.
 Підетап 5 лишається `у роботі`; corrective 6.4.6 не робить PROD write.
 
+**Ревʼю 6.4.6:** `NEEDS CORRECTION`. Exact CI `a7f53ec` зелений, але читання
+write-path і перевірок знайшло D126-D128: moderation write обходив operational
+blocker, config fallback втрачав `ollama` provenance, а D120 safety-check
+фальсифікував неправильний alias. Corrective 6.4.7 виправляє обидва
+orchestrator routes для blocker і не робить бойового PROD write.
+
 **Мета.** Пачка, ремонт, запис · у PHP.
 
 **РИЗИК НАЙВИЩИЙ:** тут живе запис у PROD.

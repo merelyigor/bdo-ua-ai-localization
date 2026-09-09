@@ -236,7 +236,7 @@ final class BatchCommitCommand implements Command
                 }
             }
             if ($blocked !== null) {
-                foreach ($pass as $item) {
+                foreach (array_merge($pass, $moderation) as $item) {
                     $held[] = [
                         'identity_hash' => $item['identity_hash'],
                         'reason' => $blocked,
@@ -245,6 +245,7 @@ final class BatchCommitCommand implements Command
                     ];
                 }
                 $pass = [];
+                $moderation = [];
             }
 
             $currentWorkspace = Workspace::current($stateDir);
@@ -324,10 +325,8 @@ final class BatchCommitCommand implements Command
         $route = is_string($route) ? $route : '';
         if ($route === '') {
             $config = json_decode((string) file_get_contents($root.'/config/roles.json'), true) ?: [];
-            $route = (string) ($config['roles']['translation-worker']['model'] ?? $config['default_model'] ?? '');
-            if ($route === '') {
-                $route = 'unknown/agent';
-            }
+            $model = (string) ($config['roles']['translation-worker']['model'] ?? $config['default_model'] ?? '');
+            $route = $model === '' ? 'unknown/agent' : 'ollama/'.$model;
         }
         if (str_contains($route, '/')) {
             [$provider, $model] = explode('/', $route, 2);

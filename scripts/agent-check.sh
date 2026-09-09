@@ -707,19 +707,35 @@ EOF
 
 # ПРАВИЛО: write-тести працюють лише в тимчасовому harness і не мають права
 # чистити production-root output/state.
-# САБОТАЖ: literal $ROOT/output або $ROOT/state у цих тестах має зупинити gate
-# до будь-якого запуску write-сценарію.
+# САБОТАЖ: SOURCE_ROOT у cleanup або копіювання не за дозволеним складом має
+# зупинити gate до будь-якого запуску write-сценарію.
 check_write_test_safety() {
     step 'Write-test safety'
-    local file hits
+    local file hits source_root_uses
     for file in tests/cli-write-parity.sh tests/write-channel-rights.sh; do
         test -f "$file" || fail "відсутній write-тест: $file"
         grep -Fq 'ПРАВИЛО:' "$file" || fail "у $file немає коментаря ПРАВИЛО:"
         grep -Fq 'САБОТАЖ:' "$file" || fail "у $file немає коментаря САБОТАЖ:"
-        hits="$(grep -nE '\$ROOT/(output|state)' "$file" || true)"
-        test -z "$hits" || fail "write-тест має production-root cleanup: $hits"
+        grep -Fq 'SOURCE_ROOT="$ROOT"' "$file" || fail "у $file немає SOURCE_ROOT capture"
+        grep -Fq 'HARNESS="$TMP/repo"' "$file" || fail "у $file немає isolated harness"
+        grep -Fq 'ROOT="$HARNESS"' "$file" || fail "у $file немає ROOT harness switch"
+        hits="$(grep -nE '\$SOURCE_ROOT/(output|state)|\$\{SOURCE_ROOT\}/(output|state)' "$file" || true)"
+        test -z "$hits" || fail "write-тест має production-root output/state access: $hits"
+        source_root_uses="$(grep -n 'SOURCE_ROOT' "$file" || true)"
+        test "$(grep -c 'SOURCE_ROOT="\$ROOT"' "$file" || true)" -eq 1 \
+            || fail "у $file має бути рівно один SOURCE_ROOT capture"
+        test "$(grep -c 'SOURCE_ROOT.*HARNESS/cli' "$file" || true)" -eq 1 \
+            || fail "у $file немає дозволеного копіювання cli через SOURCE_ROOT"
+        test "$(grep -c 'SOURCE_ROOT.*HARNESS/lib' "$file" || true)" -eq 1 \
+            || fail "у $file немає дозволеного копіювання lib через SOURCE_ROOT"
+        test "$(grep -c 'SOURCE_ROOT.*HARNESS/config' "$file" || true)" -eq 1 \
+            || fail "у $file немає дозволеного копіювання config через SOURCE_ROOT"
+        test "$(grep -c 'SOURCE_ROOT.*HARNESS/roles' "$file" || true)" -eq 1 \
+            || fail "у $file немає дозволеного копіювання roles через SOURCE_ROOT"
+        test "$(printf '%s\n' "$source_root_uses" | wc -l | tr -d ' ')" -eq 5 \
+            || fail "SOURCE_ROOT має використання поза assignment і чотирма copy operations: $source_root_uses"
     done
-    note 'write-тести ізолюють state/output у тимчасовому harness'
+    note 'write-тести ізолюють state/output у harness; SOURCE_ROOT має лише 4 дозволені copy operations'
 }
 
 # ПРАВИЛО: write orchestration у PHP не запускає Unix-процеси; HTTP і файлові

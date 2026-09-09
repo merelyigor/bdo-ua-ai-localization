@@ -311,12 +311,13 @@ if ($doWrite === "--write") {
     elseif (count($pass) > $remaining) $blocked = "quota:" . $remaining . "_left";
 }
 if ($blocked !== null) {
-    foreach ($pass as $p) {
+    foreach (array_merge($pass, $moderation) as $p) {
         $held[] = ["identity_hash" => $p["identity_hash"], "reason" => $blocked,
                    "source_text" => $rowByHash[$p["identity_hash"]]["source_text"] ?? null,
                    "candidate" => $p["text"]];
     }
     $pass = [];
+    $moderation = [];
 }
 
 // Журнал вироків · для калібрування порога і для аналітики власника.

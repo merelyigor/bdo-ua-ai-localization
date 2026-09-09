@@ -291,6 +291,22 @@ compare_pair bare-route
 grep -Fq '\"provider\":\"bare-route\"' "$TMP/bare-route.php.log" || fail 'bare route provider'
 grep -Fq '\"model\":\"bare-route\"' "$TMP/bare-route.php.log" || fail 'bare route model'
 
+# ПРАВИЛО: config fallback формує legacy route ollama/<model>; summary і receipt
+# походять із current workspace, навіть якщо candidate directory має чужий receipt.
+# САБОТАЖ: bare config model або candidate-directory provenance змінює write request.
+CONFIG_MODEL="$($REAL_PHP -r '$c=json_decode(file_get_contents($argv[1]),true);echo $c["roles"]["translation-worker"]["model"]??$c["default_model"]??"";' "$HARNESS/config/roles.json")"
+make_current_workspace "$TMP/state-config-sh" '' config-sh
+make_current_workspace "$TMP/state-config-php" '' config-php
+find "$HARNESS_OUTPUT" -maxdepth 1 -type f -name 'write_*.json' -delete
+run_capture config-fallback.sh "$TMP/state-config-sh" sh cli/batch/batch-commit.sh "$TMP/rows.json" "$TMP/candidate-dir/candidate.json" "$TMP/verdicts.json" --write --idempotency-key-prefix config
+find "$HARNESS_OUTPUT" -maxdepth 1 -type f -name 'write_*.json' -delete
+run_capture config-fallback.php "$TMP/state-config-php" php cli/batch/batch-commit.sh "$TMP/rows.json" "$TMP/candidate-dir/candidate.json" "$TMP/verdicts.json" --write --idempotency-key-prefix config
+compare_pair config-fallback
+grep -Fq '\"provider\":\"ollama\"' "$TMP/config-fallback.php.log" || fail 'config fallback provider'
+grep -Fq "\\\"model\\\":\\\"$CONFIG_MODEL\\\"" "$TMP/config-fallback.php.log" || fail 'config fallback model'
+test -f "$TMP/state-config-sh/batches/config-sh/batch-summary.json" || fail 'config shell summary location'
+test -f "$TMP/state-config-php/batches/config-php/batch-summary.json" || fail 'config PHP summary location'
+
 # ПРАВИЛО: moderation list/json/dry/approve/reject/batch мають однакові HTTP,
 # output і individual-failure semantics на shell та PHP.
 # САБОТАЖ: fail-fast або змінений method/path/body має зробити differential red.
@@ -342,6 +358,59 @@ for blocker in no-run env-mismatch quota; do
     if test "$blocker" = quota; then
         grep -Fq 'quota:' "$TMP/block-quota.out" || fail 'quota branch не названа'
     fi
+done
+printf 'list\n' > "$TMP/stub-mode"
+
+# ПРАВИЛО: operational blocker переносить у held і PASS, і proposal; жоден рядок
+# не доходить до writer і не отримує RowAttempts.
+# САБОТАЖ: fixture лише з PASS фальсифікує safety proof і пропускає proposal POST.
+BLOCK_H1="$(printf '%064d' 41)"
+BLOCK_H2="$(printf '%064d' 42)"
+cat > "$TMP/blocker-rows.json" <<JSON
+{"data":{"rows":[{"identity_hash":"$BLOCK_H1","source_hash":"block-source-1","source_text":"Block source 1"},{"identity_hash":"$BLOCK_H2","source_hash":"block-source-2","source_text":"Block source 2"}]}}
+JSON
+printf '[{"identity_hash":"%s","text":"Block translation 1"},{"identity_hash":"%s","text":"Block translation 2"}]\n' "$BLOCK_H1" "$BLOCK_H2" > "$TMP/blocker-candidate.json"
+printf '[{"identity_hash":"%s","status":"PASS","severity":"none","issue":"","fix":""},{"identity_hash":"%s","status":"REVIEW","severity":"major","issue":"blocker review","fix":""}]\n' "$BLOCK_H1" "$BLOCK_H2" > "$TMP/blocker-verdicts.json"
+for blocker in no-run env-mismatch quota; do
+    printf '%s\n' "$blocker" > "$TMP/stub-mode"
+    state_sh="$TMP/state-mixed-$blocker-sh"; state_php="$TMP/state-mixed-$blocker-php"
+    mkdir -p "$state_sh" "$state_php"
+    if test "$blocker" = env-mismatch; then
+        printf 'PROD\n' > "$state_sh/run-target"
+        printf 'PROD\n' > "$state_php/run-target"
+    elif test "$blocker" = quota; then
+        printf 'local\n' > "$state_sh/run-target"
+        printf 'local\n' > "$state_php/run-target"
+    fi
+    for side in sh php; do
+        state_side="$TMP/state-mixed-$blocker-$side"
+        mkdir -p "$state_side/batches/mixed-$blocker-$side"
+        printf 'mixed-%s-%s\n' "$blocker" "$side" > "$state_side/current-batch"
+        printf '{"id":"mixed-%s-%s","identity_key":"mixed","rows":2}\n' "$blocker" "$side" > "$state_side/batches/mixed-$blocker-$side/manifest.json"
+    done
+    : > "$TMP/requests.log"
+    run_capture "mixed-$blocker.sh" "$state_sh" sh cli/batch/batch-commit.sh "$TMP/blocker-rows.json" "$TMP/blocker-candidate.json" "$TMP/blocker-verdicts.json" --write --channel manual
+    : > "$TMP/requests.log"
+    run_capture "mixed-$blocker.php" "$state_php" php cli/batch/batch-commit.sh "$TMP/blocker-rows.json" "$TMP/blocker-candidate.json" "$TMP/blocker-verdicts.json" --write --channel manual
+    compare_pair "mixed-$blocker"
+    test "$(grep -c '"method":"POST"' "$TMP/mixed-$blocker.sh.log" || true)" -eq 0 || fail "mixed $blocker shell POST"
+    test "$(grep -c '"method":"POST"' "$TMP/mixed-$blocker.php.log" || true)" -eq 0 || fail "mixed $blocker PHP POST"
+    case "$blocker" in
+        no-run) expected_reason='no_run:запусти cli/run/run-start.sh' ;;
+        quota) expected_reason='quota:0_left' ;;
+        *) expected_reason='env_mismatch:прогін=PROD,команда=local' ;;
+    esac
+    grep -Fq "ЗАПИС ЗАБЛОКОВАНО: $expected_reason" "$TMP/mixed-$blocker.php.out" || fail "mixed $blocker blocker output"
+    for side in sh php; do
+        quarantine="$TMP/state-mixed-$blocker-$side/quarantine.jsonl"
+        attempts="$TMP/state-mixed-$blocker-$side/row-attempts.jsonl"
+        test -f "$quarantine" || fail "mixed $blocker $side quarantine"
+        grep -Fq "\"identity_hash\":\"$BLOCK_H1\"" "$quarantine" || fail "mixed $blocker $side PASS held"
+        grep -Fq "\"identity_hash\":\"$BLOCK_H2\"" "$quarantine" || fail "mixed $blocker $side proposal held"
+        "$REAL_PHP" -r '$want=$argv[2];foreach(file($argv[1],FILE_IGNORE_NEW_LINES|FILE_SKIP_EMPTY_LINES) as $line){$row=json_decode($line,true);if(($row["reason"]??null)!==$want)exit(1);}exit(0);' "$quarantine" "$expected_reason" \
+            || fail "mixed $blocker $side reason"
+        test ! -s "$attempts" || fail "mixed $blocker $side RowAttempts"
+    done
 done
 printf 'list\n' > "$TMP/stub-mode"
 
