@@ -1,4 +1,8 @@
 #!/usr/bin/env bash
+if [ "${BDO_ORCHESTRATOR:-php}" != sh ]; then
+    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+    exec php "$SCRIPT_DIR/cli/bdo.php" moderation "$@"
+fi
 # Черга модерації перекладів: подивитись і розібрати пачками через API.
 #
 #   ./moderation-queue.sh                          # показати чергу (20 перших)

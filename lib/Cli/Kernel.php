@@ -20,6 +20,7 @@ use Bdo\Translate\Cli\Command\Api\TermNotesSubmitCommand;
 use Bdo\Translate\Cli\Command\Api\ValidateCommand;
 use Bdo\Translate\Cli\Command\Batch\BatchAssertCommand;
 use Bdo\Translate\Cli\Command\Batch\BatchCleanCommand;
+use Bdo\Translate\Cli\Command\Batch\BatchCommitCommand;
 use Bdo\Translate\Cli\Command\Batch\BatchDirCommand;
 use Bdo\Translate\Cli\Command\Batch\BatchNewCommand;
 use Bdo\Translate\Cli\Command\Batch\SubsetRowsCommand;
@@ -43,6 +44,8 @@ use Bdo\Translate\Cli\Command\Prepare\NamesPayloadCommand;
 use Bdo\Translate\Cli\Command\Prepare\QaPayloadCommand;
 use Bdo\Translate\Cli\Command\Prepare\TerminologyPayloadCommand;
 use Bdo\Translate\Cli\Command\Prepare\WorkerPayloadCommand;
+use Bdo\Translate\Cli\Command\Write\ModerationCommand;
+use Bdo\Translate\Cli\Command\Write\WriteTranslationsCommand;
 
 /**
  * Єдиний PHP-шов запуску: приймає argv без імені скрипта й повертає exit code.
@@ -125,6 +128,9 @@ final class Kernel
             'batch-new' => new BatchNewCommand(),
             'subset-rows' => new SubsetRowsCommand(),
             'heal-plan' => new HealPlanCommand(),
+            'commit' => new BatchCommitCommand(),
+            'write' => new WriteTranslationsCommand(),
+            'moderation' => new ModerationCommand(),
             default => null,
         };
     }

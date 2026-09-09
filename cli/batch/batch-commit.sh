@@ -1,4 +1,8 @@
 #!/usr/bin/env bash
+if [ "${BDO_ORCHESTRATOR:-php}" != sh ]; then
+    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+    exec php "$SCRIPT_DIR/cli/bdo.php" commit "$@"
+fi
 # Завершити пачку без зупинки процесу: PASS - записати, решту - у карантин.
 #
 #   ./batch-commit.sh rows.json candidate.json verdicts.json [--write] [опції]

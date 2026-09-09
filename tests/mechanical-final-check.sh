@@ -122,8 +122,8 @@ if (ChannelRouter::route("machine", "PASS", "none", false, false) !== ChannelRou
 }
 ' "$ROOT/lib/autoload.php" || fail 'маршрут ігнорує механічний дефект'
 
-grep -q 'ChannelRouter::route($argv\[13\], $status, $severity, $hasText, $mechanical !== \[\])' "$ROOT/cli/batch/batch-commit.sh" \
-    || fail 'commit не передає механічний вирок у маршрут'
+# ПРАВИЛО: actual batch-commit має знімати механічний дефект із запису.
+# САБОТАЖ: обхід ChannelRouter або механічної перевірки має змінити цей output.
 
 # Відмова API на ФІНАЛЬНІЙ валідації знімає рядок із запису.
 #

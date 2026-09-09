@@ -1,56 +1,69 @@
 #!/usr/bin/env bash
-# Право на канал читається з РЕАЛЬНОЇ форми `/me -> data.writes`.
-#
-# 2026-08-29 я додав цю перевірку, вигадавши форму відповіді: читав
-# `channels` як мапу за назвою нашого каналу. Насправді це СПИСОК обʼєктів
-# `{layer, mode, allowed, result}`. Наслідок був негайний і повний: кожен коміт
-# діставав «Ключ не має права писати в канал machine», пачка 20260829_025045
-# стала в `committing`, і власник чотири рази поспіль отримав `api_write_failed`
-# без жодної підказки про справжню причину.
-#
-# Тому тест ходить саме тим шляхом, що й прогін, і на тій формі, яку віддає
-# сервер · зразок нижче скопійовано з живої відповіді PROD.
+# Перевірити права каналів поведінкою actual write command на DEV stub.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+TMP="$(mktemp -d)"; SERVER=''; REAL_PHP="$(command -v php)"
+trap '[ -z "$SERVER" ] || kill "$SERVER" 2>/dev/null || true; find "$ROOT/output" -maxdepth 1 -type f -name "write_*.json" -delete 2>/dev/null || true; rm -rf "$TMP"' EXIT
 fail() { printf 'FAIL: %s\n' "$1" >&2; exit 1; }
-TMP="$(mktemp -d)"
-trap 'rm -rf "$TMP"' EXIT
 
-# Витягуємо саме той PHP-блок, який виконує скрипт запису.
-python3 - "$ROOT/cli/write/write-translations.sh" > "$TMP/check.php" <<'PY'
-import io,sys
-s=io.open(sys.argv[1],encoding="utf-8").read()
-start=s.index("php -r '\n$me = json_decode")+len("php -r '")
-end=s.index("\n' \"$ME\" \"$CHANNEL\" \"$LAYER\" \"$MODE\"", start)
-print("<?php")
-print(s[start:end])
-PY
+PORT=$((29000 + RANDOM % 500))
+cat > "$TMP/router.php" <<'PHP'
+<?php
+$path = (string) parse_url((string) ($_SERVER['REQUEST_URI'] ?? '/'), PHP_URL_PATH);
+$mode = explode('/', trim($path, '/'))[0] ?? 'list';
+header('Content-Type: application/json');
+if (str_ends_with($path, '/me')) {
+    if ($mode === 'legacy') {
+        echo json_encode(['data'=>['user'=>['role'=>'super_admin'], 'effective_abilities'=>['translations:write-machine'], 'limits'=>['rows_remaining_today'=>20]]]);
+    } elseif ($mode === 'deny') {
+        echo json_encode(['data'=>['writes'=>['channels'=>[['layer'=>'machine','mode'=>'direct','allowed'=>false]]], 'limits'=>['rows_remaining_today'=>20]]]);
+    } else {
+        echo json_encode(['data'=>['writes'=>['channels'=>[
+            ['layer'=>'machine','mode'=>'direct','allowed'=>true,'result'=>'machine'],
+            ['layer'=>'manual','mode'=>'proposal','allowed'=>true,'result'=>'manual'],
+        ]], 'limits'=>['rows_remaining_today'=>20]]]);
+    }
+    return;
+}
+if (str_ends_with($path, '/translations')) {
+    echo json_encode(['data'=>['meta'=>['written'=>1,'skipped'=>0,'rejected'=>0,'rows_remaining_today'=>19], 'results'=>[['index'=>0,'status'=>'ok']]]]);
+    return;
+}
+http_response_code(404); echo json_encode(['success'=>false]);
+PHP
+"$REAL_PHP" -S "127.0.0.1:$PORT" "$TMP/router.php" >"$TMP/server.log" 2>&1 & SERVER=$!
+for _ in $(seq 1 30); do "$REAL_PHP" -r '$s=@fsockopen("127.0.0.1",(int)$argv[1],$e,$m,.2);if(is_resource($s)){fclose($s);exit(0);}exit(1);' "$PORT" && break; sleep .1; done
+cat > "$TMP/env" <<ENV
+BDO_ENV=DEV
+BDO_API_TARGET=legacy
+BDO_API_BASE_DEV=http://127.0.0.1:$PORT
+BDO_API_KEY_DEV=test-key
+ENV
+printf '[{"identity_hash":"%064d","source_hash":"%064d","text":"Тест"}]\n' 1 2 > "$TMP/items.json"
+run() {
+    local mode="$1" state="$2" stub="$3" channel="$4"; mkdir -p "$state"
+    printf '%s\n' "BDO_ENV=DEV" "BDO_API_TARGET=legacy" "BDO_API_BASE_DEV=http://127.0.0.1:$PORT/$stub" "BDO_API_KEY_DEV=test-key" > "$TMP/env-$stub"
+    TRANSLATE_ENV_FILE="$TMP/env-$stub" BDO_STATE_DIR="$state" BDO_ORCHESTRATOR="$mode" \
+        bash "$ROOT/cli/write/write-translations.sh" --channel "$channel" --idempotency-key stable "$TMP/items.json"
+}
 
-ME='{"data":{"user":{"role":"super_admin"},"effective_abilities":["translations:write-machine"],
- "writes":{"channels":[
-   {"layer":"machine","mode":"direct","allowed":true,"result":"machine"},
-   {"layer":"manual","mode":"proposal","allowed":true,"result":"manual","auto_approve":true}],
-  "auto_approve_glossary_proposals":true}}}'
+# ПРАВИЛО: права шукаються в LIST за exact layer+mode, mapping не вгадується.
+# САБОТАЖ: читання channels як map або вигаданий result має зробити check червоним.
+for pair in 'machine machine direct' 'manual manual proposal' 'proposal manual proposal'; do
+    set -- $pair
+    out="$(run php "$TMP/state-$1" list "$1" 2>"$TMP/$1.err")" || fail "$1 заблоковано"
+    case "$1" in
+        machine) grep -Fq 'layer=machine, mode=direct, auto_approve=true' <<<"$out" || fail 'machine mapping' ;;
+        manual) grep -Fq 'layer=manual, mode=proposal, auto_approve=true' <<<"$out" || fail 'manual mapping' ;;
+        proposal) grep -Fq 'layer=manual, mode=proposal, auto_approve=false' <<<"$out" || fail 'proposal mapping' ;;
+    esac
+done
+set +e; run php "$TMP/state-deny" deny machine >/dev/null 2>&1; code=$?; set -e
+test "$code" -ne 0 || { fail "allowed=false прийнято: $(run php \"$TMP/state-deny-2\" deny machine 2>&1 || true)"; }
 
-out="$(php "$TMP/check.php" "$ME" machine machine direct 2>&1)" || fail "machine заблоковано: $out"
-grep -Fq 'результат запису · machine' <<<"$out" || fail "machine не назвав результат: $out"
-out="$(php "$TMP/check.php" "$ME" manual manual proposal 2>&1)" || fail "manual заблоковано: $out"
-grep -Fq 'результат запису · manual' <<<"$out" || fail "manual не назвав результат: $out"
-# `proposal` ділить пару layer+mode з `manual`; різницю робить auto_approve у
-# нашому запиті, тому очікуваний результат мусить бути іншим.
-out="$(php "$TMP/check.php" "$ME" proposal manual proposal 2>&1)" || fail "proposal заблоковано: $out"
-grep -Fq 'pending_review' <<<"$out" || fail "proposal обіцяє не той результат: $out"
+# ПРАВИЛО: legacy fallback перевіряє machine ability, manual/proposal не вигадують ability.
+# САБОТАЖ: нова вимога для manual у fallback змінить фактичний exit code.
+run php "$TMP/state-legacy-machine" legacy machine >/dev/null 2>&1 || fail 'legacy machine fallback'
+run php "$TMP/state-legacy-manual" legacy manual >/dev/null 2>&1 || fail 'legacy manual fallback'
 
-# Пара, якої немає в переліку, мусить лишатись забороненою.
-set +e
-php "$TMP/check.php" "$ME" machine machine wrongmode >/dev/null 2>&1
-code=$?
-set -e
-test "$code" -ne 0 || fail 'невідома пара layer+mode прийнята'
-
-# Старий сервер без `data.writes` · стара перевірка, і лише для machine.
-OLD='{"data":{"user":{"role":"super_admin"},"effective_abilities":["translations:write-machine"]}}'
-php "$TMP/check.php" "$OLD" machine machine direct >/dev/null 2>&1 || fail 'fallback заблокував machine з правами'
-php "$TMP/check.php" "$OLD" manual manual proposal >/dev/null 2>&1 || fail 'fallback не має чіпати не-machine канали'
-
-echo 'write channel rights: OK'
+echo 'write channel rights: actual /me LIST, mapping and legacy fallback: OK'

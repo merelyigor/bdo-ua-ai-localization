@@ -27,3 +27,10 @@
 Якщо `/me` не дає машинну здатність, не намагайтеся обійти обмеження зміною поля
 `layer`. Зупиніть автоматичний запис або використайте ключ, виданий для admin чи
 super_admin.
+
+## Реалізація клієнта
+
+`cli/write/write-translations.sh` лишається rollback-wrapper для старого shell-шляху.
+Типовий маршрут веде до PHP `WriteTranslationsCommand`, а фактична write-семантика
+централізована в `TranslationWriter`. `BatchCommitCommand` використовує той самий
+writer in-process і не запускає shell-команду запису.

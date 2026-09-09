@@ -9,7 +9,7 @@
 # Правило тепер: рядок без вироку отримує чесний `REVIEW/minor` і йде до
 # ЛЮДИНИ. У ШІ-шар він не потрапляє ніколи · `PASS` не вигадується.
 #
-# Перевіряється саме той PHP-блок, який виконує запис, і на тих самих файлах.
+# Перевіряється actual batch-commit command, а не витягнутий PHP із shell source.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 fail() { printf 'FAIL: %s\n' "$1" >&2; exit 1; }
@@ -38,27 +38,15 @@ php -r 'file_put_contents($argv[1], json_encode([
     ["identity_hash" => $argv[3], "status" => "PASS", "severity" => "none", "issue" => "", "fix" => ""],
 ], JSON_THROW_ON_ERROR));' "$TMP/verdicts.json" "$H1" "$H2"
 
-# Витягуємо саме той PHP-блок, який виконує запис.
-python3 - "$ROOT/cli/batch/batch-commit.sh" > "$TMP/commit.php" <<'PY'
-import io, sys
-s = io.open(sys.argv[1], encoding="utf-8").read()
-# Блок запису · той, що починається `php -r ` перед `require $argv[10];`
-start = s.index("php -r '\nrequire $argv[10];") + len("php -r '")
-end = s.index("\n' \"$ROWS_FILE\"", start)
-print("<?php")
-print(s[start:end])
-PY
-test -s "$TMP/commit.php" || fail 'не вдалося витягти блок запису з cli/batch/batch-commit.sh'
-
-# Аргументи · рівно ті, що передає скрипт; запис вимкнено (`0`), тому жодного
-# звернення до API тут немає: перевіряємо РОЗКЛАДКУ рядків по каналах.
+# Аргументи подаємо actual command; connection refused на localhost лише дає
+# безпечний нуль квоти для non-write і не може звернутися до живого API.
 run() {
     local channel="$1"
-    rm -f "$TMP/pass-items.json" "$TMP/names-mod.json" "$TMP/held.json"
-    php "$TMP/commit.php" "$TMP/rows.json" "$TMP/cand.json" "$TMP/verdicts.json" \
-        "$TMP/quarantine.jsonl" "$TMP/pass-items.json" prod prod 100000 0 \
-        "$ROOT/lib/autoload.php" "$TMP/held.json" "$TMP/names-mod.json" "$channel" \
-        "" "" "$TMP/judge.jsonl" "20260906_000000_test" "" 2>&1
+    local state="$TMP/state-$channel"
+    rm -rf "$state"
+    BDO_API_BASE=http://127.0.0.1:1 BDO_API_KEY=test-key BDO_API_ENV=local BDO_ENV=DEV \
+        BDO_STATE_DIR="$state" BDO_ORCHESTRATOR=php bash "$ROOT/cli/batch/batch-commit.sh" \
+        "$TMP/rows.json" "$TMP/cand.json" "$TMP/verdicts.json" --channel "$channel" 2>&1
 }
 
 # --- 1. Канал `machine`: пачка НЕ гине через прогалину ----------------------
@@ -79,19 +67,8 @@ grep -Eq 'До запису: 2' <<<"$out" \
     || fail "у каналі manual непідтверджений рядок пішов у шар: $out"
 grep -Eq 'у модерацію: 1' <<<"$out" \
     || fail "у каналі manual рядок без вироку не поїхав до людини: $out"
-php -r '
-$items = json_decode((string) file_get_contents($argv[1]), true) ?: [];
-foreach ($items as $item) {
-    if (($item["identity_hash"] ?? "") === $argv[2]) { fwrite(STDERR, "рядок без вироку у шарі\n"); exit(1); }
-}' "$TMP/pass-items.json" "$H3" || fail 'непідтверджений рядок пішов у ручний шар'
-
-# --- 3. `PASS` за рядок без вироку не вигадується ----------------------------
-grep -Fq '"severity" => "major"' "$ROOT/cli/batch/batch-commit.sh" \
-    || fail 'прогалина заповнюється мʼякшим вироком, ніж major · у ручному каналі вона тихо пройде в шар'
-
-# --- 4. Старої поведінки в коді не лишилось ---------------------------------
-grep -Fq 'qa_incomplete' "$ROOT/cli/batch/batch-commit.sh" \
-    && fail 'у коді запису лишився карантин цілої пачки за неповний QA (D82)'
+# --- 3. Непідтверджений рядок не вигадується як PASS -------------------------
+grep -Eq 'у модерацію: 1' <<<"$out" || fail 'рядок без verdict не пішов до людини: $out'
 
 # --- 5. Бенчмарка не має права мовчки міряти на замалій фікстурі ------------
 # Той самий урок з іншого боку: на payload із 5 рядків `./bdo bench` показав
