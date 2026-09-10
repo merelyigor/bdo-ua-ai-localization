@@ -424,6 +424,12 @@ PROD write; rollback лишається через `BDO_ORCHESTRATOR=sh`.
 RunSpec, а D130 - silent filesystem failures у `RunStartCommand`.
 Corrective 6.5.1 не розширює migration scope і не переносить інші `cli/run/**`.
 
+**Ревʼю 6.5.1:** `NEEDS CORRECTION`. Exact CI `52dc636` зелений; D129 і
+D130 виправлені в production/test behavior, але D131 виявив залишкову
+фіктивну нормалізацію: blocked `foreign awaiting_worker` міг змінити
+`run-started-at`, а snapshot усе одно порівняв би `TIMESTAMP` з `TIMESTAMP`.
+Corrective 6.5.2 змінює лише доказ, без production behavior.
+
 **Мета.** Драйвер і цикл · у PHP.
 
 **Інваріант, який легко порушити саме тут:** ПОРЯДОК КРОКІВ ТРИМАЄ КОД. Конверт

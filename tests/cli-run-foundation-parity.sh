@@ -160,7 +160,7 @@ grep -Fq 'Дозволено status або plan.' "$TMP/unknown-action.sh.err" |
 test "$(cat "$TMP/unknown-action.sh.code")" = 2 || fail 'unknown action code changed'
 
 snapshot_state() {
-    local state="$1" destination="$2"
+    local state="$1" destination="$2" before="${3:-}" after="${4:-}" raw
     rm -rf "$destination"
     mkdir -p "$destination"
     find "$state" -print | sed "1d;s|^$state/||" | sort >"$destination/list"
@@ -169,8 +169,13 @@ snapshot_state() {
         mkdir -p "$destination/$(dirname "$relative")"
         if [ -d "$state/$relative" ]; then
             mkdir -p "$destination/$relative"
-        elif [ "$relative" = run-started-at ]; then
+        elif [ "$relative" = run-started-at ] && [ -n "$before" ] && [ -n "$after" ]; then
+            raw="$(<"$state/$relative")"
+            timestamp_value_valid "$raw" "$before" "$after" \
+                || fail "$state: run-started-at не є integer milliseconds у часовому вікні"
             printf 'TIMESTAMP\n' >"$destination/$relative"
+        elif [ "$relative" = run-started-at ] && { [ -n "$before" ] || [ -n "$after" ]; }; then
+            fail 'timestamp normalizer потребує обидві часові межі'
         elif [ -f "$state/$relative" ]; then
             cp "$state/$relative" "$destination/$relative"
         fi
@@ -199,18 +204,34 @@ assert_start_timestamp() {
 # ПРАВИЛО: timestamp можна нормалізувати лише після механічної перевірки raw value.
 # САБОТАЖ: garbage або широкий normalizer мають зробити self-test червоним.
 normalizer_self_test() {
-    local state="$TMP/normalizer-state" snapshot="$TMP/normalizer-snapshot" now
-    mkdir -p "$state"
+    local state_a="$TMP/normalizer-state-a" state_b="$TMP/normalizer-state-b"
+    local snapshot_a="$TMP/normalizer-snapshot-a" snapshot_b="$TMP/normalizer-snapshot-b"
+    local state_valid="$TMP/normalizer-state-valid" snapshot_valid="$TMP/normalizer-snapshot-valid"
+    local before now after
+    mkdir -p "$state_a" "$state_b" "$state_valid"
+    for state in "$state_a" "$state_b" "$state_valid"; do
+        printf 'local\n' >"$state/run-target"
+        printf '{"state":"verified","count":7}\n' >"$state/manifest.json"
+        printf 'Невідома причина лишається\n' >"$state/error-reason"
+    done
+    printf '111\n' >"$state_a/run-started-at"
+    printf '222\n' >"$state_b/run-started-at"
+    snapshot_state "$state_a" "$snapshot_a"
+    snapshot_state "$state_b" "$snapshot_b"
+    cmp -s "$snapshot_a/run-started-at" "$snapshot_b/run-started-at" && \
+        fail 'normalizer: raw timestamps без bounds порівнялись однаково'
+    grep -Fxq '111' "$snapshot_a/run-started-at" || fail 'normalizer: raw timestamp 111 змінено'
+    grep -Fxq '222' "$snapshot_b/run-started-at" || fail 'normalizer: raw timestamp 222 змінено'
+
+    before="$(real_ms)"
     now="$(real_ms)"
-    printf '%s\n' "$now" >"$state/run-started-at"
-    printf 'local\n' >"$state/run-target"
-    printf '{"state":"verified","count":7}\n' >"$state/manifest.json"
-    printf 'Невідома причина лишається\n' >"$state/error-reason"
-    snapshot_state "$state" "$snapshot"
-    grep -Fxq 'TIMESTAMP' "$snapshot/run-started-at" || fail 'normalizer: timestamp не замінено після перевірки'
-    cmp -s "$state/run-target" "$snapshot/run-target" || fail 'normalizer: змінив run-target'
-    cmp -s "$state/manifest.json" "$snapshot/manifest.json" || fail 'normalizer: змінив manifest/state'
-    cmp -s "$state/error-reason" "$snapshot/error-reason" || fail 'normalizer: змінив error reason'
+    after="$(real_ms)"
+    printf '%s\n' "$now" >"$state_valid/run-started-at"
+    snapshot_state "$state_valid" "$snapshot_valid" "$before" "$after"
+    grep -Fxq 'TIMESTAMP' "$snapshot_valid/run-started-at" || fail 'normalizer: timestamp не замінено після перевірки'
+    cmp -s "$state_valid/run-target" "$snapshot_valid/run-target" || fail 'normalizer: змінив run-target'
+    cmp -s "$state_valid/manifest.json" "$snapshot_valid/manifest.json" || fail 'normalizer: змінив manifest/state'
+    cmp -s "$state_valid/error-reason" "$snapshot_valid/error-reason" || fail 'normalizer: змінив error reason'
     if timestamp_value_valid garbage "$((now - 1500))" "$((now + 1500))"; then
         fail 'normalizer: прийняв garbage як timestamp'
     fi
@@ -245,8 +266,21 @@ compare_start() {
                 ;;
         esac
     fi
-    snapshot_state "$TMP/$label-state-sh" "$TMP/$label-snapshot-sh"
-    snapshot_state "$TMP/$label-state-php" "$TMP/$label-snapshot-php"
+    if [ "$(cat "$TMP/$label.sh.code")" = 0 ]; then
+        case "${1:-}" in
+            --show|--end)
+                snapshot_state "$TMP/$label-state-sh" "$TMP/$label-snapshot-sh"
+                snapshot_state "$TMP/$label-state-php" "$TMP/$label-snapshot-php"
+                ;;
+            *)
+                snapshot_state "$TMP/$label-state-sh" "$TMP/$label-snapshot-sh" "$sh_before" "$sh_after"
+                snapshot_state "$TMP/$label-state-php" "$TMP/$label-snapshot-php" "$php_before" "$php_after"
+                ;;
+        esac
+    else
+        snapshot_state "$TMP/$label-state-sh" "$TMP/$label-snapshot-sh"
+        snapshot_state "$TMP/$label-state-php" "$TMP/$label-snapshot-php"
+    fi
     cmp -s "$TMP/$label-snapshot-sh/list" "$TMP/$label-snapshot-php/list" || fail "$label: state files differ"
     diff -ru "$TMP/$label-snapshot-sh" "$TMP/$label-snapshot-php" >/dev/null || fail "$label: state content differs"
 }
@@ -344,13 +378,24 @@ for state_case in none verified failed_terminal awaiting_worker; do
         assert_start_timestamp "foreign-$state_case shell" "$TMP/foreign-$state_case-sh" "$sh_before" "$sh_after"
         assert_start_timestamp "foreign-$state_case php" "$TMP/foreign-$state_case-php" "$php_before" "$php_after"
     fi
-    snapshot_state "$TMP/foreign-$state_case-sh" "$TMP/foreign-$state_case-snapshot-sh"
-    snapshot_state "$TMP/foreign-$state_case-php" "$TMP/foreign-$state_case-snapshot-php"
-    diff -ru "$TMP/foreign-$state_case-snapshot-sh" "$TMP/foreign-$state_case-snapshot-php" >/dev/null || fail "foreign-$state_case state differs"
+    if [ "$(cat "$TMP/foreign-$state_case.sh.code")" = 0 ]; then
+        snapshot_state "$TMP/foreign-$state_case-sh" "$TMP/foreign-$state_case-snapshot-sh" "$sh_before" "$sh_after"
+        snapshot_state "$TMP/foreign-$state_case-php" "$TMP/foreign-$state_case-snapshot-php" "$php_before" "$php_after"
+    else
+        snapshot_state "$TMP/foreign-$state_case-sh" "$TMP/foreign-$state_case-snapshot-sh"
+        snapshot_state "$TMP/foreign-$state_case-php" "$TMP/foreign-$state_case-snapshot-php"
+    fi
     if [ "$state_case" = awaiting_worker ]; then
         test "$(cat "$TMP/foreign-$state_case.sh.code")" = 1 || fail 'awaiting_worker crossed target'
         grep -Fq 'ЗАБЛОКОВАНО' "$TMP/foreign-$state_case.sh.err" || fail 'active foreign block not named'
+        for file in run-target run-started-at run-batches.json run-seen.json current-batch; do
+            cmp -s "$TMP/foreign-$state_case-sh/$file" "$TMP/foreign-$state_case-php/$file" || \
+                fail "foreign-awaiting_worker: $file state differs"
+        done
+        cmp -s "$TMP/foreign-$state_case-sh/batches/foreign/manifest.json" "$TMP/foreign-$state_case-php/batches/foreign/manifest.json" || \
+            fail 'foreign-awaiting_worker: manifest state differs'
     fi
+    diff -ru "$TMP/foreign-$state_case-snapshot-sh" "$TMP/foreign-$state_case-snapshot-php" >/dev/null || fail "foreign-$state_case state differs"
 done
 
 # ПРАВИЛО: reset filesystem failures are fail-closed and name the path; both --end
