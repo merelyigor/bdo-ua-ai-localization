@@ -69,11 +69,15 @@ compare_outputs() {
 }
 
 compare_failure_codes() {
-    local label="$1" shell_err="$2" php_err="$3" shell_code="$4" php_code="$5"
+    local label="$1" shell_err="$2" php_err="$3" shell_code="$4" php_code="$5" reason="${6:-}"
     test "$(cat "$shell_code")" != 0 || fail "$label: failure стала успішною"
     test "$(cat "$php_code")" != 0 || fail "$label: PHP failure стала успішною"
     test -s "$shell_err" || fail "$label: shell не назвав причину"
     test -s "$php_err" || fail "$label: PHP не назвав причину"
+    if [ -n "$reason" ]; then
+        grep -Fq "$reason" "$shell_err" || fail "$label: shell не назвав '$reason'"
+        grep -Fq "$reason" "$php_err" || fail "$label: PHP не назвав '$reason'"
+    fi
 }
 
 compare_spec() {
@@ -83,8 +87,16 @@ compare_spec() {
     CURRENT_STATE="$TMP/spec-state-php"
     run_command php "$ROOT/cli/run/run-spec.sh" run-spec "$TMP/$label.php.out" "$TMP/$label.php.err" "$TMP/$label.php.code" "$@"
     case "$label" in
+        status-snapshot-invalid-patch) reason='Патч має бути' ;;
+        status-invalid-domain) reason='Невідома категорія' ;;
+        status-invalid-mode) reason='Невідомий режим' ;;
+        plan-invalid-*) reason='Розмір пачки має бути від 20 до 100' ;;
+        plan-missing-parent) reason='plan потребує ідентифікатор прогону' ;;
+        *) reason='' ;;
+    esac
+    case "$label" in
         *invalid*|*missing*)
-            compare_failure_codes "$label" "$TMP/$label.sh.err" "$TMP/$label.php.err" "$TMP/$label.sh.code" "$TMP/$label.php.code"
+            compare_failure_codes "$label" "$TMP/$label.sh.err" "$TMP/$label.php.err" "$TMP/$label.sh.code" "$TMP/$label.php.code" "$reason"
             ;;
         *)
             compare_outputs "$label" "$TMP/$label.sh.out" "$TMP/$label.php.out" "$TMP/$label.sh.err" "$TMP/$label.php.err" "$TMP/$label.sh.code" "$TMP/$label.php.code"
@@ -151,29 +163,88 @@ snapshot_state() {
     local state="$1" destination="$2"
     rm -rf "$destination"
     mkdir -p "$destination"
-    find "$state" -type f -print | sed "s|^$state/||" | sort >"$destination/list"
+    find "$state" -print | sed "1d;s|^$state/||" | sort >"$destination/list"
     while IFS= read -r relative; do
         [ -n "$relative" ] || continue
         mkdir -p "$destination/$(dirname "$relative")"
-        if [ "$relative" = run-started-at ]; then
+        if [ -d "$state/$relative" ]; then
+            mkdir -p "$destination/$relative"
+        elif [ "$relative" = run-started-at ]; then
             printf 'TIMESTAMP\n' >"$destination/$relative"
-        else
+        elif [ -f "$state/$relative" ]; then
             cp "$state/$relative" "$destination/$relative"
         fi
     done <"$destination/list"
 }
 
+real_ms() {
+    "$REAL_PHP" -r 'echo (int) floor(microtime(true) * 1000);'
+}
+
+timestamp_value_valid() {
+    local raw="$1" before="$2" after="$3"
+    [[ "$raw" =~ ^[0-9]+$ ]] || return 1
+    local value=$((10#$raw))
+    (( value >= before - 1500 && value <= after + 1500 ))
+}
+
+assert_start_timestamp() {
+    local label="$1" state="$2" before="$3" after="$4" raw
+    test -f "$state/run-started-at" || fail "$label: run-started-at відсутній"
+    raw="$(<"$state/run-started-at")"
+    timestamp_value_valid "$raw" "$before" "$after" \
+        || fail "$label: run-started-at не є integer milliseconds у часовому вікні"
+}
+
+# ПРАВИЛО: timestamp можна нормалізувати лише після механічної перевірки raw value.
+# САБОТАЖ: garbage або широкий normalizer мають зробити self-test червоним.
+normalizer_self_test() {
+    local state="$TMP/normalizer-state" snapshot="$TMP/normalizer-snapshot" now
+    mkdir -p "$state"
+    now="$(real_ms)"
+    printf '%s\n' "$now" >"$state/run-started-at"
+    printf 'local\n' >"$state/run-target"
+    printf '{"state":"verified","count":7}\n' >"$state/manifest.json"
+    printf 'Невідома причина лишається\n' >"$state/error-reason"
+    snapshot_state "$state" "$snapshot"
+    grep -Fxq 'TIMESTAMP' "$snapshot/run-started-at" || fail 'normalizer: timestamp не замінено після перевірки'
+    cmp -s "$state/run-target" "$snapshot/run-target" || fail 'normalizer: змінив run-target'
+    cmp -s "$state/manifest.json" "$snapshot/manifest.json" || fail 'normalizer: змінив manifest/state'
+    cmp -s "$state/error-reason" "$snapshot/error-reason" || fail 'normalizer: змінив error reason'
+    if timestamp_value_valid garbage "$((now - 1500))" "$((now + 1500))"; then
+        fail 'normalizer: прийняв garbage як timestamp'
+    fi
+}
+
+# ПРАВИЛО: кожен успішний start має raw integer-millisecond timestamp у вікні запуску.
+# САБОТАЖ: seconds/garbage не можуть пройти підміною на TIMESTAMP.
+normalizer_self_test
+
 compare_start() {
     local label="$1" env="$2"; shift 2
+    local sh_before sh_after php_before php_after
     CURRENT_ENV="$env" CURRENT_STATE="$TMP/$label-state-sh"
     rm -rf "$CURRENT_STATE"
     mkdir -p "$CURRENT_STATE"
+    sh_before="$(real_ms)"
     run_command sh "$ROOT/cli/run/run-start.sh" run-start "$TMP/$label.sh.out" "$TMP/$label.sh.err" "$TMP/$label.sh.code" "$@"
+    sh_after="$(real_ms)"
     CURRENT_STATE="$TMP/$label-state-php"
     rm -rf "$CURRENT_STATE"
     mkdir -p "$CURRENT_STATE"
+    php_before="$(real_ms)"
     run_command php "$ROOT/cli/run/run-start.sh" run-start "$TMP/$label.php.out" "$TMP/$label.php.err" "$TMP/$label.php.code" "$@"
+    php_after="$(real_ms)"
     compare_outputs "$label" "$TMP/$label.sh.out" "$TMP/$label.php.out" "$TMP/$label.sh.err" "$TMP/$label.php.err" "$TMP/$label.sh.code" "$TMP/$label.php.code"
+    if [ "$(cat "$TMP/$label.sh.code")" = 0 ]; then
+        case "${1:-}" in
+            --show|--end) ;;
+            *)
+                assert_start_timestamp "$label shell" "$TMP/$label-state-sh" "$sh_before" "$sh_after"
+                assert_start_timestamp "$label php" "$TMP/$label-state-php" "$php_before" "$php_after"
+                ;;
+        esac
+    fi
     snapshot_state "$TMP/$label-state-sh" "$TMP/$label-snapshot-sh"
     snapshot_state "$TMP/$label-state-php" "$TMP/$label-snapshot-php"
     cmp -s "$TMP/$label-snapshot-sh/list" "$TMP/$label-snapshot-php/list" || fail "$label: state files differ"
@@ -243,6 +314,10 @@ foreign_state() {
 # ПРАВИЛО: foreign awaiting_worker не перетинає target; terminal/none дозволяють reset.
 # САБОТАЖ: дозвіл active foreign batch має змінити target/state і впасти.
 for state_case in none verified failed_terminal awaiting_worker; do
+    sh_before=''
+    sh_after=''
+    php_before=''
+    php_after=''
     for side in sh php; do
         state="$TMP/foreign-$state_case-$side"
         if [ "$state_case" = none ]; then
@@ -257,10 +332,18 @@ for state_case in none verified failed_terminal awaiting_worker; do
     done
     CURRENT_STATE="$TMP/foreign-$state_case-sh"
     CURRENT_ENV="$DEV_ENV"
+    sh_before="$(real_ms)"
     run_command sh "$ROOT/cli/run/run-start.sh" run-start "$TMP/foreign-$state_case.sh.out" "$TMP/foreign-$state_case.sh.err" "$TMP/foreign-$state_case.sh.code"
+    sh_after="$(real_ms)"
     CURRENT_STATE="$TMP/foreign-$state_case-php"
+    php_before="$(real_ms)"
     run_command php "$ROOT/cli/run/run-start.sh" run-start "$TMP/foreign-$state_case.php.out" "$TMP/foreign-$state_case.php.err" "$TMP/foreign-$state_case.php.code"
+    php_after="$(real_ms)"
     compare_outputs "foreign-$state_case" "$TMP/foreign-$state_case.sh.out" "$TMP/foreign-$state_case.php.out" "$TMP/foreign-$state_case.sh.err" "$TMP/foreign-$state_case.php.err" "$TMP/foreign-$state_case.sh.code" "$TMP/foreign-$state_case.php.code"
+    if [ "$(cat "$TMP/foreign-$state_case.sh.code")" = 0 ]; then
+        assert_start_timestamp "foreign-$state_case shell" "$TMP/foreign-$state_case-sh" "$sh_before" "$sh_after"
+        assert_start_timestamp "foreign-$state_case php" "$TMP/foreign-$state_case-php" "$php_before" "$php_after"
+    fi
     snapshot_state "$TMP/foreign-$state_case-sh" "$TMP/foreign-$state_case-snapshot-sh"
     snapshot_state "$TMP/foreign-$state_case-php" "$TMP/foreign-$state_case-snapshot-php"
     diff -ru "$TMP/foreign-$state_case-snapshot-sh" "$TMP/foreign-$state_case-snapshot-php" >/dev/null || fail "foreign-$state_case state differs"
@@ -269,6 +352,76 @@ for state_case in none verified failed_terminal awaiting_worker; do
         grep -Fq 'ЗАБЛОКОВАНО' "$TMP/foreign-$state_case.sh.err" || fail 'active foreign block not named'
     fi
 done
+
+# ПРАВИЛО: reset filesystem failures are fail-closed and name the path; both --end
+# and stale-target cleanup use the same four-file set without deleting directories.
+# САБОТАЖ: unchecked unlink may claim success or produce a different state shape.
+prepare_reset_failure_state() {
+    local state="$1"
+    mkdir -p "$state"
+    printf 'foreign\n' >"$state/run-target"
+    printf 'marker\n' >"$state/run-started-at"
+    mkdir -p "$state/run-batches.json"
+    printf 'marker\n' >"$state/run-seen.json"
+    printf 'protected\n' >"$state/protected"
+}
+
+compare_reset_failure() {
+    local label="$1" mode="$2"
+    prepare_reset_failure_state "$TMP/$label-state-sh"
+    prepare_reset_failure_state "$TMP/$label-state-php"
+    if [ "$mode" = end ]; then
+        CURRENT_ENV="$TMP/missing.env"
+        CURRENT_STATE="$TMP/$label-state-sh"
+        run_command sh "$ROOT/cli/run/run-start.sh" run-start "$TMP/$label.sh.out" "$TMP/$label.sh.err" "$TMP/$label.sh.code" --end
+        CURRENT_STATE="$TMP/$label-state-php"
+        run_command php "$ROOT/cli/run/run-start.sh" run-start "$TMP/$label.php.out" "$TMP/$label.php.err" "$TMP/$label.php.code" --end
+    else
+        CURRENT_ENV="$DEV_ENV"
+        CURRENT_STATE="$TMP/$label-state-sh"
+        run_command sh "$ROOT/cli/run/run-start.sh" run-start "$TMP/$label.sh.out" "$TMP/$label.sh.err" "$TMP/$label.sh.code"
+        CURRENT_STATE="$TMP/$label-state-php"
+        run_command php "$ROOT/cli/run/run-start.sh" run-start "$TMP/$label.php.out" "$TMP/$label.php.err" "$TMP/$label.php.code"
+    fi
+    test "$(cat "$TMP/$label.sh.code")" != 0 || fail "$label: shell reset failure стала успішною"
+    test "$(cat "$TMP/$label.php.code")" != 0 || fail "$label: PHP reset failure стала успішною"
+    grep -Fq 'run-batches.json' "$TMP/$label.sh.err" || fail "$label: shell не назвав проблемний path"
+    grep -Fq 'run-batches.json' "$TMP/$label.php.err" || fail "$label: PHP не назвав проблемний path"
+    snapshot_state "$TMP/$label-state-sh" "$TMP/$label-snapshot-sh"
+    snapshot_state "$TMP/$label-state-php" "$TMP/$label-snapshot-php"
+    diff -ru "$TMP/$label-snapshot-sh" "$TMP/$label-snapshot-php" >/dev/null || fail "$label: state composition differs"
+}
+
+compare_reset_failure reset-end end
+compare_reset_failure reset-stale start
+
+# ПРАВИЛО: unreadable regular run-target is an I/O failure, never an empty success.
+# САБОТАЖ: failed fopen/file_get_contents may otherwise become empty state.
+unreadable_state="$TMP/unreadable-state"
+mkdir -p "$unreadable_state"
+printf 'local\n' >"$unreadable_state/run-target"
+chmod 000 "$unreadable_state/run-target"
+if [ -r "$unreadable_state/run-target" ]; then
+    chmod 644 "$unreadable_state/run-target"
+    printf 'unreadable run-target: SKIP (filesystem permissions remain readable)\n'
+else
+    CURRENT_ENV="$TMP/missing.env" CURRENT_STATE="$unreadable_state"
+    run_command sh "$ROOT/cli/run/run-start.sh" run-start "$TMP/unreadable-show.sh.out" "$TMP/unreadable-show.sh.err" "$TMP/unreadable-show.sh.code" --show
+    CURRENT_STATE="$unreadable_state"
+    run_command php "$ROOT/cli/run/run-start.sh" run-start "$TMP/unreadable-show.php.out" "$TMP/unreadable-show.php.err" "$TMP/unreadable-show.php.code" --show
+    test "$(cat "$TMP/unreadable-show.sh.code")" != 0 || fail 'unreadable --show: shell стала успішною'
+    test "$(cat "$TMP/unreadable-show.php.code")" != 0 || fail 'unreadable --show: PHP стала успішною'
+    grep -Fq 'run-target' "$TMP/unreadable-show.sh.err" || fail 'unreadable --show: shell не назвала path'
+    grep -Fq 'run-target' "$TMP/unreadable-show.php.err" || fail 'unreadable --show: PHP не назвала path'
+    CURRENT_ENV="$DEV_ENV" CURRENT_STATE="$unreadable_state"
+    run_command sh "$ROOT/cli/run/run-start.sh" run-start "$TMP/unreadable-start.sh.out" "$TMP/unreadable-start.sh.err" "$TMP/unreadable-start.sh.code"
+    CURRENT_STATE="$unreadable_state"
+    run_command php "$ROOT/cli/run/run-start.sh" run-start "$TMP/unreadable-start.php.out" "$TMP/unreadable-start.php.err" "$TMP/unreadable-start.php.code"
+    test "$(cat "$TMP/unreadable-start.sh.code")" != 0 || fail 'unreadable start: shell стала успішною'
+    test "$(cat "$TMP/unreadable-start.php.code")" != 0 || fail 'unreadable start: PHP стала успішною'
+    grep -Fq 'run-target' "$TMP/unreadable-start.sh.err" || fail 'unreadable start: shell не назвала path'
+    grep -Fq 'run-target' "$TMP/unreadable-start.php.err" || fail 'unreadable start: PHP не назвала path'
+fi
 
 # ПРАВИЛО: native Run PHP code не залежить від Unix helpers і не робить network calls.
 # САБОТАЖ: повернення subprocess зробило б direct PHP proof червоним.

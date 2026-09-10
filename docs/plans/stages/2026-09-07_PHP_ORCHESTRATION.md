@@ -419,6 +419,11 @@ alias до запуску write-тестів. Підетап 5 закритий 
 Вони переносять preset/target foundation без driver loop, викликів моделей або
 PROD write; rollback лишається через `BDO_ORCHESTRATOR=sh`.
 
+**Ревʼю 6.5.0:** `NEEDS CORRECTION`. Exact CI `87cfa84` зелений, але D129
+виявив фіктивну timestamp-нормалізацію й неповну перевірку причин invalid
+RunSpec, а D130 - silent filesystem failures у `RunStartCommand`.
+Corrective 6.5.1 не розширює migration scope і не переносить інші `cli/run/**`.
+
 **Мета.** Драйвер і цикл · у PHP.
 
 **Інваріант, який легко порушити саме тут:** ПОРЯДОК КРОКІВ ТРИМАЄ КОД. Конверт

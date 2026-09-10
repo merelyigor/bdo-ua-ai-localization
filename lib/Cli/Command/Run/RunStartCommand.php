@@ -27,7 +27,11 @@ final class RunStartCommand implements Command
         if ($first === '--show') {
             $targetFile = $stateDir.'/run-target';
             if (is_file($targetFile)) {
-                $output->stdout((string) file_get_contents($targetFile));
+                $contents = @file_get_contents($targetFile);
+                if ($contents === false) {
+                    throw new RuntimeException('Не вдалося прочитати файл стану: '.$targetFile);
+                }
+                $output->stdout($contents);
             } else {
                 $output->stdout("Прогін не розпочато.\n");
             }
@@ -36,9 +40,7 @@ final class RunStartCommand implements Command
         }
 
         if ($first === '--end') {
-            foreach (self::RESET_FILES as $file) {
-                @unlink($stateDir.'/'.$file);
-            }
+            $this->removeResetFiles($stateDir);
             $output->stdout("Прогін завершено, фіксацію знято.\n");
 
             return 0;
@@ -138,9 +140,13 @@ final class RunStartCommand implements Command
     {
         $handle = @fopen($path, 'rb');
         if ($handle === false) {
-            return '';
+            throw new RuntimeException('Не вдалося прочитати файл стану: '.$path);
         }
         $line = fgets($handle);
+        if ($line === false && ! feof($handle)) {
+            fclose($handle);
+            throw new RuntimeException('Не вдалося прочитати файл стану: '.$path);
+        }
         fclose($handle);
 
         return trim((string) $line);
@@ -148,8 +154,18 @@ final class RunStartCommand implements Command
 
     private function removeResetFiles(string $stateDir): void
     {
+        $failedPath = null;
         foreach (self::RESET_FILES as $file) {
-            @unlink($stateDir.'/'.$file);
+            $path = $stateDir.'/'.$file;
+            if (! file_exists($path) && ! is_link($path)) {
+                continue;
+            }
+            if (! @unlink($path) || file_exists($path) || is_link($path)) {
+                $failedPath ??= $path;
+            }
+        }
+        if ($failedPath !== null) {
+            throw new RuntimeException('Не вдалося видалити файл стану: '.$failedPath);
         }
     }
 
