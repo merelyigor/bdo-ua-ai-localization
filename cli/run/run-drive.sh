@@ -1,5 +1,9 @@
 #!/usr/bin/env bash
 # Детермінований OpenCode-only driver поточної пачки.
+if [ "${BDO_ORCHESTRATOR:-php}" != sh ]; then
+    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+    exec php "$SCRIPT_DIR/cli/bdo.php" run-drive "$@"
+fi
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")/../.." && pwd)"
@@ -117,30 +121,37 @@ release_driver_lock() {
 # повторною емісією того самого child. Коротке вікно лише оновлює backoff;
 # остаточно зупинити ту саму пачку може тільки загальний бюджет повторів.
 retry_exceeded() {
-    local result
-    result="$(php -r '
+    local result retry_file="$B/drive-retries.json"
+    if ! result="$(php -r '
         $f=$argv[1]; $key=$argv[2]; $now=time();
         $window=max(1,(int)(getenv("BDO_CHILD_RETRY_WINDOW_SECONDS") ?: 600));
         $budget=max($window,(int)(getenv("BDO_CHILD_RETRY_TOTAL_SECONDS") ?: 86400));
-        $a=is_file($f)?(json_decode((string)file_get_contents($f),true)?:[]):[];
+        if (is_file($f)) {
+            if (!is_readable($f)) { fwrite(STDERR, "Не вдалося прочитати файл стану: $f\n"); exit(2); }
+            try { $a=json_decode((string)file_get_contents($f),true,512,JSON_THROW_ON_ERROR); }
+            catch (Throwable) { fwrite(STDERR, "Пошкоджений файл стану: $f\n"); exit(2); }
+            if (!is_array($a)) { fwrite(STDERR, "Пошкоджений файл стану: $f\n"); exit(2); }
+        } else { $a=[]; }
         $e=is_array($a[$key]??null)?$a[$key]:[];
-        $overall=(int)($e["overall_first_at"]??0);
-        if($overall===0){$overall=$now;}
-        $first=(int)($e["first_at"]??0);
-        if($first===0){$first=$now;}
+        $overall=(int)($e["overall_first_at"]??0); if($overall===0){$overall=$now;}
+        $first=(int)($e["first_at"]??0); if($first===0){$first=$now;}
         $rollovers=(int)($e["window_rollovers"]??0);
-        // Спроба, що вичерпала бюджет, теж є спробою. Раніше вихід стояв ДО
-        // запису, тому термінальний конверт звітував про нуль спроб і нульовий
-        // простій · рівно та інформація, заради якої власника й зупиняють.
         $exhausted = ($now-$overall >= $budget);
         if(!$exhausted && $now-$first >= $window){$first=$now;$rollovers++;}
         $count=(int)($e["count"]??0)+1;
         $delay=min(60,2 ** min(6,$count-1));
         $a[$key]=["count"=>$count,"first_at"=>$first,"overall_first_at"=>$overall,"window_rollovers"=>$rollovers,"last_at"=>$now,"delay"=>$delay];
-        file_put_contents($f,json_encode($a,JSON_UNESCAPED_SLASHES),LOCK_EX);
+        $tmp=$f.".tmp.".bin2hex(random_bytes(5));
+        $json=json_encode($a,JSON_UNESCAPED_SLASHES|JSON_THROW_ON_ERROR)."\n";
+        if (@file_put_contents($tmp,$json,LOCK_EX)===false || !@rename($tmp,$f)) {
+            @unlink($tmp); fwrite(STDERR, "Не вдалося записати файл стану: $f\n"); exit(3);
+        }
         if($exhausted){echo "exhausted"; exit;}
         echo "wait:".$delay;
-    ' "$B/drive-retries.json" "$1")"
+    ' "$retry_file" "$1")"; then
+        emit 0 "$(field state)" "$(php -r 'echo json_encode(["kind"=>"blocked","reason"=>"retry_state_unavailable","path"=>$argv[1]],JSON_UNESCAPED_SLASHES);' "$retry_file")"
+        exit 1
+    fi
     case "$result" in
         exhausted) return 0 ;;
         wait:*) sleep "${result#wait:}"; return 1 ;;
@@ -187,9 +198,21 @@ patch_remaining_when_needed() {
 completion() {
     php -r '
     $summaryFile=$argv[1];$reportFile=$argv[2];$manifestFile=$argv[3];$runFile=$argv[4];$batch=$argv[5];
-    $manifest=json_decode((string)file_get_contents($manifestFile),true,512,JSON_THROW_ON_ERROR);
+    $error=function(string $kind,string $reason,string $path): void {
+        echo json_encode(["kind"=>$kind,"reason"=>$reason,"path"=>$path],JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES); exit;
+    };
+    $atomic=function(string $path,string $json): bool {
+        $tmp=$path.".tmp.".bin2hex(random_bytes(5));
+        if(@file_put_contents($tmp,$json,LOCK_EX)===false || !@rename($tmp,$path)){@unlink($tmp);return false;}
+        return true;
+    };
+    try {$manifest=json_decode((string)file_get_contents($manifestFile),true,512,JSON_THROW_ON_ERROR);}
+    catch(Throwable) {$error("blocked","batch_summary_unavailable",$manifestFile);}
+    if(!is_array($manifest)){$error("blocked","batch_summary_unavailable",$manifestFile);}
     if(is_file($summaryFile)){
-        $summary=json_decode((string)file_get_contents($summaryFile),true,512,JSON_THROW_ON_ERROR);
+        try {$summary=json_decode((string)file_get_contents($summaryFile),true,512,JSON_THROW_ON_ERROR);}
+        catch(Throwable) {$error("blocked","batch_summary_unavailable",$summaryFile);}
+        if(!is_array($summary)){$error("blocked","batch_summary_unavailable",$summaryFile);}
     }else{
         $report=is_file($reportFile)?(string)file_get_contents($reportFile):"";
         preg_match("/Пачка: ([0-9]+) рядків/",$report,$total);
@@ -201,20 +224,22 @@ completion() {
             "target_written"=>(int)($target[1]??0),"target_skipped"=>(int)($target[2]??0),"target_rejected"=>(int)($target[3]??0),
             "moderation_written"=>(int)($moderation[1]??0),"moderation_skipped"=>0,"moderation_rejected"=>0,
             "quarantine"=>(int)($held[1]??0)+(int)($rejected[1]??0)];
-        file_put_contents($summaryFile,json_encode($summary,JSON_UNESCAPED_UNICODE|JSON_PRETTY_PRINT|JSON_THROW_ON_ERROR)."\n",LOCK_EX);
+        if(!$atomic($summaryFile,json_encode($summary,JSON_UNESCAPED_UNICODE|JSON_PRETTY_PRINT|JSON_THROW_ON_ERROR)."\n")){$error("blocked","batch_summary_unavailable",$summaryFile);}
     }
     $scope=implode(":",[(string)($manifest["mode"]??""),(string)($manifest["patch"]??""),(string)($manifest["channel"]??"")]);
-    $run=is_file($runFile)?json_decode((string)file_get_contents($runFile),true):null;
-    if(!is_array($run)||($run["scope"]??null)!==$scope)$run=["scope"=>$scope,"batches"=>[],"totals"=>[]];
+    if(is_file($runFile)){
+        try {$run=json_decode((string)file_get_contents($runFile),true,512,JSON_THROW_ON_ERROR);}
+        catch(Throwable) {$error("blocked","run_summary_unavailable",$runFile);}
+        if(!is_array($run)){$error("blocked","run_summary_unavailable",$runFile);}
+    }else{$run=[];}
+    if(($run["scope"]??null)!==$scope)$run=["scope"=>$scope,"batches"=>[],"totals"=>[]];
     if(!isset($run["batches"][$batch])){
         $run["batches"][$batch]=$summary;
         foreach(["rows","target_written","target_skipped","target_rejected","moderation_written","moderation_skipped","moderation_rejected","quarantine"] as $key){
             $run["totals"][$key]=(int)($run["totals"][$key]??0)+(int)($summary[$key]??0);
         }
     }
-    $tmp=$runFile.".tmp.".bin2hex(random_bytes(5));
-    file_put_contents($tmp,json_encode($run,JSON_UNESCAPED_UNICODE|JSON_PRETTY_PRINT|JSON_THROW_ON_ERROR)."\n",LOCK_EX);
-    rename($tmp,$runFile);
+    if(!$atomic($runFile,json_encode($run,JSON_UNESCAPED_UNICODE|JSON_PRETTY_PRINT|JSON_THROW_ON_ERROR)."\n")){$error("blocked","run_summary_unavailable",$runFile);}
     // Нагадування про свіжу сесію.
     // Підказку «почни нову сесію» прибрано разом із диригентом.
     //
@@ -232,8 +257,12 @@ completion() {
     // Ціль записана в `run-goal.json` під час `mode start`, тому тут її можна
     // перевірити механічно й сказати рівно наступний крок.
     $goalFile=dirname($argv[4])."/run-goal.json";
-    $goal=is_file($goalFile)?json_decode((string)file_get_contents($goalFile),true):null;
-    if(is_array($goal)&&($goal["query"]??"")!==""&&$argv[6]!==""){
+    if(is_file($goalFile)){
+        try {$goal=json_decode((string)file_get_contents($goalFile),true,512,JSON_THROW_ON_ERROR);}
+        catch(Throwable) {$error("blocked","run_goal_invalid",$goalFile);}
+        if(!is_array($goal)||!is_string($goal["query"]??null)||$goal["query"]===""){$error("blocked","run_goal_invalid",$goalFile);}
+        if($argv[6]==="__UNAVAILABLE__"){$error("retry","goal_status_unavailable",$goalFile);}
+        if(!preg_match("/^-?[0-9]+$/",$argv[6])){$error("retry","goal_status_unavailable",$goalFile);}
         $remaining=(int)$argv[6];
         // Рядки з вичерпаними спробами сервер і далі рахує як «лишилось», а
         // вибірка їх уже не бере (D58). Без віднімання прогін ганявся б за
@@ -258,6 +287,7 @@ completion() {
             // рядок означало тримати єдине місце, де набір міг би запустити
             // довільну команду з файла · заради читача, якого більше немає.
             $out["hint"]=sprintf("Ціль ще не досягнута: лишилось %d рядків.",$remaining);
+        }elseif(($goal["domain"]??"")!==""&&$argv[7]==="__UNAVAILABLE__"){$error("retry","goal_status_unavailable",$goalFile);
         }elseif(($goal["domain"]??"")!==""&&(int)$argv[7]>0){
             // Категорія скінчилась, але патч · ні. Далі йдемо ПАТЧЕМ, без
             // категорії: власник просив патч, а категорія була лише способом
@@ -299,34 +329,38 @@ patch_remaining() {
     # Заглушка перевіряється ПЕРШОЮ: офлайн-тест інакше вийшов би до неї, і
     # перевірка мовчки міряла б порожнечу замість поведінки.
     if [ -n "${BDO_PATCH_REMAINING_STUB+x}" ]; then printf '%s' "$BDO_PATCH_REMAINING_STUB"; return 0; fi
-    test "${BDO_PIPELINE_OFFLINE:-0}" = 1 && return 0
-    ( set +e
+    if [ "${BDO_PIPELINE_OFFLINE:-0}" = 1 ]; then printf '0'; return 0; fi
+    local value
+    value="$( ( set +e
       # shellcheck source=/dev/null
       source "$SCRIPT_DIR/cli/system/select-env.sh" >/dev/null 2>&1 || exit 0
       "$SCRIPT_DIR/cli/api/http-request.sh" -fsS -H "X-API-Key: $BDO_API_KEY" \
           "$BDO_API_BASE/rows?patch=$patch&missing=machine&exclude_proposed=1&limit=1&include_total=1&fields=core" 2>/dev/null \
           | php -r '$d=json_decode((string)stream_get_contents(STDIN),true);
               if(!is_array($d)||!isset($d["meta"]["total_matching"]))exit;
-              echo (int)$d["meta"]["total_matching"];' ) || true
+              echo (int)$d["meta"]["total_matching"];' ) || true )"
+    if [[ "$value" =~ ^[0-9]+$ ]]; then printf '%s' "$value"; else printf '__UNAVAILABLE__'; fi
     return 0
 }
 
 goal_remaining() {
     # Заглушка лише для тестів: живий шлях однаково йде в API нижче.
     if [ -n "${BDO_GOAL_REMAINING_STUB:-}" ]; then printf '%s' "$BDO_GOAL_REMAINING_STUB"; return 0; fi
-    test "${BDO_PIPELINE_OFFLINE:-0}" = 1 && return 0
+    if [ "${BDO_PIPELINE_OFFLINE:-0}" = 1 ]; then printf '0'; return 0; fi
     test -s "$STATE_DIR/run-goal.json" || return 0
     local query
     query="$(php -r '$g=json_decode((string)file_get_contents($argv[1]),true)?:[];echo (string)($g["query"]??"");' "$STATE_DIR/run-goal.json")"
     test -n "$query" || return 0
-    ( set +e
+    local value
+    value="$( ( set +e
       # shellcheck source=/dev/null
       source "$SCRIPT_DIR/cli/system/select-env.sh" >/dev/null 2>&1 || exit 0
       "$SCRIPT_DIR/cli/api/http-request.sh" -fsS -H "X-API-Key: $BDO_API_KEY" \
           "$BDO_API_BASE/rows?$query&exclude_proposed=1&limit=1&include_total=1&fields=core" 2>/dev/null \
           | php -r '$d=json_decode((string)stream_get_contents(STDIN),true);
               if(!is_array($d)||!isset($d["meta"]["total_matching"]))exit;
-              echo (int)$d["meta"]["total_matching"];' ) || true
+              echo (int)$d["meta"]["total_matching"];' ) || true )"
+    if [[ "$value" =~ ^[0-9]+$ ]]; then printf '%s' "$value"; else printf '__UNAVAILABLE__'; fi
     return 0
 }
 prepare_worker() {
@@ -961,7 +995,13 @@ names_pass)
     transition ready_to_commit; emit 1 ready_to_commit '{"kind":"continue","reason":"names_fixed"}'
     ;;
 verified)
-    envelope="$(completion)"; prune_verified_batch; auto_clean
+    envelope="$(completion)"
+    completion_kind="$(php -r '$x=json_decode($argv[1],true); echo is_array($x)?(string)($x["kind"]??""):"blocked";' "$envelope")"
+    if [ "$completion_kind" = blocked ] || [ "$completion_kind" = retry ]; then
+        emit 0 verified "$envelope"
+        exit 1
+    fi
+    prune_verified_batch; auto_clean
     emit 1 verified "$envelope"
     ;;
 *) emit 0 "$state" "$(php -r 'echo json_encode(["kind"=>"blocked","reason"=>$argv[1]]);' "$state")"; exit 1 ;;

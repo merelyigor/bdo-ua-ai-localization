@@ -117,9 +117,10 @@ for step in 'drive' 'mode.start'; do
     grep -Fq "\"\$TIMED\" $step" "$ROOT/cli/run/run-loop.sh" \
         || fail "у драйвері немає мітки кроку «${step}»"
 done
-for step in 'commit' 'validate.final' 'validate.early'; do
-    grep -Fq "\"\$TIMED\" $step" "$ROOT/cli/run/run-drive.sh" \
-        || fail "у рушії немає мітки кроку «${step}»"
+PUBLISHED_STEPS="$(php -r 'require $argv[1]; echo implode("\n", Bdo\Translate\Cli\Command\Run\RunDriveCommand::timedSteps());' "$ROOT/lib/autoload.php")"
+for step in validate.early validate.final commit; do
+    grep -Fqx "$step" <<< "$PUBLISHED_STEPS" \
+        || fail "RunDriveCommand::timedSteps() не публікує «${step}»"
 done
 
 echo 'step times: OK · обгортка прозора, мітка є й на відмові, чуже імʼя кроку відхилено, звіт не змішує пачки.'

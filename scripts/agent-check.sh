@@ -713,7 +713,8 @@ check_run_php_subprocess_guards() {
     local file hits
     for file in lib/Cli/Command/Run/RunSpecCommand.php \
         lib/Cli/Command/Run/RunStartCommand.php \
-        lib/Cli/Command/Run/RunModeCommand.php; do
+        lib/Cli/Command/Run/RunModeCommand.php \
+        lib/Cli/Command/Run/RunDriveCommand.php; do
         test -f "$file" || fail "відсутній Run PHP-файл: $file"
         grep -Fq 'ПРАВИЛО:' "$file" || fail "у $file немає коментаря ПРАВИЛО:"
         grep -Fq 'САБОТАЖ:' "$file" || fail "у $file немає коментаря САБОТАЖ:"
@@ -1037,6 +1038,7 @@ $braceless"
     run bash tests/cli-batch-clean-parity.sh
     run bash tests/cli-run-foundation-parity.sh
     run bash tests/cli-run-mode-parity.sh
+    run bash tests/cli-run-drive-parity.sh
     check_write_test_safety
     check_write_php_subprocess_guards
     run bash tests/cli-write-parity.sh
@@ -1110,12 +1112,11 @@ check_agents() {
     # Кожна роль, яку вміє віддати рушій, мусить бути в реєстрі · інакше драйвер
     # зупиниться на живій пачці з «unknown_role».
     local engine_roles missing
-    # Беремо аргумент функції `child <стан> <роль> …`, а не будь-яку згадку
-    # рядка `translation-*`: інакше коментар про давно видалений плагін валить
-    # gate як «невідому роль».
-    engine_roles="$(grep -oE '^[[:space:]]*(child|transition [a-z_]+; child) [a-z_]+ translation-[a-z]+' cli/run/run-drive.sh \
-        | grep -oE 'translation-[a-z]+' | sort -u)"
-    test -n "$engine_roles" || fail 'у cli/run/run-drive.sh не знайдено жодної ролі'
+    # ПРАВИЛО: default PHP engine є live source of truth для direct child roles.
+    # САБОТАЖ: роль у frozen rollback shell може лишитися старою й не має робити
+    # gate зеленим після зміни PHP allowlist.
+    engine_roles="$(php -r 'require "lib/autoload.php"; echo implode("\n", Bdo\Translate\Cli\Command\Run\RunDriveCommand::roles());' | sort -u)"
+    test -n "$engine_roles" || fail 'RunDriveCommand::roles() не повернув ролей'
     missing=""
     for role in $engine_roles; do
         jq -e --arg r "$role" '.roles[$r]' config/roles.json >/dev/null || missing="$missing $role"

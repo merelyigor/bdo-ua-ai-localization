@@ -454,6 +454,22 @@ proof: directory `run-batches.json` падав на read до перевірки
 а size15 sabotage зупинявся раніше на size20 differential. Corrective 6.5.5
 змінює лише test/evidence і не чіпає production behavior.
 
+**Ревʼю 6.5.5:** `ACCEPTED`. Exact CI `0975933` зелений; D134 тепер
+фізично доходить до budget write-result guard у shell і PHP, а narrow
+size15 sabotage не перехоплюється валідним size20 case. Ланцюг
+`6.5.3`-`6.5.5` прийнято як native `run-mode`.
+
+**Пакет 6.5.6:** переносить цілий `run-drive.sh` у `RunDriveCommand`.
+Це остання state-machine межа перед циклом і єдиний залишок підетапу 6,
+який сам доходить до translation write. Пакет також закриває D136-D138:
+retry budget, run goal і completion summary стають fail-closed у PHP та
+rollback-shell. Бойовий PROD write не використовується для перевірки.
+
+**Межа visibility:** `cli/run/run-stop.sh` і `cli/run/step-report.sh`
+переносяться з підетапом 7, а не з driver. Перший прямо делегує
+`cli/system/watch.sh`/tmux, другий визначає ширину через `/dev/tty` і `stty`;
+обидва залежать від Stage7 process/visibility design.
+
 **Мета.** Драйвер і цикл · у PHP.
 
 **Інваріант, який легко порушити саме тут:** ПОРЯДОК КРОКІВ ТРИМАЄ КОД. Конверт
@@ -464,6 +480,10 @@ proof: directory `run-batches.json` падав на read до перевірки
 доказ, що конверт не змінився.
 
 ### Підетап 7 · `cli/system/**` (14 файлів, 2 039 рядків) і видимість
+
+До цього підетапу також входять `cli/run/run-stop.sh` і
+`cli/run/step-report.sh`: їхній перенос неможливо коректно відділити від
+watch/process і terminal-visibility abstraction.
 
 **Мета.** Сервер сторінки, сесії, значок, вікно · у PHP; крос-платформна
 видимість замість tmux.
@@ -476,6 +496,9 @@ proof: directory `run-batches.json` падав на read до перевірки
 проходять на macOS без змін.
 
 ### Підетап 8 · вхідні точки й прибирання
+
+Тут також закривається D135 у `bdo::print_header()`: detailed help має читати
+header перенесеного wrapper незалежно від PHP dispatcher перед ним.
 
 **Мета.** `bdo` стає тонким (пошук php → `php cli/bdo.php`), `bdo.bat` працює
 БЕЗ WSL2, старі `.sh` видаляються, `BDO_ORCHESTRATOR` прибирається.

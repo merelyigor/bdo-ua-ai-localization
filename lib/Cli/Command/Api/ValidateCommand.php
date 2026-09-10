@@ -20,8 +20,16 @@ use RuntimeException;
  */
 final class ValidateCommand implements Command
 {
+    private ?string $resultPath = null;
+
+    public function resultPath(): ?string
+    {
+        return $this->resultPath;
+    }
+
     public function execute(array $arguments, Output $output): int
     {
+        $this->resultPath = null;
         $root = dirname(__DIR__, 4);
         $environment = ApiEnvironment::load($root);
         $target = getenv('BDO_API_TARGET') === 'hub' ? 'ХАБ ' : '';
@@ -96,6 +104,7 @@ final class ValidateCommand implements Command
             $output->stdout("\n  УВАГА: відкинуто ".(($warning['rejected_ratio'] ?? 0) * 100)."% - зламався промпт?\n");
         }
         $output->stdout("\nДеталі: {$out}\n");
+        $this->resultPath = $out;
 
         return 0;
     }
