@@ -471,6 +471,10 @@ rollback-shell. Бойовий PROD write не використовується 
 
 **Corrective 6.5.7:** виправляє лише підтверджені D139-D147 у межах `run-drive` і додає differential behavioral proof небезпечних state/retry/write/completion branches. `run-loop`, Stage7 і наступні підетапи не входять у corrective. Підетап 6 лишається `у роботі` до окремого Architect-review exact diff + CI.
 
+**Ревʼю 6.5.7:** `NEEDS CORRECTION`. Exact GitHub Actions run №26 (`34532213472`) на `249d8a0` зелений, але executable review знайшов D148-D150. Native invalid `names-fixes` retry досі не rebuild-ив schema як rollback; D140 effective-threshold proof був недосяжний через ready-response fixture; D143 перевіряв лише term-notes queue, а прямі in-process optional calls не зберігали subprocess fail-soft semantics для `Throwable`. Тому green gate не доводить заявлену recovery/fallback matrix.
+
+**Corrective 6.5.8:** виправляє лише D148-D150 у межах `run-drive`: останню names schema divergence, пропущені D142/D140 behavioral cases і повну explicit non-gating helper failure matrix. Frozen rollback `cli/run/run-drive.sh`, `run-loop`, Stage7 і PROD/API contract не змінюються. Підетап 6 лишається `у роботі` до окремого Architect-review exact diff + CI.
+
 **Межа visibility:** `cli/run/run-stop.sh` і `cli/run/step-report.sh`
 переносяться з підетапом 7, а не з driver. Перший прямо делегує
 `cli/system/watch.sh`/tmux, другий визначає ширину через `/dev/tty` і `stty`;

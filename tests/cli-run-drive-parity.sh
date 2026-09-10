@@ -68,6 +68,11 @@ cat >"$ROW_FILE" <<'ROWS'
 {"data":{"rows":[{"identity_hash":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","source_hash":"0237531195208572bd46f6736d33b2f6de15af3809f50d8d6162c1f506784e06","source_text":"Run drive fixture","classification":{"domain":"item","semantic_type":"name"},"tokens":[],"constraints":[],"glossary":{"terms":[]},"reference":null,"patch":"active"}]}}
 ROWS
 
+ROW_GAP_FILE="$TMP/gap-rows.json"
+cat >"$ROW_GAP_FILE" <<'ROWS'
+{"data":{"rows":[{"identity_hash":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","source_hash":"0237531195208572bd46f6736d33b2f6de15af3809f50d8d6162c1f506784e06","source_text":"Run drive fixture","classification":{"domain":"item","semantic_type":"name"},"tokens":[],"constraints":[],"glossary":{"terms":[{"canonical_source":"Run","ukrainian":null,"severity":"mandatory"}]},"reference":null,"patch":"active"}]}}
+ROWS
+
 make_workspace() {
     local state="$1" mode="$2" batch_state="$3"
     mkdir -p "$state"
@@ -80,6 +85,20 @@ make_workspace() {
             $m["memory_layers"]="all"; $m["patch"]="active"; $m["domain"]=""; $m["state"]=$argv[5]; return $m;
         }, "fixture");
     ' "$state" "$ROW_FILE" "$HARNESS/lib/autoload.php" "$mode" "$batch_state"
+}
+
+make_custom_workspace() {
+    local state="$1" rows_file="$2" mode="$3" batch_state="$4"
+    mkdir -p "$state"
+    "$REAL_PHP" -r '
+        require $argv[3];
+        $w=Bdo\Translate\Batch\Workspace::create($argv[1], Bdo\Translate\Batch\RowSet::fromFile($argv[2]), "20260910_120000");
+        copy($argv[2], $w->path("rows.json"));
+        $w->updateManifest(function(array $m) use ($argv): array {
+            $m["mode"]=$argv[4]; $m["channel"]="machine"; $m["query"]="patch=active";
+            $m["memory_layers"]="all"; $m["patch"]="active"; $m["domain"]=""; $m["state"]=$argv[5]; return $m;
+        }, "fixture");
+    ' "$state" "$rows_file" "$HARNESS/lib/autoload.php" "$mode" "$batch_state"
 }
 
 run_side() {
@@ -385,6 +404,293 @@ for side in sh php; do
     code="$(run_custom_side "$side" "$state" "$state.out" "$state.err" 0)"
     test "$code" = 0 || fail "optional-queue/$side code=$code"
     grep -Fq '"role":"translation-worker"' "$state.out" || fail "optional-queue/$side became gating"
+done
+
+# ПРАВИЛО: invalid nonempty names-fixes повторно будує schema саме з names-subset.
+# САБОТАЖ: пропущений rebuild має залишити stale identity enum і зробити case red.
+for side in sh php; do
+    state="$TMP/$side-names-invalid"
+    make_workspace "$state" patch names_pass
+    batch="$(find "$state/batches" -mindepth 1 -maxdepth 1 -type d -print -quit)"
+    printf '%s\n' '[{"identity_hash":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","text":"Прогін"}]' >"$batch/final-candidate.json"
+    printf '%s\n' '{"items":[{"identity_hash":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}]}' >"$batch/names-payload.json"
+    cp "$batch/rows.json" "$batch/names-subset.json"
+    printf '%s\n' '{"properties":{"items":{"items":{"properties":{"identity_hash":{"enum":["bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"]}}}}}}' >"$state/current-response-schema.json"
+    printf '%s\n' '{broken' >"$batch/names-fixes.json"
+    code="$(BDO_CHILD_RETRY_WINDOW_SECONDS=600 run_custom_side "$side" "$state" "$state.out" "$state.err" 1)"
+    test "$code" = 0 || fail "names-invalid/$side code=$code"
+    grep -Fq '"role":"translation-names"' "$state.out" || fail "names-invalid/$side missing retry child"
+    compgen -G "$batch/names-fixes.invalid.*.json" >/dev/null || fail "names-invalid/$side did not quarantine response"
+    grep -Fq 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' "$state/current-response-schema.json" || fail "names-invalid/$side schema was not rebuilt"
+    ! grep -Fq 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb' "$state/current-response-schema.json" || fail "names-invalid/$side kept stale schema"
+done
+assert_same_output "$TMP/sh-names-invalid.out" "$TMP/php-names-invalid.out"
+
+# ПРАВИЛО: zero-byte QA payload має бути перебудований перед redispatch child.
+# САБОТАЖ: трактувати порожній файл як готовий payload, і nonempty proof впаде.
+for side in sh php; do
+    state="$TMP/$side-qa-zero-payload"
+    make_workspace "$state" patch awaiting_qa
+    batch="$(find "$state/batches" -mindepth 1 -maxdepth 1 -type d -print -quit)"
+    printf '%s\n' '[{"identity_hash":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","text":"Прогін"}]' >"$batch/clean.json"
+    : >"$batch/qa-payload.json"
+    rm -f "$batch/verdicts.json"
+    code="$(BDO_CHILD_RETRY_WINDOW_SECONDS=600 run_custom_side "$side" "$state" "$state.out" "$state.err" 1)"
+    test "$code" = 0 || fail "qa-zero-payload/$side code=$code"
+    grep -Fq '"role":"translation-qa"' "$state.out" || fail "qa-zero-payload/$side missing QA child"
+    test -s "$batch/qa-payload.json" || fail "qa-zero-payload/$side payload stayed empty"
+    grep -Fq 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' "$batch/qa-payload.json" || fail "qa-zero-payload/$side payload missing row"
+done
+assert_same_output "$TMP/sh-qa-zero-payload.out" "$TMP/php-qa-zero-payload.out"
+
+# ПРАВИЛО: zero-byte term-proposals не приглушує реальний terminology gap.
+# САБОТАЖ: перевіряти лише is_file замість nonempty semantics, і child зникне.
+for side in sh php; do
+    state="$TMP/$side-term-proposals-zero"
+    make_custom_workspace "$state" "$ROW_GAP_FILE" patch selected
+    batch="$(find "$state/batches" -mindepth 1 -maxdepth 1 -type d -print -quit)"
+    : >"$batch/term-proposals.json"
+    : >"$REQUEST_LOG"
+    code="$(run_custom_side "$side" "$state" "$state.out" "$state.err" 0)"
+    test "$code" = 0 || fail "term-proposals-zero/$side code=$code"
+    grep -Fq '"role":"translation-terminology"' "$state.out" || fail "term-proposals-zero/$side skipped terminology"
+    test -s "$batch/terminology-payload.full.json" || fail "term-proposals-zero/$side missing terminology payload"
+done
+assert_same_output "$TMP/sh-term-proposals-zero.out" "$TMP/php-term-proposals-zero.out"
+
+make_memory_fixture() {
+    local state="$1"
+    make_workspace "$state" improve selected
+    local batch
+    batch="$(find "$state/batches" -mindepth 1 -maxdepth 1 -type d -print -quit)"
+    "$REAL_PHP" -r '$p=$argv[1];$m=json_decode(file_get_contents($p),true,512,JSON_THROW_ON_ERROR);unset($m["memory_layers"]);file_put_contents($p,json_encode($m,JSON_UNESCAPED_UNICODE|JSON_PRETTY_PRINT));' "$batch/manifest.json"
+    printf '%s\n' '{"data":{"memory":{"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa":{"variants":[{"text":"Машинний","layer":"machine"},{"text":"Ручний","layer":"manual"}]}}}}' >"$batch/memory.json"
+}
+
+run_layer_side() {
+    local layer="$1" side="$2" state="$3" out="$4" err="$5"
+    set +e
+    if [ "$side" = sh ]; then
+        if [ "$layer" = unset ]; then
+            env -u BDO_MEMORY_LAYERS BDO_ORCHESTRATOR=sh BDO_PIPELINE_OFFLINE=1 BDO_AUTO_CLEAN=0 TRANSLATE_ENV_FILE="$ENV_FILE" BDO_STATE_DIR="$state" bash "$HARNESS/cli/run/run-drive.sh" >"$out" 2>"$err"
+        else
+            BDO_MEMORY_LAYERS="$layer" BDO_ORCHESTRATOR=sh BDO_PIPELINE_OFFLINE=1 BDO_AUTO_CLEAN=0 TRANSLATE_ENV_FILE="$ENV_FILE" BDO_STATE_DIR="$state" bash "$HARNESS/cli/run/run-drive.sh" >"$out" 2>"$err"
+        fi
+    else
+        if [ "$layer" = unset ]; then
+            env -u BDO_MEMORY_LAYERS BDO_ORCHESTRATOR=php BDO_PIPELINE_OFFLINE=1 BDO_AUTO_CLEAN=0 TRANSLATE_ENV_FILE="$ENV_FILE" BDO_STATE_DIR="$state" "$REAL_PHP" "$HARNESS/cli/bdo.php" run-drive >"$out" 2>"$err"
+        else
+            BDO_MEMORY_LAYERS="$layer" BDO_ORCHESTRATOR=php BDO_PIPELINE_OFFLINE=1 BDO_AUTO_CLEAN=0 TRANSLATE_ENV_FILE="$ENV_FILE" BDO_STATE_DIR="$state" "$REAL_PHP" "$HARNESS/cli/bdo.php" run-drive >"$out" 2>"$err"
+        fi
+    fi
+    local code=$?
+    set -e
+    printf '%s\n' "$code"
+}
+
+# ПРАВИЛО: legacy improve без manifest memory_layers використовує manual downstream.
+# САБОТАЖ: прибрати fallback manual, і memory-candidate покаже machine layer.
+for side in sh php; do
+    state="$TMP/$side-improve-memory-fallback"
+    make_memory_fixture "$state"
+    code="$(run_layer_side unset "$side" "$state" "$state.out" "$state.err")"
+    test "$code" = 0 || fail "improve-memory-fallback/$side code=$code"
+    batch="$(find "$state/batches" -mindepth 1 -maxdepth 1 -type d -print -quit)"
+    grep -Fq 'Ручний' "$batch/memory-candidate.json" || fail "improve-memory-fallback/$side did not use manual memory"
+    ! grep -Fq 'Машинний' "$batch/memory-candidate.json" || fail "improve-memory-fallback/$side used machine memory"
+done
+assert_same_output "$TMP/sh-improve-memory-fallback.out" "$TMP/php-improve-memory-fallback.out"
+
+# ПРАВИЛО: зовнішній BDO_MEMORY_LAYERS є immutable override для downstream selection.
+# САБОТАЖ: overwrite the exported layer, і external machine selection стане manual.
+for side in sh php; do
+    state="$TMP/$side-memory-layer-preserved"
+    make_memory_fixture "$state"
+    code="$(run_layer_side all "$side" "$state" "$state.out" "$state.err")"
+    test "$code" = 0 || fail "memory-layer-preserved/$side code=$code"
+    batch="$(find "$state/batches" -mindepth 1 -maxdepth 1 -type d -print -quit)"
+    grep -Fq 'Машинний' "$batch/memory-candidate.json" || fail "memory-layer-preserved/$side overwrote external layer"
+done
+assert_same_output "$TMP/sh-memory-layer-preserved.out" "$TMP/php-memory-layer-preserved.out"
+
+# ПРАВИЛО: term-note threshold рахує eligible identity/snapshot, не raw queue length.
+# САБОТАЖ: raw-count замість eligible count має запустити glossary на negative fixture.
+for side in sh php; do
+    state="$TMP/$side-term-threshold-negative"
+    make_workspace "$state" patch selected
+    printf '%s\n' '{"terms":[{"canonical_source":"Already","identity_hash":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","snapshot_id":1},{"canonical_source":"Missing","snapshot_id":1},{"canonical_source":"Done","identity_hash":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","snapshot_id":1}]}' >"$state/term-notes-queue.json"
+    printf '%s\n' '{"terms":["Already","Done"]}' >"$state/proposed-term-notes.json"
+    : >"$REQUEST_LOG"
+    code="$(BDO_TERM_NOTES_MIN_QUEUE=2 run_custom_side "$side" "$state" "$state.out" "$state.err" 0)"
+    test "$code" = 0 || fail "term-threshold-negative/$side code=$code"
+    ! grep -Fq '"role":"translation-glossary"' "$state.out" || fail "term-threshold-negative/$side used raw queue"
+    ! grep -Fq '"/glossary/terms' "$REQUEST_LOG" || fail "term-threshold-negative/$side requested glossary child"
+    test ! -e "$state/term-notes-payload.json" || fail "term-threshold-negative/$side evaluated raw queue threshold"
+done
+assert_same_output "$TMP/sh-term-threshold-negative.out" "$TMP/php-term-threshold-negative.out"
+
+# ПРАВИЛО: eligible count рівно MIN запускає translation-glossary.
+# САБОТАЖ: raw/eligible boundary або strict inequality має прибрати exact child.
+for side in sh php; do
+    state="$TMP/$side-term-threshold-positive"
+    make_workspace "$state" patch selected
+    printf '%s\n' '{"terms":[{"canonical_source":"One","ukrainian":"Один","identity_hash":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","snapshot_id":1},{"canonical_source":"Two","ukrainian":"Два","identity_hash":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","snapshot_id":1}]}' >"$state/term-notes-queue.json"
+    printf '%s\n' '{"terms":[]}' >"$state/proposed-term-notes.json"
+    : >"$REQUEST_LOG"
+    code="$(BDO_TERM_NOTES_MIN_QUEUE=2 run_custom_side "$side" "$state" "$state.out" "$state.err" 0)"
+    test "$code" = 0 || fail "term-threshold-positive/$side code=$code"
+    grep -Fq '"role":"translation-glossary"' "$state.out" || fail "term-threshold-positive/$side missed exact threshold"
+    test -s "$state/term-notes-payload.json" || fail "term-threshold-positive/$side missing glossary payload"
+done
+assert_same_output "$TMP/sh-term-threshold-positive.out" "$TMP/php-term-threshold-positive.out"
+
+helper_shell_path() {
+    case "$1" in
+        term-notes-describe) printf '%s\n' 'cli/api/term-notes-describe.sh' ;;
+        concepts) printf '%s\n' 'cli/api/glossary-concepts.sh' ;;
+        memory-apply) printf '%s\n' 'cli/prepare/memory-apply.sh' ;;
+        term-notes-queue) printf '%s\n' 'cli/api/term-notes-queue.sh' ;;
+        terminology-payload) printf '%s\n' 'cli/prepare/terminology-payload.sh' ;;
+        check-russianisms) printf '%s\n' 'cli/quality/check-russianisms.sh' ;;
+        judge-payload) printf '%s\n' 'cli/prepare/judge-payload.sh' ;;
+        names-payload) printf '%s\n' 'cli/prepare/names-payload.sh' ;;
+        *) fail "unknown helper shell path: $1" ;;
+    esac
+}
+
+helper_php_path() {
+    case "$1" in
+        term-notes-describe) printf '%s\n' 'lib/Cli/Command/Api/TermNotesDescribeCommand.php' ;;
+        concepts) printf '%s\n' 'lib/Cli/Command/Api/GlossaryConceptsCommand.php' ;;
+        memory-apply) printf '%s\n' 'lib/Cli/Command/Prepare/MemoryApplyCommand.php' ;;
+        term-notes-queue) printf '%s\n' 'lib/Cli/Command/Api/TermNotesQueueCommand.php' ;;
+        terminology-payload) printf '%s\n' 'lib/Cli/Command/Prepare/TerminologyPayloadCommand.php' ;;
+        check-russianisms) printf '%s\n' 'lib/Cli/Command/Quality/CheckRussianismsCommand.php' ;;
+        judge-payload) printf '%s\n' 'lib/Cli/Command/Prepare/JudgePayloadCommand.php' ;;
+        names-payload) printf '%s\n' 'lib/Cli/Command/Prepare/NamesPayloadCommand.php' ;;
+        *) fail "unknown helper PHP path: $1" ;;
+    esac
+}
+
+inject_helper_failure() {
+    local helper="$1" side="$2" tag="$3"
+    if [ "$side" = sh ]; then
+        local relative
+        relative="$(helper_shell_path "$helper")"
+        cp "$ROOT/$relative" "$HARNESS/$relative"
+        "$REAL_PHP" -r '
+            $path=$argv[1]; $tag=$argv[2]; $source=(string) file_get_contents($path);
+            $needle="#!/usr/bin/env bash\n";
+            $line="if [ -n \"\$D150_MARKER\" ]; then printf \"%s\\n\" \"D150-".$tag."\" > \"\$D150_MARKER\"; exit 7; fi\n";
+            if (substr_count($source, $needle) !== 1) exit(1);
+            $count=0;
+            file_put_contents($path, str_replace($needle, $needle.$line, $source, $count));
+        ' "$HARNESS/$relative" "$tag"
+    else
+        local relative
+        relative="$(helper_php_path "$helper")"
+        cp "$ROOT/$relative" "$HARNESS/$relative"
+        "$REAL_PHP" -r '
+            $path=$argv[1]; $tag=$argv[2]; $source=(string) file_get_contents($path);
+            $needle="    public function execute(array \$arguments, Output \$output): int\n    {\n";
+            $line="        file_put_contents((string) getenv(\"D150_MARKER\"), \"D150-".$tag."\\n\"); throw new \\RuntimeException(\"D150 injected\");\n";
+            if (substr_count($source, $needle) !== 1) exit(1);
+            $count=0;
+            file_put_contents($path, str_replace($needle, $needle.$line, $source, $count));
+        ' "$HARNESS/$relative" "$tag"
+    fi
+}
+
+restore_helper_failure() {
+    local helper="$1"
+    cp "$ROOT/$(helper_shell_path "$helper")" "$HARNESS/$(helper_shell_path "$helper")"
+    cp "$ROOT/$(helper_php_path "$helper")" "$HARNESS/$(helper_php_path "$helper")"
+}
+
+prepare_optional_helper_fixture() {
+    local helper="$1" state="$2"
+    case "$helper" in
+        concepts)
+            make_workspace "$state" patch selected
+            printf '%s\n' '{"fetched_at":"old","concepts":[{"term":"Old"}]}' >"$state/game-concepts.json"
+            touch -t 200001010000 "$state/game-concepts.json"
+            ;;
+        memory-apply)
+            make_workspace "$state" patch selected
+            local batch
+            batch="$(find "$state/batches" -mindepth 1 -maxdepth 1 -type d -print -quit)"
+            printf '%s\n' '{"data":{"memory":{"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa":{"variants":[{"text":"Ручний","layer":"manual"}]}}}}' >"$batch/memory.json"
+            ;;
+        term-notes-describe)
+            make_workspace "$state" patch selected
+            printf '%s\n' '{"terms":[{"canonical_source":"Run","ukrainian":"Прогін","identity_hash":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","snapshot_id":1}]}' >"$state/term-notes-queue.json"
+            printf '%s\n' '{"terms":[]}' >"$state/proposed-term-notes.json"
+            ;;
+        term-notes-queue)
+            make_workspace "$state" patch selected
+            local batch
+            batch="$(find "$state/batches" -mindepth 1 -maxdepth 1 -type d -print -quit)"
+            printf '%s\n' '[]' >"$batch/terms.json"
+            ;;
+        terminology-payload)
+            make_custom_workspace "$state" "$ROW_GAP_FILE" patch selected
+            ;;
+        check-russianisms)
+            make_workspace "$state" patch candidate_valid
+            local batch
+            batch="$(find "$state/batches" -mindepth 1 -maxdepth 1 -type d -print -quit)"
+            printf '%s\n' '[{"identity_hash":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","text":"Прогін"}]' >"$batch/candidate.json"
+            ;;
+        judge-payload)
+            make_workspace "$state" patch awaiting_qa
+            local batch
+            batch="$(find "$state/batches" -mindepth 1 -maxdepth 1 -type d -print -quit)"
+            printf '%s\n' '[{"identity_hash":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","text":"Прогін"}]' >"$batch/clean.json"
+            cp "$batch/rows.json" "$batch/qa-subset.json"
+            printf '%s\n' '[{"identity_hash":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","status":"PASS","severity":"none","issue":"","fix":""}]' >"$batch/verdicts.json"
+            ;;
+        names-payload)
+            make_dry_workspace "$state"
+            printf '%s\n' '{"success":true,"data":{"results":[{"identity_hash":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","status":"rejected","code":"glossary_violation","details":{"glossary":[{"canonical":"Run","expected":"Прогін"}]}}]}}' >"$TMP/d150-validate.json"
+            ;;
+        *) fail "unknown helper fixture: $helper" ;;
+    esac
+}
+
+# ПРАВИЛО: усі rollback-optional helpers nonzero/Throwable є non-gating, але виклик має бути доведений marker-ом.
+# САБОТАЖ: прибрати відповідний catch і injected exception мусить зробити саме helper case red.
+for helper in concepts memory-apply term-notes-describe term-notes-queue terminology-payload check-russianisms judge-payload names-payload; do
+    for side in sh php; do
+        state="$TMP/$side-d150-$helper"
+        marker="$TMP/$side-d150-$helper.marker"
+        restore_helper_failure "$helper"
+        inject_helper_failure "$helper" "$side" "$helper"
+        prepare_optional_helper_fixture "$helper" "$state"
+        : >"$REQUEST_LOG"
+        if [ "$helper" = term-notes-describe ]; then
+            code="$(D150_MARKER="$marker" BDO_TERM_NOTES_MIN_QUEUE=1 run_custom_side "$side" "$state" "$state.out" "$state.err" 0)"
+        elif [ "$helper" = terminology-payload ] || [ "$helper" = concepts ]; then
+            code="$(D150_MARKER="$marker" run_custom_side "$side" "$state" "$state.out" "$state.err" 0)"
+        elif [ "$helper" = names-payload ]; then
+            code="$(D150_MARKER="$marker" BDO_FINAL_VALIDATE_STUB="$TMP/d150-validate.json" run_dry_side "$side" "$state" "$state.out" "$state.err")"
+        else
+            code="$(D150_MARKER="$marker" run_custom_side "$side" "$state" "$state.out" "$state.err" 1)"
+        fi
+        test "$code" = 0 || fail "d150-$helper/$side code=$code"
+        test -s "$marker" || fail "d150-$helper/$side marker missing"
+        grep -Fq "D150-$helper" "$marker" || fail "d150-$helper/$side wrong marker"
+        if [ "$helper" = names-payload ]; then
+            grep -Fq '"kind":"complete"' "$state.out" || fail "d150-$helper/$side did not continue to dry commit"
+        elif [ "$helper" = judge-payload ]; then
+            grep -Eq '"kind":"(child|continue|complete)"' "$state.out" || fail "d150-$helper/$side did not continue"
+        else
+            grep -Fq '"kind":"child"' "$state.out" || fail "d150-$helper/$side did not continue"
+        fi
+        if [ "$side" = php ]; then
+            assert_same_output "$TMP/sh-d150-$helper.out" "$TMP/php-d150-$helper.out"
+        fi
+    done
+    restore_helper_failure "$helper"
 done
 
 run_blocker_case() {
