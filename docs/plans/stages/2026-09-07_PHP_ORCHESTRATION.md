@@ -430,6 +430,18 @@ D130 виправлені в production/test behavior, але D131 виявив 
 `run-started-at`, а snapshot усе одно порівняв би `TIMESTAMP` з `TIMESTAMP`.
 Corrective 6.5.2 змінює лише доказ, без production behavior.
 
+**Ревʼю 6.5.2:** `ACCEPTED`. Exact CI `a0b0b19` зелений; D131 тепер
+порівнює blocked `run-started-at` побайтово, bounded-нормалізація перевірена
+двома незалежними sabotage. Production PHP corrective не змінював.
+Ланцюг `6.5.0`-`6.5.2` прийнято як safe foundation підетапу 6.
+
+**Пакет 6.5.3:** переносить `run-mode.sh` у `RunModeCommand` поверх уже
+прийнятих `RunSpec`, `RunStartCommand`, `FetchRowsCommand`, `BatchNewCommand`
+і `Workspace`. Human stdout fetch більше не є каналом передачі rows path.
+Той самий пакет закриває D132: budget/goal state I/O стає fail-closed і в
+PHP, і в тимчасовому rollback-shell. Driver loop, model calls і PROD write
+до пакета не входять; підетап 6 лишається `у роботі`.
+
 **Мета.** Драйвер і цикл · у PHP.
 
 **Інваріант, який легко порушити саме тут:** ПОРЯДОК КРОКІВ ТРИМАЄ КОД. Конверт

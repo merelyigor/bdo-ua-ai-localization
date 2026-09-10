@@ -1,4 +1,8 @@
 #!/usr/bin/env bash
+if [ "${BDO_ORCHESTRATOR:-php}" != sh ]; then
+    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+    exec php "$SCRIPT_DIR/cli/bdo.php" run-mode "$@"
+fi
 # Почати наступну пачку за preset режиму.
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")/../.." && pwd)"
@@ -97,7 +101,15 @@ fi
 # сервер колись почне віддавати рядки, які неможливо закрити.
 batches="$(php -r '
 $f=$argv[1]; $scope=$argv[2].":".$argv[3]; $max=max(1,(int)$argv[4]);
-$run=is_file($f)?(json_decode((string)file_get_contents($f),true)?:[]):[];
+if (!file_exists($f) && !is_link($f)) {
+    $run=[];
+} else {
+    $raw=@file_get_contents($f);
+    if ($raw===false) { fwrite(STDERR,"Не вдалося прочитати файл стану: $f\n"); exit(1); }
+    try { $run=json_decode($raw,true,512,JSON_THROW_ON_ERROR); }
+    catch (Throwable $e) { fwrite(STDERR,"Пошкоджений файл стану: $f\n"); exit(1); }
+    if (!is_array($run)) { fwrite(STDERR,"Пошкоджений файл стану: $f\n"); exit(1); }
+}
 $count=(($run["scope"]??null)===$scope)?(int)($run["batches"]??0):0;
 if($count>=$max){
     echo json_encode(["ok"=>false,"state"=>"budget_exhausted","batches"=>$count,
@@ -106,9 +118,11 @@ if($count>=$max){
     exit(4);
 }
 $run=["scope"=>$scope,"batches"=>$count+1];
-file_put_contents($f,json_encode($run,JSON_UNESCAPED_UNICODE|JSON_THROW_ON_ERROR),LOCK_EX);
+if (@file_put_contents($f,json_encode($run,JSON_UNESCAPED_UNICODE|JSON_THROW_ON_ERROR),LOCK_EX)===false) {
+    fwrite(STDERR,"Не вдалося записати файл стану: $f\n"); exit(1);
+}
 ' "$STATE_DIR/run-batches.json" "$BDO_API_ENV" "$MODE:$PATCH:$DOMAIN" "${BDO_RUN_MAX_BATCHES:-25}")" || {
-    printf '%s\n' "$batches"
+    if [ -n "$batches" ]; then printf '%s\n' "$batches"; fi
     exit 1
 }
 # Ціль прогону лишається на диску, а не в памʼяті диригента.
@@ -120,9 +134,11 @@ file_put_contents($f,json_encode($run,JSON_UNESCAPED_UNICODE|JSON_THROW_ON_ERROR
 # робота не скінчилась, і каже про це наступним кроком, а не «complete».
 php -r '
 $file=$argv[1];
-file_put_contents($file, json_encode([
+if (@file_put_contents($file, json_encode([
     "mode"=>$argv[2],"patch"=>$argv[3],"domain"=>$argv[4],"channel"=>$argv[5],"query"=>$argv[6],
-], JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES|JSON_THROW_ON_ERROR)."\n", LOCK_EX);
+], JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES|JSON_THROW_ON_ERROR)."\n", LOCK_EX)===false) {
+    fwrite(STDERR,"Не вдалося записати файл стану: $file\n"); exit(1);
+}
 ' "$STATE_DIR/run-goal.json" "$MODE" "$PATCH" "$DOMAIN" "$channel" "$query"
 
 # Вікно моделі задає повзунок застосунку Ollama, і власник може посунути його

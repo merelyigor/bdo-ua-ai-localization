@@ -45,6 +45,7 @@ use Bdo\Translate\Cli\Command\Prepare\QaPayloadCommand;
 use Bdo\Translate\Cli\Command\Prepare\TerminologyPayloadCommand;
 use Bdo\Translate\Cli\Command\Prepare\WorkerPayloadCommand;
 use Bdo\Translate\Cli\Command\Run\RunSpecCommand;
+use Bdo\Translate\Cli\Command\Run\RunModeCommand;
 use Bdo\Translate\Cli\Command\Run\RunStartCommand;
 use Bdo\Translate\Cli\Command\Write\ModerationCommand;
 use Bdo\Translate\Cli\Command\Write\WriteTranslationsCommand;
@@ -125,6 +126,7 @@ final class Kernel
             'terminology-payload' => new TerminologyPayloadCommand(),
             'names-payload' => new NamesPayloadCommand(),
             'run-spec' => new RunSpecCommand(),
+            'run-mode' => new RunModeCommand(),
             'run-start' => new RunStartCommand(),
             'batch-dir' => new BatchDirCommand(),
             'batch-assert' => new BatchAssertCommand(),

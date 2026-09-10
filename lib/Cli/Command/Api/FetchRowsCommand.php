@@ -23,8 +23,16 @@ final class FetchRowsCommand implements Command
 
     public const MAX_BATCH = 100;
 
+    private ?string $resultPath = null;
+
+    public function resultPath(): ?string
+    {
+        return $this->resultPath;
+    }
+
     public function execute(array $arguments, Output $output): int
     {
+        $this->resultPath = null;
         $root = dirname(__DIR__, 4);
         $environment = ApiEnvironment::load($root);
         $target = getenv('BDO_API_TARGET') === 'hub' ? 'ХАБ ' : '';
@@ -133,6 +141,7 @@ final class FetchRowsCommand implements Command
         $output->stdout("Отримано: {$count} рядків (загалом: {$total})\n");
         $output->stdout('has_more=' . ($hasMore ? 'true' : 'false') . '  next_cursor=' . ($nextCursor ?? 'null') . "\n");
         $output->stdout("Збережено: {$out}\n");
+        $this->resultPath = $out;
         if ($count > 0) {
             $output->stdout("\n-- Перші 5 рядків (скорочено) --\n");
             foreach (array_slice($rows, 0, 5) as $index => $row) {

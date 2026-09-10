@@ -712,7 +712,8 @@ check_run_php_subprocess_guards() {
     step 'Run PHP subprocess guard'
     local file hits
     for file in lib/Cli/Command/Run/RunSpecCommand.php \
-        lib/Cli/Command/Run/RunStartCommand.php; do
+        lib/Cli/Command/Run/RunStartCommand.php \
+        lib/Cli/Command/Run/RunModeCommand.php; do
         test -f "$file" || fail "відсутній Run PHP-файл: $file"
         grep -Fq 'ПРАВИЛО:' "$file" || fail "у $file немає коментаря ПРАВИЛО:"
         grep -Fq 'САБОТАЖ:' "$file" || fail "у $file немає коментаря САБОТАЖ:"
@@ -1035,6 +1036,7 @@ $braceless"
     run bash tests/cli-batch-heal-parity.sh
     run bash tests/cli-batch-clean-parity.sh
     run bash tests/cli-run-foundation-parity.sh
+    run bash tests/cli-run-mode-parity.sh
     check_write_test_safety
     check_write_php_subprocess_guards
     run bash tests/cli-write-parity.sh
