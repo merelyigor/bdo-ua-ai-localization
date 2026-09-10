@@ -442,6 +442,12 @@ Corrective 6.5.2 змінює лише доказ, без production behavior.
 PHP, і в тимчасовому rollback-shell. Driver loop, model calls і PROD write
 до пакета не входять; підетап 6 лишається `у роботі`.
 
+**Ревʼю 6.5.3:** `NEEDS CORRECTION`. Exact CI `4fbcbaf` зелений;
+structured fetch seam і D132 fail-closed реалізовані, але D133 виявив
+мовчазно звужений `cli-run-mode-parity`: helper передавав лише mode/size,
+тому patch/domain і частина safety-ordering matrix не могли спростувати
+регресію. Corrective 6.5.4 змінює лише proof і process evidence.
+
 **Мета.** Драйвер і цикл · у PHP.
 
 **Інваріант, який легко порушити саме тут:** ПОРЯДОК КРОКІВ ТРИМАЄ КОД. Конверт
