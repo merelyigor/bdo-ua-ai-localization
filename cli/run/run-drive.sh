@@ -261,6 +261,7 @@ completion() {
         try {$goal=json_decode((string)file_get_contents($goalFile),true,512,JSON_THROW_ON_ERROR);}
         catch(Throwable) {$error("blocked","run_goal_invalid",$goalFile);}
         if(!is_array($goal)||!is_string($goal["query"]??null)||$goal["query"]===""){$error("blocked","run_goal_invalid",$goalFile);}
+        if($argv[6]!=="__OFFLINE_UNKNOWN__"){
         if($argv[6]==="__UNAVAILABLE__"){$error("retry","goal_status_unavailable",$goalFile);}
         if(!preg_match("/^-?[0-9]+$/",$argv[6])){$error("retry","goal_status_unavailable",$goalFile);}
         $remaining=(int)$argv[6];
@@ -304,6 +305,7 @@ completion() {
                 ? sprintf("Ціль досягнута для машини: лишилось лише %d рядків із вичерпаними спробами · вони чекають людину (./bdo quarantine).",$waiting)
                 : "Ціль досягнута: рядків за цим фільтром більше немає.";
         }
+        }
     }
     echo json_encode($out,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES);
     ' "$B/batch-summary.json" "$B/commit-report.txt" "$B/manifest.json" "$STATE_DIR/run-summary.json" "$(basename "$B")" "$(goal_remaining)" "$(patch_remaining_when_needed)"
@@ -346,7 +348,7 @@ patch_remaining() {
 goal_remaining() {
     # Заглушка лише для тестів: живий шлях однаково йде в API нижче.
     if [ -n "${BDO_GOAL_REMAINING_STUB:-}" ]; then printf '%s' "$BDO_GOAL_REMAINING_STUB"; return 0; fi
-    if [ "${BDO_PIPELINE_OFFLINE:-0}" = 1 ]; then printf '0'; return 0; fi
+    if [ "${BDO_PIPELINE_OFFLINE:-0}" = 1 ]; then printf '__OFFLINE_UNKNOWN__'; return 0; fi
     test -s "$STATE_DIR/run-goal.json" || return 0
     local query
     query="$(php -r '$g=json_decode((string)file_get_contents($argv[1]),true)?:[];echo (string)($g["query"]??"");' "$STATE_DIR/run-goal.json")"
@@ -965,7 +967,13 @@ ready_to_commit|committing)
         complete commit "$B/commit-report.txt"; transition committed; transition verified; "$SCRIPT_DIR/cli/prepare/build-schema.sh" --clear >/dev/null
         # Конверт рахується ДО прибирання: `completion` читає commit-report.txt
         # і batch-summary.json із теки, яку prune зараз видалить.
-        envelope="$(completion)"; prune_verified_batch; auto_clean
+        envelope="$(completion)"
+        completion_kind="$(php -r '$x=json_decode($argv[1],true); echo is_array($x)?(string)($x["kind"]??""):"blocked";' "$envelope")"
+        if [ "$completion_kind" = blocked ] || [ "$completion_kind" = retry ]; then
+            emit 0 verified "$envelope"
+            exit 1
+        fi
+        prune_verified_batch; auto_clean
         emit 1 verified "$envelope"
     else emit 0 committing '{"kind":"retry","reason":"api_write_failed"}'; exit 1; fi
     ;;

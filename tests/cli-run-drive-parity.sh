@@ -36,9 +36,14 @@ foreach ($headers as $name => $value) {
 }
 file_put_contents($log, json_encode(['method' => $method, 'uri' => $uri, 'content_type' => $contentType, 'idempotency_present' => $idempotencyPresent, 'body' => $body], JSON_UNESCAPED_SLASHES)."\n", FILE_APPEND | LOCK_EX);
 if ($method === 'POST' && str_starts_with($uri, '/translations/validate')) { echo json_encode(['success' => true, 'data' => ['results' => []], 'meta' => ['items' => 1, 'rejected' => 0]]); return; }
+if ($method === 'POST' && $uri === '/translations/memory') { echo json_encode(['data' => ['memory' => []], 'meta' => ['requested' => 1, 'with_memory' => 0]]); return; }
+if ($method === 'POST' && $uri === '/rows/context') { echo json_encode(['data' => ['contexts' => []], 'meta' => ['complete' => true]]); return; }
 if ($method === 'POST' && $uri === '/translations') { echo json_encode(['data' => ['meta' => ['layer' => 'machine', 'mode' => 'direct', 'auto_approve' => true, 'items' => 1, 'written' => 1, 'skipped' => 0, 'rejected' => 0], 'results' => [['index' => 0, 'identity_hash' => 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', 'status' => 'ok']]]]); return; }
+if ($method === 'POST' && $uri === '/glossary/proposals') { echo json_encode(['ok' => true]); return; }
 if ($method !== 'GET') { http_response_code(405); echo json_encode(['error' => 'GET only']); return; }
 if ($uri === '/me') { echo json_encode(['data' => ['user' => ['role' => 'super_admin'], 'effective_abilities' => ['translations:write-machine'], 'limits' => ['rows_remaining_today' => 100], 'writes' => ['channels' => [['layer' => 'machine', 'mode' => 'direct', 'allowed' => true], ['layer' => 'manual', 'mode' => 'proposal', 'allowed' => true]]]]]); return; }
+if (str_starts_with($uri, '/glossary/concepts')) { echo json_encode(['data' => ['concepts' => [['term' => 'Run', 'ua' => 'Прогін', 'gist' => 'fixture']]], 'meta' => ['complete' => true]]); return; }
+if (str_starts_with($uri, '/glossary/terms')) { echo json_encode(['data' => ['terms' => ['Run' => ['term_id' => 1, 'ukrainian' => 'Прогін', 'definition' => null]]]]); return; }
 if (is_file((string) getenv('RUN_DRIVE_GOAL_FAILURE_FILE')) && str_contains($uri, 'exclude_proposed')) { echo '{"meta":{}}'; return; }
 if (str_contains($uri, '/rows')) { echo json_encode(['data' => ['rows' => []], 'meta' => ['total_matching' => 0]]); return; }
 http_response_code(404); echo json_encode(['error' => 'unknown path']);
@@ -240,6 +245,148 @@ for side in sh php; do
 done
 assert_same_output "$TMP/sh-goal-unavailable.out" "$TMP/php-goal-unavailable.out"
 
+run_custom_side() {
+    local side="$1" state="$2" out="$3" err="$4" offline="$5"
+    set +e
+    if [ "$side" = sh ]; then
+        BDO_ORCHESTRATOR=sh BDO_PIPELINE_OFFLINE="$offline" BDO_AUTO_CLEAN=0 TRANSLATE_ENV_FILE="$ENV_FILE" BDO_STATE_DIR="$state" \
+            bash "$HARNESS/cli/run/run-drive.sh" >"$out" 2>"$err"
+    else
+        BDO_ORCHESTRATOR=php BDO_PIPELINE_OFFLINE="$offline" BDO_AUTO_CLEAN=0 TRANSLATE_ENV_FILE="$ENV_FILE" BDO_STATE_DIR="$state" \
+            "$REAL_PHP" "$HARNESS/cli/bdo.php" run-drive >"$out" 2>"$err"
+    fi
+    local code=$?
+    set -e
+    printf '%s\n' "$code"
+}
+
+make_terminology_fixture() {
+    local state="$1" exhausted="$2"
+    make_workspace "$state" patch awaiting_terminology
+    local batch
+    batch="$(find "$state/batches" -mindepth 1 -maxdepth 1 -type d -print -quit)"
+    printf '0\n' >"$batch/terminology-chunk"
+    printf '%s\n' '[{"canonical_source":"Run"}]' >"$batch/terminology-payload.full.json"
+    printf '%s\n' '[]' >"$batch/terminology-answers.json"
+    printf '%s\n' '{broken' >"$batch/term-proposals.json"
+    if [ "$exhausted" = 1 ]; then
+        printf '%s\n' '{"awaiting_terminology:0":{"count":1,"first_at":1,"overall_first_at":1,"window_rollovers":0,"last_at":1,"delay":2}}' >"$batch/drive-retries.json"
+    fi
+}
+
+# ПРАВИЛО: malformed nonempty term response quarantines and retries the same chunk.
+# САБОТАЖ: advance/delete the invalid response, and this differential must fail.
+for side in sh php; do
+    make_terminology_fixture "$TMP/$side-term-invalid" 0
+    code="$(BDO_CHILD_RETRY_WINDOW_SECONDS=600 BDO_CHILD_RETRY_TOTAL_SECONDS=86400 run_custom_side "$side" "$TMP/$side-term-invalid" "$TMP/$side-term-invalid.out" "$TMP/$side-term-invalid.err" 1)"
+    test "$code" = 0 || fail "term-invalid/$side code=$code"
+    batch="$(find "$TMP/$side-term-invalid/batches" -mindepth 1 -maxdepth 1 -type d -print -quit)"
+    test "$(cat "$batch/terminology-chunk")" = 0 || fail "term-invalid/$side advanced chunk"
+    test ! -e "$batch/term-proposals.json" || fail "term-invalid/$side kept malformed response"
+    compgen -G "$batch/term-proposals.invalid.*.json" >/dev/null || fail "term-invalid/$side did not quarantine response"
+    grep -Fq 'translation-terminology' "$TMP/$side-term-invalid.out" || fail "term-invalid/$side did not retry same child"
+done
+assert_same_output "$TMP/sh-term-invalid.out" "$TMP/php-term-invalid.out"
+
+# ПРАВИЛО: terminology advances only after per-chunk retry exhaustion.
+# САБОТАЖ: skip the retry budget or move to the next chunk early, and exhaustion proof fails.
+for side in sh php; do
+    make_terminology_fixture "$TMP/$side-term-exhausted" 1
+    code="$(BDO_CHILD_RETRY_WINDOW_SECONDS=1 BDO_CHILD_RETRY_TOTAL_SECONDS=1 run_custom_side "$side" "$TMP/$side-term-exhausted" "$TMP/$side-term-exhausted.out" "$TMP/$side-term-exhausted.err" 1)"
+    test "$code" = 0 || fail "term-exhausted/$side code=$code"
+    batch="$(find "$TMP/$side-term-exhausted/batches" -mindepth 1 -maxdepth 1 -type d -print -quit)"
+    test "$(cat "$batch/terminology-chunk")" = 1 || fail "term-exhausted/$side did not advance after exhaustion"
+    test -s "$batch/worker-payload.json" || fail "term-exhausted/$side did not continue to worker preparation"
+done
+assert_same_output "$TMP/sh-term-exhausted.out" "$TMP/php-term-exhausted.out"
+
+make_term_notes_fixture() {
+    local state="$1"
+    make_workspace "$state" patch selected
+    printf '%s\n' '{"terms":[{"canonical_source":"Run","ukrainian":"Прогін","identity_hash":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","snapshot_id":1}]}' >"$state/term-notes-queue.json"
+    printf '%s\n' '{"items":[{"canonical_source":"Run","gist":"test","confidence":90}]}' >"$state/term-notes-response.json"
+    printf '%s\n' '[]' >"$state/term-proposals.json"
+}
+
+# ПРАВИЛО: ready term-notes response submits before a new describe and threshold uses eligible terms.
+# САБОТАЖ: describe/delete the ready response or count raw queue entries, and the request/artifact proof fails.
+: >"$REQUEST_LOG"
+for side in sh php; do
+    make_term_notes_fixture "$TMP/$side-term-notes"
+    code="$(BDO_TERM_NOTES_MIN_QUEUE=1 run_custom_side "$side" "$TMP/$side-term-notes" "$TMP/$side-term-notes.out" "$TMP/$side-term-notes.err" 0)"
+    test "$code" = 0 || fail "term-notes/$side code=$code: $(cat "$TMP/$side-term-notes.err")"
+    test ! -e "$TMP/$side-term-notes/term-notes-response.json" || fail "term-notes/$side did not submit response"
+    test ! -e "$TMP/$side-term-notes/term-notes-payload.json" || fail "term-notes/$side left ready payload"
+    cp "$REQUEST_LOG" "$TMP/term-notes.$side.requests"
+    : >"$REQUEST_LOG"
+done
+diff -u "$TMP/term-notes.sh.requests" "$TMP/term-notes.php.requests" || fail 'term-notes request differential differs'
+grep -Fq '"uri":"/glossary/terms' "$TMP/term-notes.sh.requests" || fail 'term-notes shell did not refresh term state'
+grep -Fq '"uri":"/glossary/proposals"' "$TMP/term-notes.php.requests" || fail 'term-notes PHP did not submit proposal'
+
+# ПРАВИЛО: online worker preparation refreshes stale concepts; offline preparation never requests concepts.
+# САБОТАЖ: omit refresh or make offline use HTTP, and the request/cache differential fails.
+for side in sh php; do
+    make_workspace "$TMP/$side-concepts-online" patch selected
+    printf '%s\n' '{"fetched_at":"old","concepts":[{"term":"Old"}]}' >"$TMP/$side-concepts-online/game-concepts.json"
+    touch -t 200001010000 "$TMP/$side-concepts-online/game-concepts.json"
+    code="$(run_custom_side "$side" "$TMP/$side-concepts-online" "$TMP/$side-concepts-online.out" "$TMP/$side-concepts-online.err" 0)"
+    test "$code" = 0 || fail "concepts-online/$side code=$code"
+    cp "$REQUEST_LOG" "$TMP/concepts.$side.requests"
+    : >"$REQUEST_LOG"
+    grep -Fq '"uri":"/glossary/concepts"' "$TMP/concepts.$side.requests" || fail "concepts-online/$side did not refresh"
+    grep -Fq '"term":"Run"' "$TMP/$side-concepts-online/game-concepts.json" || fail "concepts-online/$side kept stale cache"
+    make_workspace "$TMP/$side-concepts-offline" patch selected
+    printf '%s\n' '{"fetched_at":"old","concepts":[{"term":"Old"}]}' >"$TMP/$side-concepts-offline/game-concepts.json"
+    touch -t 200001010000 "$TMP/$side-concepts-offline/game-concepts.json"
+    code="$(run_custom_side "$side" "$TMP/$side-concepts-offline" "$TMP/$side-concepts-offline.out" "$TMP/$side-concepts-offline.err" 1)"
+    test "$code" = 0 || fail "concepts-offline/$side code=$code"
+    test ! -s "$REQUEST_LOG" || fail "concepts-offline/$side made HTTP request"
+    grep -Fq '"term":"Old"' "$TMP/$side-concepts-offline/game-concepts.json" || fail "concepts-offline/$side changed cache"
+done
+diff -u "$TMP/concepts.sh.requests" "$TMP/concepts.php.requests" || fail 'concepts request differential differs'
+
+# ПРАВИЛО: recovery states retain legacy guards and never reinterpret missing artifacts as success.
+# САБОТАЖ: remove a candidate/clean guard or skip schema rebuild, and the named state proof fails.
+for state_name in candidate-valid deterministic-valid; do
+    for side in sh php; do
+        state="$TMP/$side-$state_name"
+        if [ "$state_name" = candidate-valid ]; then wanted_state=candidate_valid; else wanted_state=deterministic_valid; fi
+        make_workspace "$state" patch "$wanted_state"
+        code="$(run_custom_side "$side" "$state" "$state.out" "$state.err" 1)"
+        test "$code" = 1 || fail "$state_name/$side code=$code"
+        if [ "$state_name" = candidate-valid ]; then grep -Fq 'candidate_missing' "$state.out" || fail "$state_name/$side reason"; else grep -Fq 'clean_candidate_missing' "$state.out" || fail "$state_name/$side reason"; fi
+    done
+    assert_same_output "$TMP/sh-$state_name.out" "$TMP/php-$state_name.out"
+done
+
+# ПРАВИЛО: memory-covered awaiting_worker resumes without a worker child.
+# САБОТАЖ: ignore the memory-covered guard and dispatch translation-worker, and this case fails.
+for side in sh php; do
+    state="$TMP/$side-memory-covered"
+    make_workspace "$state" patch awaiting_worker
+    batch="$(find "$state/batches" -mindepth 1 -maxdepth 1 -type d -print -quit)"
+    printf '%s\n' '{"data":{"rows":[]}}' >"$batch/to-translate.json"
+    printf '%s\n' '[{"identity_hash":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","text":"Прогін"}]' >"$batch/memory-candidate.json"
+    code="$(run_custom_side "$side" "$state" "$state.out" "$state.err" 1)"
+    test "$code" = 0 || fail "memory-covered/$side code=$code"
+    ! grep -Fq '"role":"translation-worker"' "$state.out" || fail "memory-covered/$side dispatched worker"
+done
+
+# ПРАВИЛО: optional term-notes queue enrichment is non-gating.
+# САБОТАЖ: make queue helper failure fatal, and selected online must turn red instead of emitting worker child.
+for side in sh php; do
+    state="$TMP/$side-optional-queue"
+    make_workspace "$state" patch selected
+    printf '%s\n' '{broken' >"$state/term-notes-queue.json"
+    batch="$(find "$state/batches" -mindepth 1 -maxdepth 1 -type d -print -quit)"
+    printf '%s\n' '"broken"' >"$batch/terms.json"
+    : >"$REQUEST_LOG"
+    code="$(run_custom_side "$side" "$state" "$state.out" "$state.err" 0)"
+    test "$code" = 0 || fail "optional-queue/$side code=$code"
+    grep -Fq '"role":"translation-worker"' "$state.out" || fail "optional-queue/$side became gating"
+done
+
 run_blocker_case() {
     local name="$1" fixture="$2"
     for side in sh php; do
@@ -263,6 +410,78 @@ run_blocker_case() {
 run_blocker_case retry-corrupt awaiting_worker
 run_blocker_case goal-corrupt verified
 run_blocker_case summary-failure verified
+
+# ПРАВИЛО: successful local write followed by completion failure is nonzero and preserves evidence.
+# САБОТАЖ: prune or emit success after blocked completion, and the post-write case fails.
+for side in sh php; do
+    state="$TMP/$side-post-write-summary"
+    make_dry_workspace "$state"
+    mkdir -p "$state/run-summary.json"
+    : >"$REQUEST_LOG"
+    code="$(run_write_side "$side" "$state" "$state.out" "$state.err")"
+    test "$code" = 1 || fail "post-write-summary/$side code=$code"
+    grep -Fq 'run_summary_unavailable' "$state.out" || fail "post-write-summary/$side missing completion failure"
+    grep -Fq '"method":"POST"' "$REQUEST_LOG" || fail "post-write-summary/$side did not reach local translation write"
+    batch="$(find "$state/batches" -mindepth 1 -maxdepth 1 -type d -print -quit)"
+    test -e "$batch/final-candidate.json" || fail "post-write-summary/$side pruned evidence"
+done
+
+# ПРАВИЛО: prune removes only old rows/validate dumps at or before the batch manifest.
+# САБОТАЖ: omit output cleanup or delete newer dumps, and the old/new boundary fails.
+for side in sh php; do
+    state="$TMP/$side-output-prune"
+    make_dry_workspace "$state"
+    mkdir -p "$TMP/output"
+    printf 'old\n' >"$TMP/output/rows_old.json"
+    printf 'old\n' >"$TMP/output/validate_old.json"
+    printf 'new\n' >"$TMP/output/rows_new.json"
+    printf 'new\n' >"$TMP/output/validate_new.json"
+    touch -t 200001010000 "$TMP/output/rows_old.json" "$TMP/output/validate_old.json"
+    touch -t 299912312359 "$TMP/output/rows_new.json" "$TMP/output/validate_new.json"
+    code="$(run_dry_side "$side" "$state" "$state.out" "$state.err")"
+    test "$code" = 0 || fail "output-prune/$side code=$code"
+    test ! -e "$TMP/output/rows_old.json" && test ! -e "$TMP/output/validate_old.json" || fail "output-prune/$side kept old dump"
+    test -e "$TMP/output/rows_new.json" && test -e "$TMP/output/validate_new.json" || fail "output-prune/$side removed new dump"
+done
+
+# ПРАВИЛО: exhausted invalid QA quarantines the canonical verdict artifact before give-up.
+# САБОТАЖ: give up with canonical verdicts.json in place, and the exhaustion proof fails.
+for side in sh php; do
+    state="$TMP/$side-invalid-qa-exhausted"
+    make_workspace "$state" patch awaiting_qa
+    batch="$(find "$state/batches" -mindepth 1 -maxdepth 1 -type d -print -quit)"
+    cp "$batch/rows.json" "$batch/qa-subset.json"
+    printf '%s\n' '{broken' >"$batch/verdicts.json"
+    printf '%s\n' '{"awaiting_qa":{"count":1,"first_at":1,"overall_first_at":1,"window_rollovers":0,"last_at":1,"delay":2}}' >"$batch/drive-retries.json"
+    code="$(BDO_CHILD_RETRY_WINDOW_SECONDS=1 BDO_CHILD_RETRY_TOTAL_SECONDS=1 run_custom_side "$side" "$state" "$state.out" "$state.err" 1)"
+    test "$code" = 1 || fail "invalid-qa-exhausted/$side code=$code"
+    test ! -e "$batch/verdicts.json" || fail "invalid-qa-exhausted/$side kept canonical verdicts"
+    compgen -G "$batch/verdicts.invalid.*.json" >/dev/null || fail "invalid-qa-exhausted/$side did not archive verdicts"
+done
+
+# ПРАВИЛО: unknown offline remaining stays complete; only a proven zero emits goal_complete.
+# САБОТАЖ: convert offline unknown to numeric zero, and the three-case goal differential fails.
+for side in sh php; do
+    state="$TMP/$side-offline-goal"
+    make_workspace "$state" patch verified
+    batch="$(find "$state/batches" -mindepth 1 -maxdepth 1 -type d -print -quit)"
+    printf '%s\n' '{"rows":1,"channel":"machine","target_written":1,"target_skipped":0,"target_rejected":0,"moderation_written":0,"moderation_skipped":0,"moderation_rejected":0,"quarantine":0}' >"$batch/batch-summary.json"
+    printf '%s\n' '{"query":"patch=active","mode":"patch","patch":"active","domain":""}' >"$state/run-goal.json"
+    printf 'local\n' >"$state/run-target"
+    code="$(run_custom_side "$side" "$state" "$state.out" "$state.err" 1)"
+    test "$code" = 0 || fail "offline-goal/$side code=$code"
+    grep -Fq '"kind":"complete"' "$state.out" || fail "offline-goal/$side did not preserve complete"
+    ! grep -Fq '"kind":"goal_complete"' "$state.out" || fail "offline-goal/$side hid unknown as goal_complete"
+    state="$TMP/$side-explicit-zero-goal"
+    make_workspace "$state" patch verified
+    batch="$(find "$state/batches" -mindepth 1 -maxdepth 1 -type d -print -quit)"
+    printf '%s\n' '{"rows":1,"channel":"machine","target_written":1,"target_skipped":0,"target_rejected":0,"moderation_written":0,"moderation_skipped":0,"moderation_rejected":0,"quarantine":0}' >"$batch/batch-summary.json"
+    printf '%s\n' '{"query":"patch=active","mode":"patch","patch":"active","domain":""}' >"$state/run-goal.json"
+    printf 'local\n' >"$state/run-target"
+    code="$(BDO_GOAL_REMAINING_STUB=0 run_custom_side "$side" "$state" "$state.out" "$state.err" 1)"
+    test "$code" = 0 || fail "explicit-zero/$side code=$code"
+    grep -Fq '"kind":"goal_complete"' "$state.out" || fail "explicit-zero/$side did not emit goal_complete"
+done
 
 # ПРАВИЛО: direct PHP drive no-Unix proof uses the absolute interpreter and a PATH
 # whose helper executables all fail; no migrated drive code may invoke them.
@@ -327,4 +546,4 @@ test -n "$validate_path" && test "$validate_path" != "$HARNESS/output/validate_9
 grep -Fq '"sentinel":true' "$HARNESS/output/validate_99999999_999999.json" \
     || fail 'stale validate sentinel був перезаписаний'
 
-note 'OK · isolated no-batch, routing, selected child, D136-D138 fail-closed and no-Unix proofs'
+note 'OK · isolated state-machine differential, D136-D147 branches, local write, and no-Unix proofs'

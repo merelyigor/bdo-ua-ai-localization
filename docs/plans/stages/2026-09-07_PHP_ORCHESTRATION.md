@@ -465,6 +465,12 @@ size15 sabotage не перехоплюється валідним size20 case. 
 retry budget, run goal і completion summary стають fail-closed у PHP та
 rollback-shell. Бойовий PROD write не використовується для перевірки.
 
+**Ревʼю 6.5.6:** `NEEDS CORRECTION`. Exact CI run №25 на `e5f6cbe` зелений, але branch-by-branch review знайшов D139-D147: invalid terminology response губився з advance chunk; ready term-note response не submit-ився; concepts refresh, resume guards і non-gating fallbacks перенесено неповно; post-write гілка D138 не була фактично перевірена; cleanup та exhausted QA quarantine розходились із rollback, а rollback offline goal помилково трактував невідомий remaining як доведений нуль. Green parity охоплював лише вибрані driver branches і не доводив перенесення state machine цілком.
+
+**Forensic 6.5.6:** випадковий локальний `./bdo run drive` залишив persisted batch у `awaiting_terminology` із `child_dispatch:translation-terminology`, тобто наявний control-flow evidence не показує досягнення validate/commit branch. Точного transcript і before-snapshot немає, тому категоричне твердження про відсутність будь-якого API POST за інцидент не доведене; локальні state/output не відновлювались.
+
+**Corrective 6.5.7:** виправляє лише підтверджені D139-D147 у межах `run-drive` і додає differential behavioral proof небезпечних state/retry/write/completion branches. `run-loop`, Stage7 і наступні підетапи не входять у corrective. Підетап 6 лишається `у роботі` до окремого Architect-review exact diff + CI.
+
 **Межа visibility:** `cli/run/run-stop.sh` і `cli/run/step-report.sh`
 переносяться з підетапом 7, а не з driver. Перший прямо делегує
 `cli/system/watch.sh`/tmux, другий визначає ширину через `/dev/tty` і `stty`;

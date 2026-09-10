@@ -9,7 +9,11 @@ use Bdo\Translate\Batch\RowSet;
 use Bdo\Translate\Batch\Workspace;
 use Bdo\Translate\Cli\Command;
 use Bdo\Translate\Cli\Command\Api\ApiEnvironment;
+use Bdo\Translate\Cli\Command\Api\GlossaryConceptsCommand;
 use Bdo\Translate\Cli\Command\Api\ValidateCommand;
+use Bdo\Translate\Cli\Command\Api\TermNotesDescribeCommand;
+use Bdo\Translate\Cli\Command\Api\TermNotesSubmitCommand;
+use Bdo\Translate\Cli\Command\Api\TermNotesQueueCommand;
 use Bdo\Translate\Cli\Command\Batch\BatchCleanCommand;
 use Bdo\Translate\Cli\Command\Batch\BatchCommitCommand;
 use Bdo\Translate\Cli\Command\Batch\SubsetRowsCommand;
@@ -100,8 +104,12 @@ final class RunDriveCommand implements Command
             'selected' => $this->selected($output),
             'awaiting_terminology' => $this->awaitingTerminology($output),
             'awaiting_worker' => $this->awaitingWorker($output),
-            'candidate_valid' => $this->candidateToQa($output),
-            'deterministic_valid' => $this->dispatchQa($output),
+            'candidate_valid' => is_file($this->workspace->path('candidate.json')) && filesize($this->workspace->path('candidate.json')) > 0
+                ? $this->candidateToQa($output)
+                : $this->blocked($output, 'candidate_valid', 'candidate_missing'),
+            'deterministic_valid' => is_file($this->workspace->path('clean.json')) && filesize($this->workspace->path('clean.json')) > 0
+                ? $this->dispatchQa($output)
+                : $this->blocked($output, 'deterministic_valid', 'clean_candidate_missing'),
             'awaiting_qa' => $this->awaitingQa($output),
             'healing' => $this->healing($output),
             'awaiting_control_qa' => $this->awaitingControlQa($output),
@@ -123,11 +131,18 @@ final class RunDriveCommand implements Command
         }
         if (getenv('BDO_TERM_NOTES_AUTO') !== 'off' && getenv('BDO_PIPELINE_OFFLINE') !== '1') {
             $queue = $this->stateDir.'/term-notes-queue.json';
-            if (is_file($queue)) {
-                $data = json_decode((string) file_get_contents($queue), true) ?: [];
-                $ready = count($data['terms'] ?? []);
+            if (is_file($termResponse) && filesize($termResponse) > 0) {
+                try {
+                    ApiEnvironment::load($this->root);
+                    $submit = $this->capture(new TermNotesSubmitCommand(), []);
+                    $output->stderr($submit['stdout'].$submit['stderr']);
+                } catch (\Throwable) {
+                    // Term-note submission is an optional side effect; the batch remains runnable.
+                }
+            } elseif (is_file($queue)) {
+                $ready = $this->eligibleTermNotes($queue, $this->stateDir.'/proposed-term-notes.json');
                 if ($ready >= (int) (getenv('BDO_TERM_NOTES_MIN_QUEUE') ?: 5)) {
-                    $capture = $this->capture(new \Bdo\Translate\Cli\Command\Api\TermNotesDescribeCommand(), []);
+                    $capture = $this->capture(new TermNotesDescribeCommand(), []);
                     if ($capture['code'] === 0 && str_contains($capture['stdout'], '"kind":"child"')) {
                         $output->stdout($capture['stdout']);
                         return 0;
@@ -137,7 +152,10 @@ final class RunDriveCommand implements Command
         }
 
         $layers = (string) ($manifest['memory_layers'] ?? '');
-        if ($layers !== '') {
+        if ($layers === '' && ($manifest['mode'] ?? '') === 'improve') {
+            $layers = 'manual';
+        }
+        if (getenv('BDO_MEMORY_LAYERS') === false && $layers !== '') {
             putenv('BDO_MEMORY_LAYERS='.$layers);
         }
         $rowsPath = $this->workspace->path('rows.json');
@@ -157,7 +175,8 @@ final class RunDriveCommand implements Command
             $selectedRows = $rowsPath;
         }
 
-        if (getenv('BDO_PIPELINE_OFFLINE') !== '1' && ! is_file($this->workspace->path('term-proposals.json'))) {
+        $termProposals = $this->workspace->path('term-proposals.json');
+        if (getenv('BDO_PIPELINE_OFFLINE') !== '1' && (! is_file($termProposals) || filesize($termProposals) === 0)) {
             $gaps = $this->termGaps($selectedRows);
             if ($gaps > 0) {
                 $terms = $this->capture(new TerminologyPayloadCommand(), [$selectedRows]);
@@ -202,6 +221,9 @@ final class RunDriveCommand implements Command
             if (getenv('BDO_PIPELINE_OFFLINE') === '1') {
                 $args[] = '--no-context';
             }
+            if (getenv('BDO_PIPELINE_OFFLINE') !== '1') {
+                $this->capture(new GlossaryConceptsCommand(), []);
+            }
             $result = $this->capture(new WorkerPayloadCommand(), $args);
             if ($result['code'] !== 0) {
                 return $this->emit($output, false, (string) $this->manifest()['state'], ['kind' => 'retry', 'reason' => 'context_unavailable', 'hint' => 'Контекст пачки недоступний.']);
@@ -209,7 +231,7 @@ final class RunDriveCommand implements Command
             $this->write($payload.'.new', $this->lastJson($result['stdout'])."\n");
             rename($payload.'.new', $payload);
             if (is_file($this->workspace->path('terms.json'))) {
-                $this->call(new \Bdo\Translate\Cli\Command\Api\TermNotesQueueCommand(), [$this->workspace->path('terms.json'), $selected]);
+                $this->capture(new TermNotesQueueCommand(), [$this->workspace->path('terms.json'), $selected]);
             }
         } else {
             $this->write($payload, "[]\n");
@@ -237,10 +259,26 @@ final class RunDriveCommand implements Command
             if ($retry !== 'exhausted') return $this->child($output, 'awaiting_terminology', 'translation-terminology', $this->workspace->path('terminology-payload.json'), $this->workspace->path('term-proposals.json'));
             file_put_contents($this->workspace->path('terminology-chunk'), ($chunk + 1)."\n");
         } else {
-            try { Chunks::append($this->workspace->path('term-proposals.json'), $this->workspace->path('terminology-answers.json')); }
-            catch (\Throwable) { /* legacy non-gating merge */ }
-            @unlink($this->workspace->path('term-proposals.json'));
-            file_put_contents($this->workspace->path('terminology-chunk'), ($chunk + 1)."\n");
+            $proposalFile = $this->workspace->path('term-proposals.json');
+            $valid = false;
+            try {
+                $decoded = json_decode((string) file_get_contents($proposalFile), true, 512, JSON_THROW_ON_ERROR);
+                $valid = is_array($decoded);
+            } catch (\Throwable) {
+                $valid = false;
+            }
+            if (! $valid) {
+                @rename($proposalFile, $this->workspace->path('term-proposals.invalid.'.time().'.json'));
+                $retry = $this->retryExceeded('awaiting_terminology:'.$chunk, $output);
+                if ($retry === null) return 1;
+                if ($retry !== 'exhausted') return $this->child($output, 'awaiting_terminology', 'translation-terminology', $this->workspace->path('terminology-payload.json'), $proposalFile);
+                $this->write($this->workspace->path('terminology-chunk'), ($chunk + 1)."\n");
+            } else {
+                try { Chunks::append($proposalFile, $this->workspace->path('terminology-answers.json')); }
+                catch (\Throwable) { /* legacy non-gating merge */ }
+                @unlink($proposalFile);
+                $this->write($this->workspace->path('terminology-chunk'), ($chunk + 1)."\n");
+            }
         }
         $next = $this->intFile($this->workspace->path('terminology-chunk'));
         if ($next < $total && $this->termChunkWrite($next) > 0) {
@@ -266,6 +304,11 @@ final class RunDriveCommand implements Command
     private function awaitingWorker(Output $output): int
     {
         $candidate = $this->workspace->path('candidate.json');
+        $memoryCandidate = $this->workspace->path('memory-candidate.json');
+        $toTranslate = $this->workspace->path('to-translate.json');
+        if (is_file($toTranslate) && $this->jsonRows($toTranslate) === 0 && is_file($memoryCandidate) && filesize($memoryCandidate) > 0) {
+            copy($memoryCandidate, $candidate);
+        }
         if (! is_file($candidate) || filesize($candidate) === 0) {
             $retry = $this->retryExceeded('awaiting_worker', $output);
             if ($retry === null) return 1;
@@ -350,7 +393,7 @@ final class RunDriveCommand implements Command
             $retry = $this->retryExceeded('awaiting_qa', $output);
             if ($retry === null) return 1;
             if ($retry === 'exhausted') return $this->giveUp($output, 'awaiting_qa');
-            if (! is_file($this->workspace->path('qa-payload.json'))) return $this->dispatchQa($output);
+        if (! is_file($this->workspace->path('qa-payload.json')) || filesize($this->workspace->path('qa-payload.json')) === 0) return $this->dispatchQa($output);
             $this->ensureSchema('qa');
             return $this->child($output, 'awaiting_qa', 'translation-qa', $this->workspace->path('qa-payload.json'), $verdicts);
         }
@@ -362,7 +405,10 @@ final class RunDriveCommand implements Command
             if ($retry === null) return 1;
             if ($retry === 'exhausted') {
                 $fill = $this->capture(new QaCoverageFillCommand(), [$scope, $verdicts]);
-                if ($fill['code'] !== 0 || ! $this->validQa($verdicts, $scope)) return $this->giveUp($output, 'awaiting_qa');
+                if ($fill['code'] !== 0 || ! $this->validQa($verdicts, $scope)) {
+                    @rename($verdicts, $this->workspace->path('verdicts.invalid.'.time().'.json'));
+                    return $this->giveUp($output, 'awaiting_qa');
+                }
             } else {
                 @rename($verdicts, $this->workspace->path('verdicts.invalid.'.time().'.json'));
                 $this->ensureSchema('qa');
@@ -443,7 +489,11 @@ final class RunDriveCommand implements Command
         }
         $validate = is_file($this->workspace->path('validate-path')) ? trim((string) file_get_contents($this->workspace->path('validate-path'))) : '';
         $judge = $this->capture(new JudgePayloadCommand(), [$this->workspace->path('rows.json'), $this->workspace->path('final-candidate.json'), $this->workspace->path('final-verdicts.json'), $validate]);
-        $this->write($this->workspace->path('judge-payload.json'), $this->lastJson($judge['stdout'])."\n");
+        $judgePayload = '[]';
+        if ($judge['code'] === 0) {
+            try { $judgePayload = $this->lastJson($judge['stdout']); } catch (\Throwable) { $judgePayload = '[]'; }
+        }
+        $this->write($this->workspace->path('judge-payload.json'), $judgePayload."\n");
         $items = json_decode((string) file_get_contents($this->workspace->path('judge-payload.json')), true) ?: [];
         if (count($items['items'] ?? $items) > 0) {
             $this->transition('awaiting_judge');
@@ -489,7 +539,11 @@ final class RunDriveCommand implements Command
         if (($stub = getenv('BDO_FINAL_VALIDATE_STUB')) !== false && $stub !== '' && is_file($stub)) $finalValidate = $stub;
         if ($state === 'ready_to_commit' && $finalValidate !== '' && ! is_file($this->workspace->path('names-pass.done')) && getenv('BDO_NAMES_PASS') !== 'off') {
             $names = $this->capture(new NamesPayloadCommand(), [$this->workspace->path('rows.json'), $this->workspace->path('final-candidate.json'), $finalValidate]);
-            $this->write($this->workspace->path('names-payload.json'), $this->lastJson($names['stdout'])."\n");
+            $namesPayload = '[]';
+            if ($names['code'] === 0) {
+                try { $namesPayload = $this->lastJson($names['stdout']); } catch (\Throwable) { $namesPayload = '[]'; }
+            }
+            $this->write($this->workspace->path('names-payload.json'), $namesPayload."\n");
             if (Items::count($this->workspace->path('names-payload.json')) > 0) {
                 $hashes = Items::hashes($this->workspace->path('names-payload.json'));
                 $this->call(new SubsetRowsCommand(), [$this->workspace->path('rows.json'), implode(',', $hashes), $this->workspace->path('names-subset.json')]);
@@ -661,6 +715,12 @@ final class RunDriveCommand implements Command
             if (in_array(basename($path), ['manifest.json','journal.jsonl','batch-summary.json','drive.lock'], true)) continue;
             $this->removeTree($path);
         }
+        $outputDir = getenv('BDO_STATE_DIR') ? dirname($this->stateDir).'/output' : $this->root.'/output';
+        $manifest = $this->workspace->path('manifest.json');
+        $manifestTime = is_file($manifest) ? (int) filemtime($manifest) : PHP_INT_MAX;
+        foreach (array_merge(glob($outputDir.'/rows_*.json') ?: [], glob($outputDir.'/validate_*.json') ?: []) as $path) {
+            if (is_file($path) && (int) filemtime($path) <= $manifestTime) @unlink($path);
+        }
     }
 
     private function autoClean(): void
@@ -794,6 +854,21 @@ final class RunDriveCommand implements Command
     private function termChunkWrite(int $index): int
     {
         return Chunks::write($this->workspace->path('terminology-payload.full.json'), $index, $this->workspace->path('terminology-payload.json'));
+    }
+
+    private function eligibleTermNotes(string $queuePath, string $donePath): int
+    {
+        $queueData = json_decode((string) file_get_contents($queuePath), true) ?: [];
+        $doneData = is_file($donePath) ? (json_decode((string) file_get_contents($donePath), true) ?: []) : [];
+        $done = is_array($doneData) ? ($doneData['terms'] ?? []) : [];
+        $count = 0;
+        foreach (is_array($queueData['terms'] ?? null) ? $queueData['terms'] : [] as $term) {
+            if (! is_array($term) || ! isset($term['identity_hash'], $term['snapshot_id'])) continue;
+            $name = (string) ($term['canonical_source'] ?? '');
+            if ($name !== '' && ! in_array($name, $done, true)) $count++;
+        }
+
+        return $count;
     }
 
     private function termGaps(string $rows): int
