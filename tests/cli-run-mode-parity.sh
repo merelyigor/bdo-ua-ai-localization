@@ -440,6 +440,37 @@ compare_pair budget-directory "$TMP/budget-directory-sh" "$TMP/budget-directory-
 grep -Fq 'run-batches.json' "$TMP/budget-directory.php.err" || fail 'directory budget path missing'
 test ! -e "$TMP/budget-directory-php/current-batch" || fail 'directory budget created batch'
 
+# ПРАВИЛО: a readable valid but unwritable regular budget file must reach the
+# write-result guard after fetch, without being confused with read/decode failure.
+# САБОТАЖ: ignoring file_put_contents() failure must make this PHP/shell proof
+# diverge through continuation or state creation.
+for side in sh php; do
+    budget_write_state="$TMP/budget-write-failure-$side"
+    mkdir -p "$budget_write_state"
+    printf '%s\n' '{"scope":"local:patch:active:","batches":0}' >"$budget_write_state/run-batches.json"
+    printf 'local\n' >"$budget_write_state/run-target"
+    chmod 0444 "$budget_write_state/run-batches.json"
+    test -r "$budget_write_state/run-batches.json" || fail "budget-write-failure $side fixture is not readable"
+    "$REAL_PHP" -r '$d=json_decode((string) file_get_contents($argv[1]), true, 512, JSON_THROW_ON_ERROR); if (($d["scope"] ?? null) !== "local:patch:active:" || ($d["batches"] ?? null) !== 0) { exit(1); }' "$budget_write_state/run-batches.json" || fail "budget-write-failure $side fixture JSON invalid"
+    test ! -w "$budget_write_state/run-batches.json" || fail "budget-write-failure $side fixture is writable; cannot prove write failure"
+    cp "$budget_write_state/run-batches.json" "$TMP/budget-write-failure-$side.before"
+done
+run_logged_side "$TMP/budget-write-failure.sh.requests" sh "$TMP/budget-write-failure-sh" "$TMP/budget-write-failure.sh.out" "$TMP/budget-write-failure.sh.err" "$TMP/budget-write-failure.sh.code" patch 20
+run_logged_side "$TMP/budget-write-failure.php.requests" php "$TMP/budget-write-failure-php" "$TMP/budget-write-failure.php.out" "$TMP/budget-write-failure.php.err" "$TMP/budget-write-failure.php.code" patch 20
+compare_pair budget-write-failure "$TMP/budget-write-failure-sh" "$TMP/budget-write-failure-php"
+for side in sh php; do
+    test "$(<"$TMP/budget-write-failure.$side.code")" != 0 || fail "budget-write-failure $side succeeded"
+    grep -Fq 'Не вдалося записати файл стану:' "$TMP/budget-write-failure.$side.err" || fail "budget-write-failure $side write reason missing"
+    grep -Fq 'run-batches.json' "$TMP/budget-write-failure.$side.err" || fail "budget-write-failure $side path missing"
+    if grep -Fq 'Не вдалося прочитати файл стану:' "$TMP/budget-write-failure.$side.err" || grep -Fq 'Пошкоджений файл стану:' "$TMP/budget-write-failure.$side.err"; then
+        fail "budget-write-failure $side took read/corrupt branch"
+    fi
+    test -s "$TMP/budget-write-failure.$side.requests" || fail "budget-write-failure $side did not fetch"
+    cmp -s "$TMP/budget-write-failure-$side.before" "$TMP/budget-write-failure-$side/run-batches.json" || fail "budget-write-failure $side changed budget file"
+    test ! -e "$TMP/budget-write-failure-$side/run-goal.json" || fail "budget-write-failure $side wrote goal"
+    test ! -e "$TMP/budget-write-failure-$side/current-batch" || fail "budget-write-failure $side created batch"
+done
+
 for side in sh php; do
     mkdir -p "$TMP/goal-failure-$side"
     printf 'local\n' >"$TMP/goal-failure-$side/run-target"

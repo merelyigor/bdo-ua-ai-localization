@@ -448,6 +448,12 @@ structured fetch seam і D132 fail-closed реалізовані, але D133 в
 тому patch/domain і частина safety-ordering matrix не могли спростувати
 регресію. Corrective 6.5.4 змінює лише proof і process evidence.
 
+**Ревʼю 6.5.4:** `NEEDS CORRECTION`. Exact CI `25048fe` зелений і D133
+matrix тепер передає повний argv, але D134 виявив два хибно спрямовані
+proof: directory `run-batches.json` падав на read до перевірки failed write,
+а size15 sabotage зупинявся раніше на size20 differential. Corrective 6.5.5
+змінює лише test/evidence і не чіпає production behavior.
+
 **Мета.** Драйвер і цикл · у PHP.
 
 **Інваріант, який легко порушити саме тут:** ПОРЯДОК КРОКІВ ТРИМАЄ КОД. Конверт
