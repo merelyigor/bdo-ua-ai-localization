@@ -364,7 +364,7 @@ passed за 199 с; `phpstorm lint_files` · 0 ERROR; жоден із 17 вик�
 
 ### Підетап 5 · `cli/batch/**`, `cli/heal/**`, `cli/write/**` (9 файлів, 1 482 рядки)
 
-**Статус:** у роботі.
+**Статус:** у роботі · кодові порції прийняті, але фінальне приймання блокує D151: запланований shell/PHP `BDO_DRY_RUN=1` proof ідентичності `commit-report.txt` ще не зафіксований.
 
 Прийнято рев'ю: перша non-PROD batch/heal порція `92cf048` + corrective
 `2cc58bb`; `batch-clean` · `f785fcb`, `6.4.1`, CI success.
@@ -413,7 +413,7 @@ alias до запуску write-тестів. Підетап 5 закритий 
 
 ### Підетап 6 · `cli/run/**` (7 файлів, 1 773 рядки)
 
-**Статус:** у роботі.
+**Статус:** у роботі · native PHP route мають 4 із 5 wrappers, що належать Stage6; лишився `run-loop`. По всій `cli/run/**` це 4 із 7, бо `run-stop` і `step-report` перенесені до Stage7.
 
 **Пакет 6.5.0:** safe pilot підетапу 6 · `run-spec.sh` і `run-start.sh`.
 Вони переносять preset/target foundation без driver loop, викликів моделей або
@@ -475,6 +475,12 @@ rollback-shell. Бойовий PROD write не використовується 
 
 **Corrective 6.5.8:** виправляє лише D148-D150 у межах `run-drive`: останню names schema divergence, пропущені D142/D140 behavioral cases і повну explicit non-gating helper failure matrix. Frozen rollback `cli/run/run-drive.sh`, `run-loop`, Stage7 і PROD/API contract не змінюються. Підетап 6 лишається `у роботі` до окремого Architect-review exact diff + CI.
 
+**Ревʼю 6.5.8:** `ACCEPTED`. Exact GitHub Actions run №27 (`34541372494`) на `98d7834` зелений: `./bdo gate full` і `cli-api-fetch × 5` завершились success. D148 доведений actual subset schema artifact після invalid names response; D149 має окремі negative/positive effective-threshold branches; D150 ганяє вісім explicit fail-soft helper boundaries із marker-backed shell nonzero та PHP exception injection. Ланцюг `run-drive` 6.5.6-6.5.8 прийнято.
+
+**Infrastructure 6.5.9:** перед подальшим переносом вводить PHPStan 2.2.13 level 0 для `lib/**`, але лише якщо read-only baseline preflight уже зелений. Пакет не виправляє production PHP і не маскує findings baseline-ом або ignore-list; якщо preflight червоний, commit не створюється, а findings стають окремим corrective.
+
+**Порядок після 6.5.8:** PHPStan green pilot → D151 shell/PHP dry-run `commit-report.txt` identity proof → Windows native PHP smoke → `run-loop` разом із D135. Windows smoke не використовує `env`, доки `EnvCommand` делегує `bash`; проміжний доказ бере `php cli/bdo.php help` і pure-native `run-spec status` із synthetic DEV env. Фінальний `bdo.bat` без WSL2 лишається критерієм Stage8.
+
 **Межа visibility:** `cli/run/run-stop.sh` і `cli/run/step-report.sh`
 переносяться з підетапом 7, а не з driver. Перший прямо делегує
 `cli/system/watch.sh`/tmux, другий визначає ширину через `/dev/tty` і `stty`;
@@ -507,8 +513,10 @@ watch/process і terminal-visibility abstraction.
 
 ### Підетап 8 · вхідні точки й прибирання
 
-Тут також закривається D135 у `bdo::print_header()`: detailed help має читати
-header перенесеного wrapper незалежно від PHP dispatcher перед ним.
+D135 перенесено вперед: central `bdo::print_header()` закривається разом із
+наступною змістовною `run-loop` порцією, щоб нові wrapper migrations більше не
+множили порожній detailed help. Stage8 не чекає окремого D135 fix і займається
+фінальними entrypoints та видаленням rollback-shell.
 
 **Мета.** `bdo` стає тонким (пошук php → `php cli/bdo.php`), `bdo.bat` працює
 БЕЗ WSL2, старі `.sh` видаляються, `BDO_ORCHESTRATOR` прибирається.

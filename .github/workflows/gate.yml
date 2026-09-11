@@ -120,3 +120,20 @@ jobs:
             echo "── прогін $i ──"
             bash tests/cli-api-fetch.sh
           done
+
+  phpstan:
+    name: PHPStan level 0
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: PHP 8.5
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.5'
+          tools: phpstan:2.2.13
+          coverage: none
+
+      - name: PHPStan level 0
+        run: phpstan analyse -c phpstan.neon --no-progress
