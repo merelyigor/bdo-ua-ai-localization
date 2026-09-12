@@ -364,18 +364,18 @@ passed за 199 с; `phpstorm lint_files` · 0 ERROR; жоден із 17 вик�
 
 ### Підетап 5 · `cli/batch/**`, `cli/heal/**`, `cli/write/**` (9 файлів, 1 482 рядки)
 
-**Статус:** у роботі · corrective/proof 6.6.0 закриває D151 і D153; фінальне приймання підетапу 5 чекає окремого Architect-review exact diff + CI.
+**Статус:** прийнято · review 6.6.0 ACCEPTED: D151/D153 закриті raw 20-row shell/PHP dry-run identity proof; exact GitHub Actions run №29 (`34660478649`) зелений.
 
 Прийнято рев'ю: перша non-PROD batch/heal порція `92cf048` + corrective
 `2cc58bb`; `batch-clean` · `f785fcb`, `6.4.1`, CI success.
 
-Залишок підетапу 5:
+Останній PROD/API-write залишок підетапу 5 був:
 
 - `cli/batch/batch-commit.sh`
 - `cli/write/moderation-queue.sh`
 - `cli/write/write-translations.sh`
 
-Це остання PROD/API-write межа підетапу 5, і вона ще НЕ прийнята.
+Цю межу прийнято ланцюгом 6.4.5–6.4.7; фінальний D151/D153 dry-run identity proof прийнято review 6.6.0.
 
 **Пакет 6.4.5:** переносить усі три файли залишку в PHP одним звʼязаним
 write-пакетом. Статус підетапу 5 до ревʼю лишається `у роботі`. Усі write-
@@ -397,6 +397,8 @@ orchestrator routes для blocker і не робить бойового PROD wr
 PASS і moderation при `no_run/env_mismatch/quota`, D127 відновлює
 `ollama/<model>` для config fallback, D128 охороняє фактичний production-root
 alias до запуску write-тестів. Висновок про повне закриття підетапу пізніше скасовано аудитом: D151 вимагав відсутній dry-run identity proof.
+
+**Ревʼю 6.6.0:** `ACCEPTED`. Commit `b11cf9a` закриває D151 і D153: 20-row shell/PHP `BDO_DRY_RUN=1` використовує той самий absolute state path після snapshot restore, raw `commit-report.txt` має однакові 495 bytes/SHA-256 і `cmp=0`, обидва request logs мають zero POST; chronology та whitespace falsifications падають на raw cmp. Production fix локальний до merged commit capture і canonical rollback count. Exact GitHub Actions run №29 (`34660478649`) зелений у `./bdo gate full`, `cli-api-fetch × 5`, `PHPStan level 0`. Підетап 5 прийнято цілком без бойового PROD write.
 
 **Мета.** Пачка, ремонт, запис · у PHP.
 
@@ -483,7 +485,9 @@ rollback-shell. Бойовий PROD write не використовується 
 
 **Corrective 6.6.0:** D151 raw 20-row proof виявив D153: native commit capture втрачав stdout/stderr chronology, rollback quarantine count мав platform-dependent legacy `wc` padding. Пакет виправляє лише ці дві observable divergence і повторює raw proof без PROD/API write.
 
-**Порядок після 6.5.8:** PHPStan green pilot → D151 shell/PHP dry-run `commit-report.txt` identity proof → Windows native PHP smoke → `run-loop` разом із D135. Windows smoke не використовує `env`, доки `EnvCommand` делегує `bash`; проміжний доказ бере `php cli/bdo.php help` і pure-native `run-spec status` із synthetic DEV env. Фінальний `bdo.bat` без WSL2 лишається критерієм Stage8.
+**Порядок після 6.6.0:** Windows native PHP smoke → `run-loop` разом із D135. Windows smoke не використовує `env` як positive proof, доки `EnvCommand` делегує `bash`; проміжний доказ бере `php cli/bdo.php help` і pure-native `run-spec status` із synthetic DEV env. Фінальний `bdo.bat` без WSL2 лишається критерієм Stage8.
+
+**Windows preflight 6.6.1:** новий Windows detector спершу живе лише на `preflight/windows-native-6.6.1`; `main` не рухається до окремого Architect-review exact branch CI. `windows-2025` запускає pure-PHP `help` і `run-spec status` із `bash`, вилученим із PATH; shell-dependent `env` є negative control.
 
 **Межа visibility:** `cli/run/run-stop.sh` і `cli/run/step-report.sh`
 переносяться з підетапом 7, а не з driver. Перший прямо делегує
