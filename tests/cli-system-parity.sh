@@ -148,3 +148,67 @@ grep -q 'Використання: session-timer.sh' "$TMP/kernel.out" \
 printf '   %-22s ядро відповідає напряму\n' 'реєстрація-в-ядрі'
 
 printf 'cli/system parity: OK · session-timer байтово однаковий на обох шляхах\n'
+
+printf 'ПАРНІСТЬ cli/system · session і timed\n'
+
+# Для сесії fixture має фіксований час і багатобайтові значення. Це дає змогу
+# порівняти НЕ лише екран, а кожен створений/прочитаний файл у state/**.
+seed_session_fixture() {
+    local dir="$1"
+    mkdir -p "$dir/sessions/20260912_080000" "$dir/batches/20260912_080000_aaaaaaaaaaaaaaaa"
+    printf '20260912_080000\n' > "$dir/current-session"
+    printf '{"id":"20260912_080000","status":"closed","started_epoch":1757664000,"started_at":"2026-09-12T08:00:00+00:00","closed_epoch":1757667600,"closed_at":"2026-09-12T09:00:00+00:00","batches":1,"rows":2,"to_layer":1,"to_human":1,"quarantine":0,"model_calls":1,"journals":"kept"}\n' > "$dir/sessions/20260912_080000/summary.json"
+    printf '{"id":"20260912_080000_aaaaaaaaaaaaaaaa","at":"2026-09-12T08:30:00+00:00"}\n' > "$dir/sessions/20260912_080000/batches.jsonl"
+    printf '{"id":"20260912_080000_aaaaaaaaaaaaaaaa","rows":2,"state":"verified","mode":"patch","patch":"1"}\n' > "$dir/batches/20260912_080000_aaaaaaaaaaaaaaaa/manifest.json"
+    printf '{"rows":2,"target_written":1,"moderation_written":1,"quarantine":0,"channel":"machine"}\n' > "$dir/batches/20260912_080000_aaaaaaaaaaaaaaaa/batch-summary.json"
+    printf 'крок із багатобайтовим значенням\n' > "$dir/sessions/20260912_080000/transcript.log"
+}
+
+compare_tree() {
+    local name="$1" left="$2" right="$3"
+    find "$left" -type f -print | sed "s#^$left/##" | LC_ALL=C sort > "$TMP/$name.left-files"
+    find "$right" -type f -print | sed "s#^$right/##" | LC_ALL=C sort > "$TMP/$name.right-files"
+    cmp -s "$TMP/$name.left-files" "$TMP/$name.right-files" \
+        || fail "$name: перелік state-файлів різний"
+    while IFS= read -r relative; do
+        cmp -s "$left/$relative" "$right/$relative" \
+            || fail "$name: файл різний · $relative"
+    done < "$TMP/$name.left-files"
+}
+
+session_pair() {
+    local name="$1"; shift
+    local command="$1"; shift
+    local sh_dir="$TMP/session-$name-sh" php_dir="$TMP/session-$name-php"
+    seed_session_fixture "$sh_dir"
+    seed_session_fixture "$php_dir"
+    if [ "$command" = delete ]; then
+        rm -f "$sh_dir/current-session" "$php_dir/current-session"
+    fi
+    local sh_code=0 php_code=0
+    BDO_ENV=DEV BDO_ORCHESTRATOR=sh BDO_STATE_DIR="$sh_dir" \
+        bash "$ROOT/cli/system/session.sh" "$command" "$@" >"$sh_dir/out" 2>"$sh_dir/err" || sh_code=$?
+    BDO_ENV=DEV BDO_ORCHESTRATOR=php BDO_STATE_DIR="$php_dir" \
+        bash "$ROOT/cli/system/session.sh" "$command" "$@" >"$php_dir/out" 2>"$php_dir/err" || php_code=$?
+    test "$sh_code" = "$php_code" || fail "session $name: код виходу різний"
+    cmp -s "$sh_dir/out" "$php_dir/out" || fail "session $name: stdout різний"
+    cmp -s "$sh_dir/err" "$php_dir/err" || fail "session $name: stderr різний"
+    compare_tree "session-$name" "$sh_dir" "$php_dir"
+    printf '   %-22s код=%s · stdout, stderr і state/** збігаються\n' "session-$name" "$sh_code"
+}
+
+session_pair ensure ensure
+session_pair list list
+session_pair show show 20260912_080000
+session_pair journals journals 20260912_080000
+session_pair delete delete 20260912_080000 --apply
+session_pair bogus bogus
+
+# Обидві зони проходять через ту саму перевірку state-файлів. Зокрема, це
+# захищає від повернення date.timezone замість LocalTime у PHP-команді.
+TZ=UTC session_pair tz-utc list
+TZ=Europe/Kyiv session_pair tz-kyiv list
+
+
+
+printf 'cli/system parity: OK · session і state-файли збігаються\n'

@@ -50,6 +50,7 @@ use Bdo\Translate\Cli\Command\Run\RunDriveCommand;
 use Bdo\Translate\Cli\Command\Run\RunLoopCommand;
 use Bdo\Translate\Cli\Command\Run\RunStartCommand;
 use Bdo\Translate\Cli\Command\Run\StepReportCommand;
+use Bdo\Translate\Cli\Command\System\SessionCommand;
 use Bdo\Translate\Cli\Command\System\SessionTimerCommand;
 use Bdo\Translate\Cli\Command\Write\ModerationCommand;
 use Bdo\Translate\Cli\Command\Write\WriteTranslationsCommand;
@@ -142,6 +143,7 @@ final class Kernel
             'subset-rows' => new SubsetRowsCommand(),
             'heal-plan' => new HealPlanCommand(),
             'commit' => new BatchCommitCommand(),
+            'session' => new SessionCommand(),
             'session-timer' => new SessionTimerCommand(),
             'write' => new WriteTranslationsCommand(),
             'moderation' => new ModerationCommand(),

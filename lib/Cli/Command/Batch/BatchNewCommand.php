@@ -9,15 +9,15 @@ use Bdo\Translate\Batch\Workspace;
 use Bdo\Translate\Cli\Command;
 use Bdo\Translate\Cli\LocalTime;
 use Bdo\Translate\Cli\Output;
+use Bdo\Translate\Cli\Command\System\SessionCommand;
 use Bdo\Translate\Session\Ledger;
 use RuntimeException;
 
 /**
  * Створює, показує й закриває ізольовану пачку.
  *
- * Причина збереження `session.sh ensure`: session orchestration належить
- * підетапу 7, тому ця команда переносить лише batch-частину й лишає старий
- * seam у тому самому місці — до створення workspace.
+ * Сесія відкривається тією самою PHP-логікою, що й команда `session ensure`,
+ * до створення workspace.
  */
 final class BatchNewCommand implements Command
 {
@@ -49,8 +49,7 @@ final class BatchNewCommand implements Command
             return 1;
         }
 
-        // Беремо ту саму системну зону й формат, але без Unix-процесу: PHP має
-        // працювати нативно на Windows, а session.sh лишається тимчасовим seam.
+        // Беремо ту саму системну зону й формат без Unix-процесу.
         $stamp = LocalTime::stamp();
         $this->ensureSession();
         $rows = RowSet::fromFile($mode);
@@ -96,16 +95,27 @@ final class BatchNewCommand implements Command
 
     private function ensureSession(): void
     {
-        $script = dirname(__DIR__, 4).'/cli/system/session.sh';
-        $command = 'bash '.escapeshellarg($script).' ensure >/dev/null';
-        exec($command, $unused, $code);
-        if ($code !== 0) {
-            throw new RuntimeException('Не вдалося відкрити сесію перед створенням пачки.');
-        }
+        SessionCommand::ensureCurrent($this->stateDir(), $this->targetEnv());
     }
 
     private function stateDir(): string
     {
         return getenv('BDO_STATE_DIR') ?: dirname(__DIR__, 4).'/state';
+    }
+
+    private function targetEnv(): string
+    {
+        $env = getenv('BDO_ENV');
+        if (is_string($env) && $env !== '') {
+            return $env;
+        }
+        $path = dirname(__DIR__, 4).'/.env';
+        foreach (is_file($path) ? (file($path, FILE_IGNORE_NEW_LINES) ?: []) : [] as $line) {
+            if (str_starts_with($line, 'BDO_ENV=')) {
+                return trim(substr($line, 8), "\"' \t\r\n");
+            }
+        }
+
+        return '';
     }
 }

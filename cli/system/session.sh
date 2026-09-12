@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+if [ "${BDO_ORCHESTRATOR:-php}" != sh ]; then
+    exec php "$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/cli/bdo.php" session "$@"
+fi
 # Сесія роботи: період, у якому власник провів N пачок.
 #
 #   ./session.sh new                    # почати нову (поточну закриє сама)
