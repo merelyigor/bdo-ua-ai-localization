@@ -28,6 +28,17 @@ STATE_DIR="${BDO_STATE_DIR:-$SCRIPT_DIR/state}"
 FILE="$STATE_DIR/session-timer.json"
 BUDGET_MINUTES="${BDO_SESSION_BUDGET_MINUTES:-240}"
 
+# D158: epoch -> локальний рядок. `date -r <epoch>` це BSD; GNU date розуміє
+# `-r` як «час файла», тому на Linux мовчки друкував ПОРОЖНЄ місце замість дати
+# («Відлік почато: , межа 240 хв.»). Спіймано CI на ubuntu 2026-09-12, коли
+# парність із PHP вимагала однакового рядка на обох ОС. Порядок спроб той
+# самий, що й у `to_epoch`: спершу BSD, потім GNU.
+from_epoch() {
+    date -r "$1" "+$2" 2>/dev/null \
+        || date -d "@$1" "+$2" 2>/dev/null \
+        || return 1
+}
+
 # Локальний рядок -> epoch. BSD (`date -j -f`) і GNU (`date -d`) роблять це
 # по-різному, тому пробуємо обидва; помилка тут краща за мовчазне «зараз».
 to_epoch() {
@@ -47,7 +58,7 @@ case "${1:-status}" in
         fi
         printf '{\n  "started_epoch": %s,\n  "budget_minutes": %s\n}\n' \
             "$started" "$BUDGET_MINUTES" > "$FILE"
-        printf 'Відлік почато: %s, межа %s хв.\n' "$(date -r "$started" '+%Y-%m-%d %H:%M:%S')" "$BUDGET_MINUTES"
+        printf 'Відлік почато: %s, межа %s хв.\n' "$(from_epoch "$started" '%Y-%m-%d %H:%M:%S')" "$BUDGET_MINUTES"
         ;;
     status|check)
         if [ ! -f "$FILE" ]; then
@@ -61,10 +72,10 @@ case "${1:-status}" in
         spent=$(( ( $(date +%s) - started ) / 60 ))
         left=$(( budget - spent ))
         printf 'Сесія: %s | минуло %d год %02d хв із %d хв межі\n' \
-            "$(date -r "$started" '+%Y-%m-%d %H:%M')" $((spent / 60)) $((spent % 60)) "$budget"
+            "$(from_epoch "$started" '%Y-%m-%d %H:%M')" $((spent / 60)) $((spent % 60)) "$budget"
         if [ "$left" -gt 0 ]; then
             printf 'Лишилось: %d хв. Нових великих етапів після %s не починати.\n' \
-                "$left" "$(date -r $((started + budget * 60)) '+%H:%M')"
+                "$left" "$(from_epoch $((started + budget * 60)) '%H:%M')"
         else
             printf 'МЕЖУ ВИЧЕРПАНО на %d хв. Завершити поточний етап і зупинитись.\n' $(( -left ))
             # D157: було `test … = check && exit 1` ОСТАННІМ рядком гілки, тому
