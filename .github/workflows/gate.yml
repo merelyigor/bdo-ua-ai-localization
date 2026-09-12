@@ -70,6 +70,25 @@ jobs:
             'BDO_API_KEY_DEV=ci-not-a-real-key' > "$RUNNER_TEMP/bdo-ci.env"
           echo "TRANSLATE_ENV_FILE=$RUNNER_TEMP/bdo-ci.env" >> "$GITHUB_ENV"
 
+      # Сервер сторінки · ядро продукту: саме він дає власнику GUI. Локальний
+      # прогін на macOS цього не доводить, а `tests/web-server.sh` усередині
+      # гейта ховає причину · він працює в теці `mktemp`, яку прибирає за
+      # собою, тому на runner лишалось саме повідомлення без журналу сервера.
+      # Крок піднімає сервер окремо й ДРУКУЄ його журнал, тому наступний
+      # червоний прогін одразу називає причину, а не лише симптом.
+      - name: Сервер сторінки піднімається (Linux)
+        run: |
+          set -uo pipefail
+          tmp="$RUNNER_TEMP/web-start"
+          mkdir -p "$tmp/state"
+          BDO_STATE_DIR="$tmp/state" ./bdo web --background --no-open
+          code=$?
+          echo "код запуску: $code"
+          echo "--- state/web.log ---"
+          if [ -f "$tmp/state/web.log" ]; then cat "$tmp/state/web.log"; else echo "журналу немає"; fi
+          if [ "$code" = 0 ]; then BDO_STATE_DIR="$tmp/state" ./bdo web --stop; fi
+          exit "$code"
+
       - name: gate full
         run: ./bdo gate full
 
