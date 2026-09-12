@@ -66,6 +66,45 @@ function Invoke-Cli([string[]] $Arguments, [string] $Label) {
     }
 }
 
+function Invoke-NativeProcess([string[]] $Arguments, [int] $TimeoutMilliseconds) {
+    $startInfo = [System.Diagnostics.ProcessStartInfo]::new()
+    $startInfo.FileName = $php
+    $startInfo.WorkingDirectory = $repo
+    $startInfo.UseShellExecute = $false
+    $startInfo.RedirectStandardOutput = $true
+    $startInfo.RedirectStandardError = $true
+    foreach ($argument in $Arguments) {
+        [void] $startInfo.ArgumentList.Add($argument)
+    }
+    $process = [System.Diagnostics.Process]::new()
+    $process.StartInfo = $startInfo
+    try {
+        if (-not $process.Start()) {
+            Fail 'run-loop process did not start.'
+        }
+        if (-not $process.WaitForExit($TimeoutMilliseconds)) {
+            try {
+                $process.Kill($true)
+            } catch {
+            }
+            try {
+                $process.WaitForExit(2000)
+            } catch {
+            }
+            Fail 'run-loop timed out on Windows native process capture'
+        }
+        $stdout = $process.StandardOutput.ReadToEnd()
+        $stderr = $process.StandardError.ReadToEnd()
+        [pscustomobject] @{
+            Code = $process.ExitCode
+            Stdout = $stdout
+            Stderr = $stderr
+        }
+    } finally {
+        $process.Dispose()
+    }
+}
+
 # ПРАВИЛО: help і run-spec status мусять працювати native PHP на Windows, коли bash недоступний.
 # САБОТАЖ: shell-dependent env у тому самому sanitized PATH є negative control; якщо bash лишився доступним або positive command почне від нього залежати, proof мусить впасти.
 $help = Invoke-Cli @($entry, 'help') 'help'
@@ -98,9 +137,21 @@ if ($json.ok -ne $true -or $json.mode -ne 'patch' -or $json.patch -ne 'active' -
     Fail 'run-spec status JSON contract mismatch.'
 }
 
+$runLoopState = Join-Path $work 'run-loop-no-batch-state'
+New-Item -ItemType Directory -Force -Path $runLoopState | Out-Null
+$env:BDO_STATE_DIR = $runLoopState
+$env:BDO_ORCHESTRATOR = 'php'
+$runLoop = Invoke-NativeProcess @($entry, 'run-loop', '--once') 10000
+if ($runLoop.Code -ne 1) {
+    Fail "run-loop --once returned code $($runLoop.Code), expected 1."
+}
+if ($runLoop.Stderr -notmatch [regex]::Escape('no_current_batch')) {
+    Fail 'run-loop --once did not report no_current_batch.'
+}
+
 $envResult = Invoke-Cli @($entry, 'env') 'env-negative'
 if ($envResult.Code -eq 0) {
     Fail 'env unexpectedly succeeded while bash was absent.'
 }
 
-Write-Output "Windows native smoke: PHP_OS_FAMILY=Windows; help=$($help.Code); run-spec-status=$($status.Code); env-negative=$($envResult.Code); bash=absent"
+Write-Output "Windows native smoke: PHP_OS_FAMILY=Windows; help=$($help.Code); run-spec-status=$($status.Code); run-loop-no-batch=$($runLoop.Code); env-negative=$($envResult.Code); bash=absent"

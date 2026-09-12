@@ -415,7 +415,7 @@ alias до запуску write-тестів. Висновок про повне
 
 ### Підетап 6 · `cli/run/**` (7 файлів, 1 773 рядки)
 
-**Статус:** у роботі · Windows native smoke 6.6.2 прийнятий; пакет 6.6.3 переносить останній Stage6-owned wrapper `run-loop` і закриває D135. Підетап 6 чекає окремого Architect-review exact diff + CI для 6.6.3; `run-stop` і `step-report` лишаються Stage7.
+**Статус:** у роботі · review 6.6.3 = NEEDS CORRECTION через D155/D156: native Windows process capture може зависнути, а Windows smoke не виконував `run-loop`. Corrective 6.6.4 має закрити обидва дефекти; `run-stop` і `step-report` лишаються Stage7.
 
 **Пакет 6.5.0:** safe pilot підетапу 6 · `run-spec.sh` і `run-start.sh`.
 Вони переносять preset/target foundation без driver loop, викликів моделей або
@@ -494,6 +494,10 @@ rollback-shell. Бойовий PROD write не використовується 
 **Ревʼю Windows 6.6.2:** `ACCEPTED`. Exact preflight run №31 (`34662852607`) і exact main run №32 (`34664030930`) на тому самому `da14382` зелені у всіх чотирьох jobs: `./bdo gate full`, `cli-api-fetch × 5`, `PHPStan level 0`, `Windows native PHP smoke`. Windows log довів `PHP_OS_FAMILY=Windows; help=0; run-spec-status=0; env-negative=1; bash=absent`. D154 закритий; detector прийнятий на `main`.
 
 **Пакет 6.6.3:** переносить останній Stage6-owned `run-loop` у `RunLoopCommand`: envelope-рішення й spin/batch safety живуть у PHP; `run-drive`, `run-mode` і model client викликаються fixed PHP argv без shell command string, timing пишеться напряму через `StepTimes`. Frozen shell loop лишається rollback. `step-report.sh` не переноситься й до Stage7 лишається fail-soft visibility bridge. Той самий пакет закриває D135 центральним `bdo::print_header()` regression без пересування wrapper headers. Підетап 6 не приймається до окремого Architect-review exact diff + CI.
+
+**Ревʼю 6.6.3:** `NEEDS CORRECTION`. Exact main commit `fca119fda9e63bd2ed845165062758db25141063`, parent `da14382`, мав рівно 11 погоджених файлів; exact GitHub Actions run №33 (`34671276926`) завершився success у `./bdo gate full`, `cli-api-fetch × 5`, `PHPStan level 0`, `Windows native PHP smoke`. D135 behavioral proof прийнятий. Але executable review виявив D155: `RunLoopCommand`застосовує`stream_select()`до`proc_open()`pipes, що PHP не підтримує під Windows і що може лишити loop нескінченним. D156: green Windows smoke не запускав`run-loop`, тому цього не спростовував. Stage6 не прийнятий.
+
+**Corrective 6.6.4:** змінює лише native process capture і Windows evidence: POSIX pipe behavior лишається, Windows subprocess stdout/stderr переходять на file-backed capture без `stream_select()`над proc pipes; Windows smoke запускає real`php cli/bdo.php run-loop --once`з hard timeout і named`no_current_batch`. Stage7 до review 6.6.4 не починається.
 
 **Межа visibility:** `cli/run/run-stop.sh` і `cli/run/step-report.sh`
 переносяться з підетапом 7, а не з driver. Перший прямо делегує

@@ -343,11 +343,32 @@ final class RunLoopCommand implements Command
     /** @param list<string> $command @param array<string,string>|null $extraEnv @return array{code:int,stdout:string,stderr:string} */
     private function process(array $command, bool $liveStderr = false, ?array $extraEnv = null, bool $discardStderr = false): array
     {
-        $descriptors = [
-            0 => ['file', 'php://stdin', 'r'],
-            1 => ['pipe', 'w'],
-            2 => ['pipe', 'w'],
-        ];
+        $windows = PHP_OS_FAMILY === 'Windows';
+        $stdoutPath = null;
+        $stderrPath = null;
+        if ($windows) {
+            $temporaryDirectory = sys_get_temp_dir();
+            $stdoutPath = tempnam($temporaryDirectory, 'bdo-loop-out-');
+            if ($stdoutPath === false) {
+                throw new RuntimeException("не вдалося створити Windows stdout capture file у {$temporaryDirectory}");
+            }
+            $stderrPath = tempnam($temporaryDirectory, 'bdo-loop-err-');
+            if ($stderrPath === false) {
+                @unlink($stdoutPath);
+                throw new RuntimeException("не вдалося створити Windows stderr capture file у {$temporaryDirectory}");
+            }
+            $descriptors = [
+                0 => ['file', 'php://stdin', 'r'],
+                1 => ['file', $stdoutPath, 'wb'],
+                2 => ['file', $stderrPath, 'wb'],
+            ];
+        } else {
+            $descriptors = [
+                0 => ['file', 'php://stdin', 'r'],
+                1 => ['pipe', 'w'],
+                2 => ['pipe', 'w'],
+            ];
+        }
         $environment = getenv();
         $environment = is_array($environment) ? $environment : [];
         if ($extraEnv !== null) {
@@ -355,7 +376,25 @@ final class RunLoopCommand implements Command
         }
         $process = proc_open($command, $descriptors, $pipes, $this->root, $environment);
         if (! is_resource($process)) {
+            if ($stdoutPath !== null) {
+                @unlink($stdoutPath);
+            }
+            if ($stderrPath !== null) {
+                @unlink($stderrPath);
+            }
             throw new RuntimeException('не вдалося запустити внутрішній процес');
+        }
+        if ($windows) {
+            try {
+                return $this->processWindowsCapture($process, $stdoutPath, $stderrPath, $liveStderr, $discardStderr);
+            } finally {
+                if (is_resource($process)) {
+                    proc_terminate($process);
+                    proc_close($process);
+                }
+                @unlink($stdoutPath);
+                @unlink($stderrPath);
+            }
         }
         stream_set_blocking($pipes[1], false);
         stream_set_blocking($pipes[2], false);
@@ -431,6 +470,69 @@ final class RunLoopCommand implements Command
         }
 
         return ['code' => $code, 'stdout' => $stdout, 'stderr' => $stderr];
+    }
+
+    private function processWindowsCapture($process, string $stdoutPath, string $stderrPath, bool $liveStderr, bool $discardStderr): array
+    {
+        $stdout = '';
+        $stderr = '';
+        $stderrOffset = 0;
+        $status = proc_get_status($process);
+        if (! is_array($status)) {
+            throw new RuntimeException("не вдалося прочитати статус внутрішнього процесу; capture: {$stderrPath}");
+        }
+        while (($status['running'] ?? false) === true) {
+            if ($liveStderr && ! $discardStderr) {
+                [$tail, $stderrOffset] = $this->readWindowsCapture($stderrPath, $stderrOffset);
+                if ($tail !== '') {
+                    $stderr .= $tail;
+                    $this->writeStderr($tail);
+                }
+            }
+            usleep(10000);
+            $status = proc_get_status($process);
+            if (! is_array($status)) {
+                throw new RuntimeException("не вдалося прочитати статус внутрішнього процесу; capture: {$stderrPath}");
+            }
+        }
+        $closeCode = proc_close($process);
+        [$stdout] = $this->readWindowsCapture($stdoutPath, 0);
+        [$stderrTail, $stderrOffset] = $this->readWindowsCapture($stderrPath, $stderrOffset);
+        $stderr .= $stderrTail;
+        if ($liveStderr && ! $discardStderr && $stderrTail !== '') {
+            $this->writeStderr($stderrTail);
+        }
+        $code = $closeCode >= 0 ? $closeCode : (int) ($status['exitcode'] ?? 1);
+        if (($status['signaled'] ?? false) && (int) ($status['termsig'] ?? 0) > 0) {
+            $code = 128 + (int) $status['termsig'];
+        }
+
+        return ['code' => $code, 'stdout' => $stdout, 'stderr' => $stderr];
+    }
+
+    /** @return array{0:string,1:int} */
+    private function readWindowsCapture(string $path, int $offset): array
+    {
+        if (! is_file($path) || ! is_readable($path)) {
+            throw new RuntimeException("не вдалося прочитати Windows capture file: {$path}");
+        }
+        clearstatcache(true, $path);
+        $size = filesize($path);
+        if ($size === false) {
+            throw new RuntimeException("не вдалося визначити розмір Windows capture file: {$path}");
+        }
+        if ($size < $offset) {
+            throw new RuntimeException("Windows capture file shrank unexpectedly: {$path}");
+        }
+        if ($size === $offset) {
+            return ['', $offset];
+        }
+        $tail = file_get_contents($path, false, null, $offset);
+        if ($tail === false) {
+            throw new RuntimeException("не вдалося прочитати Windows capture file: {$path}");
+        }
+
+        return [$tail, $offset + strlen($tail)];
     }
 
     private function writeStderr(string $text): void
