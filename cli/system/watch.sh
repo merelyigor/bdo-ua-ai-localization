@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+if [ "${BDO_ORCHESTRATOR:-php}" != sh ]; then
+    exec php "$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/cli/bdo.php" watch "$@"
+fi
 # Запустити довгу роботу в СПРАВЖНЬОМУ терміналі, який видно власникові.
 #
 #   ./watch.sh loop --batches 1     прогін у сесії tmux `bdo`

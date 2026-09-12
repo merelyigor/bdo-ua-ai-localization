@@ -212,3 +212,29 @@ TZ=Europe/Kyiv session_pair tz-kyiv list
 
 
 printf 'cli/system parity: OK · session і state-файли збігаються\n'
+
+# 7.5 · живі команди: неінтерактивні відмови й порожній status мають той самий
+# stdout, stderr, код і state/**. Живі сервер та tmux перевіряються їхніми
+# спеціальними тестами, щоб цей парний тест не чіпав сесію власника.
+runtime_pair() {
+    local name="$1" script="$2"; shift 2
+    local sh_dir="$TMP/runtime-$name-sh" php_dir="$TMP/runtime-$name-php"
+    mkdir -p "$sh_dir" "$php_dir"
+    local sh_code=0 php_code=0
+    BDO_ORCHESTRATOR=sh BDO_STATE_DIR="$sh_dir" BDO_TMUX_SESSION="bdo-parity-$$" \
+        bash "$ROOT/cli/system/$script" "$@" >"$sh_dir/out" 2>"$sh_dir/err" || sh_code=$?
+    BDO_ORCHESTRATOR=php BDO_STATE_DIR="$php_dir" BDO_TMUX_SESSION="bdo-parity-$$" \
+        bash "$ROOT/cli/system/$script" "$@" >"$php_dir/out" 2>"$php_dir/err" || php_code=$?
+    test "$sh_code" = "$php_code" || fail "$name: код виходу різний"
+    cmp -s "$sh_dir/out" "$php_dir/out" || fail "$name: stdout різний"
+    cmp -s "$sh_dir/err" "$php_dir/err" || fail "$name: stderr різний"
+    compare_tree "runtime-$name" "$sh_dir" "$php_dir"
+    printf '   %-22s код=%s · stdout, stderr і state/** збігаються\n' "$name" "$sh_code"
+}
+
+runtime_pair 'web-status' web.sh --status
+runtime_pair 'web-unknown' web.sh --not-allowed
+runtime_pair 'watch-unknown' watch.sh review
+runtime_pair 'watch-batches' watch.sh loop --batches abc
+
+printf 'cli/system parity: OK · watch і web dispatchers збігаються\n'

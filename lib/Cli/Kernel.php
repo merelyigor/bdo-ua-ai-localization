@@ -52,6 +52,8 @@ use Bdo\Translate\Cli\Command\Run\RunStartCommand;
 use Bdo\Translate\Cli\Command\Run\StepReportCommand;
 use Bdo\Translate\Cli\Command\System\SessionCommand;
 use Bdo\Translate\Cli\Command\System\SessionTimerCommand;
+use Bdo\Translate\Cli\Command\System\WatchCommand;
+use Bdo\Translate\Cli\Command\System\WebCommand;
 use Bdo\Translate\Cli\Command\Write\ModerationCommand;
 use Bdo\Translate\Cli\Command\Write\WriteTranslationsCommand;
 
@@ -145,6 +147,8 @@ final class Kernel
             'commit' => new BatchCommitCommand(),
             'session' => new SessionCommand(),
             'session-timer' => new SessionTimerCommand(),
+            'watch' => new WatchCommand(),
+            'web' => new WebCommand(),
             'write' => new WriteTranslationsCommand(),
             'moderation' => new ModerationCommand(),
             default => null,

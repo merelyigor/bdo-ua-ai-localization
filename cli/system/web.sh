@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+if [ "${BDO_ORCHESTRATOR:-php}" != sh ]; then
+    exec php "$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/cli/bdo.php" web "$@"
+fi
 # Локальний інтерфейс у браузері: одна команда, вільний порт, посилання в терміналі.
 #
 #   ./web.sh                 # запустити й тримати; Ctrl-C зупиняє
