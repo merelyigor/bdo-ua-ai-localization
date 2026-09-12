@@ -21,6 +21,7 @@
 | Що ламалося й чим закрито | [plans/DEFECTS.md](plans/DEFECTS.md) |
 | Повний норматив для агентів | [AI_AGENT_RULES_REFERENCE.md](AI_AGENT_RULES_REFERENCE.md) |
 | Маршрутизація правил агентів | [AGENT_RULE_ROUTING.md](AGENT_RULE_ROUTING.md) |
+| Кому делегується частина РОЗРОБКИ і як приймається | [DELEGATION.md](DELEGATION.md) · сабагенти й Codex CLI; конвеєра перекладу не стосується |
 | Як влаштований конвеєр і що заміряно | [FLOW_STATE.md](FLOW_STATE.md) |
 | Як перекладати цим набором | [../WORKFLOW.md](../WORKFLOW.md) |
 | Ендпоінти й параметри Agent API | [API.md](API.md) |

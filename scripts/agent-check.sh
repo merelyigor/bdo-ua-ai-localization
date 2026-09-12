@@ -17,7 +17,12 @@ cd "$ROOT"
 
 readonly RULE_FILES=(AGENTS.md .cursorrules CLAUDE.md QWEN.md)
 readonly RULE_REFERENCE='docs/AI_AGENT_RULES_REFERENCE.md'
-readonly RULE_MAP_MAX_LINES=201
+# Стеля піднята з 201 до 220 рішенням власника 2026-09-12 разом зі зміною
+# моделі роботи: карта правил узяла на себе контракт делегування (спосіб
+# питається перед роботою, думання не делегується, коміт лише з головної
+# сесії). Це свідоме рішення, а не підгонка порога під червону перевірку ·
+# старий блок ролі ВИКОНАВЦЯ з карти прибрано тим самим заходом.
+readonly RULE_MAP_MAX_LINES=220
 
 fail() { printf 'FAIL: %s\n' "$1" >&2; exit 1; }
 step() { printf '\n== %s ==\n' "$1"; }
@@ -799,49 +804,65 @@ check_whitespace() {
     note 'git diff --check: чисто'
 }
 
-check_handoff_contract() {
-    step 'Development HANDOFF contract'
-    # ПРАВИЛО: технічний звіт ВИКОНАВЦЯ має одного адресата, фіксовану коротку форму і не змішується з власницьким висновком.
-    # САБОТАЖ: прибрати marker, skeleton, заборону owner headings або повернути «ВЛАСНИК пушить» · gate docs мусить впасти.
-    grep -Fq 'АДРЕСАТ: АРХІТЕКТОР' AGENTS.md \
-        || fail 'root rule map не містить адресата HANDOFF'
-    grep -Fq 'АРХІТЕКТОРСЬКИЙ ПАТЧ' AGENTS.md \
-        || fail 'root rule map не містить механізму архітекторського патча'
+check_delegation_contract() {
+    step 'Контракт делегування (шар розробки)'
+    # ПРАВИЛО: флоу АРХІТЕКТОР+ВИКОНАВЕЦЬ знято рішенням власника 2026-09-12.
+    # Карта правил тепер тримає контракт делегування, і КОЖЕН його пункт має
+    # тут свій grep · інакше правило лишається побажанням (§13 довідника).
+    # САБОТАЖ: прибрати будь-який рядок нижче з AGENTS.md, повернути в неї
+    # знятий контракт, видалити тип сабагента, зняти захист від секретів в
+    # обгортці Codex · `./bdo gate docs` мусить впасти на кожному з них.
+    #
+    # НЕГАТИВНІ перевірки стоять першими: знятий контракт, який тихо повернувся
+    # в карту, дав би дві суперечливі інструкції одночасно, і перемогла б та,
+    # яку модель прочитала пізніше.
+    if grep -Fq 'АДРЕСАТ: АРХІТЕКТОР' AGENTS.md; then
+        fail 'карта правил повертає знятий контракт ВИКОНАВЦЯ · «АДРЕСАТ: АРХІТЕКТОР»'
+    fi
+    if grep -Fq 'АРХІТЕКТОРСЬКИЙ ПАТЧ' AGENTS.md; then
+        fail 'карта правил повертає знятий механізм архітекторського патча'
+    fi
     if grep -Fq 'docs/** не редагуєш' AGENTS.md; then
-        fail 'root rule map містить старе blanket-правило «docs/** не редагуєш»'
+        fail 'карта правил містить старе blanket-правило «docs/** не редагуєш»'
     fi
-    grep -Fq 'АДРЕСАТ: АРХІТЕКТОР' docs/ai-workflow/HANDOFF.md \
-        || fail 'HANDOFF.md не містить literal marker адресата'
-    for heading in '## СТАН' '## КОМІТ' '## ЗМІНЕНІ ФАЙЛИ' '## ПЕРЕВІРКА' '## ВІДХИЛЕННЯ' '## ЧОГО НЕ ЗРОБЛЕНО'; do
-        grep -Fq "$heading" docs/ai-workflow/PROMPTS.md \
-            || fail "PROMPTS.md не вимагає short-form skeleton: $heading"
+    grep -Fq 'ДВА ШАРИ НЕ ПЛУТАТИ' AGENTS.md \
+        || fail 'карта правил не розрізняє шар розробки і шар перекладу'
+    grep -Fq 'СПОСІБ ВИКОНАННЯ ПИТАЄШ ПЕРЕД РОБОТОЮ' AGENTS.md \
+        || fail 'карта правил не вимагає питати спосіб виконання до початку роботи'
+    grep -Fq 'ДУМАННЯ НЕ ДЕЛЕГУЄТЬСЯ' AGENTS.md \
+        || fail 'карта правил не забороняє делегувати рішення'
+    grep -Fq 'Коміт і push · лише головна сесія' AGENTS.md \
+        || fail 'карта правил не лишає коміт і push за головною сесією'
+    # Правило без виконавців є побажанням: типи сабагентів і обгортка мусять
+    # існувати, а заборона комітити · стояти в КОЖНОМУ визначенні агента.
+    local agent
+    for agent in inventory mechanic; do
+        test -f ".claude/agents/$agent.md" \
+            || fail "немає .claude/agents/$agent.md · тип виконавця оголошено лише на словах"
+        grep -Fq 'НЕ КОМІТИТИ І НЕ ПУШИТИ' ".claude/agents/$agent.md" \
+            || fail "$agent.md не забороняє коміт і push"
     done
-    grep -Fq 'АДРЕСАТ: АРХІТЕКТОР' docs/ai-workflow/PROMPTS.md \
-        || fail 'PROMPTS.md не вимагає literal marker адресата'
-    for heading in '## Підсумок' '## Що зробив' '## Що далі'; do
-        grep -Fq "$heading" docs/ai-workflow/PROMPTS.md \
-            || fail "PROMPTS.md не забороняє власницький заголовок: $heading"
-    done
-    grep -Fq 'Є автором змісту process rules/plans:' docs/ai-workflow/ROLES.md \
-        || fail 'ROLES.md не фіксує авторство АРХІТЕКТОРА для process rules/plans'
-    grep -Fq '## Блок `АРХІТЕКТОРСЬКИЙ ПАТЧ`' docs/ai-workflow/PROMPTS.md \
-        || fail 'PROMPTS.md не містить блок архітекторського патча'
-    grep -Fq 'АРХІТЕКТОРСЬКИЙ ПАТЧ' docs/ai-workflow/WORKFLOW.md \
-        || fail 'WORKFLOW.md не містить механіку архітекторського патча'
-    grep -Fq '§17.5' docs/AI_AGENT_RULES_REFERENCE.md \
-        || fail 'норматив не містить §17.5 про архітекторський патч'
-    if grep -Fq 'ВЛАСНИК пушить' docs/ai-workflow/WORKFLOW.md; then
-        fail 'WORKFLOW.md містить застаріле твердження «ВЛАСНИК пушить»'
-    fi
-    perl -0ne 'exit 1 unless /CI на\s+точному SHA перевіряє АРХІТЕКТОР/' docs/ai-workflow/WORKFLOW.md \
-        || fail 'WORKFLOW.md не покладає перевірку CI на АРХІТЕКТОРА'
-    note 'Development HANDOFF contract: marker, skeleton, owner-heading prohibition і CI ownership присутні'
+    test -x scripts/delegate-codex.sh \
+        || fail 'scripts/delegate-codex.sh відсутній або не виконуваний'
+    grep -Fq 'DELEGATE_CODEX_MODEL' scripts/delegate-codex.sh \
+        || fail 'обгортка Codex не фіксує модель · делегування піде на випадкову'
+    grep -Fq 'api[_-]?token' scripts/delegate-codex.sh \
+        || fail 'обгортка Codex не має механічного захисту від секретів у промпті'
+    grep -Fq 'BDO_ENV_FINGERPRINT' scripts/delegate-codex.sh \
+        || fail 'обгортка Codex не стереже .env від чужого агента'
+    git check-ignore -q state/delegate-logs \
+        || fail 'тека логів делегування не ігнорується git · промпти й відповіді потраплять у публічний репозиторій'
+    # Опис знятого флоу лишається як історія, але мусить САМ казати, що він не
+    # чинний · інакше наступна сесія прочитає його як інструкцію.
+    grep -Fq 'ПРИЗУПИНЕНО' docs/ai-workflow/README.md \
+        || fail 'docs/ai-workflow/README.md не позначає флоу як призупинений'
+    note 'контракт делегування: межі в карті, два типи виконавців, обгортка Codex і призупинений старий флоу'
 }
 
 check_docs() {
     run bash tests/command-registry.sh
     check_rules
-    check_handoff_contract
+    check_delegation_contract
     check_references
     check_env_contract
     check_private_hosts
