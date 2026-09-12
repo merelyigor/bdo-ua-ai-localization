@@ -1,4 +1,8 @@
 #!/usr/bin/env bash
+if [ "${BDO_ORCHESTRATOR:-php}" != sh ]; then
+    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+    exec php "$SCRIPT_DIR/cli/bdo.php" run-stop "$@"
+fi
 # Зупинити прогін РІШЕННЯМ ЛЮДИНИ · і лишити про це підпис.
 #
 #   ./bdo run stop [причина]

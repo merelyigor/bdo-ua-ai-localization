@@ -126,8 +126,8 @@ fi
 printf 'ROUTED:%s\n' "$2"
 ROUTE
 chmod +x "$ROUTE_BIN/php"
-for route in run-spec run-start; do
-    wrapper="$ROOT/cli/run/$([ "$route" = run-spec ] && printf 'run-spec' || printf 'run-start').sh"
+for route in run-spec run-start run-stop; do
+    wrapper="$ROOT/cli/run/$route.sh"
     ROUTE_ROOT="$ROOT" ROUTE_EXPECTED="$route" PATH="$ROUTE_BIN:$PATH" \
         BDO_ORCHESTRATOR=php bash "$wrapper" --probe >"$TMP/$route.route" \
         || fail "$route routing proof"
@@ -137,6 +137,46 @@ if ROUTE_ROOT="$ROOT" ROUTE_EXPECTED=run-spec PATH="$ROUTE_BIN:$PATH" \
     "$ROUTE_BIN/php" "$ROOT/cli/bdo.php" wrong >/dev/null 2>&1; then
     fail 'fake php прийняв неправильний internal route'
 fi
+
+# ПРАВИЛО: run stop спершу пише підпис, а потім прибирає watch-сесію; зупинка
+# без пачки залишається успішною. Саботаж порядку або стану має зробити pair red.
+seed_stop_state() {
+    local state="$1" batch='20260912_080000_abcdef0123456789'
+    mkdir -p "$state/batches/$batch"
+    printf '%s' "$batch" >"$state/current-batch"
+    printf '%s\n' "{\"id\":\"$batch\",\"state\":\"awaiting_worker\",\"rows\":2,\"mode\":\"patch\",\"patch\":\"8\",\"updated_at\":\"2026-09-12T08:00:00+00:00\"}" >"$state/batches/$batch/manifest.json"
+    : >"$state/batches/$batch/journal.jsonl"
+}
+
+compare_stop_pair() {
+    local label="$1" reason="$2" attempt sh_state php_state sh_code php_code
+    for attempt in 1 2 3 4 5 6 7 8; do
+        sh_state="$TMP/stop-$label-$attempt-sh"
+        php_state="$TMP/stop-$label-$attempt-php"
+        mkdir -p "$sh_state" "$php_state"
+        if [ "$label" = with-batch ]; then
+            seed_stop_state "$sh_state"
+            seed_stop_state "$php_state"
+        fi
+        sh_code=0; php_code=0
+        BDO_ORCHESTRATOR=sh BDO_STATE_DIR="$sh_state" BDO_TMUX_SESSION="bdo-stop-parity-$$" \
+            bash "$ROOT/cli/run/run-stop.sh" "$reason" >"$sh_state/out" 2>"$sh_state/err" || sh_code=$?
+        BDO_ORCHESTRATOR=php BDO_STATE_DIR="$php_state" BDO_TMUX_SESSION="bdo-stop-parity-$$" \
+            "$REAL_PHP" "$ROOT/cli/bdo.php" run-stop "$reason" >"$php_state/out" 2>"$php_state/err" || php_code=$?
+        if [ "$sh_code" = "$php_code" ] && cmp -s "$sh_state/out" "$php_state/out" \
+            && cmp -s "$sh_state/err" "$php_state/err"; then
+            if [ "$label" != with-batch ] || cmp -s "$sh_state/batches/20260912_080000_abcdef0123456789/journal.jsonl" \
+                "$php_state/batches/20260912_080000_abcdef0123456789/journal.jsonl"; then
+                diff -ru "$sh_state" "$php_state" >/dev/null \
+                    && { printf '   %-22s код=%s · stdout, stderr і state/journal збігаються\n' "$label" "$sh_code"; return; }
+            fi
+        fi
+    done
+    fail "run-stop $label: stdout, stderr, code або state/journal не збігаються"
+}
+
+compare_stop_pair no-batch 'причина з пробілами «і» та багатобайтовим текстом'
+compare_stop_pair with-batch 'натиснуто «зупинити» на сторінці'
 
 # ПРАВИЛО: status/plan є одним JSON-контрактом, preset/filter/create живуть у RunSpec.
 # САБОТАЖ: втрата concrete patch/domain, режиму або boundary batch size має впасти.
