@@ -30,6 +30,50 @@ note() { printf '   %s\n' "$1"; }
 have() { command -v "$1" >/dev/null 2>&1; }
 run() { printf '   $ %s\n' "$*"; "$@" || fail "$1 завершився з ненульовим кодом"; }
 
+# ЗАМОК ГЕЙТА · один прогін на дерево.
+#
+# Навіщо. Тести пишуть у спільні `output/` і `state/`, тому два гейти в одному
+# клоні псують один одному вхідні дані. Зміряно 2026-09-12: під три паралельні
+# прогони `tests/tui-live.sh` дав ХИБНЕ падіння, а сам гейт розтягнувся з ~190
+# до 313 секунд. Найгірше не падіння, а те, чого воно навчає: червоний прогін
+# починають перезапускати замість того, щоб читати.
+#
+# `mkdir` тут не випадковий: це єдина атомарна операція, доступна і в bash 3.2
+# на macOS, і на runner. `flock` на macOS немає.
+#
+# Мертвий власник не блокує дерево назавжди: якщо процес не живий, замок
+# забирається з ГОЛОСНИМ рядком, а не тихо.
+readonly GATE_LOCK_DIR='state/gate.lock'
+gate_lock_held=''
+
+gate_lock_release() {
+    [ -n "$gate_lock_held" ] || return 0
+    rm -rf "$GATE_LOCK_DIR"
+    gate_lock_held=''
+}
+
+gate_lock_take() {
+    local category="$1" owner_pid='' owner_cat='' owner_since=''
+    mkdir -p state 2>/dev/null || true
+    if ! mkdir "$GATE_LOCK_DIR" 2>/dev/null; then
+        owner_pid="$(sed -n '1p' "$GATE_LOCK_DIR/owner" 2>/dev/null || true)"
+        owner_cat="$(sed -n '2p' "$GATE_LOCK_DIR/owner" 2>/dev/null || true)"
+        owner_since="$(sed -n '3p' "$GATE_LOCK_DIR/owner" 2>/dev/null || true)"
+        if [ -n "$owner_pid" ] && kill -0 "$owner_pid" 2>/dev/null; then
+            fail "гейт уже працює в цьому дереві · pid ${owner_pid}, категорія ${owner_cat:-?}, з ${owner_since:-?}. Паралельний прогін псує спільні output/ і state/, тому цей зупинено. Дочекайся першого або зупини його."
+        fi
+        rm -rf "$GATE_LOCK_DIR"
+        mkdir "$GATE_LOCK_DIR" 2>/dev/null \
+            || fail "не вдалося взяти замок ${GATE_LOCK_DIR} · перевір права на state/"
+        note "знято замок мертвого прогону (pid ${owner_pid:-?} не живий)"
+    fi
+    printf '%s\n%s\n%s\n' "$$" "$category" "$(date '+%H:%M:%S')" > "$GATE_LOCK_DIR/owner"
+    gate_lock_held=1
+    trap gate_lock_release EXIT
+    trap 'gate_lock_release; exit 130' INT
+    trap 'gate_lock_release; exit 143' TERM
+}
+
 changed_files() {
     {
         git diff --name-only --diff-filter=ACMR
@@ -1280,6 +1324,13 @@ report_preflight() {
 }
 
 profile="${1:-}"
+# `preflight` лише читає й нічого не запускає, тому замок йому не потрібен:
+# інакше довідка про стан ставала б недоступною саме тоді, коли йде прогін.
+case "$profile" in
+    preflight) ;;
+    docs|shell|agents|runtime|api|full) gate_lock_take "$profile" ;;
+esac
+
 case "$profile" in
     preflight) report_preflight ;;
     docs) check_docs ;;
