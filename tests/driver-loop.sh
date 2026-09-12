@@ -1,41 +1,33 @@
 #!/usr/bin/env bash
 # Драйвер мусить робити рівно те, що каже конверт, і зупинятися з причиною.
-#
-# Це заміна моделі-диригента, тому перевіряємо саме ті рішення, на яких вона
-# зривалася: не пропустити крок (D30), не зупинитися посеред цілі (D25, D34),
-# не крутитися вічно на місці (D40), не вигадати команду (D36), не піти далі
-# після `blocked`.
-#
-# Перевіряємо ПОВЕДІНКУ: підставляємо драйверу підроблений `./bdo`, який віддає
-# заздалегідь заданий сценарій конвертів, і дивимось, що драйвер зробив.
+# Цей тест ганяє ОДНАКОВІ envelope fixtures через frozen shell і native PHP.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 fail() { printf 'FAIL: %s\n' "$1" >&2; exit 1; }
 
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
-mkdir -p "$WORK/cli/run" "$WORK/cli/model" "$WORK/state"
-cp "$ROOT/cli/run/run-loop.sh" "$WORK/cli/run/run-loop.sh"
-# Драйвер бере розмір наступної пачки в планувальника
-# (`Bdo\Translate\Run\Actions::BATCH_SIZE`), а не з власної константи · тому
-# пісочниця несе бібліотеку. Друге число в драйвері означало б, що зміна
-# розміру пачки лишить його на старому значенні.
-cp -R "$ROOT/lib" "$WORK/lib"
-# Драйвер міряє кожен крок через `cli/system/timed.sh`, тому пісочниця несе і
-# його: без обгортки цикл падав би з «run drive не віддав конверт», тобто
-# ховав би справжню причину за наслідком.
-mkdir -p "$WORK/cli/system"
-cp "$ROOT/cli/system/timed.sh" "$WORK/cli/system/timed.sh"
 
-# Підроблений `./bdo`: віддає рядки сценарію по черзі, а всі свої виклики пише
-# у журнал, щоб тест бачив, ЩО саме драйвер робив.
-cat > "$WORK/bdo" <<'SH'
+setup_side() {
+    local side="$1" base="$WORK/$1"
+    mkdir -p "$base/cli/run" "$base/cli/model" "$base/cli/system" "$base/state" "$base/lib"
+    cp "$ROOT/cli/run/run-loop.sh" "$base/cli/run/run-loop.sh"
+    cp "$ROOT/cli/system/timed.sh" "$base/cli/system/timed.sh"
+    cp "$ROOT/cli/run/step-report.sh" "$base/cli/run/step-report.sh"
+    cp -R "$ROOT/lib/." "$base/lib/"
+    cp "$ROOT/cli/command-registry.json" "$base/cli/command-registry.json"
+    cat > "$base/cli/run/step-report.sh" <<'SH'
+#!/usr/bin/env bash
+printf 'reporter marker\n'
+test "${FAKE_REPORT_FAILS:-0}" = 1 && exit 9
+SH
+    chmod +x "$base/cli/run/step-report.sh"
+    if [ "$side" = sh ]; then
+        cat > "$base/bdo" <<'SH'
 #!/usr/bin/env bash
 HERE="$(cd "$(dirname "$0")" && pwd)"
 printf '%s\n' "$*" >> "$HERE/state/calls.log"
 if [ "$1 $2" = "run drive" ]; then
-    # Шви для перевірки ЗУПИНКИ: рушій, що падає з поясненням, і рушій,
-    # перерваний сигналом. Обидва не віддають конверта.
     if [ -n "${FAKE_DRIVE_BOOM:-}" ]; then
         printf 'Fatal error: %s\n' "$FAKE_DRIVE_BOOM" >&2
         exit 1
@@ -43,20 +35,43 @@ if [ "$1 $2" = "run drive" ]; then
     test -z "${FAKE_DRIVE_SIGNAL:-}" || exit "$FAKE_DRIVE_SIGNAL"
     step="$(head -1 "$HERE/state/scenario")"
     sed -i.bak '1d' "$HERE/state/scenario" && rm -f "$HERE/state/scenario.bak"
-    # Рушій законно друкує людські звіти перед конвертом.
     test -f "$HERE/state/noise" && cat "$HERE/state/noise"
     printf '%s\n' "$step"
     exit 0
 fi
 exit 0
 SH
-chmod +x "$WORK/bdo"
-
-# Підроблений клієнт моделі: пише файл відповіді або падає за вимогою тесту.
-cat > "$WORK/cli/model/client.php" <<'PHP'
+        chmod +x "$base/bdo"
+    else
+        cat > "$base/cli/bdo.php" <<'PHP'
 <?php
-// __DIR__ тут · <work>/cli/model, тому корінь на два рівні вище.
-file_put_contents(dirname(__DIR__, 2).'/state/roles.log', $argv[1]."\n", FILE_APPEND);
+declare(strict_types=1);
+$root = dirname(__DIR__);
+$state = $root.'/state';
+$arguments = array_slice($argv, 1);
+file_put_contents($state.'/calls.log', implode(' ', $arguments)."\n", FILE_APPEND);
+$name = $arguments[0] ?? '';
+if ($name === 'run-drive') {
+    if (($boom = getenv('FAKE_DRIVE_BOOM')) !== false && $boom !== '') {
+        fwrite(STDERR, "Fatal error: {$boom}\n"); exit(1);
+    }
+    $signal = getenv('FAKE_DRIVE_SIGNAL');
+    if ($signal !== false && $signal !== '') exit((int) $signal);
+    $lines = is_file($state.'/scenario') ? file($state.'/scenario', FILE_IGNORE_NEW_LINES) : [];
+    $step = (string) array_shift($lines);
+    file_put_contents($state.'/scenario', implode("\n", $lines).($lines === [] ? '' : "\n"));
+    if (is_file($state.'/noise')) echo (string) file_get_contents($state.'/noise');
+    echo $step."\n";
+    exit(0);
+}
+if ($name === 'run-mode') exit(0);
+require $root.'/lib/autoload.php';
+exit((new Bdo\Translate\Cli\Kernel())->run($arguments));
+PHP
+    fi
+    cat > "$base/cli/model/client.php" <<'PHP'
+<?php
+file_put_contents(dirname(__DIR__, 2).'/state/roles.log', ($argv[1] ?? '')."\n", FILE_APPEND);
 if (getenv('FAKE_CHILD_FAILS') === '1') {
     fwrite(STDERR, "empty_content: тест\n");
     exit(1);
@@ -64,151 +79,157 @@ if (getenv('FAKE_CHILD_FAILS') === '1') {
 file_put_contents($argv[3], "[]\n");
 exit(0);
 PHP
+}
 
-scenario() { printf '%s\n' "$@" > "$WORK/state/scenario"; : > "$WORK/state/calls.log"; : > "$WORK/state/roles.log"; }
-# Аргументів драйверу тут не передаємо: сценарій задає файл конвертів.
-loop() { (cd "$WORK" && bash cli/run/run-loop.sh 2>&1); }
+setup_side sh
+setup_side php
 
-# 1. Кожен `child` мусить бути ВИКОНАНИЙ, а не переказаний.
-scenario \
+scenario() {
+    local base="$WORK/$ACTIVE"
+    printf '%s\n' "$@" > "$base/state/scenario"
+    : > "$base/state/calls.log"
+    : > "$base/state/roles.log"
+}
+
+scenario_both() {
+    for ACTIVE in sh php; do scenario "$@"; done
+}
+
+run_side() {
+    local side="$1" base="$WORK/$1"; shift
+    set +e
+    (cd "$base" && BDO_STATE_DIR="$base/state" BDO_ORCHESTRATOR="$side" BDO_STEP_REPORT="${RUN_REPORT:-0}" bash cli/run/run-loop.sh "$@") >"$base/stdout" 2>"$base/stderr"
+    local code=$?
+    set -e
+    printf '%s\n' "$code" > "$base/code"
+}
+
+run_both() {
+    for side in sh php; do run_side "$side" "$@"; done
+}
+
+expect_codes() {
+    local expected="$1"
+    for side in sh php; do
+        test "$(cat "$WORK/$side/code")" = "$expected" \
+            || fail "$side code $(cat "$WORK/$side/code"), expected $expected"
+    done
+}
+
+output() { cat "$WORK/$1/stdout" "$WORK/$1/stderr"; }
+expect_each() {
+    local pattern="$1"
+    for side in sh php; do grep -Fq "$pattern" <(output "$side") \
+        || fail "$side output misses: $pattern"; done
+}
+
+normalize() { sed -E 's/^\[[0-9]{2}:[0-9]{2}:[0-9]{2}\] /[TIME] /' "$1"; }
+compare_streams() {
+    local stream="$1"
+    local a="$WORK/sh/$stream.norm" b="$WORK/php/$stream.norm"
+    normalize "$WORK/sh/$stream" > "$a"
+    normalize "$WORK/php/$stream" > "$b"
+    cmp -s "$a" "$b" || fail "shell/PHP $stream divergence:\n$(diff -u "$a" "$b")"
+}
+
+# ПРАВИЛО: frozen shell rollback і native PHP loop мусять виконувати ті самі envelope-рішення; порядок тримає код, next.command ніколи не виконується.
+# САБОТАЖ: дозволити human-mode «патч», обійти blocked/spin guard або почати другу пачку попри --batches 1 · цей тест мусить впасти.
+
+# 1. Кожен child мусить бути виконаний в обох orchestrator paths.
+scenario_both \
     '{"ok":true,"state":"awaiting_terminology","next":{"kind":"child","role":"translation-terminology","payload_path":"p","response_path":"r"}}' \
     '{"ok":true,"state":"awaiting_worker","next":{"kind":"child","role":"translation-worker","payload_path":"p","response_path":"r"}}' \
     '{"ok":true,"state":"awaiting_qa","next":{"kind":"child","role":"translation-qa","payload_path":"p","response_path":"r"}}' \
     '{"ok":true,"state":"verified","next":{"kind":"complete"}}'
-out="$(loop)" || fail "рівний сценарій зупинився: $out"
-roles="$(tr '\n' ' ' < "$WORK/state/roles.log")"
-test "$roles" = "translation-terminology translation-worker translation-qa " \
-    || fail "драйвер викликав не ті ролі й не в тому порядку: «${roles}»"
+run_both
+expect_codes 0
+for side in sh php; do
+    roles="$(tr '\n' ' ' < "$WORK/$side/state/roles.log")"
+    test "$roles" = "translation-terminology translation-worker translation-qa " \
+        || fail "$side roles out of order: $roles"
+done
+compare_streams stdout; compare_streams stderr
 
-# 2. Ціль не досягнута · драйвер САМ починає наступну пачку.
-#    Саме цього не робила модель: вона зупинялась і питала дозволу (D25, D34).
-scenario \
+# 2. continue_run складає fixed argv, не виконує command із envelope.
+scenario_both \
     '{"ok":true,"state":"verified","next":{"kind":"continue_run","remaining":120,"goal":{"mode":"patch","patch":"7","domain":"quest"},"command":"rm -rf /"}}' \
     '{"ok":true,"state":"verified","next":{"kind":"goal_complete","goal":{"mode":"patch","patch":"7","domain":""}}}'
-out="$(loop)" || fail "прогін із ціллю зупинився передчасно: $out"
-grep -q '^mode start patch 50 7 quest$' "$WORK/state/calls.log" \
-    || fail "драйвер не почав наступну пачку: $(cat "$WORK/state/calls.log")"
-# Рядок `command` із конверта виконуватись НЕ мусить · він міг би бути чим завгодно.
-grep -q 'rm -rf' "$WORK/state/calls.log" && fail 'драйвер виконав рядок command із конверта'
+run_both
+expect_codes 0
+for side in sh php; do
+    if [ "$side" = sh ]; then
+        grep -Fqx 'mode start patch 50 7 quest' "$WORK/$side/state/calls.log" \
+            || fail "$side did not start the next batch"
+    else
+        grep -Fqx 'run-mode patch 50 7 quest' "$WORK/$side/state/calls.log" \
+            || fail "$side did not start the next batch with fixed PHP argv"
+    fi
+    ! grep -Fq 'rm -rf' "$WORK/$side/state/calls.log" \
+        || fail "$side executed envelope command"
+done
+compare_streams stdout; compare_streams stderr
 
-# 3. Невідомий режим у цілі · зупинка, а не спроба вгадати.
-scenario '{"ok":true,"state":"verified","next":{"kind":"continue_run","remaining":10,"goal":{"mode":"чужий-режим","patch":"7","domain":""}}}'
-out="$(loop)" && fail 'драйвер прийняв невідомий режим цілі'
-grep -q 'невідомий режим' <<<"$out" || fail "зупинка без причини: $out"
+# 3. Unknown mode and suspicious domain are named failures.
+scenario_both '{"ok":true,"state":"verified","next":{"kind":"continue_run","remaining":10,"goal":{"mode":"чужий-режим","patch":"7","domain":""}}}'
+run_both; expect_codes 1; expect_each 'невідомий режим'
+scenario_both '{"ok":true,"state":"verified","next":{"kind":"continue_run","remaining":10,"goal":{"mode":"патч","patch":"7","domain":""}}}'
+run_both; expect_codes 1; expect_each 'невідомий режим'
+scenario_both '{"ok":true,"state":"verified","next":{"kind":"continue_run","remaining":10,"goal":{"mode":"patch","patch":"7","domain":"quest;rm"}}}'
+run_both; expect_codes 1; expect_each 'підозріла категорія'
 
-# 3б. Українська назва режиму до драйвера доходити не мусить: переклад робить
-#     меню один раз. Якщо вона тут зʼявилась · щось передало людський підпис
-#     замість ключа, і мовчки вгадувати його не можна.
-scenario '{"ok":true,"state":"verified","next":{"kind":"continue_run","remaining":10,"goal":{"mode":"патч","patch":"7","domain":""}}}'
-out="$(loop)" && fail 'драйвер прийняв українську назву режиму замість ключа'
-grep -q 'невідомий режим' <<<"$out" || fail "зупинка без причини: $out"
-
-# 4. Категорія з підозрілими символами · зупинка (сюди підставляється значення,
-#    що піде в командний рядок).
-scenario '{"ok":true,"state":"verified","next":{"kind":"continue_run","remaining":10,"goal":{"mode":"patch","patch":"7","domain":"quest;rm"}}}'
-out="$(loop)" && fail 'драйвер прийняв категорію зі стороннім символом'
-grep -q 'підозріла категорія' <<<"$out" || fail "зупинка без причини: $out"
-
-# 4б. Звіт рушія перед конвертом не має ламати драйвер.
-#
-#     2026-09-04 друга пачка прогону зупинилась «невідомий крок «-» у стані -»:
-#     `run drive` надрукував `payload QA: 50 рядків | глосарій 26 | …` перед
-#     JSON, а драйвер декодував увесь вивід разом. Повідомлення назвало
-#     наслідок замість причини · найгірший вид зупинки.
-printf 'payload QA: 50 рядків | глосарій 26 | без відповідника 0\nще один людський рядок\n' > "$WORK/state/noise"
-scenario \
+# 4. Human stdout before envelope is data, not a second step.
+for side in sh php; do printf 'payload QA: 50 рядків | глосарій 26 | без відповідника 0\nще один людський рядок\n' > "$WORK/$side/state/noise"; done
+scenario_both \
     '{"ok":true,"state":"awaiting_qa","next":{"kind":"child","role":"translation-qa","payload_path":"p","response_path":"r"}}' \
     '{"ok":true,"state":"verified","next":{"kind":"complete"}}'
-out="$(loop)" || fail "звіт перед конвертом зупинив драйвер: $out"
-roles="$(tr '\n' ' ' < "$WORK/state/roles.log")"
-test "$roles" = "translation-qa " || fail "після звіту роль не викликано: «${roles}»"
-rm -f "$WORK/state/noise"
+run_both; expect_codes 0
+for side in sh php; do test "$(tr '\n' ' ' < "$WORK/$side/state/roles.log")" = 'translation-qa ' || fail "$side parsed human stdout incorrectly"; done
+rm -f "$WORK"/*/state/noise
 
-# 4в. Якщо конверта немає ЗОВСІМ · зупинка з причиною, а не з «невідомий крок».
-printf 'самий лише людський текст без JSON\n' > "$WORK/state/noise"
-scenario 'ще один рядок без конверта'
-out="$(loop)" && fail 'драйвер пішов далі без конверта'
-grep -q 'немає конверта' <<<"$out" || fail "відсутній конверт без причини: $out"
-rm -f "$WORK/state/noise"
+# 5. No envelope, blocked, unknown kind and drive error remain named failures.
+scenario_both 'самий лише людський текст без JSON'; run_both; expect_codes 1; expect_each 'немає конверта'
+scenario_both '{"ok":false,"state":"no_batch","next":{"kind":"blocked","reason":"no_current_batch"}}'; run_both; expect_codes 1; expect_each 'no_current_batch'
+scenario_both '{"ok":true,"state":"awaiting_qa","next":{"kind":"нове_щось"}}'; run_both; expect_codes 1; expect_each 'невідомий крок'
+scenario_both '{"ok":true,"state":"awaiting_worker","next":{"kind":"stop"}}'; FAKE_DRIVE_BOOM='рушій зламався тут' run_both; unset FAKE_DRIVE_BOOM; expect_codes 1; expect_each 'рушій зламався тут'
 
-# 5. `blocked` зупиняє негайно й називає причину.
-scenario '{"ok":false,"state":"no_batch","next":{"kind":"blocked","reason":"no_current_batch"}}'
-out="$(loop)" && fail 'драйвер пішов далі після blocked'
-grep -q 'no_current_batch' <<<"$out" || fail "blocked без причини: $out"
+# 6. Retry spin budget, signal normalization and child nonzero are equal.
+for side in sh php; do { for _ in $(seq 1 20); do printf '%s\n' '{"ok":true,"state":"awaiting_qa","next":{"kind":"retry","reason":"context_unavailable"}}'; done; } > "$WORK/$side/state/scenario"; done
+BDO_LOOP_SPIN_LIMIT=3 run_both; expect_codes 1; expect_each 'не рухається'
+scenario_both '{"ok":true,"state":"awaiting_worker","next":{"kind":"child","role":"translation-worker","payload_path":"p","response_path":"r"}}'; FAKE_CHILD_FAILS=1 run_both; unset FAKE_CHILD_FAILS; expect_codes 1; expect_each 'не дала відповіді'
+scenario_both 'без конверта'; FAKE_DRIVE_SIGNAL=130 run_both; unset FAKE_DRIVE_SIGNAL; expect_codes 1; expect_each 'перервано ззовні'
+scenario_both 'без конверта'; FAKE_DRIVE_SIGNAL=143 run_both; unset FAKE_DRIVE_SIGNAL; expect_codes 1; expect_each 'перервано ззовні'
 
-# 6. Нескінченний `retry` на тому самому стані зупиняється лічильником.
-#    Без цього драйвер повторював би крок вічно · рівно те, за що автопілот
-#    здавався у старому наборі (D40), тільки мовчки.
-{ for _ in $(seq 1 20); do
-      printf '%s\n' '{"ok":true,"state":"awaiting_qa","next":{"kind":"retry","reason":"context_unavailable"}}'
-  done; } > "$WORK/state/scenario"
-: > "$WORK/state/calls.log"
-start=$(date +%s)
-out="$(cd "$WORK" && BDO_LOOP_SPIN_LIMIT=3 bash cli/run/run-loop.sh 2>&1)" && fail 'нескінченний retry не зупинив драйвер'
-test $(( $(date +%s) - start )) -lt 30 || fail 'зупинка на retry зайняла надто довго'
-grep -q 'не рухається' <<<"$out" || fail "retry-зупинка без причини: $out"
+# 7. once/batch limits, reporter fail-soft and unknown CLI args are both paths.
+scenario_both '{"ok":true,"state":"verified","next":{"kind":"continue_run","remaining":10,"goal":{"mode":"patch","patch":"7","domain":"quest"}}}'
+RUN_REPORT=1 run_both --once; unset RUN_REPORT; expect_codes 0
+for side in sh php; do
+    if [ "$side" = sh ]; then
+        grep -Fqx 'mode start patch 50 7 quest' "$WORK/$side/state/calls.log" || fail "$side --once skipped mode start"
+    else
+        grep -Fqx 'run-mode patch 50 7 quest' "$WORK/$side/state/calls.log" || fail "$side --once skipped mode start"
+    fi
+done
+scenario_both '{"ok":true,"state":"verified","next":{"kind":"continue_run","remaining":10,"goal":{"mode":"patch","patch":"7","domain":"quest"}}}'
+run_both --batches 1; expect_codes 0
+scenario_both '{"ok":true,"state":"verified","next":{"kind":"complete"}}'; run_both --what; expect_codes 2
+scenario_both \
+    '{"ok":true,"state":"awaiting_worker","next":{"kind":"child","role":"translation-worker","payload_path":"p","response_path":"r"}}' \
+    '{"ok":true,"state":"verified","next":{"kind":"complete"}}'
+RUN_REPORT=1 FAKE_REPORT_FAILS=1 run_both; unset RUN_REPORT FAKE_REPORT_FAILS; expect_codes 0; expect_each 'reporter marker'
 
-# 7. Відмова ролі зупиняє прогін, а не йде далі з порожньою відповіддю.
-scenario '{"ok":true,"state":"awaiting_worker","next":{"kind":"child","role":"translation-worker","payload_path":"p","response_path":"r"}}'
-out="$(cd "$WORK" && FAKE_CHILD_FAILS=1 bash cli/run/run-loop.sh 2>&1)" && fail 'драйвер пішов далі після відмови ролі'
-grep -q 'не дала відповіді' <<<"$out" || fail "відмова ролі без причини: $out"
-
-# 7b. ЗУПИНКА НАЗИВАЄ ПРИЧИНУ, А НЕ НАСЛІДОК.
-#
-# Цикл глушив stderr рушія (`2>/dev/null`), тому будь-яка зупинка виглядала
-# однаково: «run drive не віддав конверт». Власник бачив цей напис на місці
-# ВЛАСНОГО натискання «зупинити» й шукав неіснуючий дефект (D96).
-scenario '{"ok":true,"state":"awaiting_worker","next":{"kind":"stop"}}'
-out="$(cd "$WORK" && FAKE_DRIVE_BOOM='рушій зламався тут' bash cli/run/run-loop.sh 2>&1)" \
-    && fail 'драйвер пішов далі, хоч конверта не було'
-grep -q 'рушій зламався тут' <<<"$out" \
-    || fail "причину зупинки проковтнуто: $out"
-grep -q 'код 1' <<<"$out" || fail "зупинка без коду виходу: $out"
-
-# Перервали ззовні (кнопка «зупинити» вбиває сесію роботи) · це НЕ несправність.
-out="$(cd "$WORK" && FAKE_DRIVE_SIGNAL=130 bash cli/run/run-loop.sh 2>&1)" \
-    && fail 'драйвер пішов далі після переривання'
-grep -q 'перервано ззовні' <<<"$out" \
-    || fail "штатну зупинку названо несправністю: $out"
-
-# 8. Невідомий `kind` · зупинка. Мовчазний `continue` тут означав би, що новий
-#    стан у машині пройшов повз драйвер.
-scenario '{"ok":true,"state":"awaiting_qa","next":{"kind":"нове_щось"}}'
-out="$(loop)" && fail 'драйвер проковтнув невідомий kind'
-grep -q 'невідомий крок' <<<"$out" || fail "невідомий kind без причини: $out"
-
-# --- Повтор уже закритого кроку НЕ вбиває драйвер ---------------------------
-#
-# `completeStep` навмисно кидає виняток на повторне закриття тим самим кроком з
-# ІНШИМ artifact · це захист від тихої підміни результату. Але сценарій
-# трапляється сам: крок закрився, наступний упав (контекст пачки недоступний),
-# драйвер пішов на повтор, роль відповіла іншим текстом. Виняток лишався
-# НЕОБРОБЛЕНИМ, `run drive` падав без конверта, а цикл казав «у виводі немає
-# конверта» · тобто називав наслідок замість причини (живий прогін 2026-09-06).
-grep -Fq 'уже закрито о' "$ROOT/cli/run/run-drive.sh" \
-    || fail 'повтор закритого кроку знову вбиває драйвер замість того, щоб іти далі'
+# Повтор already-complete step не маскує підміну artifact.
 php -r '
 require $argv[1];
 use Bdo\Translate\Batch\Workspace;
 $tmp = sys_get_temp_dir()."/bdo-step-".getmypid();
 @mkdir($tmp."/batches/20260101_000000_abc", 0777, true);
 file_put_contents($tmp."/current-batch", "20260101_000000_abc");
-file_put_contents($tmp."/batches/20260101_000000_abc/manifest.json",
-    json_encode(["id" => "20260101_000000_abc", "rows" => 5, "state" => "awaiting_terminology"]));
+file_put_contents($tmp."/batches/20260101_000000_abc/manifest.json", json_encode(["id" => "20260101_000000_abc", "rows" => 5, "state" => "awaiting_terminology"]));
 $w = Workspace::requireCurrent($tmp);
 $w->completeStep("terminology", "a.json", str_repeat("1", 64));
-// Той самий artifact · тиша, це не помилка.
 $w->completeStep("terminology", "a.json", str_repeat("1", 64));
-// ІНШИЙ artifact · виняток лишається, бо це справді підміна результату.
-try {
-    $w->completeStep("terminology", "b.json", str_repeat("2", 64));
-    fwrite(STDERR, "підміну результату пропущено мовчки\n");
-    exit(1);
-} catch (RuntimeException $e) {
-    if (! str_contains($e->getMessage(), "вже завершений")) {
-        fwrite(STDERR, "виняток без причини: ".$e->getMessage()."\n"); exit(1);
-    }
-}
-' "$ROOT/lib/autoload.php" || fail 'межа «крок закривається один раз» зникла'
+try { $w->completeStep("terminology", "b.json", str_repeat("2", 64)); exit(1); }
+catch (RuntimeException $e) { if (! str_contains($e->getMessage(), "вже завершений")) exit(1); }
+' "$ROOT/lib/autoload.php" || fail 'completeStep regression зникла'
 
-echo "OK: драйвер виконує конверт і зупиняється з причиною."
+echo 'OK: shell і native PHP loop виконують однакові envelope-рішення.'

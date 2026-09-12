@@ -60,6 +60,17 @@ grep -Fq 'cli/command-registry.json' WORKFLOW.md \
 grep -Fq 'cli/command-registry.json' docs/FLOW_STATE.md \
     || fail 'docs/FLOW_STATE.md не посилається на canonical registry'
 
+# ПРАВИЛО: detailed help читає documentation header і після migration dispatcher, і в legacy script без dispatcher.
+# САБОТАЖ: повернути print_header() до читання лише від рядка 2 до першого non-comment · migrated help fetch мусить втратити header й тест має впасти.
+fetch_help="$(./bdo help fetch)"
+grep -Fq 'Завантажити пачку рядків' <<<"$fetch_help" \
+    || fail 'migrated help fetch втратив documentation header'
+grep -Fq 'Використання:' <<<"$fetch_help" \
+    || fail 'migrated help fetch втратив usage header'
+platform_help="$(./bdo help platform)"
+grep -Fq 'Перевірити середовище прогону' <<<"$platform_help" \
+    || fail 'legacy help platform втратив documentation header'
+
 printf 'command registry: dispatcher, help, help flow і docs узгоджені\n'
 
 # Кожна коренева команда мусить бути СВІДОМО дозволена або СВІДОМО заборонена.

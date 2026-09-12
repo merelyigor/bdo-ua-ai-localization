@@ -111,14 +111,19 @@ check_rules() {
     # названо тут разом із причиною:
     #   lib/Run/Actions.php   · СКЛАДАЄ аргументи з вибору людини (обидві
     #                           поверхні · сторінка й вікно · просять план у нього);
-    #   cli/run/run-loop.sh   · продовжує вже ЗАФІКСОВАНУ ціль наступною пачкою,
-    #                           нічого не вибираючи (`continue_run`).
-    # Третє місце означає другу правду: доки їх було два, вони розійшлися тихо ·
-    # меню передало `патч` замість `patch` уже після вибору патча (D50).
-    composers="$(rg -l --glob '!state/**' --glob '!tests/**' --glob '!docs/**' \
-        --glob '!scripts/agent-check.sh' \
-        -e "mode', 'start'" -e 'mode start "' -e "mode start '" . 2>/dev/null | sort -u | tr '\n' ' ' || true)"
-    test "$composers" = './cli/run/run-loop.sh ./lib/Run/Actions.php ' \
+    #   lib/Cli/Command/Run/RunLoopCommand.php · native loop opens the next
+    #                           batch from a validated envelope;
+    #   lib/Run/Actions.php   · composes the operator-selected start plan.
+    # Frozen cli/run/run-loop.sh is rollback only and is excluded from this
+    # live-source scan, so it cannot hide a missing native composer.
+    # Третє місце означає другу правду: доки їх було два, вони розходилися тихо.
+    composers="$(
+        {
+            rg -l -e 'mode.*start' lib/Run/Actions.php >/dev/null 2>&1 && printf './lib/Run/Actions.php\n'
+            rg -l -e 'run-mode' lib/Cli/Command/Run/RunLoopCommand.php >/dev/null 2>&1 && printf './lib/Cli/Command/Run/RunLoopCommand.php\n'
+        } | sort -u | tr '\n' ' '
+    )"
+    test "$composers" = './lib/Cli/Command/Run/RunLoopCommand.php ./lib/Run/Actions.php ' \
         || fail "\`mode start\` кличе не той набір місць: [$composers]"
     # Розмір пачки поруч із командою · лише в планувальнику. Друга константа
     # лишила б драйвер на старому значенні після зміни розміру.
@@ -705,9 +710,9 @@ EOF
     note 'PHP: count() у loop-condition немає; кожен mkdir() має перевірку результату'
 }
 
-# ПРАВИЛО: native Run PHP orchestration не запускає зовнішніх Unix/process helpers.
+# ПРАВИЛО: RunSpec/RunStart/RunMode/RunDrive є process-free native commands.
 # САБОТАЖ: function call exec()/shell_exec()/system()/passthru()/popen()/proc_open()
-# у перенесеній Run-команді має зупинити shell і full gate.
+# у будь-якій із цих чотирьох команд має зупинити shell і full gate.
 check_run_php_subprocess_guards() {
     step 'Run PHP subprocess guard'
     local file hits
@@ -721,7 +726,17 @@ check_run_php_subprocess_guards() {
         hits="$(rg -n --pcre2 '\b(exec|shell_exec|system|passthru|popen|proc_open)\s*\(' "$file" || true)"
         test -z "$hits" || fail "заборонений subprocess у $file:\n$hits"
     done
-    note 'Run PHP-файли не запускають зовнішніх процесів'
+    local loop='lib/Cli/Command/Run/RunLoopCommand.php' hits count
+    test -f "$loop" || fail "відсутній Run PHP-файл: $loop"
+    grep -Fq 'ПРАВИЛО:' "$loop" || fail "у $loop немає коментаря ПРАВИЛО:"
+    grep -Fq 'САБОТАЖ:' "$loop" || fail "у $loop немає коментаря САБОТАЖ:"
+    hits="$(rg -n --pcre2 '\b(exec|shell_exec|system|passthru|popen)\s*\(' "$loop" || true)"
+    test -z "$hits" || fail "заборонений subprocess у $loop:\n$hits"
+    count="$(rg -c --pcre2 '\bproc_open\s*\(' "$loop" || true)"
+    test "$count" = 1 || fail "RunLoopCommand має рівно один proc_open helper, знайдено: $count"
+    grep -Fq 'proc_open($command' "$loop" \
+        || fail 'RunLoopCommand proc_open не отримує argv-array helper'
+    note 'process-free Run commands і один argv-array RunLoop process helper перевірені'
 }
 
 # ПРАВИЛО: write-тести працюють лише в тимчасовому harness і не мають права

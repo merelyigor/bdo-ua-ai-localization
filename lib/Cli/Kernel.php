@@ -47,6 +47,7 @@ use Bdo\Translate\Cli\Command\Prepare\WorkerPayloadCommand;
 use Bdo\Translate\Cli\Command\Run\RunSpecCommand;
 use Bdo\Translate\Cli\Command\Run\RunModeCommand;
 use Bdo\Translate\Cli\Command\Run\RunDriveCommand;
+use Bdo\Translate\Cli\Command\Run\RunLoopCommand;
 use Bdo\Translate\Cli\Command\Run\RunStartCommand;
 use Bdo\Translate\Cli\Command\Write\ModerationCommand;
 use Bdo\Translate\Cli\Command\Write\WriteTranslationsCommand;
@@ -129,6 +130,7 @@ final class Kernel
             'run-spec' => new RunSpecCommand(),
             'run-mode' => new RunModeCommand(),
             'run-drive' => new RunDriveCommand(),
+            'run-loop' => new RunLoopCommand(),
             'run-start' => new RunStartCommand(),
             'batch-dir' => new BatchDirCommand(),
             'batch-assert' => new BatchAssertCommand(),

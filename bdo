@@ -28,7 +28,12 @@ die() { printf 'bdo: %s\n' "$1" >&2; exit 2; }
 # `s/^# //` і `s/^#//` окремими правилами, а не одним із `\?`: BSD sed на macOS
 # не знає `\?` у базовому regex, і префікс лишався на місці.
 print_header() {
-    sed -n '2,/^[^#]/p' "$1" | sed -e '/^[^#]/d' -e 's/^# //' -e 's/^#//'
+    awk '
+        NR == 1 && /^#!/ { next }
+        !started && /^#/ { started=1; print; next }
+        started && /^#/ { print; next }
+        started { exit }
+    ' "$1" | sed -e 's/^# //' -e 's/^#//'
 }
 
 # Запустити скрипт набору, передавши аргументи без змін.

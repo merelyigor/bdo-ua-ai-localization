@@ -415,7 +415,7 @@ alias до запуску write-тестів. Висновок про повне
 
 ### Підетап 6 · `cli/run/**` (7 файлів, 1 773 рядки)
 
-**Статус:** у роботі · native PHP route мають 4 із 5 wrappers, що належать Stage6; лишився `run-loop`. По всій `cli/run/**` це 4 із 7, бо `run-stop` і `step-report` перенесені до Stage7.
+**Статус:** у роботі · Windows native smoke 6.6.2 прийнятий; пакет 6.6.3 переносить останній Stage6-owned wrapper `run-loop` і закриває D135. Підетап 6 чекає окремого Architect-review exact diff + CI для 6.6.3; `run-stop` і `step-report` лишаються Stage7.
 
 **Пакет 6.5.0:** safe pilot підетапу 6 · `run-spec.sh` і `run-start.sh`.
 Вони переносять preset/target foundation без driver loop, викликів моделей або
@@ -491,6 +491,10 @@ rollback-shell. Бойовий PROD write не використовується 
 
 **Corrective Windows preflight 6.6.2:** звужує sanitized PATH до directory абсолютного `php.exe` і більше ні до чого; `bash.exe` application мусить бути недоступним, pure-PHP `help` та `run-spec status` · green, shell-dependent `env` · nonzero negative control. Workflow і production PHP не змінюються; branch лишається preflight до окремого Architect-review exact Windows CI.
 
+**Ревʼю Windows 6.6.2:** `ACCEPTED`. Exact preflight run №31 (`34662852607`) і exact main run №32 (`34664030930`) на тому самому `da14382` зелені у всіх чотирьох jobs: `./bdo gate full`, `cli-api-fetch × 5`, `PHPStan level 0`, `Windows native PHP smoke`. Windows log довів `PHP_OS_FAMILY=Windows; help=0; run-spec-status=0; env-negative=1; bash=absent`. D154 закритий; detector прийнятий на `main`.
+
+**Пакет 6.6.3:** переносить останній Stage6-owned `run-loop` у `RunLoopCommand`: envelope-рішення й spin/batch safety живуть у PHP; `run-drive`, `run-mode` і model client викликаються fixed PHP argv без shell command string, timing пишеться напряму через `StepTimes`. Frozen shell loop лишається rollback. `step-report.sh` не переноситься й до Stage7 лишається fail-soft visibility bridge. Той самий пакет закриває D135 центральним `bdo::print_header()` regression без пересування wrapper headers. Підетап 6 не приймається до окремого Architect-review exact diff + CI.
+
 **Межа visibility:** `cli/run/run-stop.sh` і `cli/run/step-report.sh`
 переносяться з підетапом 7, а не з driver. Перший прямо делегує
 `cli/system/watch.sh`/tmux, другий визначає ширину через `/dev/tty` і `stty`;
@@ -523,10 +527,7 @@ watch/process і terminal-visibility abstraction.
 
 ### Підетап 8 · вхідні точки й прибирання
 
-D135 перенесено вперед: central `bdo::print_header()` закривається разом із
-наступною змістовною `run-loop` порцією, щоб нові wrapper migrations більше не
-множили порожній detailed help. Stage8 не чекає окремого D135 fix і займається
-фінальними entrypoints та видаленням rollback-shell.
+D135 входить у пакет 6.6.3: central `bdo::print_header()` отримує behavioral regression разом із `run-loop`, тому Stage8 не має окремого D135 fix і займається фінальними entrypoints та видаленням rollback-shell. Приймання D135 і Stage6 визначає review 6.6.3.
 
 **Мета.** `bdo` стає тонким (пошук php → `php cli/bdo.php`), `bdo.bat` працює
 БЕЗ WSL2, старі `.sh` видаляються, `BDO_ORCHESTRATOR` прибирається.
