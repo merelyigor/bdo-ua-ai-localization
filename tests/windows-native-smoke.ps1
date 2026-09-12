@@ -24,12 +24,8 @@ $work = Join-Path $runnerTemp 'bdo-windows-native-6.6.1'
 New-Item -ItemType Directory -Force -Path $work | Out-Null
 
 $phpDirectory = Split-Path -Parent $php
-$systemRoot = $env:SystemRoot
-if ([string]::IsNullOrWhiteSpace($systemRoot)) {
-    Fail 'SystemRoot is not available for the sanitized PATH.'
-}
-$env:PATH = "$phpDirectory;$systemRoot\System32"
-$bashCommand = Get-Command bash -ErrorAction SilentlyContinue
+$env:PATH = $phpDirectory
+$bashCommand = Get-Command bash.exe -CommandType Application -ErrorAction SilentlyContinue
 if ($null -ne $bashCommand) {
     Fail 'bash remains executable on the sanitized PATH.'
 }

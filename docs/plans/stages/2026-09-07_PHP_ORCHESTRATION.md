@@ -487,7 +487,9 @@ rollback-shell. Бойовий PROD write не використовується 
 
 **Порядок після 6.6.0:** Windows native PHP smoke → `run-loop` разом із D135. Windows smoke не використовує `env` як positive proof, доки `EnvCommand` делегує `bash`; проміжний доказ бере `php cli/bdo.php help` і pure-native `run-spec status` із synthetic DEV env. Фінальний `bdo.bat` без WSL2 лишається критерієм Stage8.
 
-**Windows preflight 6.6.1:** новий Windows detector спершу живе лише на `preflight/windows-native-6.6.1`; `main` не рухається до окремого Architect-review exact branch CI. `windows-2025` запускає pure-PHP `help` і `run-spec status` із `bash`, вилученим із PATH; shell-dependent `env` є negative control.
+**Ревʼю Windows preflight 6.6.1:** `NEEDS CORRECTION`. Exact GitHub Actions run №30 (`34661567183`) на `4e6efcc` мав три green jobs (`./bdo gate full`, `cli-api-fetch × 5`, `PHPStan level 0`), але `Windows native PHP smoke` впав до positive cases: sanitized PATH лишав PHP directory + `System32`, після чого `Get-Command bash` усе ще знаходив executable. Production PHP не змінювався, `main` лишився на `b11cf9a`; D154 фіксує дефект isolation proof.
+
+**Corrective Windows preflight 6.6.2:** звужує sanitized PATH до directory абсолютного `php.exe` і більше ні до чого; `bash.exe` application мусить бути недоступним, pure-PHP `help` та `run-spec status` · green, shell-dependent `env` · nonzero negative control. Workflow і production PHP не змінюються; branch лишається preflight до окремого Architect-review exact Windows CI.
 
 **Межа visibility:** `cli/run/run-stop.sh` і `cli/run/step-report.sh`
 переносяться з підетапом 7, а не з driver. Перший прямо делегує
