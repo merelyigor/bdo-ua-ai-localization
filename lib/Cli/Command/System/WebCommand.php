@@ -590,19 +590,22 @@ final class WebCommand implements Command
         if (PHP_OS_FAMILY === 'Windows') {
             return $command;
         }
+        $bash = $this->which('bash');
+        $shell = $bash ?? '/bin/sh';
         $script = <<<'SH'
 fd_dir=/dev/fd
 [ -d "$fd_dir" ] || fd_dir=/proc/self/fd
 for fd_path in "$fd_dir"/*; do
     case "$fd_path" in
         "$fd_dir"/0|"$fd_dir"/1|"$fd_dir"/2) ;;
-        "$fd_dir"/[0-9]*) eval "exec ${fd_path##*/}>&-" ;;
+        "$fd_dir"/[0-9]) eval "exec ${fd_path##*/}>&-" ;;
+        "$fd_dir"/[0-9]*) [ "$0" = bdo-bash ] && eval "exec ${fd_path##*/}>&-" ;;
     esac
 done
 exec "$@"
 SH;
 
-        return array_merge(['/bin/sh', '-c', $script, '--'], $command);
+        return array_merge([$shell, '-c', $script, $bash === null ? 'bdo-sh' : 'bdo-bash'], $command);
     }
 
     private function which(string $name): ?string
