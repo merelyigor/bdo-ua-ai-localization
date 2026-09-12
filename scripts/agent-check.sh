@@ -1108,6 +1108,7 @@ $braceless"
     run bash tests/cli-run-foundation-parity.sh
     run bash tests/cli-run-mode-parity.sh
     run bash tests/cli-run-drive-parity.sh
+    run bash tests/cli-system-parity.sh
     check_write_test_safety
     check_write_php_subprocess_guards
     run bash tests/cli-write-parity.sh

@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+if [ "${BDO_ORCHESTRATOR:-php}" != sh ]; then
+    exec php "$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/cli/bdo.php" session-timer "$@"
+fi
 # Скільки триває поточна робоча сесія і скільки лишилось до межі.
 #
 #   ./session-timer.sh start [ISO-час]   # почати відлік (типово · зараз)
@@ -64,7 +67,11 @@ case "${1:-status}" in
                 "$left" "$(date -r $((started + budget * 60)) '+%H:%M')"
         else
             printf 'МЕЖУ ВИЧЕРПАНО на %d хв. Завершити поточний етап і зупинитись.\n' $(( -left ))
-            test "${1:-status}" = check && exit 1
+            # D157: було `test … = check && exit 1` ОСТАННІМ рядком гілки, тому
+            # при `status` список `&&` завершувався зі статусом 1 і ставав кодом
+            # виходу всього скрипта. Контракт у шапці обіцяє код 1 лише для
+            # `check`, а `status` мовчки віддавав 1 на вичерпаній межі.
+            if [ "${1:-status}" = check ]; then exit 1; fi
         fi
         ;;
     *)
