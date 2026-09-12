@@ -1,0 +1,12 @@
+{
+    "items": [
+        {
+            "canonical_source": "Panokseon",
+            "source_text": "довгий опис предмета з назвою всередині",
+            "resolve": {
+                "status": "ready",
+                "ukrainian": "Паноксон"
+            }
+        }
+    ]
+}

@@ -49,6 +49,7 @@ use Bdo\Translate\Cli\Command\Run\RunModeCommand;
 use Bdo\Translate\Cli\Command\Run\RunDriveCommand;
 use Bdo\Translate\Cli\Command\Run\RunLoopCommand;
 use Bdo\Translate\Cli\Command\Run\RunStartCommand;
+use Bdo\Translate\Cli\Command\Run\StepReportCommand;
 use Bdo\Translate\Cli\Command\System\SessionTimerCommand;
 use Bdo\Translate\Cli\Command\Write\ModerationCommand;
 use Bdo\Translate\Cli\Command\Write\WriteTranslationsCommand;
@@ -133,6 +134,7 @@ final class Kernel
             'run-drive' => new RunDriveCommand(),
             'run-loop' => new RunLoopCommand(),
             'run-start' => new RunStartCommand(),
+            'step-report' => new StepReportCommand(),
             'batch-dir' => new BatchDirCommand(),
             'batch-assert' => new BatchAssertCommand(),
             'batch-clean' => new BatchCleanCommand(),

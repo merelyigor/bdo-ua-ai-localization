@@ -506,7 +506,7 @@ rollback-shell. Бойовий PROD write не використовується 
 
 **Ревʼю Windows 6.6.2:** `ACCEPTED`. Exact preflight run №31 (`34662852607`) і exact main run №32 (`34664030930`) на тому самому `da14382` зелені у всіх чотирьох jobs: `./bdo gate full`, `cli-api-fetch × 5`, `PHPStan level 0`, `Windows native PHP smoke`. Windows log довів `PHP_OS_FAMILY=Windows; help=0; run-spec-status=0; env-negative=1; bash=absent`. D154 закритий; detector прийнятий на `main`.
 
-**Пакет 6.6.3:** переносить останній Stage6-owned `run-loop` у `RunLoopCommand`: envelope-рішення й spin/batch safety живуть у PHP; `run-drive`, `run-mode` і model client викликаються fixed PHP argv без shell command string, timing пишеться напряму через `StepTimes`. Frozen shell loop лишається rollback. `step-report.sh` не переноситься й до Stage7 лишається fail-soft visibility bridge. Той самий пакет закриває D135 центральним `bdo::print_header()` regression без пересування wrapper headers. Підетап 6 не приймається до окремого Architect-review exact diff + CI.
+**Пакет 6.6.3:** переносить останній Stage6-owned `run-loop` у `RunLoopCommand`: envelope-рішення й spin/batch safety живуть у PHP; `run-drive`, `run-mode` і model client викликаються fixed PHP argv без shell command string, timing пишеться напряму через `StepTimes`. Frozen shell loop лишається rollback. step-report на той момент не переносився й лишався fail-soft visibility bridge (перенесено в 7.2). Той самий пакет закриває D135 центральним `bdo::print_header()` regression без пересування wrapper headers. Підетап 6 не приймається до окремого Architect-review exact diff + CI.
 
 **Ревʼю 6.6.3:** `NEEDS CORRECTION`. Exact main commit `fca119fda9e63bd2ed845165062758db25141063`, parent `da14382`, мав рівно 11 погоджених файлів; exact GitHub Actions run №33 (`34671276926`) завершився success у `./bdo gate full`, `cli-api-fetch × 5`, `PHPStan level 0`, `Windows native PHP smoke`. D135 behavioral proof прийнятий. Але executable review виявив D155: `RunLoopCommand`застосовує`stream_select()`до`proc_open()`pipes, що PHP не підтримує під Windows і що може лишити loop нескінченним. D156: green Windows smoke не запускав`run-loop`, тому цього не спростовував. Stage6 не прийнятий.
 
@@ -514,7 +514,7 @@ rollback-shell. Бойовий PROD write не використовується 
 
 **Ревʼю 6.6.4:** `ACCEPTED`. Exact main commit `d10922140008d49947441e4b2517afb797641b71`, parent `fca119fda9e63bd2ed845165062758db25141063`; exact GitHub Actions run №34 (`34672774867`) завершився `success` у всіх чотирьох jobs. Windows smoke фактично виконав native `php cli/bdo.php run-loop --once` без `bash` і завершився до hard timeout із очікуваним `no_current_batch`; D155/D156 закриті. Разом із прийнятим D135 це закриває підетап 6 цілком. Stage7 цим пакетом не починається.
 
-**Межа visibility:** `cli/run/run-stop.sh` і `cli/run/step-report.sh`
+**Межа visibility:** `cli/run/run-stop.sh` і step-report
 переносяться з підетапом 7, а не з driver. Перший прямо делегує
 `cli/system/watch.sh`/tmux, другий визначає ширину через `/dev/tty` і `stty`;
 обидва залежать від Stage7 process/visibility design.
@@ -546,7 +546,8 @@ bash-викликачі живі.
 |---|---|---|
 | 7.1 · зроблено | `session-timer.sh` | єдиний у теці, що не сорситься, не тримає процесів і не торкається PTY · парність доводиться байтовим порівнянням |
 | 7.2 | `browser-check.sh`, `ide-inspect.sh`, `tui-gif.sh`, `check-platform.sh` | самостійні команди, кличуться лише з `bdo`, зовнішні бінарники запускаються, але стану не тримають |
-| 7.3 | `run-stop.sh`, `step-report.sh` | стан пачки й показ кроку; `step-report` уже має споживача в `RunLoopCommand.php:298` |
+| 7.2 · зроблено | step-report | єдиний bash, який ЩЕ кликав PHP-драйвер (`RunLoopCommand.php:298`); перенесено золотим еталоном, двійник видалено |
+| 7.3 | `run-stop.sh` | двотактна команда: підпис у журнал і зупинка сесії · чекає на перенос `watch` |
 | 7.4 | `session.sh`, `timed.sh` | життєвий цикл сесій і мітки часу · чіпають `state/**`, тому йдуть після 7.3 |
 | 7.5 | `watch.sh`, `web.sh`, `mac-app.sh` | потребують `lib/Process/Runner.php` (tmux на Unix, відвʼязаний процес на Windows) · найризикованіше, останнім |
 | НЕ ЗАРАЗ | `select-env.sh`, `paths.sh` | їх `source`-ять 20+ і 8 bash-скриптів; переносяться аж у підетапі 8, коли bash-викликачів не лишиться |
@@ -566,7 +567,7 @@ bash-викликачі живі.
 вичерпаній межі. Обидва закриті в цьому ж пакеті.
 
 До цього підетапу також входять `cli/run/run-stop.sh` і
-`cli/run/step-report.sh`: їхній перенос неможливо коректно відділити від
+step-report: їхній перенос неможливо коректно відділити від
 watch/process і terminal-visibility abstraction.
 
 **Мета.** Сервер сторінки, сесії, значок, вікно · у PHP; крос-платформна

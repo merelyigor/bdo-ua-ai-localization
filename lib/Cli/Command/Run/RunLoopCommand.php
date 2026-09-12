@@ -295,12 +295,17 @@ final class RunLoopCommand implements Command
         if (getenv('BDO_STEP_REPORT') === '0') {
             return;
         }
-        $reporter = $this->root.'/cli/run/step-report.sh';
+        // Підетап 7.2: звіт кроку · PHP-команда, а не `bash step-report.sh`.
+        // Підпроцес лишається навмисно: звіт читає розмір керуючого термінала й
+        // друкує багато рядків, а драйвер мусить узяти його stdout ЦІЛКОМ і
+        // покласти в транскрипт. Виклик у тому самому процесі змішав би два
+        // потоки виводу, і транскрипт перестав би збігатися з екраном.
+        $reporter = $this->root.'/cli/bdo.php';
         if (! is_file($reporter)) {
             return;
         }
         try {
-            $result = $this->process(['bash', $reporter, ...$arguments], false, null, true);
+            $result = $this->process([PHP_BINARY, $reporter, 'step-report', ...$arguments], false, null, true);
             if ($result['stdout'] !== '') {
                 $output->stdout($result['stdout']);
                 $this->appendTranscript($result['stdout']);

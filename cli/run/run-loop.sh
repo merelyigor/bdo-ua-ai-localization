@@ -73,7 +73,10 @@ log() { printf '[%s] %s\n' "$(date +%H:%M:%S)" "$1" | tee -a "$TRANSCRIPT"; }
 # драйвера. Збій рендерера НЕ валить прогін: це звіт, а не крок конвеєра.
 report() {
     test "${BDO_STEP_REPORT:-1}" = 0 && return 0
-    "$SCRIPT_DIR/cli/run/step-report.sh" "$@" 2>/dev/null | tee -a "$TRANSCRIPT" || true
+    # Підетап 7.2: звіт кроку перенесено в PHP, bash-двійника більше немає.
+    # Rollback-гілка кличе ту саму команду · інакше вона показувала б порожній
+    # екран там, де php-гілка показує роботу.
+    php "$SCRIPT_DIR/cli/bdo.php" step-report "$@" 2>/dev/null | tee -a "$TRANSCRIPT" || true
     return 0
 }
 

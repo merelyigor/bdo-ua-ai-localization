@@ -15,7 +15,8 @@ trap 'rm -rf "$TMP"' EXIT
 
 H1="$(printf '%064d' 1)"
 H2="$(printf '%064d' 2)"
-report() { bash "$ROOT/cli/run/step-report.sh" "$@"; }
+# Підетап 7.2: звіт живе в PHP-команді, bash-двійника більше немає.
+report() { php "$ROOT/cli/bdo.php" step-report "$@"; }
 
 php -r '
 [$dir, $h1, $h2] = [$argv[1], $argv[2], $argv[3]];
@@ -133,10 +134,10 @@ grep -Fq 'PASS/none 8 | REVIEW/minor 1' <<<"$out" \
 #     прогоном (§12). Тут `setsid` відриває процес від термінала · саме той
 #     стан, у якому крок і виконується під gate або в cron.
 if command -v setsid >/dev/null 2>&1; then
-    out="$(setsid bash "$ROOT/cli/run/step-report.sh" --before translation-worker "$TMP/payload.json" 2>&1)" \
+    out="$(setsid php "$ROOT/cli/bdo.php" step-report --before translation-worker "$TMP/payload.json" 2>&1)" \
         || fail "без термінала звіт упав: $out"
 else
-    out="$(bash "$ROOT/cli/run/step-report.sh" --before translation-worker "$TMP/payload.json" < /dev/null 2>&1)" \
+    out="$(php "$ROOT/cli/bdo.php" step-report --before translation-worker "$TMP/payload.json" < /dev/null 2>&1)" \
         || fail "звіт упав без stdin-термінала: $out"
 fi
 grep -Fq 'перекладач → 2 рядки' <<<"$out" \
@@ -157,3 +158,29 @@ out="$(report --after translation-worker "$TMP/payload.json" "$TMP/немає-т
 grep -Fq 'відповіді ще немає' <<<"$out" || fail "відсутній файл відповіді не названо: $out"
 
 echo 'step report: OK · кожна роль показана власною формою, приховане названо числом.'
+
+# ЗОЛОТИЙ ЕТАЛОН · те, чим підетап 7.2 замінив байтову парність із bash.
+#
+# Bash-двійника більше немає, тому референсом стали файли, зняті з нього ПЕРЕД
+# видаленням (`tests/fixtures/step-report/*.golden`). Це та сама ідея, що й у
+# підетапі 1: `help` звірявся з доміграційним еталоном із `843df59`.
+# Шляхи ВІДНОСНІ й команда ганяється з кореня: звіт друкує шлях до артефакту у
+# вивід, тому абсолютний шлях потрапив би в еталон · а з ним і домашня тека
+# власника у tracked-файл, що ловить secret-детектор гейта.
+F="tests/fixtures/step-report"
+golden() {
+    local name="$1"; shift
+    ( cd "$ROOT" && BDO_STEP_REPORT_WIDTH=80 BDO_STEP_REPORT_ROWS=6 \
+        php cli/bdo.php step-report "$@" ) > "$TMP/$name.out" 2>&1 \
+        || fail "еталон $name: команда впала"
+    cmp -s "$TMP/$name.out" "$ROOT/$F/$name.golden" \
+        || fail "еталон $name розійшовся: $(diff "$ROOT/$F/$name.golden" "$TMP/$name.out" | head -3 | tr '\n' ' ')"
+}
+golden before-worker --before translation-worker "$F/payload.json"
+golden before-terms  --before translation-terminology "$F/terms-payload.json"
+golden after-worker  --after translation-worker "$F/payload.json" "$F/candidate.json"
+golden after-qa      --after translation-qa "$F/payload.json" "$F/verdicts.json"
+golden after-judge   --after translation-judge "$F/payload.json" "$F/judge.json"
+golden after-terms   --after translation-terminology "$F/terms-payload.json" "$F/terms.json"
+golden after-empty   --after translation-worker "$F/payload.json" "$F/empty.json"
+printf 'step-report: 7 золотих еталонів збігаються побайтово\n'

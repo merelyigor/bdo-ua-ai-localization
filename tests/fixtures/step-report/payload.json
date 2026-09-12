@@ -1,0 +1,34 @@
+{
+    "terms": [
+        {
+            "canonical_source": "Armor",
+            "ukrainian": "Обладунки"
+        }
+    ],
+    "examples": [
+        {
+            "en": "a",
+            "ua": "б"
+        }
+    ],
+    "concepts": [
+        {
+            "term": "AP",
+            "ua": "сила атаки"
+        }
+    ],
+    "items": [
+        {
+            "identity_hash": "0000000000000000000000000000000000000000000000000000000000000001",
+            "source_text": "Dark Figurehead: Panokseon"
+        },
+        {
+            "identity_hash": "0000000000000000000000000000000000000000000000000000000000000002",
+            "source_text": "Ancient Armor of the Deep",
+            "defects": [
+                "русизм"
+            ],
+            "candidate": "Старовинна броня"
+        }
+    ]
+}

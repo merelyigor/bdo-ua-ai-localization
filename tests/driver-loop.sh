@@ -13,15 +13,8 @@ setup_side() {
     mkdir -p "$base/cli/run" "$base/cli/model" "$base/cli/system" "$base/state" "$base/lib"
     cp "$ROOT/cli/run/run-loop.sh" "$base/cli/run/run-loop.sh"
     cp "$ROOT/cli/system/timed.sh" "$base/cli/system/timed.sh"
-    cp "$ROOT/cli/run/step-report.sh" "$base/cli/run/step-report.sh"
     cp -R "$ROOT/lib/." "$base/lib/"
     cp "$ROOT/cli/command-registry.json" "$base/cli/command-registry.json"
-    cat > "$base/cli/run/step-report.sh" <<'SH'
-#!/usr/bin/env bash
-printf 'reporter marker\n'
-test "${FAKE_REPORT_FAILS:-0}" = 1 && exit 9
-SH
-    chmod +x "$base/cli/run/step-report.sh"
     if [ "$side" = sh ]; then
         cat > "$base/bdo" <<'SH'
 #!/usr/bin/env bash
@@ -42,6 +35,17 @@ fi
 exit 0
 SH
         chmod +x "$base/bdo"
+        # Звіт кроку · PHP-команда навіть у rollback-гілці (підетап 7.2), тому
+        # фальшивий репортер потрібен і тут: bash-двійника більше не існує.
+        cat > "$base/cli/bdo.php" <<'PHP'
+<?php
+declare(strict_types=1);
+if (($argv[1] ?? '') === 'step-report') {
+    echo "reporter marker\n";
+    exit(getenv('FAKE_REPORT_FAILS') === '1' ? 9 : 0);
+}
+exit(0);
+PHP
     else
         cat > "$base/cli/bdo.php" <<'PHP'
 <?php
@@ -65,6 +69,14 @@ if ($name === 'run-drive') {
     exit(0);
 }
 if ($name === 'run-mode') exit(0);
+// Підетап 7.2: звіт кроку є PHP-командою, тому фальшивий репортер живе тут, а
+// не окремим bash-файлом · інакше пісочниця кликала б справжній звіт і вимагала
+// справжніх payload-файлів.
+if ($name === 'step-report') {
+    echo "reporter marker\n";
+    $fails = getenv('FAKE_REPORT_FAILS');
+    exit($fails === '1' ? 9 : 0);
+}
 require $root.'/lib/autoload.php';
 exit((new Bdo\Translate\Cli\Kernel())->run($arguments));
 PHP
