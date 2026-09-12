@@ -364,7 +364,7 @@ passed за 199 с; `phpstorm lint_files` · 0 ERROR; жоден із 17 вик�
 
 ### Підетап 5 · `cli/batch/**`, `cli/heal/**`, `cli/write/**` (9 файлів, 1 482 рядки)
 
-**Статус:** у роботі · кодові порції прийняті, але фінальне приймання блокує D151: запланований shell/PHP `BDO_DRY_RUN=1` proof ідентичності `commit-report.txt` ще не зафіксований.
+**Статус:** у роботі · corrective/proof 6.6.0 закриває D151 і D153; фінальне приймання підетапу 5 чекає окремого Architect-review exact diff + CI.
 
 Прийнято рев'ю: перша non-PROD batch/heal порція `92cf048` + corrective
 `2cc58bb`; `batch-clean` · `f785fcb`, `6.4.1`, CI success.
@@ -396,7 +396,7 @@ orchestrator routes для blocker і не робить бойового PROD wr
 **Ревʼю 6.4.7:** `ACCEPTED`. Exact CI `0d62fad` зелений; D126 блокує
 PASS і moderation при `no_run/env_mismatch/quota`, D127 відновлює
 `ollama/<model>` для config fallback, D128 охороняє фактичний production-root
-alias до запуску write-тестів. Підетап 5 закритий цілком.
+alias до запуску write-тестів. Висновок про повне закриття підетапу пізніше скасовано аудитом: D151 вимагав відсутній dry-run identity proof.
 
 **Мета.** Пачка, ремонт, запис · у PHP.
 
@@ -478,6 +478,10 @@ rollback-shell. Бойовий PROD write не використовується 
 **Ревʼю 6.5.8:** `ACCEPTED`. Exact GitHub Actions run №27 (`34541372494`) на `98d7834` зелений: `./bdo gate full` і `cli-api-fetch × 5` завершились success. D148 доведений actual subset schema artifact після invalid names response; D149 має окремі negative/positive effective-threshold branches; D150 ганяє вісім explicit fail-soft helper boundaries із marker-backed shell nonzero та PHP exception injection. Ланцюг `run-drive` 6.5.6-6.5.8 прийнято.
 
 **Infrastructure 6.5.9:** перед подальшим переносом вводить PHPStan 2.2.13 level 0 для `lib/**`, але лише якщо read-only baseline preflight уже зелений. Пакет не виправляє production PHP і не маскує findings baseline-ом або ignore-list; якщо preflight червоний, commit не створюється, а findings стають окремим corrective.
+
+**Ревʼю 6.5.9:** `NEEDS CORRECTION`. Exact GitHub Actions run №28 (`34553561544`) на `0115e87` зелений у всіх трьох jobs: `./bdo gate full`, `cli-api-fetch × 5`, `PHPStan level 0`. PHPStan 2.2.13 level 0 прийнятий як detector: baseline preflight і final config green, targeted undefined-method sabotage дав `method.notFound`. Production PHP у commit відсутній. Повернення стосується лише process patch: current Stage5 status правильно відкрив D151, але старий review 6.4.7 лишив суперечливе «Підетап 5 закритий цілком». PHPStan у corrective не переробляється.
+
+**Corrective 6.6.0:** D151 raw 20-row proof виявив D153: native commit capture втрачав stdout/stderr chronology, rollback quarantine count мав platform-dependent legacy `wc` padding. Пакет виправляє лише ці дві observable divergence і повторює raw proof без PROD/API write.
 
 **Порядок після 6.5.8:** PHPStan green pilot → D151 shell/PHP dry-run `commit-report.txt` identity proof → Windows native PHP smoke → `run-loop` разом із D135. Windows smoke не використовує `env`, доки `EnvCommand` делегує `bash`; проміжний доказ бере `php cli/bdo.php help` і pure-native `run-spec status` із synthetic DEV env. Фінальний `bdo.bat` без WSL2 лишається критерієм Stage8.
 

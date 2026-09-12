@@ -73,6 +73,30 @@ cat >"$ROW_GAP_FILE" <<'ROWS'
 {"data":{"rows":[{"identity_hash":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","source_hash":"0237531195208572bd46f6736d33b2f6de15af3809f50d8d6162c1f506784e06","source_text":"Run drive fixture","classification":{"domain":"item","semantic_type":"name"},"tokens":[],"constraints":[],"glossary":{"terms":[{"canonical_source":"Run","ukrainian":null,"severity":"mandatory"}]},"reference":null,"patch":"active"}]}}
 ROWS
 
+TWENTY_ROW_FILE="$TMP/rows-20.json"
+"$REAL_PHP" -r '
+    $rows = [];
+    for ($i = 1; $i <= 20; $i++) {
+        $sourceText = "Run drive 20-row fixture ".$i;
+        $rows[] = [
+            "identity_hash" => sprintf("%064x", $i),
+            "source_hash" => hash("sha256", $sourceText),
+            "source_text" => $sourceText,
+            "classification" => ["domain" => "item", "semantic_type" => "name"],
+            "tokens" => [], "constraints" => [], "glossary" => ["terms" => []],
+            "reference" => null, "patch" => "active",
+        ];
+    }
+    file_put_contents($argv[1], json_encode(["data" => ["rows" => $rows]], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)."\n");
+' "$TWENTY_ROW_FILE"
+"$REAL_PHP" -r '
+    $value = json_decode((string) file_get_contents($argv[1]), true, 512, JSON_THROW_ON_ERROR);
+    $rows = $value["data"]["rows"] ?? [];
+    $ids = array_map(static fn (array $row): string => (string) ($row["identity_hash"] ?? ""), $rows);
+    if (count($rows) !== 20 || count(array_unique($ids)) !== 20) exit(1);
+    foreach ($ids as $id) if (! preg_match("/\A[0-9a-f]{64}\z/", $id)) exit(1);
+' "$TWENTY_ROW_FILE" || fail 'D151 fixture is not exactly 20 unique 64-hex rows'
+
 make_workspace() {
     local state="$1" mode="$2" batch_state="$3"
     mkdir -p "$state"
@@ -169,6 +193,35 @@ make_dry_workspace() {
     printf 'local\n' >"$state/run-target"
 }
 
+make_d151_workspace() {
+    local state="$1"
+    make_custom_workspace "$state" "$TWENTY_ROW_FILE" patch ready_to_commit
+    local batch
+    batch="$(find "$state/batches" -mindepth 1 -maxdepth 1 -type d -print -quit)"
+    "$REAL_PHP" -r '
+        $batch = $argv[1];
+        $rows = json_decode((string) file_get_contents($batch."/rows.json"), true, 512, JSON_THROW_ON_ERROR)["data"]["rows"] ?? [];
+        if (count($rows) !== 20) exit(1);
+        $candidates = [];
+        $verdicts = [];
+        foreach ($rows as $index => $row) {
+            $candidates[] = ["identity_hash" => $row["identity_hash"], "text" => "Прогін ".$index];
+            $verdicts[] = ["identity_hash" => $row["identity_hash"], "status" => "PASS", "severity" => "none", "issue" => "", "fix" => ""];
+        }
+        if (count($candidates) !== 20 || count($verdicts) !== 20) exit(1);
+        file_put_contents($batch."/final-candidate.json", json_encode($candidates, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)."\n");
+        file_put_contents($batch."/final-verdicts.json", json_encode($verdicts, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)."\n");
+    ' "$batch" || fail 'D151 workspace is not exactly 20 rows/candidates/verdicts'
+    "$REAL_PHP" -r '
+        $batch = $argv[1];
+        foreach (["rows.json", "final-candidate.json", "final-verdicts.json"] as $name) {
+            $value = json_decode((string) file_get_contents($batch."/".$name), true, 512, JSON_THROW_ON_ERROR);
+            if (count($value["data"]["rows"] ?? $value) !== 20) exit(1);
+        }
+    ' "$batch" || fail 'D151 workspace count proof failed before drive'
+    printf 'local\n' >"$state/run-target"
+}
+
 run_dry_side() {
     local side="$1" state="$2" out="$3" err="$4"
     set +e
@@ -197,6 +250,54 @@ assert_same_output "$TMP/sh-dry.out" "$TMP/php-dry.out"
 if grep -Fq '"method":"POST"' "$REQUEST_LOG"; then
     fail "dry-run зробив POST: $(cat "$REQUEST_LOG")"
 fi
+
+# ПРАВИЛО: Stage5 dry-run identity доводиться RAW artifact, створеним двома реальними orchestrator paths на тому самому 20-row input і тому самому absolute state path.
+# САБОТАЖ: будь-яка додаткова/втрачена строка лише в native PHP commit-report.txt мусить зробити raw cmp червоним.
+D151_STATE="$TMP/d151-state"
+D151_SNAPSHOT="$TMP/d151-snapshot"
+make_d151_workspace "$D151_STATE"
+D151_BATCH="$(find "$D151_STATE/batches" -mindepth 1 -maxdepth 1 -type d -print -quit)"
+D151_EXTERNAL_REPORT="$TMP/d151-raw-report.txt"
+: >"$D151_EXTERNAL_REPORT"
+ln -s "$D151_EXTERNAL_REPORT" "$D151_BATCH/commit-report.txt"
+cp -a "$D151_STATE" "$D151_SNAPSHOT"
+D151_SH_REPORT="$TMP/d151.shell.commit-report.txt"
+D151_PHP_REPORT="$TMP/d151.php.commit-report.txt"
+D151_SH_REQUESTS="$TMP/d151.shell.requests"
+D151_PHP_REQUESTS="$TMP/d151.php.requests"
+
+: >"$REQUEST_LOG"
+D151_SH_CODE="$(run_dry_side sh "$D151_STATE" "$TMP/d151.sh.out" "$TMP/d151.sh.err")"
+test "$D151_SH_CODE" = 0 || fail "D151 shell code=$D151_SH_CODE: $(cat "$TMP/d151.sh.err")"
+test -s "$D151_EXTERNAL_REPORT" || fail 'D151 shell commit-report.txt is empty'
+cp "$D151_EXTERNAL_REPORT" "$D151_SH_REPORT"
+cp "$REQUEST_LOG" "$D151_SH_REQUESTS"
+grep -Fq 'Пачка: 20 рядків | PASS 20, REVIEW 0, REJECT 0' "$D151_SH_REPORT" || fail 'D151 shell report count mismatch'
+if grep -Fq '"method":"POST"' "$D151_SH_REQUESTS"; then fail 'D151 shell dry-run made POST'; fi
+
+rm -rf "$D151_STATE"
+cp -a "$D151_SNAPSHOT" "$D151_STATE"
+diff -qr "$D151_SNAPSHOT" "$D151_STATE" >/dev/null || fail 'D151 snapshot restore differs before PHP'
+
+: >"$REQUEST_LOG"
+D151_PHP_CODE="$(run_dry_side php "$D151_STATE" "$TMP/d151.php.out" "$TMP/d151.php.err")"
+test "$D151_PHP_CODE" = 0 || fail "D151 PHP code=$D151_PHP_CODE: $(cat "$TMP/d151.php.err")"
+test -s "$D151_EXTERNAL_REPORT" || fail 'D151 PHP commit-report.txt is empty'
+cp "$D151_EXTERNAL_REPORT" "$D151_PHP_REPORT"
+cp "$REQUEST_LOG" "$D151_PHP_REQUESTS"
+grep -Fq 'Пачка: 20 рядків | PASS 20, REVIEW 0, REJECT 0' "$D151_PHP_REPORT" || fail 'D151 PHP report count mismatch'
+if grep -Fq '"method":"POST"' "$D151_PHP_REQUESTS"; then fail 'D151 PHP dry-run made POST'; fi
+
+if ! cmp -s "$D151_SH_REPORT" "$D151_PHP_REPORT"; then
+    diff -u "$D151_SH_REPORT" "$D151_PHP_REPORT" >&2 || true
+    fail 'D151 raw commit-report.txt byte identity mismatch'
+fi
+D151_FACTS="$("$REAL_PHP" -r '$p=$argv[1]; $size=filesize($p); $hash=hash_file("sha256",$p); if ($size === false || $hash === false) exit(1); echo $size." ".$hash."\n";' "$D151_SH_REPORT")"
+read -r D151_SH_BYTES D151_SH_SHA <<<"$D151_FACTS"
+D151_FACTS="$("$REAL_PHP" -r '$p=$argv[1]; $size=filesize($p); $hash=hash_file("sha256",$p); if ($size === false || $hash === false) exit(1); echo $size." ".$hash."\n";' "$D151_PHP_REPORT")"
+read -r D151_PHP_BYTES D151_PHP_SHA <<<"$D151_FACTS"
+test "$D151_SH_BYTES" = "$D151_PHP_BYTES" && test "$D151_SH_SHA" = "$D151_PHP_SHA" || fail 'D151 report facts differ after raw cmp'
+printf 'D151: 20 rows; same state path; snapshot restore diff=0; shell=%s bytes/%s; php=%s bytes/%s; raw cmp=0; POST shell=0 PHP=0\n' "$D151_SH_BYTES" "$D151_SH_SHA" "$D151_PHP_BYTES" "$D151_PHP_SHA"
 
 run_write_side() {
     local side="$1" state="$2" out="$3" err="$4"

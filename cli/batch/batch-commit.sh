@@ -409,7 +409,10 @@ fi
 if [ "$DO_WRITE" != "--write" ] || [ $((COUNT + MOD_COUNT)) -eq 0 ]; then
     echo "Запису не було (потрібні --write, розпочатий прогін і квота)."
 fi
-echo "Карантин: $QUARANTINE ($(wc -l < "$QUARANTINE" 2>/dev/null || echo 0) рядків усього)"
+QUARANTINE_COUNT="$(wc -l < "$QUARANTINE" 2>/dev/null || echo 0)"
+QUARANTINE_COUNT="${QUARANTINE_COUNT//[^0-9]/}"
+QUARANTINE_COUNT="${QUARANTINE_COUNT:-0}"
+echo "Карантин: $QUARANTINE ($QUARANTINE_COUNT рядків усього)"
 
 # Машинний підсумок пачки містить факти відповідей API, а не намір до запису.
 # Його читає run-drive і показує primary-моделі без парсингу людського звіту.

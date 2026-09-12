@@ -564,9 +564,9 @@ final class RunDriveCommand implements Command
         else $output->stderr("ТЕСТОВИЙ ПРОГІН: запису в API не буде (BDO_DRY_RUN=1)\n");
         if ($state === 'ready_to_commit') $this->transition('committing');
         $started = microtime(true);
-        $report = $this->capture(new BatchCommitCommand(), $args);
+        $report = $this->captureMerged(new BatchCommitCommand(), $args);
         $this->recordTime('commit', (int) round((microtime(true) - $started) * 1000), $report['code']);
-        $this->write($this->workspace->path('commit-report.txt'), $report['stdout'].$report['stderr']);
+        $this->write($this->workspace->path('commit-report.txt'), $report['output']);
         if ($report['code'] !== 0) return $this->emit($output, false, 'committing', ['kind' => 'retry', 'reason' => 'api_write_failed']);
         $this->complete('commit', $this->workspace->path('commit-report.txt'));
         $this->transition('committed');
@@ -911,6 +911,25 @@ final class RunDriveCommand implements Command
         $stdout = tmpfile(); $stderr = tmpfile(); if ($stdout === false || $stderr === false) throw new RuntimeException('Не вдалося відкрити тимчасовий потік.');
         try { $code = $command->execute($arguments, new Output($stdout, $stderr)); rewind($stdout); rewind($stderr); return ['code' => $code, 'stdout' => stream_get_contents($stdout) ?: '', 'stderr' => stream_get_contents($stderr) ?: '']; }
         finally { if (is_resource($stdout)) fclose($stdout); if (is_resource($stderr)) fclose($stderr); }
+    }
+
+    /** @return array{code:int,output:string} */
+    private function captureMerged(Command $command, array $arguments): array
+    {
+        $stream = tmpfile();
+        if ($stream === false) {
+            throw new RuntimeException('Не вдалося відкрити тимчасовий потік.');
+        }
+        try {
+            $code = $command->execute($arguments, new Output($stream, $stream));
+            rewind($stream);
+
+            return ['code' => $code, 'output' => stream_get_contents($stream) ?: ''];
+        } finally {
+            if (is_resource($stream)) {
+                fclose($stream);
+            }
+        }
     }
 
     private function call(Command $command, array $arguments): void
