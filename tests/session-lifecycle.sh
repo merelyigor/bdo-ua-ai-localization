@@ -251,31 +251,64 @@ test -d "$DEL_STATE/sessions/20260101_010101" \
 
 # 2. ВІДКРИТУ сесію не видаляємо: у неї може йти пачка просто зараз.
 printf '20260101_010101\n' > "$DEL_STATE/current-session"
-if BDO_STATE_DIR="$DEL_STATE" bash "$ROOT/cli/system/session.sh" delete 20260101_010101 --apply >/dev/null 2>&1; then
+OPEN_ERR="$TMP/delete-open.err"
+if BDO_STATE_DIR="$DEL_STATE" bash "$ROOT/cli/system/session.sh" delete 20260101_010101 --apply >"$TMP/delete-open.out" 2>"$OPEN_ERR"; then
     fail 'відкриту сесію видалено · теку, у яку пише прогін, забрано з-під нього'
 fi
+grep -q 'сесія 20260101_010101 ВІДКРИТА' "$OPEN_ERR" \
+    || fail "відмова для відкритої сесії не назвала причину: $(cat "$OPEN_ERR")"
 rm -f "$DEL_STATE/current-session"
 
-# 3. Сесію з ПОТОЧНОЮ пачкою теж не видаляємо.
+# 3. ЖИВИЙ прогін на пачці сесії теж не видаляємо.
 printf '20260101_010101_aaaa\n' > "$DEL_STATE/current-batch"
-if BDO_STATE_DIR="$DEL_STATE" bash "$ROOT/cli/system/session.sh" delete 20260101_010101 --apply >/dev/null 2>&1; then
-    fail 'видалено сесію, чия пачка є поточною'
+ln -s "$$" "$DEL_STATE/batches/20260101_010101_aaaa/drive.lock"
+LIVE_ERR="$TMP/delete-live.err"
+if BDO_STATE_DIR="$DEL_STATE" bash "$ROOT/cli/system/session.sh" delete 20260101_010101 --apply >"$TMP/delete-live.out" 2>"$LIVE_ERR"; then
+    fail 'видалено сесію під живим прогоном'
 fi
-rm -f "$DEL_STATE/current-batch"
+grep -q 'живий прогін на пачці 20260101_010101_aaaa · видалення заблоковано' "$LIVE_ERR" \
+    || fail "відмова для живого прогону не назвала причину: $(cat "$LIVE_ERR")"
+test -d "$DEL_STATE/sessions/20260101_010101" || fail 'живий прогін змінив теку сесії'
+test -d "$DEL_STATE/batches/20260101_010101_aaaa" || fail 'живий прогін змінив теку пачки'
+rm -f "$DEL_STATE/batches/20260101_010101_aaaa/drive.lock"
 
-# 4. `--apply` прибирає сесію РАЗОМ із теками її пачок.
-BDO_STATE_DIR="$DEL_STATE" bash "$ROOT/cli/system/session.sh" delete 20260101_010101 --apply >/dev/null 2>&1 \
+# 4. Застарілий покажчик видно в показі й прибирається лише разом із даними.
+STALE_OUT="$TMP/delete-stale.out"
+BDO_STATE_DIR="$DEL_STATE" bash "$ROOT/cli/system/session.sh" delete 20260101_010101 >"$STALE_OUT" 2>&1 \
+    || fail 'показ зі stale покажчиком завершився помилкою'
+grep -q 'Застарілий покажчик current-batch: 20260101_010101_aaaa буде знято під час --apply\.' "$STALE_OUT" \
+    || fail "показ не попередив про stale покажчик: $(cat "$STALE_OUT")"
+test -f "$DEL_STATE/current-batch" || fail 'показ зняв покажчик до --apply'
+
+# 5. `--apply` прибирає сесію РАЗОМ із теками її пачок і stale покажчиком.
+APPLY_OUT="$TMP/delete-apply.out"
+BDO_STATE_DIR="$DEL_STATE" bash "$ROOT/cli/system/session.sh" delete 20260101_010101 --apply >"$APPLY_OUT" 2>&1 \
     || fail 'видалення завершилось помилкою'
+grep -q 'Застарілий покажчик current-batch: 20260101_010101_aaaa прибрано\.' "$APPLY_OUT" \
+    || fail "застосування не назвало прибирання покажчика: $(cat "$APPLY_OUT")"
 test ! -d "$DEL_STATE/sessions/20260101_010101" || fail 'теку сесії не прибрано'
 test ! -d "$DEL_STATE/batches/20260101_010101_aaaa" || fail 'теку пачки сесії не прибрано'
+test ! -e "$DEL_STATE/current-batch" || fail 'stale покажчик не прибрано'
 
-# 5. СЛІД ЗАПИСІВ У API ЦІЛИЙ. Переклади вже на проді; стерти запис про них
+# 6. Живий прогін ІНШОЇ сесії не блокує видалення цієї, чужий покажчик лишається.
+mkdir -p "$DEL_STATE/sessions/20260102_010101" "$DEL_STATE/batches/20260102_010101_bbbb" "$DEL_STATE/batches/20260102_010101_cccc"
+printf '{"id":"20260102_010101","status":"closed"}\n' > "$DEL_STATE/sessions/20260102_010101/session.json"
+printf '{"id":"20260102_010101_bbbb"}\n' > "$DEL_STATE/sessions/20260102_010101/batches.jsonl"
+printf '20260102_010101_cccc\n' > "$DEL_STATE/current-batch"
+ln -s "$$" "$DEL_STATE/batches/20260102_010101_cccc/drive.lock"
+BDO_STATE_DIR="$DEL_STATE" bash "$ROOT/cli/system/session.sh" delete 20260102_010101 --apply >"$TMP/delete-other-live.out" 2>&1 \
+    || fail 'живий прогін іншої сесії заблокував видалення цільової'
+test ! -d "$DEL_STATE/sessions/20260102_010101" || fail 'цільову сесію з живим прогоном іншої сесії не прибрано'
+test -e "$DEL_STATE/current-batch" || fail 'чужий покажчик прибрано разом із цільовою сесією'
+test "$(cat "$DEL_STATE/current-batch")" = '20260102_010101_cccc' || fail 'чужий покажчик змінився'
+
+# 7. СЛІД ЗАПИСІВ У API ЦІЛИЙ. Переклади вже на проді; стерти запис про них
 #    означало б втратити єдину відповідь на «хто це записав», нічого не
 #    повернувши.
 test "$(cat "$DEL_STATE/write-log.jsonl")" = "$WL_BEFORE" \
     || fail 'видалення сесії зачепило write-log.jsonl · незнищенний слід записів'
 
-# 6. Кривий ідентифікатор не видаляє нічого.
+# 8. Кривий ідентифікатор не видаляє нічого.
 if BDO_STATE_DIR="$DEL_STATE" bash "$ROOT/cli/system/session.sh" delete ../../etc --apply >/dev/null 2>&1; then
     fail 'кривий ідентифікатор сесії прийнято'
 fi

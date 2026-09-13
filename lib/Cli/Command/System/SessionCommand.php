@@ -232,6 +232,7 @@ final class SessionCommand implements Command
 
         $batches = $ledger->batches($id);
         $currentBatch = trim((string) @file_get_contents($stateDir.'/current-batch'));
+        $currentBatchIsOurs = false;
         $dirs = [];
         $bytes = 0;
         $measure = function (string $path) use (&$bytes): void {
@@ -251,7 +252,7 @@ final class SessionCommand implements Command
                 continue;
             }
             if ($batchId === $currentBatch) {
-                return $this->error($output, "session delete: пачка {$batchId} цієї сесії є ПОТОЧНОЮ · видалення заблоковано.");
+                $currentBatchIsOurs = true;
             }
             $batchDir = $stateDir.'/batches/'.$batchId;
             if (is_dir($batchDir)) {
@@ -259,6 +260,10 @@ final class SessionCommand implements Command
                 $measure($batchDir);
             }
         }
+        if ($currentBatchIsOurs && (new \Bdo\Translate\Web\Snapshot($stateDir))->running()) {
+            return $this->error($output, "session delete: живий прогін на пачці {$currentBatch} · видалення заблоковано.");
+        }
+        $staleCurrentBatch = $currentBatchIsOurs;
         $measure($dir);
         $dirs[] = $dir;
         $output->stdout(sprintf("Сесія %s · пачок %d, тек до видалення %d, разом %d КБ\n", $id, count($batches), count($dirs), (int) round($bytes / 1024)));
@@ -266,6 +271,9 @@ final class SessionCommand implements Command
             $output->stdout("  ".substr($directory, strlen($stateDir) + 1)."\n");
         }
         $output->stdout("НЕ чіпається: write-log.jsonl (слід записів у API), quarantine.jsonl, row-attempts.jsonl.\n");
+        if ($staleCurrentBatch && ! $apply) {
+            $output->stdout("Застарілий покажчик current-batch: {$currentBatch} буде знято під час --apply.\n");
+        }
         if (! $apply) {
             $output->stdout("ВИРОК: це лише показ. Видалити: ./bdo session delete {$id} --apply\n");
 
@@ -288,6 +296,10 @@ final class SessionCommand implements Command
             $remove($directory);
         }
         $output->stdout(sprintf("Видалено: сесія %s і %d тек пачок (%d КБ).\n", $id, count($dirs) - 1, (int) round($bytes / 1024)));
+        if ($staleCurrentBatch) {
+            @unlink($stateDir.'/current-batch');
+            $output->stdout("Застарілий покажчик current-batch: {$currentBatch} прибрано.\n");
+        }
 
         return 0;
     }
