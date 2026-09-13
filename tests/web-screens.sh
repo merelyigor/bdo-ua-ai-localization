@@ -98,11 +98,50 @@ foreach ($cases as $state => $expected) {
 # власникові потрібне «що зараз робиться». Запит лишається в підказці.
 grep -Fq 's.goal.phrase' "$RUN" \
     || fail 'екран прогону показує ціль запитом до API замість фрази'
+
+# Ціль ПЕРЕЖИВАЄ свій прогін: `run-goal.json` лишається після `run end`, бо між
+# пачками він і є памʼяттю про вибірку. Власник 2026-09-14 видалив усі сесії,
+# пачок не лишилось, а сторінка далі писала «рядки без ШІ-шару · патч 8», ніби
+# робота триває. Без пачки ціль є НАЛАШТУВАННЯМ наступної, а коли прогін ще й
+# завершено · вона не описує нічого й не показується взагалі.
 php -r '
 require $argv[1];
 use Bdo\Translate\Web\Snapshot;
 $tmp = sys_get_temp_dir()."/bdo-goal-".getmypid();
 @mkdir($tmp, 0777, true);
+file_put_contents($tmp."/run-goal.json", json_encode(["mode" => "patch", "patch" => "8", "channel" => "machine"]));
+
+file_put_contents($tmp."/run-target", "prod\n");
+$phrase = (string) ((new Snapshot($tmp))->toArray()["goal"]["phrase"] ?? "");
+if (! str_starts_with($phrase, "ціль наступної пачки")) {
+    fwrite(STDERR, "без пачки ціль подана як поточна робота: «{$phrase}»\n");
+    exit(1);
+}
+
+@unlink($tmp."/run-target");
+$goal = (new Snapshot($tmp))->toArray()["goal"] ?? [];
+if ($goal !== []) {
+    fwrite(STDERR, "завершений прогін усе одно показує ціль: ".json_encode($goal, JSON_UNESCAPED_UNICODE)."\n");
+    exit(1);
+}
+
+@mkdir($tmp."/batches/20260905_010101_abcdef0123456789", 0777, true);
+file_put_contents($tmp."/current-batch", "20260905_010101_abcdef0123456789");
+file_put_contents($tmp."/run-target", "prod\n");
+$phrase = (string) ((new Snapshot($tmp))->toArray()["goal"]["phrase"] ?? "");
+if (str_starts_with($phrase, "ціль наступної пачки")) {
+    fwrite(STDERR, "з живою пачкою ціль подана як налаштування: «{$phrase}»\n");
+    exit(1);
+}
+' "$ROOT/lib/autoload.php" || fail 'ціль прогону не відрізняє поточну роботу від налаштування наступної пачки'
+php -r '
+require $argv[1];
+use Bdo\Translate\Web\Snapshot;
+$tmp = sys_get_temp_dir()."/bdo-goal-".getmypid();
+@mkdir($tmp, 0777, true);
+// Фіксація прогону потрібна, щоб ціль узагалі показувалась: без неї й без
+// пачки вона нічого не описує (перевірка нижче за текстом).
+file_put_contents($tmp."/run-target", "prod\n");
 file_put_contents($tmp."/run-goal.json", json_encode([
     "mode" => "patch", "patch" => "active", "domain" => "", "channel" => "machine",
     "query" => "patch=active&missing=machine",

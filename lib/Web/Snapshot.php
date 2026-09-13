@@ -575,6 +575,20 @@ final class Snapshot
         if ($goal === []) {
             return [];
         }
+        // Ціль ПЕРЕЖИВАЄ свій прогін: `run end` знімає фіксацію середовища, але
+        // `run-goal.json` лишається, бо між пачками він і є пам'яттю про те, що
+        // ми відбираємо. Через це власник 2026-09-14 видалив УСІ сесії, пачок
+        // не лишилось жодної, а сторінка далі писала «рядки без ШІ-шару · патч
+        // 8», ніби робота триває.
+        //
+        // Тому: без пачки ціль показується як НАЛАШТУВАННЯ наступної, а коли
+        // прогін ще й завершено (немає `run-target`) · вона не показується
+        // взагалі, бо не описує нічого.
+        $hasBatch = trim((string) @file_get_contents($this->path('current-batch'))) !== '';
+        $hasTarget = is_file($this->path('run-target'));
+        if (! $hasBatch && ! $hasTarget) {
+            return [];
+        }
         $mode = (string) ($goal['mode'] ?? '');
         $patch = (string) ($goal['patch'] ?? '');
         $bits = [];
@@ -597,7 +611,7 @@ final class Snapshot
             'manual' => 'запис у ручний шар',
             default => 'канал запису не зафіксовано',
         };
-        $goal['phrase'] = implode(' · ', $bits);
+        $goal['phrase'] = ($hasBatch ? '' : 'ціль наступної пачки · ').implode(' · ', $bits);
 
         return $goal;
     }
