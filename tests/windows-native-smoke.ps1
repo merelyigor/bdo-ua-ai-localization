@@ -227,6 +227,28 @@ while (-not (Test-Path $webInfo) -and (Get-Date) -lt $deadline) {
     Start-Sleep -Milliseconds 100
 }
 if (-not (Test-Path $webInfo)) {
+    # Порожнє повідомлення про падіння вже коштувало кола CI на Linux: воно
+    # називає симптом і мовчить про причину. Тому перед відмовою друкуємо все,
+    # що процес устиг сказати, і журнал сервера · саме там лежить рядок, який
+    # пояснює, чому PHP не піднявся.
+    Write-Output "--- bdo.bat діагностика ---"
+    Write-Output "процес завершився: $($batProcess.HasExited)"
+    if ($batProcess.HasExited) {
+        Write-Output "код виходу: $($batProcess.ExitCode)"
+        Write-Output "stdout:"
+        Write-Output $batProcess.StandardOutput.ReadToEnd()
+        Write-Output "stderr:"
+        Write-Output $batProcess.StandardError.ReadToEnd()
+    } else {
+        Write-Output 'процес ще живий · вивід не читаємо, щоб не блокувати канал'
+    }
+    $batLog = Join-Path $batState 'web.log'
+    Write-Output "--- state/web.log ---"
+    if (Test-Path $batLog) {
+        Write-Output (Get-Content -Raw -Path $batLog)
+    } else {
+        Write-Output 'журналу немає'
+    }
     Fail 'bdo.bat did not start native PHP server.'
 }
 $batInfo = Get-Content -Raw -Path $webInfo | ConvertFrom-Json
