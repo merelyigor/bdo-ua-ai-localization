@@ -100,6 +100,34 @@ env_fingerprint() {
 BDO_ENV_FINGERPRINT="$(env_fingerprint)"
 readonly BDO_ENV_FINGERPRINT
 
+# Живий `codex` у цій самій теці · навіть без нашого lock-файлу.
+#
+# Обгортку може вбити стеля часу виклику, і тоді `codex` лишається сиротою: lock
+# зникає разом із trap, а робота в дереві триває. Тому перед стартом питаємо не
+# файл, а систему.
+codex_already_running() {
+    local dir="$1" line
+    while IFS= read -r line; do
+        case "$line" in
+            *"codex exec"*) ;;
+            *) continue ;;
+        esac
+        case "$line" in
+            *"$dir"*) return 0 ;;
+        esac
+    done < <(ps -axo pid=,args= 2>/dev/null)
+    return 1
+}
+
+if codex_already_running "$work_dir"; then
+    fail "у теці $work_dir уже працює codex exec (можливо, осиротілий після обірваного виклику). Дочекайся завершення або зупини його вручну"
+fi
+
+# Пакет без команди приймання не стартує: контракт вимагає рядок `Перевірка:`,
+# інакше перевіряти доведеться переказ виконавця, а не факт.
+grep -qE '^[[:space:]]*(Перевірка|ПЕРЕВІРКА)[[:space:]]*:' "$prompt_file" \
+    || fail "у промпті немає рядка «Перевірка:» з командою приймання · пакет без неї не делегується"
+
 mkdir -p "$LOG_DIR"
 
 # Lock проти паралельних прогонів у одній теці.

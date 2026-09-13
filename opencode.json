@@ -1,0 +1,25 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "oraios-serena": {
+      "type": "remote",
+      "url": "http://127.0.0.1:8022/mcp",
+      "enabled": true
+    }
+  },
+  "permission": {
+    "bash": {
+      "*rm -rf*": "deny",
+      "*git push --force*": "deny",
+      "*git rebase*": "deny",
+      "*DROP TABLE*": "deny",
+      "*TRUNCATE*": "deny"
+    },
+    "edit": {
+      "state/**": "deny"
+    }
+  },
+  "instructions": [
+    ".opencode/critical-rules.md"
+  ]
+}
