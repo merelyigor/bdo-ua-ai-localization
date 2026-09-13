@@ -168,11 +168,20 @@ $batState = Join-Path $work 'bdo-bat-state'
 New-Item -ItemType Directory -Force -Path $batState | Out-Null
 $env:BDO_STATE_DIR = $batState
 
-function Invoke-Bat([string[]] $Arguments, [string] $Label) {
-    $command = 'call "' + $bat + '"'
+# `cmd.exe` не можна запускати через `ArgumentList`: .NET екранує лапки за
+# правилами звичайної програми, і cmd бачить шлях разом із `\"`, а не сам шлях
+# (`'\"D:\...\bdo.bat\"' is not recognized`). Тому рядок аргументів складається
+# вручну за правилом cmd: `/d /c ""<шлях>" "<аргумент>""`.
+function Get-CmdArguments([string[]] $Arguments) {
+    $inner = '"' + $bat + '"'
     foreach ($argument in $Arguments) {
-        $command += ' "' + $argument + '"'
+        $inner += ' "' + $argument + '"'
     }
+
+    return '/d /c "' + $inner + '"'
+}
+
+function Invoke-Bat([string[]] $Arguments, [string] $Label) {
     $startInfo = [System.Diagnostics.ProcessStartInfo]::new()
     $startInfo.FileName = $comspec
     $startInfo.WorkingDirectory = $batRepo
@@ -180,9 +189,7 @@ function Invoke-Bat([string[]] $Arguments, [string] $Label) {
     $startInfo.RedirectStandardOutput = $true
     $startInfo.RedirectStandardError = $true
     $startInfo.Environment['PATH'] = $phpDirectory
-    [void] $startInfo.ArgumentList.Add('/d')
-    [void] $startInfo.ArgumentList.Add('/c')
-    [void] $startInfo.ArgumentList.Add($command)
+    $startInfo.Arguments = Get-CmdArguments $Arguments
     $process = [System.Diagnostics.Process]::new()
     $process.StartInfo = $startInfo
     try {
@@ -209,9 +216,7 @@ $batStartInfo.UseShellExecute = $false
 $batStartInfo.RedirectStandardOutput = $true
 $batStartInfo.RedirectStandardError = $true
 $batStartInfo.Environment['PATH'] = $phpDirectory
-[void] $batStartInfo.ArgumentList.Add('/d')
-[void] $batStartInfo.ArgumentList.Add('/c')
-[void] $batStartInfo.ArgumentList.Add('call "' + $bat + '" --no-open')
+$batStartInfo.Arguments = Get-CmdArguments @('--no-open')
 $batProcess = [System.Diagnostics.Process]::new()
 $batProcess.StartInfo = $batStartInfo
 if (-not $batProcess.Start()) {
