@@ -45,8 +45,8 @@ jobs:
         run: |
           set -euo pipefail
           sudo apt-get update -qq
-          sudo apt-get install -y --no-install-recommends jq ripgrep tmux shellcheck
-          for tool in git bash php jq curl shellcheck perl tmux rg; do
+          sudo apt-get install -y --no-install-recommends jq ripgrep tmux shellcheck desktop-file-utils
+          for tool in git bash php jq curl shellcheck perl tmux rg desktop-file-validate; do
             command -v "$tool" >/dev/null || { echo "немає $tool"; exit 1; }
           done
           bash --version | head -1

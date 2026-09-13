@@ -147,6 +147,7 @@ case "$group" in
     # Інтерфейс у браузері. Сервер лише ЧИТАЄ `state/**`, тому прогін із
     # термінала видно в ньому так само, як запущений кнопкою.
     web)      sh_run cli/system/web.sh "${@:2}" ;;
+    desktop)  exec php "$ROOT/cli/bdo.php" "$@" ;;
     help|-h|--help)
         case "${2:-}" in
             '')      exec php "$ROOT/cli/bdo.php" "$@" ;;

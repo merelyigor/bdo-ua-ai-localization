@@ -1261,6 +1261,7 @@ check_agents() {
     run bash tests/gui-path.sh
     run bash tests/run-stop.sh
     run bash tests/mac-app-quit.sh
+    run bash tests/linux-desktop.sh
     run bash tests/step-report.sh
     run bash tests/glossary-provenance.sh
     run bash tests/qa-scope.sh
