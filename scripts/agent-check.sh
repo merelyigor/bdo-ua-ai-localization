@@ -3,6 +3,7 @@
 #
 # Профілі:
 #   preflight  середовище, layout і правила перед роботою
+#   touched   лише перевірки, яких стосуються змінені шляхи
 #   docs       rules, plans, env contract, links і secret scan
 #   shell      bash syntax, ShellCheck і PHP syntax
 #   agents     OpenCode config, prompts, model allowlist і routing guard
@@ -76,10 +77,244 @@ gate_lock_take() {
 
 changed_files() {
     {
-        git diff --name-only --diff-filter=ACMR
-        git diff --name-only --diff-filter=ACMR --cached
-        git ls-files --others --exclude-standard
+        git status --porcelain | sed -n 's/^.. //p'
+        if git rev-parse --verify --quiet origin/main >/dev/null 2>&1; then
+            git diff --name-only origin/main...HEAD
+        fi
     } | sort -u
+}
+
+# Карта `gate touched` · єдине місце, де шлях пов'язується з перевіркою.
+# Причина кожного запису друкується разом із вибором, щоб звуження gate не було
+# мовчазним. Профіль `full` є безпечним fallback для механізму gate і невідомих
+# шляхів; окремі тести названі там, де вони стережуть конкретний шар.
+touched_map() {
+    local path="$1"
+    case "$path" in
+        scripts/agent-check.sh|.githooks/*|.github/*)
+            printf 'profile|full|сам механізм перевірки може бути зламаний і не перевіряє сам себе\n' ;;
+        web/*)
+            printf 'test|tests/web-server.sh|сервер і сторінка\n'
+            printf 'test|tests/web-actions.sh|дії сторінки\n'
+            printf 'test|tests/web-steps.sh|кроки сторінки\n'
+            printf 'test|tests/web-screens.sh|екрани сторінки\n'
+            printf 'test|tests/web-live-typing.sh|живий друк\n'
+            printf 'test|tests/web-call-view.sh|перегляд виклику\n' ;;
+        tests/*.sh|tests/*.php|tests/*.ps1)
+            printf 'test|%s|запущений саме змінений тест\n' "$path" ;;
+        tests/*)
+            printf 'profile|full|змінено fixture або інший support-файл тестів\n' ;;
+        roles/*|config/*)
+            printf 'profile|agents|ролі, prompts і конфігурація ролей\n' ;;
+        docs/*|*.md)
+            printf 'profile|docs|документи, посилання й норматив\n' ;;
+        lib/Api/*)
+            printf 'test|tests/cli-api-reports.sh|контракт API reports\n'
+            printf 'test|tests/cli-api-glossary.sh|контракт API glossary\n'
+            printf 'test|tests/cli-api-fetch.sh|контракт API fetch\n'
+            printf 'test|tests/api-doc-contract.sh|документований API-контракт\n'
+            printf 'test|tests/cli-write-parity.sh|запис через API\n' ;;
+        lib/Batch/*)
+            printf 'test|tests/pipeline-unit.php|unit-контракти batch\n'
+            printf 'test|tests/pipeline-faults.php|відмови pipeline\n'
+            printf 'test|tests/batch-summary.sh|підсумок пачки\n'
+            printf 'test|tests/drive-memory-layers.sh|шари памʼяті drive\n'
+            printf 'test|tests/cli-batch-clean-parity.sh|парність batch clean\n'
+            printf 'test|tests/cli-batch-heal-parity.sh|парність batch heal\n' ;;
+        lib/Http/*)
+            printf 'test|tests/http-client.sh|HTTP client\n'
+            printf 'test|tests/http-retry.sh|повтор HTTP-запиту\n' ;;
+        lib/Model/*)
+            printf 'test|tests/model-client.sh|клієнт моделі\n'
+            printf 'test|tests/model-transports.sh|транспорти моделі\n' ;;
+        lib/Payload/*)
+            printf 'test|tests/cli-payload-parity.sh|парність payload\n'
+            printf 'test|tests/prompt-payload-contract.sh|контракт prompt payload\n'
+            printf 'test|tests/payload-shared-examples.sh|спільні приклади payload\n'
+            printf 'test|tests/terminology-excerpt.sh|excerpt термінології\n'
+            printf 'test|tests/terminology-chunks.sh|chunks термінології\n' ;;
+        lib/Pipeline/*)
+            printf 'test|tests/pipeline-unit.php|unit-контракти pipeline\n'
+            printf 'test|tests/pipeline-faults.php|відмови pipeline\n'
+            printf 'test|tests/qa-scope.sh|scope QA\n'
+            printf 'test|tests/row-attempts.sh|спроби рядка\n'
+            printf 'test|tests/quarantine-recovery.sh|відновлення quarantine\n' ;;
+        lib/Quality/*)
+            printf 'test|tests/cli-quality-parity.sh|парність quality\n'
+            printf 'test|tests/mechanical-before-qa.sh|порядок mechanical перед QA\n'
+            printf 'test|tests/mechanical-final-check.sh|фінальна mechanical-перевірка\n'
+            printf 'test|tests/qa-memory-only.sh|memory-only QA\n'
+            printf 'test|tests/names-pass.sh|перевірка імен\n' ;;
+        lib/Run/*)
+            printf 'test|tests/cli-run-foundation-parity.sh|парність run foundation\n'
+            printf 'test|tests/cli-run-mode-parity.sh|парність run mode\n'
+            printf 'test|tests/cli-run-drive-parity.sh|парність run drive\n'
+            printf 'test|tests/driver-loop.sh|цикл драйвера\n'
+            printf 'test|tests/run-resume.sh|продовження run\n'
+            printf 'test|tests/run-stop.sh|зупинка run\n'
+            printf 'test|tests/run-target-env.sh|ціль run\n'
+            printf 'test|tests/step-times.sh|час кроків\n' ;;
+        lib/Session/*)
+            printf 'test|tests/session-lifecycle.sh|життєвий цикл сесії\n'
+            printf 'test|tests/watch-session.sh|спостереження сесії\n' ;;
+        lib/Ui/*|lib/Web/*)
+            printf 'test|tests/web-server.sh|сервер UI\n'
+            printf 'test|tests/web-actions.sh|дії UI\n'
+            printf 'test|tests/web-steps.sh|кроки UI\n'
+            printf 'test|tests/web-screens.sh|екрани UI\n' ;;
+        lib/Cli/*|lib/autoload.php)
+            printf 'test|tests/cli-kernel.sh|kernel і router\n'
+            printf 'test|tests/command-registry.sh|реєстр команд\n'
+            printf 'test|tests/pipeline-unit.php|unit-контракти\n' ;;
+        lib/*)
+            printf 'test|tests/pipeline-unit.php|загальний lib unit-контракт\n'
+            printf 'test|tests/pipeline-faults.php|загальний lib fault-контракт\n'
+            printf 'test|tests/cli-kernel.sh|виклик lib через kernel\n' ;;
+        cli/api/*)
+            printf 'test|tests/cli-api-reports.sh|парність API reports\n'
+            printf 'test|tests/cli-api-glossary.sh|парність API glossary\n'
+            printf 'test|tests/cli-api-fetch.sh|парність API fetch\n'
+            printf 'test|tests/api-target-switch.sh|перемикання API-цілі\n'
+            printf 'test|tests/http-client.sh|HTTP client\n'
+            printf 'test|tests/http-retry.sh|повтор HTTP-запиту\n' ;;
+        cli/batch/*)
+            printf 'test|tests/cli-batch-clean-parity.sh|парність batch clean\n'
+            printf 'test|tests/cli-batch-heal-parity.sh|парність batch heal\n'
+            printf 'test|tests/batch-summary.sh|підсумок пачки\n' ;;
+        cli/heal/*)
+            printf 'test|tests/cli-batch-heal-parity.sh|парність heal\n'
+            printf 'test|tests/heal-attempts.sh|спроби heal\n' ;;
+        cli/model/*)
+            printf 'test|tests/model-client.sh|клієнт моделі\n'
+            printf 'test|tests/model-transports.sh|транспорти моделі\n' ;;
+        cli/prepare/*)
+            printf 'test|tests/cli-prepare-parity.sh|парність prepare\n'
+            printf 'test|tests/cli-payload-parity.sh|парність payload\n'
+            printf 'test|tests/prompt-payload-contract.sh|контракт prompt payload\n'
+            printf 'test|tests/terminology-excerpt.sh|excerpt термінології\n'
+            printf 'test|tests/terminology-chunks.sh|chunks термінології\n' ;;
+        cli/quality/*)
+            printf 'test|tests/cli-quality-parity.sh|парність quality\n'
+            printf 'test|tests/mechanical-before-qa.sh|порядок mechanical перед QA\n'
+            printf 'test|tests/mechanical-final-check.sh|фінальна mechanical-перевірка\n'
+            printf 'test|tests/qa-scope.sh|scope QA\n' ;;
+        cli/run/*)
+            printf 'test|tests/cli-run-foundation-parity.sh|парність run foundation\n'
+            printf 'test|tests/cli-run-mode-parity.sh|парність run mode\n'
+            printf 'test|tests/cli-run-drive-parity.sh|парність run drive\n'
+            printf 'test|tests/driver-loop.sh|цикл драйвера\n'
+            printf 'test|tests/run-resume.sh|продовження run\n'
+            printf 'test|tests/run-stop.sh|зупинка run\n'
+            printf 'test|tests/run-target-env.sh|ціль run\n' ;;
+        cli/runtime/*)
+            printf 'test|tests/run-target-env.sh|ціль runtime\n'
+            printf 'test|tests/api-target-switch.sh|перемикання цілі API\n' ;;
+        cli/system/*)
+            printf 'test|tests/cli-system-parity.sh|парність system\n'
+            printf 'test|tests/tui.sh|TUI\n'
+            printf 'test|tests/tui-live.sh|живий TUI у PTY\n'
+            printf 'test|tests/watch-session.sh|watch session\n'
+            printf 'test|tests/gui-path.sh|GUI path\n'
+            printf 'test|tests/linux-desktop.sh|desktop path\n'
+            printf 'test|tests/mac-app-quit.sh|macOS app quit\n' ;;
+        cli/write/*)
+            printf 'test|tests/cli-write-parity.sh|парність write\n'
+            printf 'test|tests/write-channel-rights.sh|права write-каналу\n' ;;
+        cli/command-registry.json)
+            printf 'test|tests/command-registry.sh|реєстр команд\n'
+            printf 'test|tests/registry-hygiene.sh|гігієна реєстрів\n' ;;
+        cli/*)
+            printf 'test|tests/cli-kernel.sh|загальний CLI kernel-контракт\n' ;;
+        bdo)
+            printf 'test|tests/cli-kernel.sh|маршрутизація entrypoint\n'
+            printf 'test|tests/command-registry.sh|реєстр команд entrypoint\n' ;;
+        *)
+            printf 'profile|full|невідомий шлях не можна безпечно звузити\n' ;;
+    esac
+}
+
+touched_changed_files() {
+    # Тестовий seam активується лише явним прапором regression-тесту; звичайний
+    # запуск завжди читає git status і branch diff.
+    if [ "${BDO_GATE_TOUCHED_TEST:-0}" = 1 ] && [ "${BDO_GATE_TOUCHED_FILES+x}" = x ]; then
+        printf '%s\n' "$BDO_GATE_TOUCHED_FILES"
+        return 0
+    fi
+    changed_files
+}
+
+touched_run_test() {
+    local file="$1"
+    case "$file" in
+        *.php) run php "$file" ;;
+        *.sh) run bash "$file" ;;
+        *.ps1)
+            have pwsh || fail "не можна запустити змінений тест $file · pwsh недоступний"
+            run pwsh -File "$file" ;;
+        *) fail "карта назвала тест непідтримуваного типу: $file" ;;
+    esac
+}
+
+run_gate_profile() {
+    case "$1" in
+        docs) check_docs ;;
+        shell) check_rules; check_shell; check_design; check_bash32_arrays; check_php_runtime_guards; check_run_php_subprocess_guards; check_write_test_safety; check_write_php_subprocess_guards; check_sigpipe_pipelines; check_whitespace ;;
+        agents) check_rules; check_agents; check_whitespace ;;
+        runtime) check_rules; check_runtime ;;
+        api) check_rules; check_api ;;
+        full) check_docs; check_shell; check_design; check_bash32_arrays; check_php_runtime_guards; check_run_php_subprocess_guards; check_write_php_subprocess_guards; check_sigpipe_pipelines; check_agents ;;
+        *) fail "невідомий профіль gate: $1" ;;
+    esac
+}
+
+check_touched() {
+    local paths plan selected='' full_reason='' path kind target reason
+    paths="$(mktemp)"
+    plan="$(mktemp)"
+    trap 'rm -f "${paths:-}" "${plan:-}"; gate_lock_release' EXIT
+    trap 'rm -f "${paths:-}" "${plan:-}"; gate_lock_release; exit 130' INT
+    trap 'rm -f "${paths:-}" "${plan:-}"; gate_lock_release; exit 143' TERM
+    touched_changed_files | sed '/^$/d' | sort -u > "$paths"
+    if [ ! -s "$paths" ]; then
+        step 'Зміни для gate touched'
+        note 'змінених шляхів не знайдено · перевірки не запускались (код 0)'
+        return 0
+    fi
+    step 'Зміни для gate touched'
+    while IFS= read -r path; do note "шлях: $path"; done < "$paths"
+    while IFS= read -r path; do
+        touched_map "$path"
+    done < "$paths" | awk -F'|' '!seen[$1 FS $2]++' > "$plan"
+    while IFS='|' read -r kind target reason; do
+        test -n "$kind" || continue
+        selected="${selected}${selected:+, }${target} — ${reason}"
+        if [ "$kind" = profile ] && [ "$target" = full ]; then
+            full_reason="${full_reason}${full_reason:+; }${reason}"
+        fi
+    done < "$plan"
+    note "обрано: $selected"
+    if [ -n "$full_reason" ]; then
+        note "пропущено: усі часткові перевірки · запущено full через: $full_reason"
+        if [ "${BDO_GATE_TOUCHED_PLAN_ONLY:-0}" = 1 ]; then
+            note 'plan-only: виконання перевірок пропущено навмисно тестом карти'
+            return 0
+        fi
+        run_gate_profile full
+        return 0
+    fi
+    note 'пропущено: full і не обрані профілі · максимум deterministic-перевірок доганяє CI; API/runtime не запускаються локально без зміни їхніх шляхів'
+    if [ "${BDO_GATE_TOUCHED_PLAN_ONLY:-0}" = 1 ]; then
+        note 'plan-only: виконання перевірок пропущено навмисно тестом карти'
+        return 0
+    fi
+    while IFS='|' read -r kind target reason; do
+        test -n "$kind" || continue
+        case "$kind" in
+            profile) run_gate_profile "$target" ;;
+            test) touched_run_test "$target" ;;
+            *) fail "карта повернула невідомий тип: $kind" ;;
+        esac
+    done < "$plan"
 }
 
 public_files() {
@@ -111,6 +346,14 @@ check_rules() {
         || fail 'у AGENTS.md немає межі push: force-push лишається за власником'
     grep -Fq '§4.2 `git push` ДОЗВОЛЕНИЙ агенту' "$RULE_REFERENCE" \
         || fail "у $RULE_REFERENCE немає §4.2 про push"
+    grep -Fq 'gate touched' AGENTS.md \
+        || fail 'AGENTS.md не називає gate touched дефолтною пропорційною перевіркою'
+    grep -Fq 'Після кожного пушу агент ЧЕКАЄ прогін CI до кінця' AGENTS.md \
+        || fail 'AGENTS.md не вимагає чекати CI до кінця після push'
+    grep -Fq '§10.9 Пропорційна локальна перевірка' "$RULE_REFERENCE" \
+        || fail "у $RULE_REFERENCE немає §10.9 про gate touched"
+    grep -Fq 'gh run watch <id> --exit-status' "$RULE_REFERENCE" \
+        || fail "у $RULE_REFERENCE немає обовʼязкового очікування CI"
     # Порядок кроків тримає код, а не модель · це головне рішення переходу
     # 2026-09-04, і воно не має права зникнути з правил при переписуванні.
     grep -Fq 'ПОРЯДОК КРОКІВ ТРИМАЄ КОД, А НЕ МОДЕЛЬ' AGENTS.md \
@@ -1339,18 +1582,14 @@ profile="${1:-}"
 # інакше довідка про стан ставала б недоступною саме тоді, коли йде прогін.
 case "$profile" in
     preflight) ;;
-    docs|shell|agents|runtime|api|full) gate_lock_take "$profile" ;;
+    touched|docs|shell|agents|runtime|api|full) gate_lock_take "$profile" ;;
 esac
 
 case "$profile" in
     preflight) report_preflight ;;
-    docs) check_docs ;;
-    shell) check_rules; check_shell; check_design; check_bash32_arrays; check_php_runtime_guards; check_run_php_subprocess_guards; check_write_test_safety; check_write_php_subprocess_guards; check_sigpipe_pipelines; check_whitespace ;;
-    agents) check_rules; check_agents; check_whitespace ;;
-    runtime) check_rules; check_runtime ;;
-    api) check_rules; check_api ;;
-    full) check_docs; check_shell; check_design; check_bash32_arrays; check_php_runtime_guards; check_run_php_subprocess_guards; check_write_php_subprocess_guards; check_sigpipe_pipelines; check_agents ;;
-    *) printf 'Usage: %s {preflight|docs|shell|agents|runtime|api|full}\n' "$0" >&2; exit 2 ;;
+    touched) check_touched ;;
+    docs|shell|agents|runtime|api|full) run_gate_profile "$profile" ;;
+    *) printf 'Usage: %s {preflight|touched|docs|shell|agents|runtime|api|full}\n' "$0" >&2; exit 2 ;;
 esac
 
 printf '\nAgent gate passed: %s\n' "$profile"
