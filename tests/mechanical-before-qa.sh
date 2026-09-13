@@ -106,7 +106,8 @@ test -x "$ROOT/cli/audit/model-run.sh" || fail 'немає інструмент�
 grep -Fq 'model-calls.jsonl' "$ROOT/cli/audit/model-run.sh" \
     || fail 'аудит прогону не читає журнал викликів моделі'
 grep -Fq '"models-run"' "$ROOT/cli/command-registry.json" || fail 'команда models-run не в реєстрі'
-grep -Fq 'models-run) sh_run cli/audit/model-run.sh' "$ROOT/bdo" || fail 'dispatcher не знає команди models-run'
+php -r 'require "lib/autoload.php"; exit(Bdo\Translate\Cli\Router::targetFor(["models-run"]) === "bash:cli/audit/model-run.sh" ? 0 : 1);' \
+    || fail 'dispatcher не знає команди models-run'
 grep -Fq 'Збої (' "$ROOT/cli/audit/model-run.sh" || fail 'аудит прогону не показує збоїв окремо'
 
 # 7. Регістр затвердженого терміна виправляється КОДОМ, а не людиною.

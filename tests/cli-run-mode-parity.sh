@@ -130,6 +130,21 @@ normalize_text() {
         -e 's|STATE/batches/[0-9_]*_[0-9a-f]*|STATE/batches/BATCH|g'
 }
 
+# Оголошення цілі виведене з побайтового порівняння НАВМИСНО й рівно з однієї
+# причини: заморожений bash друкує його ДВІЧІ (`run-spec.sh` сорсить
+# `select-env.sh` у підстановці, і рядок доходить до батьківського stderr), а
+# PHP-шлях друкує один раз · дубль у журналі читався як два різні запуски.
+#
+# Послаблення закінчується на КІЛЬКОСТІ, і більше тут перевіряти нічого:
+# САМ рядок на обох шляхах друкує ОДИН і той самий підпроцес `select-env.sh`,
+# тому розійтися по змісту він не може за побудовою. Перевірено саботажем:
+# підміна бази в `RunSpecCommand` і в `Router` не змінює цього рядка взагалі ·
+# він приходить із bash-підпроцесу. Перевірка «звірити текст цілі» була б тут
+# фіктивною: впасти вона не здатна.
+normalize_mode_stderr() {
+    sed '/^Ціль:/d'
+}
+
 # ПРАВИЛО: normalization may hide only generated batch paths, never contract fields.
 # САБОТАЖ: changing mode, channel, query, domain, count, reason, or identity must stay visible.
 normalizer_self_test() {
@@ -176,8 +191,12 @@ compare_pair() {
     normalize_text <"$TMP/$label.php.out" >"$TMP/$label.php.norm"
     normalize_text <"$TMP/$label.sh.err" >"$TMP/$label.sh.err.norm"
     normalize_text <"$TMP/$label.php.err" >"$TMP/$label.php.err.norm"
+    php_target_count="$(grep -c '^Ціль:' "$TMP/$label.php.err" || true)"
+    test "$php_target_count" -eq 1 || fail "$label: PHP mode start має оголосити рівно одну ціль, отримано $php_target_count"
+    normalize_mode_stderr <"$TMP/$label.sh.err.norm" >"$TMP/$label.sh.err.mode.norm"
+    normalize_mode_stderr <"$TMP/$label.php.err.norm" >"$TMP/$label.php.err.mode.norm"
     cmp -s "$TMP/$label.sh.norm" "$TMP/$label.php.norm" || { diff -u "$TMP/$label.sh.norm" "$TMP/$label.php.norm" >&2 || true; printf 'shell stderr:\n' >&2; cat "$TMP/$label.sh.err" >&2; printf 'php stderr:\n' >&2; cat "$TMP/$label.php.err" >&2; fail "$label: stdout differs"; }
-    cmp -s "$TMP/$label.sh.err.norm" "$TMP/$label.php.err.norm" || { diff -u "$TMP/$label.sh.err.norm" "$TMP/$label.php.err.norm" >&2 || true; fail "$label: stderr differs"; }
+    cmp -s "$TMP/$label.sh.err.mode.norm" "$TMP/$label.php.err.mode.norm" || { diff -u "$TMP/$label.sh.err.mode.norm" "$TMP/$label.php.err.mode.norm" >&2 || true; fail "$label: stderr differs apart from accepted target announcement"; }
     cmp -s "$TMP/$label.sh.code" "$TMP/$label.php.code" || fail "$label: exit code differs"
     for relative in run-target run-batches.json run-goal.json current-batch; do
         if [ -e "$state_sh/$relative" ] || [ -e "$state_php/$relative" ]; then

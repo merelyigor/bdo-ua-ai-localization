@@ -6,9 +6,9 @@
 # `/opt/homebrew/bin`, тому набір, який ідеально працює в терміналі, з-під
 # значка вмирав написом «web: немає php» (виявлено власником 2026-09-06).
 #
-# Перевірка йде ТИМ САМИМ шляхом, що й робота: `./bdo` запускається під
-# справді обчищеним оточенням (`env -i`), а не з підробленою змінною. Інакше
-# вона довела б лише те, що файл існує.
+# Перевірка самого PATH-helper лишається на справді обчищеному оточенні
+# (`env -i`). Вхід тепер PHP і не може виконати helper після shebang, тому
+# клікові callers перевіряються в місцях, де вони bootstrap-ять PATH.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 fail() { printf 'FAIL: %s\n' "$1" >&2; exit 1; }
@@ -24,14 +24,14 @@ fi
 
 cd "$ROOT"
 
-# 1. Логін-оболонка. Основний шлях: беремо PATH звідти, де набір працює.
-env -i PATH="$MIN_PATH" HOME="$HOME" SHELL="${SHELL:-/bin/zsh}" \
-    ./bdo help >/dev/null 2>&1 \
-    || fail 'кліковий запуск не бачить php · значок у Dock помре на «немає php»'
+# 1. macOS click caller bootstraps PATH before it invokes the PHP entrypoint.
+grep -Fq '. "$SCRIPT_DIR/cli/system/gui-path.sh"' "$ROOT/cli/system/mac-app.sh" \
+    || fail 'mac-app.sh не підхоплює PATH до запуску ./bdo · значок у Dock помре на «немає php»'
 
-# 2. Запасний шлях. SHELL не заданий · лишаються типові теки Homebrew.
-env -i PATH="$MIN_PATH" HOME="$HOME" ./bdo help >/dev/null 2>&1 \
-    || fail 'без SHELL запасні теки не підхопились · кліковий запуск лишається зламаним'
+# 2. PhpStorm click caller робить те саме в кожному recipe, бо make запускає
+# окремий shell для кожної цілі.
+grep -Fq '. ./cli/system/gui-path.sh' "$ROOT/Makefile" \
+    || fail 'Makefile не підхоплює PATH до запуску ./bdo · кнопка PhpStorm помре на «немає php»'
 
 # 3. Профіль має право друкувати. `~/.zprofile` цілком законно пише щось на
 #    кшталт «nvm: середовище завантажено», і цей рядок НЕ сміє стати

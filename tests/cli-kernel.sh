@@ -61,6 +61,6 @@ set -e
 test "$env_code" -eq 1 || fail "EnvCommand не віддав код select-env.sh: отримано $env_code"
 grep -Fq "$TMP/missing.env" "$TMP/env.err" || fail 'EnvCommand не передав stderr підпроцесу'
 
-grep -Fq 'exec php "$ROOT/cli/bdo.php" "$@"' bdo \
-    || fail 'bdo не передає перенесені команди в Cli\\Kernel'
+grep -Fq 'Bdo\Translate\Cli\Router' bdo \
+    || fail 'bdo не передає перенесені команди в Cli\Kernel через Router'
 printf 'cli kernel: help/env dispatch, errors, pipe color, registry failure and subprocess code: OK\n'

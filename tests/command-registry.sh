@@ -16,21 +16,26 @@ php scripts/generate-command-docs.php --check \
 
 dispatcher="$(mktemp)"
 registered="$(mktemp)"
-trap 'rm -f "$dispatcher" "$registered"' EXIT
+sabotage="$(mktemp)"
+sabotage_err="$(mktemp)"
+trap 'rm -f "$dispatcher" "$registered" "$sabotage" "$sabotage_err"' EXIT
 
-# Беремо лише мітки верхнього case dispatcher; вкладені start/status не є
-# окремими кореневими командами й описуються в одному записі parent-команди.
-sed -n '/^case "\$group" in/,/^esac/p' bdo \
-    | sed -nE 's/^    ([a-z][a-z-]*)\).*/\1/p' \
+# Беремо кореневі команди з ФАКТИЧНОЇ таблиці PHP-router; вкладені start/status
+# не є окремими кореневими командами й описуються в одному записі parent-команди.
+php -r 'require "lib/autoload.php"; echo implode("\n", Bdo\Translate\Cli\Router::routeNames()), "\n";' \
     | sort -u >"$dispatcher"
 php -r '
+  require "lib/autoload.php";
   $r=json_decode(file_get_contents($argv[1]), true, 512, JSON_THROW_ON_ERROR);
   $out=[];
   if (!is_array($r["sections"] ?? null) || count($r["sections"]) === 0) throw new RuntimeException("sections порожній");
   foreach ($r["sections"] as $section) foreach ($section["entries"] ?? [] as $entry) {
     if (!is_array($entry) || count($entry) < 2 || trim((string)($entry[0] ?? "")) === "" || trim((string)($entry[1] ?? "")) === "") throw new RuntimeException("кожен entry має usage і description");
     $name=preg_split("/\\s|\\|/", (string)$entry[0], 2)[0];
-    if ($name !== "") $out[]=$name;
+    if ($name !== "") {
+      $out[]=$name;
+      if (Bdo\Translate\Cli\Router::targetFor([$name]) === null) throw new RuntimeException("router не розвʼязує $name");
+    }
   }
   sort($out); echo implode("\n", array_unique($out)), "\n";
 ' "$registry" | sort -u >"$registered"
@@ -109,3 +114,33 @@ if ($missing !== []) {
 ' "$registry" || fail 'є команди, які guard ані не дозволяє, ані свідомо не забороняє'
 
 echo 'command guard coverage: кожна команда має рішення allow або deny'
+
+# Кожне PHP-імʼя з таблиць Router (кореневі й вкладені) мусить існувати в Kernel.
+# САБОТАЖ: перейменування одного descriptor на неіснуючий Kernel command має
+# впасти й назвати саме підмінене імʼя, а не загальну помилку маршрутизації.
+php -r '
+  require "lib/autoload.php";
+  $kernel = new Bdo\Translate\Cli\Kernel();
+  foreach (Bdo\Translate\Cli\Router::phpCommandNames() as $name) {
+    if (!$kernel->knowsCommand($name)) throw new RuntimeException("Router PHP command невідома Kernel: $name");
+  }
+' || fail 'Router містить PHP-команду, якої не знає Kernel'
+
+sed "s/'command' => 'glossary-resolve'/'command' => 'definitely-missing-command'/" \
+    lib/Cli/Router.php >"$sabotage"
+set +e
+php -r '
+  require "lib/autoload.php";
+  require $argv[1];
+  $kernel = new Bdo\Translate\Cli\Kernel();
+  foreach (Bdo\Translate\Cli\Router::phpCommandNames() as $name) {
+    if (!$kernel->knowsCommand($name)) throw new RuntimeException("Router PHP command невідома Kernel: $name");
+  }
+' "$sabotage" >"$sabotage_err" 2>&1
+sabotage_code=$?
+set -e
+test "$sabotage_code" -ne 0 || fail 'фальсифікація не зламала перевірку PHP-команд Router/Kernel'
+grep -Fq 'definitely-missing-command' "$sabotage_err" \
+    || fail 'фальсифікація не назвала саме неіснуючу PHP-команду'
+cat "$sabotage_err"
+printf 'command registry: кожна PHP-команда Router відома Kernel; falsification назвала definitely-missing-command\n'

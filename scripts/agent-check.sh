@@ -654,7 +654,7 @@ check_design() {
     # витрачає спроби на діагностику, а `curl` до 9222 вводить в оману (§16.6).
     test -x cli/system/browser-check.sh \
         || fail 'немає cli/system/browser-check.sh · стан під\x27єднання до браузера власника нічим не перевірити'
-    grep -Fq 'browser)' bdo \
+    php -r 'require "lib/autoload.php"; exit(Bdo\Translate\Cli\Router::targetFor(["browser"]) === "bash:cli/system/browser-check.sh" ? 0 : 1);' \
         || fail 'єдиний вхід не має ./bdo browser · діагностика браузера недосяжна'
     # ПОРЯДОК закриття зміни в `web/**` мусить стояти в правилах, бо саме їх
     # агент читає на початку сесії · інакше наступна сесія знову перевірить
@@ -1063,8 +1063,10 @@ check_shell() {
         # доповнює `tests/gui-path.sh`: той тест SKIP-иться там, де php лежить
         # у базовому PATH, а прибрати рядок із `bdo` можна на будь-якій машині.
         test -f cli/system/gui-path.sh || fail 'немає cli/system/gui-path.sh · кліковий запуск лишиться без Homebrew у PATH'
-        grep -Fq 'cli/system/gui-path.sh' bdo \
-            || fail 'єдиний вхід не лагодить PATH · значок у Dock помре на «немає php» (D89)'
+        grep -Fq '. "$SCRIPT_DIR/cli/system/gui-path.sh"' cli/system/mac-app.sh \
+            || fail 'mac-app.sh не лагодить PATH · значок у Dock помре на «немає php» (D89)'
+        grep -Fq '. ./cli/system/gui-path.sh' Makefile \
+            || fail 'Makefile не лагодить PATH · запуск із PhpStorm помре на «немає php» (D89)'
         note 'BDO.app: applet, зібраний із cli/system/mac-app.applescript; значок BDO.icns, Windows · bdo.ico'
     fi
 

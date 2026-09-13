@@ -25,6 +25,11 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 readonly SCRIPT_DIR
 
+# LaunchServices starts this script without the terminal PATH. Bootstrap it
+# before the PHP entrypoint is called; PHP cannot repair PATH after its shebang.
+# shellcheck source=/dev/null
+. "$SCRIPT_DIR/cli/system/gui-path.sh"
+
 # Діалог macOS. Без термінала `echo` нікуди не веде: додаток запускають кліком,
 # і єдина видима поверхня · вікно системи.
 say() {   # <текст> [опції osascript…]

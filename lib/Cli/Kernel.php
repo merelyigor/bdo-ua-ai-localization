@@ -98,6 +98,19 @@ final class Kernel
         }
     }
 
+    /**
+     * Чи знає ядро команду з таким ІМЕНЕМ.
+     *
+     * Потрібно маршрутизатору й перевірці: маршрут може назвати команду, якої
+     * тут немає, і тоді вхід каже «невідома команда» вже на живому запуску.
+     * Саме так `context` поїхав як `row-context` · імʼя ФАЙЛА не є іменем
+     * команди, і побачив це лише побайтовий еталон старого входу.
+     */
+    public function knowsCommand(string $name): bool
+    {
+        return $this->command($name) !== null;
+    }
+
     private function command(string $name): ?Command
     {
         return match ($name) {

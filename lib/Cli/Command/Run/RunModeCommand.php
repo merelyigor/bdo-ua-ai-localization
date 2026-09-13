@@ -25,6 +25,9 @@ final class RunModeCommand implements Command
         $size = (string) ($arguments[1] ?? '50');
         $patch = (string) ($arguments[2] ?? 'active');
         $domain = (string) ($arguments[3] ?? '');
+        if ($mode === '') {
+            throw new RuntimeException('Потрібен режим patch|manual|proposal|improve');
+        }
         if ($size === '') {
             $size = '50';
         }
@@ -33,10 +36,6 @@ final class RunModeCommand implements Command
         }
 
         $environment = ApiEnvironment::load($root);
-        $this->announce($environment, $output);
-        // Shell run-spec sources select-env as a command substitution; its
-        // target announcement remains observable on the parent stderr.
-        $this->announce($environment, $output);
         $preset = RunSpec::preset($mode);
         $query = RunSpec::filterFor($mode, $patch, $domain);
         $channel = (string) $preset['channel'];
@@ -203,14 +202,6 @@ final class RunModeCommand implements Command
         ]);
 
         return 0;
-    }
-
-    /** @param array{base:string,key:string,environment:string} $environment */
-    private function announce(array $environment, Output $output): void
-    {
-        $env = in_array($environment['environment'], ['prod', 'hub-prod'], true) ? 'PROD' : 'DEV';
-        $prefix = str_starts_with($environment['environment'], 'hub-') ? 'ХАБ ' : '';
-        $output->stderr("Ціль: {$prefix}{$env} ({$environment['base']})\n");
     }
 
     private function runStart(Output $output): int

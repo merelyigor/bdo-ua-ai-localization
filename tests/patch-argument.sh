@@ -33,10 +33,25 @@ echo "$out" | grep -q 'patch=3&missing=machine' || { echo "FAIL: фільтр н
 out="$(./bdo mode status improve 2>/dev/null | tail -1)"
 echo "$out" | grep -q '"patch":"active"' || { echo "FAIL: без аргументу має бути active: $out" >&2; exit 1; }
 
-# 2. Диспетчер `mode start` мусить передавати третій аргумент далі. Викликати
-# його тут не можна · це похід в API і створення пачки, тому перевіряємо рядок.
-grep -Fq 'cli/run/run-mode.sh "${3:?mode start потребує режим}" "${4:-50}" "${5:-active}"' bdo \
-    || { echo 'FAIL: `./bdo mode start` не передає номер патча в run-mode.sh' >&2; exit 1; }
+# 2. `mode start` мусить передавати ТРЕТІЙ аргумент далі.
+#
+# Раніше тут стояв grep по дослівному рядку bash-диспетчера, бо виклик означав
+# похід в API і створення пачки. Після переносу входу в PHP той рядок зник, і
+# перевірка стерегла б порожнечу. Тепер вона йде ТИМ САМИМ ШЛЯХОМ, що й робота:
+# ціль наведена на мертвий порт, стан · у тимчасовій теці, тож жодного запиту в
+# API і жодної пачки не зʼявляється, а номер патча видно у фільтрі, який
+# записується ДО спроби вибірки.
+patch_env="$TMPDIR_PATCH/dead.env"
+printf '%s\n' 'BDO_ENV=DEV' 'BDO_API_TARGET=legacy' \
+    'BDO_API_BASE_DEV=http://127.0.0.1:1' 'BDO_API_KEY_DEV=patch-argument-test' >"$patch_env"
+patch_state="$TMPDIR_PATCH/state"
+mkdir -p "$patch_state"
+set +e
+TRANSLATE_ENV_FILE="$patch_env" BDO_STATE_DIR="$patch_state" \
+    ./bdo mode start patch 20 7 >"$TMPDIR_PATCH/start.out" 2>"$TMPDIR_PATCH/start.err"
+set -e
+grep -rFq 'patch=7' "$patch_state" \
+    || { echo "FAIL: \`./bdo mode start patch 20 7\` не довіз номер патча до фільтра: $(cat "$TMPDIR_PATCH/start.out" "$TMPDIR_PATCH/start.err")" >&2; exit 1; }
 
 # 3. Значення патча йде в query string, тому чуже сюди не проходить.
 php -r '
