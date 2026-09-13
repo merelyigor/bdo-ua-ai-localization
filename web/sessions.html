@@ -40,6 +40,15 @@
         <button id="collapseAll" style="margin-left:auto;display:none">згорнути всі</button>
         <button id="sessNew">нова сесія</button>
       </div>
+      <!-- ВІДПОВІДЬ СТОРІНКИ · завжди на видному місці.
+           Раніше цей рядок стояв УСЕРЕДИНІ діалогу «закрити сесію», а той
+           прихований, поки сесію не закривають. Тому будь-яка відповідь ·
+           і «готово», і названа причина відмови · писалась у невидимий
+           елемент: виміряно 2026-09-14, `#msg` мав нульовий розмір у
+           згорнутому контейнері. Для власника це виглядало як «кнопка
+           «видалити сесію» не працює», хоча сервер чесно відмовляв словами
+           «пачка цієї сесії є ПОТОЧНОЮ · видалення заблоковано». -->
+      <div id="msg" class="empty" style="margin-top:6px"></div>
       <div id="closeDialog" style="display:none;margin:6px 0 12px;border:.5px solid var(--bda);border-radius:10px;padding:12px;background:var(--s2)">
         <div style="font-weight:500;margin-bottom:4px" id="closeTitle">Закрити сесію?</div>
         <div class="empty" style="margin-bottom:6px">Підсумок і перелік пачок лишаються назавжди. Питання лише про журнали: хронологію кроків і потік токенів.</div>
@@ -56,7 +65,6 @@
         <div class="bar" style="margin-top:6px">
           <button id="closeOk">закрити сесію</button>
           <button id="closeCancel">скасувати</button>
-          <span id="msg" class="empty"></span>
         </div>
       </div>
       <!-- АКОРДЕОН, а не «таблиця + блок деталей знизу» (макет 02).
@@ -334,15 +342,35 @@
     });
   }
 
+  // ЧОМУ відмова · словами самої команди, а не кодом HTTP.
+  //
+  // Виміряно 2026-09-14: власник натиснув «видалити сесію», сервер відмовив
+  // із названою причиною («пачка цієї сесії є ПОТОЧНОЮ · видалення
+  // заблоковано»), а на екрані з'явилось лише «відмова, код 500» · та й те
+  // вгорі панелі, за межами видимої області. Для власника це виглядало як
+  // «кнопка не працює». Причина існувала, але до ока не доходила.
+  function failureText(res) {
+    var body = (res && res.body) || {};
+    var steps = body.steps || [];
+    for (var i = steps.length - 1; i >= 0; i--) {
+      var out = (steps[i] && steps[i].output ? String(steps[i].output) : '').trim();
+      if (out) { return out.split('\n').slice(-2).join(' · '); }
+    }
+    return body.hint ? String(body.hint) : 'відмова, код ' + res.status;
+  }
+
   function act(action, payload) {
     B.el('msg').textContent = 'виконую…';
     B.el('msg').style.color = 'var(--ts)';
     return B.post('/api/action', { action: action, payload: payload || {}, confirm: true }).then(function (res) {
       var ok = res.status < 400 && res.body && res.body.ok;
-      B.el('msg').textContent = ok
-        ? 'готово'
-        : ((res.body && res.body.hint) ? res.body.hint : 'відмова, код ' + res.status);
+      B.el('msg').textContent = ok ? 'готово' : failureText(res);
       B.el('msg').style.color = ok ? 'var(--ok-tx)' : 'var(--dn-tx)';
+      // Відмову треба ПОБАЧИТИ: кнопки сесій стоять нижче за рядок стану, і на
+      // довгому переліку він лишається поза екраном.
+      if (!ok && B.el('msg').scrollIntoView) {
+        B.el('msg').scrollIntoView({ block: 'center' });
+      }
       load();
       return ok;
     });
