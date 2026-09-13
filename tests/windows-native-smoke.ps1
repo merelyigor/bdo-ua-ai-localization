@@ -20,10 +20,14 @@ $runnerTemp = $env:RUNNER_TEMP
 if ([string]::IsNullOrWhiteSpace($runnerTemp)) {
     $runnerTemp = [System.IO.Path]::GetTempPath()
 }
-$work = Join-Path $runnerTemp 'bdo-windows-native-6.6.1'
+$work = Join-Path $runnerTemp 'bdo-windows-native-8.1'
 New-Item -ItemType Directory -Force -Path $work | Out-Null
 
 $phpDirectory = Split-Path -Parent $php
+$comspec = [System.Environment]::GetEnvironmentVariable('ComSpec')
+if ([string]::IsNullOrWhiteSpace($comspec)) {
+    Fail 'ComSpec is not available for the bdo.bat smoke.'
+}
 $env:PATH = $phpDirectory
 $bashCommand = Get-Command bash.exe -CommandType Application -ErrorAction SilentlyContinue
 if ($null -ne $bashCommand) {
@@ -148,6 +152,143 @@ if ($runLoop.Code -ne 1) {
 if ($runLoop.Stderr -notmatch [regex]::Escape('no_current_batch')) {
     Fail 'run-loop --once did not report no_current_batch.'
 }
+
+# ПРАВИЛО: перевіряємо саме кліковий шлях `bdo.bat`, а не повторюємо його
+# логіку в PowerShell. Копія має пробіл і кирилицю в шляху.
+# САБОТАЖ: якщо `.bat` почне вимагати bash, native PHP не створить web state і
+# впаде саме рядок `bdo.bat did not start native PHP server.`
+$batRepo = Join-Path $work 'bdo native smoke кирилиця'
+New-Item -ItemType Directory -Force -Path $batRepo | Out-Null
+foreach ($directory in @('cli', 'lib', 'web')) {
+    Copy-Item -Path (Join-Path $repo $directory) -Destination $batRepo -Recurse -Force
+}
+Copy-Item -Path (Join-Path $repo 'bdo.bat') -Destination $batRepo -Force
+$bat = Join-Path $batRepo 'bdo.bat'
+$batState = Join-Path $work 'bdo-bat-state'
+New-Item -ItemType Directory -Force -Path $batState | Out-Null
+$env:BDO_STATE_DIR = $batState
+
+function Invoke-Bat([string[]] $Arguments, [string] $Label) {
+    $command = 'call "' + $bat + '"'
+    foreach ($argument in $Arguments) {
+        $command += ' "' + $argument + '"'
+    }
+    $startInfo = [System.Diagnostics.ProcessStartInfo]::new()
+    $startInfo.FileName = $comspec
+    $startInfo.WorkingDirectory = $batRepo
+    $startInfo.UseShellExecute = $false
+    $startInfo.RedirectStandardOutput = $true
+    $startInfo.RedirectStandardError = $true
+    $startInfo.Environment['PATH'] = $phpDirectory
+    [void] $startInfo.ArgumentList.Add('/d')
+    [void] $startInfo.ArgumentList.Add('/c')
+    [void] $startInfo.ArgumentList.Add($command)
+    $process = [System.Diagnostics.Process]::new()
+    $process.StartInfo = $startInfo
+    try {
+        if (-not $process.Start()) {
+            Fail "bdo.bat $Label process did not start."
+        }
+        $stdout = $process.StandardOutput.ReadToEnd()
+        $stderr = $process.StandardError.ReadToEnd()
+        $process.WaitForExit()
+        [pscustomobject] @{
+            Code = $process.ExitCode
+            Stdout = $stdout
+            Stderr = $stderr
+        }
+    } finally {
+        $process.Dispose()
+    }
+}
+
+$batStartInfo = [System.Diagnostics.ProcessStartInfo]::new()
+$batStartInfo.FileName = $comspec
+$batStartInfo.WorkingDirectory = $batRepo
+$batStartInfo.UseShellExecute = $false
+$batStartInfo.RedirectStandardOutput = $true
+$batStartInfo.RedirectStandardError = $true
+$batStartInfo.Environment['PATH'] = $phpDirectory
+[void] $batStartInfo.ArgumentList.Add('/d')
+[void] $batStartInfo.ArgumentList.Add('/c')
+[void] $batStartInfo.ArgumentList.Add('call "' + $bat + '" --no-open')
+$batProcess = [System.Diagnostics.Process]::new()
+$batProcess.StartInfo = $batStartInfo
+if (-not $batProcess.Start()) {
+    Fail 'bdo.bat native process did not start.'
+}
+
+$webInfo = Join-Path $batState 'web.json'
+$deadline = (Get-Date).AddSeconds(10)
+while (-not (Test-Path $webInfo) -and (Get-Date) -lt $deadline) {
+    if ($batProcess.HasExited) {
+        break
+    }
+    Start-Sleep -Milliseconds 100
+}
+if (-not (Test-Path $webInfo)) {
+    Fail 'bdo.bat did not start native PHP server.'
+}
+$batInfo = Get-Content -Raw -Path $webInfo | ConvertFrom-Json
+$port = [int] $batInfo.port
+$expectedUrl = "http://127.0.0.1:$port/?t=$($batInfo.token)"
+
+$batStatus = Invoke-Bat @('--status') 'bdo-bat-status'
+if ($batStatus.Code -ne 0 -or $batStatus.Stdout -notmatch [regex]::Escape($expectedUrl)) {
+    Fail 'bdo.bat --status did not report the live native server.'
+}
+
+$batSecond = Invoke-Bat @('--no-open') 'bdo-bat-second'
+if ($batSecond.Code -ne 0 -or $batSecond.Stdout -notmatch [regex]::Escape($expectedUrl)) {
+    Fail 'second bdo.bat launch did not return the existing interface URL.'
+}
+
+$batStop = Invoke-Bat @('--stop') 'bdo-bat-stop'
+if ($batStop.Code -ne 0 -or $batStop.Stdout -notmatch [regex]::Escape("порт $port вільний")) {
+    Fail 'bdo.bat --stop did not report a successful native stop.'
+}
+
+$portFree = $false
+for ($attempt = 0; $attempt -lt 20; $attempt++) {
+    $client = [System.Net.Sockets.TcpClient]::new()
+    try {
+        $connect = $client.ConnectAsync('127.0.0.1', $port)
+        if ($connect.Wait(250) -and $connect.Status -eq [System.Threading.Tasks.TaskStatus]::RanToCompletion) {
+            $portFree = $false
+            break
+        }
+        $portFree = $true
+    } catch {
+        $portFree = $true
+    } finally {
+        $client.Dispose()
+    }
+    if ($portFree) {
+        break
+    }
+    Start-Sleep -Milliseconds 100
+}
+if (-not $portFree) {
+    Fail 'bdo.bat --stop did not free the native server port.'
+}
+
+if (-not $batProcess.WaitForExit(10000)) {
+    try {
+        $batProcess.Kill($true)
+    } catch {
+    }
+    Fail 'bdo.bat foreground process did not exit after --stop.'
+}
+$batStdout = $batProcess.StandardOutput.ReadToEnd()
+$batStderr = $batProcess.StandardError.ReadToEnd()
+$batProcess.Dispose()
+if ($batStdout -notmatch 'http://127\.0\.0\.1:[0-9]+/\?t=[0-9a-fA-F]+') {
+    Fail 'bdo.bat did not print interface URL.'
+}
+
+# ФАЛЬСИФІКАЦІЯ: цей рядок ловить сервер, який не піднявся; попередній
+# `bash=absent` ловить доступність bash, а наступний ловить несправний --stop.
+Write-Output "bdo.bat native web: status=0; second-same-url=1; stop=$($batStop.Code); port-free=1; printed-url=1"
 
 $envResult = Invoke-Cli @($entry, 'env') 'env-negative'
 if ($envResult.Code -eq 0) {

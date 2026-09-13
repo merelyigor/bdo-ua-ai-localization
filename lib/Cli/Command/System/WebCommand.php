@@ -125,6 +125,10 @@ final class WebCommand implements Command
                 return $this->error($output, "порт {$port} зайнятий, а його задано явно через BDO_WEB_PORT · звільни порт або прибери змінну (тихо переїжджати не буду)");
             }
             $output->stderr("web: порт {$port} зайнятий · беру вільний у системи\n");
+            // Порт бере САМА система через `:0`: між вибором вільного порту й
+            // прив'язкою до нього завжди є щілина, у яку встигає чужий процес.
+            // `:0` цієї щілини не має за побудовою · сервер друкує вже
+            // прив'язаний порт, і саме його ми читаємо з журналу.
             if ($this->startServer($php, $root, $router, $stateDir, $log, '0', $token, $workers) !== 0) {
                 if ($this->startError !== '') {
                     $this->abortServer();
@@ -447,6 +451,15 @@ final class WebCommand implements Command
         if ($pid <= 0) {
             return;
         }
+        if (PHP_OS_FAMILY === 'Windows') {
+            $taskkill = $this->windowsSystemBinary('taskkill.exe');
+            if ($taskkill !== null) {
+                $arguments = ['/PID', (string) $pid, '/T', '/F'];
+                $this->capture($taskkill, $arguments);
+            }
+
+            return;
+        }
         if (function_exists('posix_kill')) {
             @posix_kill($pid, $signal);
 
@@ -462,6 +475,15 @@ final class WebCommand implements Command
     {
         if ($pid <= 0) {
             return false;
+        }
+        if (PHP_OS_FAMILY === 'Windows') {
+            $tasklist = $this->windowsSystemBinary('tasklist.exe');
+            if ($tasklist === null) {
+                return false;
+            }
+            [$code, $stdout] = $this->capture($tasklist, ['/FI', 'PID eq '.$pid, '/NH']);
+
+            return $code === 0 && preg_match('/\b'.preg_quote((string) $pid, '/').'\b/', $stdout) === 1;
         }
         if (function_exists('posix_kill')) {
             return @posix_kill($pid, 0);
@@ -502,15 +524,19 @@ final class WebCommand implements Command
 
     private function openBrowser(string $url, Output $output): void
     {
-        $binary = $this->which('open');
-        if ($binary === null && is_file('/proc/version') && stripos((string) @file_get_contents('/proc/version'), 'microsoft') !== false) {
-            $binary = $this->which('explorer.exe');
+        if (PHP_OS_FAMILY === 'Windows') {
+            $binary = $this->windowsSystemBinary('explorer.exe') ?? $this->which('explorer.exe');
+        } else {
+            $binary = $this->which('open');
+            if ($binary === null && is_file('/proc/version') && stripos((string) @file_get_contents('/proc/version'), 'microsoft') !== false) {
+                $binary = $this->which('explorer.exe');
+            }
+            if ($binary === null) {
+                $binary = $this->which('xdg-open');
+            }
         }
         if ($binary === null) {
-            $binary = $this->which('xdg-open');
-        }
-        if ($binary === null) {
-            $output->stderr("web: браузер сам не відкриється · немає open/xdg-open. Відкрий посилання вручну.\n");
+            $output->stderr("web: браузер сам не відкриється · немає системного opener. Відкрий посилання вручну.\n");
 
             return;
         }
@@ -608,13 +634,33 @@ SH;
         return array_merge([$shell, '-c', $script, $bash === null ? 'bdo-sh' : 'bdo-bash'], $command);
     }
 
+    private function windowsSystemBinary(string $name): ?string
+    {
+        if (PHP_OS_FAMILY !== 'Windows') {
+            return null;
+        }
+        $root = (string) (getenv('SystemRoot') ?: getenv('WINDIR'));
+        if ($root === '') {
+            return null;
+        }
+        $root = rtrim($root, '\\/');
+        foreach ([$root.DIRECTORY_SEPARATOR.$name, $root.DIRECTORY_SEPARATOR.'System32'.DIRECTORY_SEPARATOR.$name] as $candidate) {
+            if (is_file($candidate)) {
+                return $candidate;
+            }
+        }
+
+        return null;
+    }
+
     private function which(string $name): ?string
     {
+        $fileName = PHP_OS_FAMILY === 'Windows' && pathinfo($name, PATHINFO_EXTENSION) === '' ? $name.'.exe' : $name;
         foreach (explode(PATH_SEPARATOR, (string) (getenv('PATH') ?: '')) as $directory) {
             if ($directory === '') {
                 continue;
             }
-            $candidate = rtrim($directory, DIRECTORY_SEPARATOR).DIRECTORY_SEPARATOR.$name;
+            $candidate = rtrim($directory, DIRECTORY_SEPARATOR).DIRECTORY_SEPARATOR.$fileName;
             if (is_file($candidate) && is_executable($candidate)) {
                 return $candidate;
             }
