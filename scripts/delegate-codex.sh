@@ -101,6 +101,28 @@ BDO_ENV_FINGERPRINT="$(env_fingerprint)"
 readonly BDO_ENV_FINGERPRINT
 
 mkdir -p "$LOG_DIR"
+
+# Lock проти паралельних прогонів у одній теці.
+#
+# Два делегування одночасно правлять те саме дерево й псують роботу одне одному:
+# другий прогін бачить напівзмінені файли й «виправляє» їх назад. Це також
+# механічна опора правила «делегування чекається, а не йде у фоні»: агент, який
+# запустив прогін і пішов далі, на другому запуску отримає явну відмову замість
+# тихого паралельного прогону.
+readonly LOCK_FILE="${LOG_DIR}/.delegate-codex.lock"
+
+if [ -f "$LOCK_FILE" ]; then
+    lock_pid="$(cat "$LOCK_FILE" 2>/dev/null || true)"
+    if [ -n "$lock_pid" ] && kill -0 "$lock_pid" 2>/dev/null; then
+        fail "у цій теці вже виконується делегування (PID $lock_pid). Дочекайся його завершення — паралельні прогони псують дерево одне одному"
+    fi
+    printf 'УВАГА: знайдено lock мертвого процесу (PID %s) — прибираю\n' "${lock_pid:-?}" >&2
+    rm -f "$LOCK_FILE"
+fi
+
+printf '%s\n' "$$" > "$LOCK_FILE"
+trap 'rm -f "$LOCK_FILE"' EXIT INT TERM
+
 stamp="$(date +%Y%m%d-%H%M%S)"
 log_file="${LOG_DIR}/delegate-codex-${stamp}.log"
 
