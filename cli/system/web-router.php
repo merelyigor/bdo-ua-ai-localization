@@ -45,7 +45,6 @@ use Bdo\Translate\Web\Snapshot;
 
 $stateDir = getenv('BDO_STATE_DIR') ?: dirname(__DIR__, 2).'/state';
 $token = (string) (getenv('BDO_WEB_TOKEN') ?: '');
-$pageFile = dirname(__DIR__, 2).'/web/index.html';
 
 /** Відповідь однією формою: причина машиночитана, а не порожній екран. */
 $fail = static function (int $code, string $reason, string $hint = ''): void {
@@ -130,7 +129,7 @@ if ($isAction && $origin === '') {
 // Порожні оболонки екранів і спільна статика · без токена (див. пункт 3):
 // у них немає жодного рядка даних, а без цього оновлення вкладки давало б
 // голий JSON замість сторінки.
-$publicPaths = ['/', '/index.html', '/queue', '/sessions', '/start', '/call', '/app.css', '/app.js', '/favicon.ico', '/api/ping'];
+$publicPaths = ['/', '/index.html', '/queue', '/sessions', '/start', '/models', '/call', '/app.css', '/app.js', '/favicon.ico', '/api/ping'];
 $given = (string) ($_GET['t'] ?? ($_SERVER['HTTP_X_BDO_TOKEN'] ?? ''));
 if ($token === '') {
     $fail(500, 'token_missing_on_server', 'сервер запущено без BDO_WEB_TOKEN · запускай через ./bdo web');
@@ -177,6 +176,7 @@ switch ($path) {
     case '/queue':
     case '/sessions':
     case '/start':
+    case '/models':
     case '/call':
     case '/app.css':
     case '/app.js':
@@ -191,6 +191,7 @@ switch ($path) {
             '/queue' => ['web/queue.html', 'text/html; charset=utf-8'],
             '/sessions' => ['web/sessions.html', 'text/html; charset=utf-8'],
             '/start' => ['web/start.html', 'text/html; charset=utf-8'],
+            '/models' => ['web/models.html', 'text/html; charset=utf-8'],
             '/call' => ['web/call.html', 'text/html; charset=utf-8'],
             '/app.css' => ['web/app.css', 'text/css; charset=utf-8'],
             '/app.js' => ['web/app.js', 'application/javascript; charset=utf-8'],
@@ -425,6 +426,26 @@ switch ($path) {
 
         return;
 
+    case '/api/models':
+        // Каталог і вибір матеріалізує `./bdo models list --json`. Сервер
+        // сторінки не ходить у runtime: він читає лише state/**, тому вік
+        // знімка й недоступність runtime видно чесно.
+        $catalogPath = rtrim($stateDir, '/').'/model-catalog.json';
+        $selectionPath = rtrim($stateDir, '/').'/model-selection.json';
+        $loadPath = rtrim($stateDir, '/').'/model-load.json';
+        $catalog = is_file($catalogPath) ? json_decode((string) file_get_contents($catalogPath), true) : null;
+        $selection = is_file($selectionPath) ? json_decode((string) file_get_contents($selectionPath), true) : [];
+        $load = is_file($loadPath) ? json_decode((string) file_get_contents($loadPath), true) : [];
+        if (! is_array($catalog)) {
+            $json(['catalog' => null, 'selection' => is_array($selection) ? $selection : [], 'load' => is_array($load) ? $load : [], 'error' => 'catalog_missing', 'hint' => 'перелік ще не знято · натисни «оновити перелік»']);
+
+            return;
+        }
+        $catalog['selection'] = is_array($selection) ? $selection : ($catalog['selection'] ?? []);
+        $json(['catalog' => $catalog, 'selection' => $catalog['selection'], 'load' => is_array($load) ? $load : []]);
+
+        return;
+
     case '/api/actions':
         // Що сторінка МОЖЕ попросити · перелік із коду, а не з розмітки.
         $json([
@@ -474,7 +495,7 @@ switch ($path) {
         return;
 
     default:
-        $fail(404, 'unknown_path', 'сервер віддає лише екрани /, /queue, /sessions, /start, /call, статику /app.css і /app.js, а з даних · /api/ping, /api/health, /api/state, /api/sessions, /api/stream, /api/call, /api/actions, /api/plan, а дії · POST на /api/action і /api/client-error');
+        $fail(404, 'unknown_path', 'сервер віддає лише екрани /, /queue, /sessions, /start, /models, /call, статику /app.css і /app.js, а з даних · /api/ping, /api/health, /api/state, /api/sessions, /api/stream, /api/call, /api/models, /api/actions, /api/plan, а дії · POST на /api/action і /api/client-error');
 
         return;
 }

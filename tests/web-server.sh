@@ -81,6 +81,7 @@ done <<'SCREENS'
 /queue|bdo · черга до людини
 /sessions|bdo · сесії роботи
 /start|bdo · почати прогін
+/models|bdo · моделі
 SCREENS
 
 test -s "$BDO_STATE_DIR/web.json" || fail 'немає state/web.json після --background'
@@ -97,6 +98,7 @@ expect() {
 expect 200 'здоровʼя за токеном' "http://127.0.0.1:$PORT/api/health?t=$TOKEN"
 expect 200 'стан за токеном' "http://127.0.0.1:$PORT/api/state?t=$TOKEN"
 expect 200 'сесії за токеном' "http://127.0.0.1:$PORT/api/sessions?t=$TOKEN"
+expect 200 'каталог моделей за токеном' "http://127.0.0.1:$PORT/api/models?t=$TOKEN"
 expect 403 'запит без токена' "http://127.0.0.1:$PORT/api/state"
 expect 403 'чужий токен' "http://127.0.0.1:$PORT/api/state?t=00000000000000000000000000000000"
 # Сама сторінка · ПОРОЖНЯ оболонка й віддається без токена. Інакше оновлення
@@ -108,11 +110,11 @@ expect 200 'сторінка без токена' "http://127.0.0.1:$PORT/"
 # кожній оболонці. Без обох частин власник побачив би порожнє вікно без причини.
 grep -Fq 'Немає токена' "$ROOT/web/app.js" \
     || fail 'спільний скрипт не має екрана «немає токена»'
-for page in index queue sessions start; do
+for page in index queue sessions start models; do
     grep -Fq 'id="gate"' "$ROOT/web/$page.html" \
         || fail "у web/$page.html немає місця під пояснення «немає токена»"
 done
-for page_path in / /queue /sessions /start; do
+for page_path in / /queue /sessions /start /models; do
     shell="$(curl -s -m 5 "http://127.0.0.1:$PORT$page_path")"
     for secret in 'batch-summary' 'identity_hash' 'write-log' 'model-calls'; do
         grep -q "$secret" <<<"$shell" \
@@ -227,7 +229,7 @@ grep -Fq 'pagehide' "$ROOT/web/app.js" \
 if command -v node >/dev/null 2>&1; then
     node --check "$ROOT/web/app.js" >"$TMP/node.txt" 2>&1 \
         || fail "спільний скрипт web/app.js не парситься: $(head -3 "$TMP/node.txt")"
-    for page in index queue sessions start; do
+    for page in index queue sessions start models; do
         # Береться ОСТАННІЙ вбудований скрипт: перший · це <script src>.
         php -r '$h = (string) file_get_contents($argv[1]);
             preg_match_all("~<script>(.*?)</script>~s", $h, $m);

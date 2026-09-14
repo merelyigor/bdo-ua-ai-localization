@@ -54,7 +54,9 @@ final class Actions
     public static function names(): array
     {
         return ['run.start', 'run.stop', 'session.new', 'session.close', 'session.journals.drop',
-            'session.delete', 'moderation.approve', 'moderation.reject'];
+            'session.delete', 'moderation.approve', 'moderation.reject',
+            'models.refresh', 'models.select', 'models.select.role', 'models.clear',
+            'models.clear.role', 'models.load'];
     }
 
     /**
@@ -287,6 +289,47 @@ final class Actions
                     'label' => 'відхилити пропозиції',
                 ];
 
+            case 'models.refresh':
+                return [
+                    'steps' => [['./bdo', 'models', 'list', '--json']],
+                    'env' => [],
+                    'detached' => false,
+                    'needs_confirm' => false,
+                    'label' => 'оновити перелік моделей',
+                ];
+
+            case 'models.select':
+                return self::modelAction($payload, false, 'обрати модель для всього прогону');
+
+            case 'models.select.role':
+                return self::modelAction($payload, true, 'обрати модель для ролі');
+
+            case 'models.clear':
+                return [
+                    'steps' => [['./bdo', 'models', 'clear']],
+                    'env' => [],
+                    'detached' => false,
+                    'needs_confirm' => false,
+                    'label' => 'скинути загальний вибір моделі',
+                ];
+
+            case 'models.clear.role':
+                $role = self::role($payload['role'] ?? '');
+
+                return [
+                    'steps' => [['./bdo', 'models', 'clear', '--role', $role]],
+                    'env' => [],
+                    'detached' => false,
+                    'needs_confirm' => false,
+                    'label' => 'скинути вибір моделі для ролі',
+                ];
+
+            case 'models.load':
+                $plan = self::modelAction($payload, false, 'завантажити модель у памʼять');
+                $plan['steps'][0][2] = 'load';
+                $plan['detached'] = true;
+                return $plan;
+
             default:
                 throw new RuntimeException('невідома дія: '.$action.' · дозволено лише '.implode(', ', self::names()));
         }
@@ -390,5 +433,48 @@ final class Actions
         }
 
         return implode(',', array_unique($clean));
+    }
+
+    /** @return array{steps:list<list<string>>,env:array<string,string>,detached:bool,needs_confirm:bool,label:string} */
+    private static function modelAction(array $payload, bool $withRole, string $label): array
+    {
+        $runtime = self::modelPart('runtime', $payload['runtime'] ?? '');
+        $model = trim((string) ($payload['model'] ?? ''));
+        if ($model === '' || preg_match('/\s/', $model) === 1) {
+            throw new RuntimeException('model: потрібна непорожня назва одним рядком');
+        }
+        $argv = ['./bdo', 'models', 'select', $runtime, $model];
+        if ($withRole) {
+            $argv[] = '--role';
+            $argv[] = self::role($payload['role'] ?? '');
+        }
+
+        return [
+            'steps' => [$argv],
+            'env' => [],
+            'detached' => false,
+            'needs_confirm' => false,
+            'label' => $label,
+        ];
+    }
+
+    private static function modelPart(string $field, mixed $value): string
+    {
+        $value = trim((string) $value);
+        if (preg_match('/^[a-z][a-z0-9_-]{0,31}$/', $value) !== 1) {
+            throw new RuntimeException($field.': некоректний ідентифікатор');
+        }
+
+        return $value;
+    }
+
+    private static function role(mixed $value): string
+    {
+        $value = trim((string) $value);
+        if (preg_match('/^[a-zA-Z0-9_-]{1,64}$/', $value) !== 1) {
+            throw new RuntimeException('role: некоректний ідентифікатор ролі');
+        }
+
+        return $value;
     }
 }

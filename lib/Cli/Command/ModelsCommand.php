@@ -28,10 +28,10 @@ final class ModelsCommand implements Command, CommandHelp
             $subcommand = (string) ($arguments[0] ?? 'list');
             $rest = array_slice($arguments, 1);
             return match ($subcommand) {
-                'list' => $this->list($catalog, $output, $rest),
+                'list' => $this->list($catalog, $config, $stateDir, $output, $rest),
                 'select', 'set' => $this->select($catalog, $config, $stateDir, $rest, $output),
                 'clear', 'reset' => $this->clear($config, $stateDir, $rest, $output),
-                'load' => $this->load($catalog, $rest, $output),
+                'load' => $this->load($catalog, $config, $stateDir, $rest, $output),
                 default => $this->failure('models: потрібно list, select, clear або load', $output, 2),
             };
         } catch (ModelRuntimeError $exception) {
@@ -41,10 +41,17 @@ final class ModelsCommand implements Command, CommandHelp
         }
     }
 
-    private function list(RuntimeModels $catalog, Output $output, array $arguments): int
+    private function list(RuntimeModels $catalog, array $config, string $stateDir, Output $output, array $arguments): int
     {
+        if ($arguments === ['--json']) {
+            $data = $this->catalogData($catalog, $config, $stateDir);
+            $this->writeCatalog($stateDir, $data);
+            $output->stdout((string) json_encode($data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)."\n");
+
+            return 0;
+        }
         if ($arguments !== []) {
-            return $this->failure('models list: команда не приймає аргументів', $output, 2);
+            return $this->failure('models list: дозволено лише `--json`', $output, 2);
         }
         $output->stdout("runtime\tmodel\tsize\tloaded\n");
         foreach ($catalog->list() as $entry) {
@@ -52,6 +59,83 @@ final class ModelsCommand implements Command, CommandHelp
             $output->stdout(sprintf("%s\t%s\t%s\t%s%s\n", $entry['runtime'], $entry['model'], $entry['size'], $entry['loaded'], $reason));
         }
         return 0;
+    }
+
+    /** @return array<string,mixed> */
+    private function catalogData(RuntimeModels $catalog, array $config, string $stateDir): array
+    {
+        $selection = ModelSelection::read($stateDir);
+        $roles = $this->roleResolutions($config, $selection);
+        return [
+            'version' => 1,
+            'captured_at' => gmdate('c'),
+            'models' => $catalog->list(),
+            'selection' => $selection,
+            'roles' => $roles,
+        ];
+    }
+
+    /** @param array<string,mixed> $config @param array<string,mixed> $selection @return list<array{role:string,runtime:string,model:string,source:string}> */
+    private function roleResolutions(array $config, array $selection): array
+    {
+        $providers = is_array($config['providers'] ?? null) ? $config['providers'] : [];
+        $roles = [];
+        foreach (is_array($config['roles'] ?? null) ? $config['roles'] : [] as $role => $roleConfig) {
+            if (! is_string($role) || ! is_array($roleConfig)) {
+                continue;
+            }
+            $choice = null;
+            $source = 'role_config';
+            if (is_array($selection['roles'][$role] ?? null)) {
+                $choice = $selection['roles'][$role];
+                $source = 'role_selection';
+            } elseif (is_array($selection['global'] ?? null)) {
+                $choice = $selection['global'];
+                $source = 'global_selection';
+            }
+            if ($choice !== null) {
+                $runtime = (string) ($choice['runtime'] ?? '');
+                $model = (string) ($choice['model'] ?? '');
+            } else {
+                $runtime = (string) ($roleConfig['provider'] ?? $config['provider'] ?? 'ollama');
+                $provider = is_array($providers[$runtime] ?? null) ? $providers[$runtime] : [];
+                if (array_key_exists('model', $roleConfig)) {
+                    $model = (string) $roleConfig['model'];
+                } elseif (array_key_exists('default_model', $provider)) {
+                    $model = (string) $provider['default_model'];
+                    $source = 'provider_default';
+                } elseif (array_key_exists('default_model', $config)) {
+                    $model = (string) $config['default_model'];
+                    $source = 'config_default';
+                } else {
+                    $model = '';
+                    $source = 'missing';
+                }
+            }
+            $roles[] = [
+                'role' => $role,
+                'runtime' => $runtime,
+                'model' => $model,
+                'source' => $source,
+            ];
+        }
+
+        return $roles;
+    }
+
+    /** @param array<string,mixed> $data */
+    private function writeCatalog(string $stateDir, array $data): void
+    {
+        if (! is_dir($stateDir) && ! mkdir($stateDir, 0777, true) && ! is_dir($stateDir)) {
+            throw new ModelRuntimeError('catalog_write_failed', 'не вдалося створити '.$stateDir);
+        }
+        $path = rtrim($stateDir, '/').'/model-catalog.json';
+        $temporary = $path.'.tmp.'.getmypid();
+        $payload = json_encode($data, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR)."\n";
+        if (file_put_contents($temporary, $payload, LOCK_EX) === false || ! rename($temporary, $path)) {
+            @unlink($temporary);
+            throw new ModelRuntimeError('catalog_write_failed', 'не вдалося записати '.$path);
+        }
     }
 
     private function select(RuntimeModels $catalog, array $config, string $stateDir, array $arguments, Output $output): int
@@ -83,6 +167,7 @@ final class ModelsCommand implements Command, CommandHelp
         }
         $entry = $catalog->assertModel($runtime, $model);
         ModelSelection::save($stateDir, ['runtime' => $runtime, 'model' => $model], $role === '' ? null : $role);
+        $this->syncCatalogSelection($config, $stateDir);
         $scope = $role === null || $role === '' ? 'загальний' : 'роль '.$role;
         $output->stdout('Вибір збережено: '.$scope.' = '.$entry['runtime'].' / '.$entry['model']."\n");
         return 0;
@@ -104,17 +189,37 @@ final class ModelsCommand implements Command, CommandHelp
             }
         }
         ModelSelection::clear($stateDir, $role);
+        $this->syncCatalogSelection($config, $stateDir);
         $scope = $role === null ? 'загальний' : 'роль '.$role;
         $output->stdout('Вибір скинуто: '.$scope.'; застосовується config/roles.json'."\n");
         return 0;
     }
 
-    private function load(RuntimeModels $catalog, array $arguments, Output $output): int
+    /** @param array<string,mixed> $config */
+    private function syncCatalogSelection(array $config, string $stateDir): void
+    {
+        $path = rtrim($stateDir, '/').'/model-catalog.json';
+        if (! is_file($path)) {
+            return;
+        }
+        $catalog = json_decode((string) file_get_contents($path), true);
+        if (! is_array($catalog)) {
+            return;
+        }
+        $selection = ModelSelection::read($stateDir);
+        $catalog['selection'] = $selection;
+        $catalog['roles'] = $this->roleResolutions($config, $selection);
+        $this->writeCatalog($stateDir, $catalog);
+    }
+
+    private function load(RuntimeModels $catalog, array $config, string $stateDir, array $arguments, Output $output): int
     {
         if (count($arguments) !== 2) {
             return $this->failure('models load: використання `models load <runtime> <model>`', $output, 2);
         }
-        $output->stdout($catalog->load($arguments[0], $arguments[1])."\n");
+        $message = $catalog->load($arguments[0], $arguments[1]);
+        $this->writeCatalog($stateDir, $this->catalogData($catalog, $config, $stateDir));
+        $output->stdout($message."\n");
         return 0;
     }
 
@@ -150,11 +255,13 @@ final class ModelsCommand implements Command, CommandHelp
 
 Використання:
   ./bdo models list
+  ./bdo models list --json
   ./bdo models select <runtime> <model> [--role <роль>]
   ./bdo models clear [--role <роль>]
   ./bdo models load <runtime> <model>
 
-Вибір зберігається в state/model-selection.json. Порожній стан повертає
+`list --json` оновлює state/model-catalog.json. Вибір зберігається в
+state/model-selection.json. Порожній стан повертає
 порядок config/roles.json: model ролі, default_model провайдера, default_model
 набору. Ollama завантажується порожнім POST /api/chat без keep_alive; oMLX
 завантажується через POST /admin/api/models/{id}/load.

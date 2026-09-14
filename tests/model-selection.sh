@@ -92,10 +92,18 @@ list_output="$(run_bdo models list)"
 grep -Fq $'ollama\tollama-model\t2 GB\tтак' <<<"$list_output" || fail "Ollama list: $list_output"
 grep -Fq $'omlx\tomlx-model\t3.2 GB\tні' <<<"$list_output" || fail "oMLX list: $list_output"
 
+json_output="$(run_bdo models list --json)"
+php -r '$d=json_decode($argv[1],true); $models=$d["models"]??[]; if (!is_string($d["captured_at"]??null) || count($models)!==2 || !is_array($d["roles"]??null)) { fwrite(STDERR,"catalog JSON не містить мітку, два runtime і ролі\n"); exit(1); } foreach ($models as $m) { if (!isset($m["runtime"],$m["model"],$m["size"],$m["loaded"])) { fwrite(STDERR,"catalog entry неповний\n"); exit(1); } }' "$json_output" \
+    || fail 'models list --json не повернув повний каталог'
+test -s "$WORK/state/model-catalog.json" || fail 'models list --json не записав state/model-catalog.json'
+
 select_output="$(run_bdo models select omlx omlx-model --role translation-worker)"
 grep -Fq 'Вибір збережено: роль translation-worker = omlx / omlx-model' <<<"$select_output" || fail "select: $select_output"
 php -r '$s=json_decode(file_get_contents($argv[1]),true); exit(($s["roles"]["translation-worker"]["runtime"]??"")==="omlx" && ($s["roles"]["translation-worker"]["model"]??"")==="omlx-model" ? 0 : 1);' "$WORK/state/model-selection.json" \
     || fail 'вибір не збережений у state/model-selection.json'
+run_bdo models list --json >/dev/null
+php -r '$d=json_decode(file_get_contents($argv[1]),true); foreach ($d["roles"]??[] as $r) { if (($r["role"]??"")==="translation-worker" && ($r["source"]??"")==="role_selection" && ($r["model"]??"")==="omlx-model") exit(0); } fwrite(STDERR,"catalog не показав перевизначення ролі\n"); exit(1);' "$WORK/state/model-catalog.json" \
+    || fail 'catalog не показав чинний вибір для ролі'
 
 run_bdo models load omlx omlx-model | grep -Fq 'завантажена в памʼять' || fail 'oMLX load не дочекався loaded=true'
 run_bdo models load ollama ollama-model | grep -Fq 'прогріта порожнім викликом POST /api/chat' || fail 'Ollama load не назвав порожній warmup'

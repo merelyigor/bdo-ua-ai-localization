@@ -2,7 +2,7 @@
 # Інтерфейс · це ОКРЕМІ ЕКРАНИ, і кожен підпис зрозумілий без пояснення.
 #
 # 2026-09-05 власник перелічив, що саме змушує гадати: одне полотно замість
-# чотирьох екранів із макетів, «закрито» поруч із ідентифікатором (читається як
+# пʼяти екранів із макетів, «закрито» поруч із ідентифікатором (читається як
 # стан усього прогону), зелений кружок зі словом «потік» без пояснення, сесії,
 # по яких не можна перейти. Того ж дня він вирішив і будову: «краще окремі
 # екрани, а не по вкладкам».
@@ -17,15 +17,16 @@ RUN="$ROOT/web/index.html"
 QUEUE="$ROOT/web/queue.html"
 SESSIONS="$ROOT/web/sessions.html"
 START="$ROOT/web/start.html"
+MODELS="$ROOT/web/models.html"
 APP="$ROOT/web/app.js"
-for f in "$RUN" "$QUEUE" "$SESSIONS" "$START" "$APP" "$ROOT/web/app.css"; do
+for f in "$RUN" "$QUEUE" "$SESSIONS" "$START" "$MODELS" "$APP" "$ROOT/web/app.css"; do
     test -s "$f" || fail "немає ${f#"$ROOT/"}"
 done
 
 # --- 1. Чотири екрани, і кожен є справжньою сторінкою ------------------------
 # Вкладок більше немає: показ/приховування секцій лишав адресу однією на всі
 # екрани й ховав половину інтерфейсу за станом JavaScript.
-for page in "$RUN" "$QUEUE" "$SESSIONS" "$START"; do
+for page in "$RUN" "$QUEUE" "$SESSIONS" "$START" "$MODELS"; do
     grep -Fq 'data-screen=' "$page" \
         && fail "у ${page#"$ROOT/"} лишились секції вкладок · екрани мусять бути окремими сторінками"
     grep -Fq 'renderNav(' "$page" \
@@ -38,12 +39,12 @@ done
 
 # Перелік екранів ОДИН на весь інтерфейс: інакше екран, доданий у router, тихо
 # лишиться без посилання, і потрапити в нього можна буде лише руками.
-for path in "'/'" "'/queue'" "'/sessions'" "'/start'"; do
+for path in "'/'" "'/queue'" "'/sessions'" "'/start'" "'/models'"; do
     grep -Fq "path: $path" "$APP" \
         || fail "екрана $path немає в переліку навігації web/app.js"
 done
 # Роутер мусить знати рівно ті самі шляхи.
-for path in "'/queue'" "'/sessions'" "'/start'"; do
+for path in "'/queue'" "'/sessions'" "'/start'" "'/models'"; do
     grep -Fq "$path => ['web/" "$ROOT/cli/system/web-router.php" \
         || fail "роутер не віддає екран $path · посилання в навігації буде мертвим"
 done
@@ -57,6 +58,35 @@ for other in "$RUN" "$SESSIONS" "$START"; do
     grep -Fq '/api/moderation' "$other" \
         && fail "${other#"$ROOT/"} теж тягне чергу · це зайвий запит у PROD на кожному екрані"
 done
+
+# --- 2a. Каталог моделей · лише знімок state, ніколи runtime -----------------
+if grep -Eq '127\.0\.0\.1:(11434|18080)|/api/(tags|health)|fetch\(' "$MODELS"; then
+    fail 'екран моделей ходить у runtime напряму · дозволено лише /api/models'
+fi
+grep -Fq "/api/models" "$MODELS" || fail 'екран моделей не читає materialized /api/models'
+grep -Fq 'captured_at' "$MODELS" || fail 'екран моделей не показує мітку часу каталогу'
+grep -Fq 'вік переліку' "$MODELS" || fail 'екран моделей не показує вік каталогу'
+grep -Fq 'age(catalog.captured_at)' "$MODELS" || fail 'екран моделей не обчислює вік каталогу'
+grep -Fq 'data-action="models.refresh"' "$MODELS" || fail 'кнопка оновлення каталогу не є дією models.refresh'
+grep -Fq 'models.select.role' "$MODELS" || fail 'екран моделей не має дії вибору моделі для ролі'
+for action in models.refresh models.select models.select.role models.clear models.clear.role models.load; do
+    grep -Fq "$action" "$MODELS" || fail "екран моделей не називає дію $action"
+done
+php -r '
+require $argv[1];
+use Bdo\Translate\Run\Actions;
+$html = (string) file_get_contents($argv[2]);
+preg_match_all("~data-action=\\\"([^\\\"]+)\\\"~", $html, $matches);
+$allowed = Actions::names();
+foreach ($matches[1] as $action) {
+    if (! in_array($action, $allowed, true)) {
+        fwrite(STDERR, "кнопка models має дію поза Actions: $action\\n"); exit(1);
+    }
+}
+foreach (["models.refresh", "models.select", "models.select.role", "models.clear", "models.clear.role", "models.load"] as $action) {
+    if (! in_array($action, $allowed, true)) { fwrite(STDERR, "немає плану для $action\\n"); exit(1); }
+}
+' "$ROOT/lib/autoload.php" "$MODELS" || fail 'кнопка екрана моделей не має команди з Actions/реєстру'
 
 # --- 3. Жаргону на екрані немає ---------------------------------------------
 # Слова «потік» і «опитування» описують НАШ механізм, а не те, що бачить
@@ -228,7 +258,7 @@ grep -Fq 'B.follow(' "$RUN" \
 # --- 9. Кнопки відповідають наявним командам або змінним --------------------
 # Кнопка без команди · обіцянка, якої система не виконує. Паузи в наборі немає,
 # тому її не має бути й у розмітці (вона в беклозі, `docs/plans/BACKLOG.md`).
-for page in "$RUN" "$QUEUE" "$SESSIONS" "$START"; do
+for page in "$RUN" "$QUEUE" "$SESSIONS" "$START" "$MODELS"; do
     grep -Eq '<button[^>]*>[^<]*(пауза|призупинити)' "$page" \
         && fail "у ${page#"$ROOT/"} є кнопка паузи, а команди паузи в наборі немає"
 done
@@ -516,6 +546,12 @@ grep -Fq "B.pref('run')" "$RUN" \
 grep -Fq "B.pref('sessions')" "$SESSIONS" \
     || fail 'екран сесій не памʼятає, які сесії розгорнуті'
 
+# Короткий селект старту лише викликає ту саму серверну дію, а не дублює
+# порядок вибору моделі.
+grep -Fq 'id="modelSelect"' "$START" || fail 'на старті немає короткого селекту моделі'
+grep -Fq "action: 'models.select'" "$START" || fail 'селект старту не викликає models.select'
+grep -Fq 'href="/models"' "$START" || fail 'зі старту немає переходу на повний екран моделей'
+
 # МЕЖА: згода на незворотний запис у PROD НЕ памʼятається ніколи. Інакше
 # свідома дія перетворюється на випадковий клік по вже поставленій галочці.
 php -r '
@@ -645,4 +681,4 @@ grep -Fq "B.el('app').style.display = 'block'" "$SESSIONS" \
 grep -Fq 'function failureText' "$SESSIONS" \
     || fail 'сторінка сесій не показує причину відмови словами команди'
 
-echo 'web screens: OK · чотири окремі екрани зі спільною навігацією, стан пачки фразою, сесія відкривається й називається при закритті, кнопки мають команду або змінну.'
+echo 'web screens: OK · пʼять окремих екранів зі спільною навігацією, каталог моделей читається зі state, вік і дії перевірено.'

@@ -36,6 +36,13 @@
         </div>
       </div>
 
+      <div class="bar" style="margin:4px 0 12px">
+        <label class="lbl" for="modelSelect">модель</label>
+        <select id="modelSelect"><option value="">каталог ще не знято</option></select>
+        <a href="/models" class="as-button">повний екран моделей →</a>
+        <span id="modelNote" class="empty">чинний вибір застосовується з наступного виклику ролі</span>
+      </div>
+
       <div class="bar" style="margin-bottom:4px"><span class="lbl">режим</span></div>
       <div class="bar" id="modes" style="align-items:stretch"></div>
 
@@ -191,6 +198,32 @@
     return p;
   }
 
+  function renderModelPicker(data) {
+    var select = B.el('modelSelect');
+    var models = (data.catalog && data.catalog.models || []).filter(function (m) { return !m.reason; });
+    if (!models.length) {
+      select.innerHTML = '<option value="">каталог ще не знято</option>';
+      return;
+    }
+    var global = data.selection && data.selection.global;
+    select.innerHTML = '<option value="">за конфігурацією ролі</option>'
+      + models.map(function (m) {
+        var chosen = global && global.runtime === m.runtime && global.model === m.model ? ' selected' : '';
+        return '<option value="model-' + B.esc(String(models.indexOf(m))) + '" data-runtime="' + B.esc(m.runtime) + '" data-model="' + B.esc(m.model) + '"' + chosen + '>' + B.esc(m.runtime + ' / ' + m.model) + '</option>';
+      }).join('');
+    select.onchange = function () {
+      var option = select.options[select.selectedIndex];
+      if (!option || !option.dataset.runtime) {
+        B.el('modelNote').textContent = 'скидання загального вибору виконується на повному екрані моделей';
+        return;
+      }
+      B.post('/api/action', {action: 'models.select', payload: {runtime: option.dataset.runtime, model: option.dataset.model}, confirm: true})
+        .then(function (res) {
+          B.el('modelNote').textContent = (res.body && res.body.ok) ? 'вибір збережено · застосовується з наступного виклику ролі' : ((res.body && res.body.hint) || 'вибір не збережено');
+        });
+    };
+  }
+
   var previewTimer = null;
   function refresh() {
     patchHint();
@@ -227,6 +260,10 @@
     B.el('domain').innerHTML = '<option value="">усі</option>'
       + (d.domains || []).map(function (x) { return '<option>' + B.esc(x) + '</option>'; }).join('');
   }).catch(function () {});
+
+  B.get('/api/models').then(renderModelPicker).catch(function () {
+    B.el('modelNote').textContent = 'каталог моделей не прочитано · відкрий повний екран';
+  });
 
   // Патчі їдуть із API · без ознаки роботи порожня таблиця читається як
   // «патчів немає».

@@ -61,6 +61,10 @@ final class Runner
             }
         }
 
+        if ($action === 'models.load' && $plan['detached']) {
+            return $this->executeDetachedModelLoad($plan);
+        }
+
         $lock = $this->acquireLock();
         try {
             $steps = [];
@@ -84,6 +88,92 @@ final class Runner
             return ['ok' => $ok, 'label' => $plan['label'], 'steps' => $steps];
         } finally {
             $this->releaseLock($lock);
+        }
+    }
+
+    /**
+     * Завантаження моделі може тривати хвилини. Віддати HTTP-відповідь одразу,
+     * а стан завершення лишити в state/**: сторінка не мусить висіти на запиті.
+     * Саму команду все одно виконує `./bdo models load`, не окремий runtime-клієнт.
+     *
+     * @param array{steps:list<list<string>>,env:array<string,string>,detached:bool,needs_confirm:bool,label:string} $plan
+     * @return array{ok:bool,label:string,steps:list<array{command:string,code:int,output:string}>}
+     */
+    private function executeDetachedModelLoad(array $plan): array
+    {
+        $argv = $plan['steps'][0] ?? [];
+        $statusPath = rtrim($this->stateDir, '/').'/model-load.json';
+        $previous = is_file($statusPath) ? json_decode((string) file_get_contents($statusPath), true) : null;
+        if (is_array($previous) && ($previous['status'] ?? '') === 'loading') {
+            $pid = (int) ($previous['pid'] ?? 0);
+            if ($pid > 0 && function_exists('posix_kill') && @posix_kill($pid, 0)) {
+                throw new RuntimeException('модель уже вантажиться · дочекайся завершення');
+            }
+        }
+        $started = gmdate('c');
+        $state = [
+            'version' => 1,
+            'status' => 'loading',
+            'pid' => 0,
+            'command' => implode(' ', $argv),
+            'started_at' => $started,
+        ];
+        $this->writeState($statusPath, $state);
+        if (! function_exists('pcntl_fork')) {
+            $state['status'] = 'failed';
+            $state['finished_at'] = gmdate('c');
+            $state['reason'] = 'detached runtime недоступний: немає pcntl_fork';
+            $this->writeState($statusPath, $state);
+            throw new RuntimeException($state['reason']);
+        }
+        $pid = pcntl_fork();
+        if ($pid === -1) {
+            $state['status'] = 'failed';
+            $state['finished_at'] = gmdate('c');
+            $state['reason'] = 'не вдалося створити detached процес завантаження';
+            $this->writeState($statusPath, $state);
+            throw new RuntimeException($state['reason']);
+        }
+        if ($pid === 0) {
+            if (function_exists('posix_setsid')) {
+                @posix_setsid();
+            }
+            $state['pid'] = getmypid();
+            $this->writeState($statusPath, $state);
+            $result = $this->run($argv, $plan['env']);
+            $state['status'] = $result['code'] === 0 ? 'finished' : 'failed';
+            $state['finished_at'] = gmdate('c');
+            $state['code'] = $result['code'];
+            $state['output'] = $result['output'];
+            if ($result['code'] !== 0) {
+                $state['reason'] = 'команда завантаження завершилась із кодом '.$result['code'];
+            }
+            $this->writeState($statusPath, $state);
+            exit(0);
+        }
+        return [
+            'ok' => true,
+            'label' => $plan['label'],
+            'steps' => [[
+                'command' => implode(' ', $argv),
+                'code' => 0,
+                'output' => 'модель вантажиться у фоні · результат зʼявиться в каталозі',
+            ]],
+        ];
+    }
+
+    /** @param array<string,mixed> $data */
+    private function writeState(string $path, array $data): void
+    {
+        $directory = dirname($path);
+        if (! is_dir($directory) && ! mkdir($directory, 0777, true) && ! is_dir($directory)) {
+            throw new RuntimeException('не вдалося створити '.$directory);
+        }
+        $temporary = $path.'.tmp.'.getmypid();
+        $payload = json_encode($data, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR)."\n";
+        if (file_put_contents($temporary, $payload, LOCK_EX) === false || ! rename($temporary, $path)) {
+            @unlink($temporary);
+            throw new RuntimeException('не вдалося записати '.$path);
         }
     }
 

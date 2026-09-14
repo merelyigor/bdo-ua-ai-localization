@@ -273,7 +273,7 @@
     "^\\.\\/bdo$",
     "^\\.\\/bdo help( [a-z-]+)?$",
     "^\\.\\/bdo (paths|platform|api|runtime)$",
-    "^\\.\\/bdo models( (list|clear|reset)( --role( [a-zA-Z0-9_-]+|=[a-zA-Z0-9_-]+)?)?| select [^[:space:]]+( [^[:space:]]+)?( --role( [a-zA-Z0-9_-]+|=[a-zA-Z0-9_-]+)?)?| load [^[:space:]]+ [^[:space:]]+)?$",
+    "^\\.\\/bdo models( list( --json)?| (clear|reset)( --role( [a-zA-Z0-9_-]+|=[a-zA-Z0-9_-]+)?)?| select [^[:space:]]+( [^[:space:]]+)?( --role( [a-zA-Z0-9_-]+|=[a-zA-Z0-9_-]+)?)?| load [^[:space:]]+ [^[:space:]]+)?$",
     "^\\.\\/bdo capabilities( --refresh)?$",
     "^\\.\\/bdo platform --fix$",
     "^\\.\\/bdo patch( (active|[0-9]{1,6}))?$",

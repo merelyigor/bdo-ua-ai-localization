@@ -44,6 +44,12 @@ $cases = [
     ["session.close", ["drop_journals" => true]],
     ["moderation.approve", ["ids" => [356, 357]]],
     ["moderation.reject", ["ids" => "361", "reason" => "русизм у назві"]],
+    ["models.refresh", []],
+    ["models.select", ["runtime" => "ollama", "model" => "qwen3.6:35b-a3b-mtp-q4_K_M"]],
+    ["models.select.role", ["runtime" => "omlx", "model" => "model-a", "role" => "translation-worker"]],
+    ["models.clear", []],
+    ["models.clear.role", ["role" => "translation-worker"]],
+    ["models.load", ["runtime" => "omlx", "model" => "model-a"]],
 ];
 $checked = 0;
 foreach ($cases as [$action, $payload]) {
@@ -68,6 +74,10 @@ foreach (Actions::names() as $name) {
         "moderation.reject" => ["ids" => [1], "reason" => "тест"],
         "session.journals.drop" => ["id" => "20260101_010101"],
         "session.delete" => ["id" => "20260101_010101"],
+        "models.select" => ["runtime" => "ollama", "model" => "model-a"],
+        "models.select.role" => ["runtime" => "ollama", "model" => "model-a", "role" => "translation-worker"],
+        "models.clear.role" => ["role" => "translation-worker"],
+        "models.load" => ["runtime" => "omlx", "model" => "model-a"],
         default => [],
     };
     Actions::plan($name, $payload);
@@ -285,6 +295,7 @@ done <<'CONTROLS'
 /|id="stopBtn"
 /sessions|id="sessNew"
 /queue|id="approveSel"
+/models|data-action="models.refresh"
 CONTROLS
 # Закриття сесії живе В САМІЙ сесії й малюється скриптом · у порожній оболонці
 # його немає за побудовою. Тому перевіряємо джерело екрана, а не HTTP-відповідь:
