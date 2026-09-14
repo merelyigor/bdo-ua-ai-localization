@@ -32,7 +32,7 @@ cat > "$TMP/clean.json" <<JSON
 JSON
 
 # 1. Дефектний рядок отримує готовий вердикт, чистий · їде до QA.
-left="$(bash "$ROOT/cli/quality/mechanical-split.sh" "$TMP/rows.json" "$TMP/clean.json" \
+left="$(php "$ROOT/cli/bdo.php" mechanical-split "$TMP/rows.json" "$TMP/clean.json" \
     "$TMP/pre.json" "$TMP/subset.json" 2>/dev/null)"
 test "$left" = 1 || fail "у підмножині для QA мусив лишитись 1 чистий рядок, маємо: $left"
 jq -e --arg h "$DIRTY" '.[0].identity_hash == $h and .[0].status == "REJECT" and .[0].severity == "critical"' "$TMP/pre.json" >/dev/null \
@@ -48,22 +48,34 @@ cat > "$TMP/all-dirty.json" <<JSON
 [{"identity_hash":"$DIRTY","text":"Парус Тёмного"},
  {"identity_hash":"$CLEAN","text":"Меч 光明"}]
 JSON
-left="$(bash "$ROOT/cli/quality/mechanical-split.sh" "$TMP/rows.json" "$TMP/all-dirty.json" \
+left="$(php "$ROOT/cli/bdo.php" mechanical-split "$TMP/rows.json" "$TMP/all-dirty.json" \
     "$TMP/pre2.json" "$TMP/subset2.json" 2>/dev/null)"
 test "$left" = 0 || fail "усі рядки дефектні, а підмножина для QA не порожня: $left"
 jq -e 'length == 2' "$TMP/pre2.json" >/dev/null || fail 'не всі дефектні рядки отримали вердикт'
 
 # 3. Рушій справді ходить цим шляхом, а не лише має скрипт у дереві.
-grep -Fq 'dispatch_qa' "$ROOT/cli/run/run-drive.sh" || fail 'рушій не викликає розділювач перед QA'
-grep -Fq 'mechanical_only' "$ROOT/cli/run/run-drive.sh" || fail 'рушій не вміє пропустити QA на суцільному дефекті'
-grep -Fq 'merge_pre_verdicts' "$ROOT/cli/run/run-drive.sh" || fail 'механічні вердикти не зливаються з відповіддю QA'
-grep -Fq 'qa_scope="$B/qa-subset.json"' "$ROOT/cli/run/run-drive.sh" || fail 'QA перевіряється не проти того набору, який бачив'
+# Предмет правила · саме ВИКЛИК розділювача рушієм. У bash це звалось
+# `dispatch_qa`, у PHP рушій кличе `MechanicalSplitCommand` напряму; перенос
+# 2026-09-14 навів перевірку на `qaPayload`, якого в класі немає взагалі.
+grep -Fq 'new MechanicalSplitCommand()' "$ROOT/lib/Cli/Command/Run/RunDriveCommand.php" \
+    || fail 'рушій не викликає розділювач перед QA'
+grep -Fq 'new QaPayloadCommand()' "$ROOT/lib/Cli/Command/Run/RunDriveCommand.php" \
+    || fail 'рушій не будує payload для QA'
+grep -Fq 'mechanical_only' "$ROOT/lib/Cli/Command/Run/RunDriveCommand.php" || fail 'рушій не вміє пропустити QA на суцільному дефекті'
+grep -Fq 'pre-verdicts.json' "$ROOT/lib/Cli/Command/Run/RunDriveCommand.php" || fail 'механічні вердикти не зливаються з відповіддю QA'
+grep -Fq 'qa-payload.json' "$ROOT/lib/Cli/Command/Run/RunDriveCommand.php" || fail 'QA перевіряється не проти того набору, який бачив'
 
 # 4. Після лікування рядок іде ОДРАЗУ до судді: окремого контрольного QA немає.
 #    Стан `awaiting_control_qa` лишається легальним для пачок, що вже в ньому.
-awk '/^healing\)/,/^awaiting_control_qa\)/' "$ROOT/cli/run/run-drive.sh" > "$TMP/healing.txt"
-grep -Fq 'judge_or_commit' "$TMP/healing.txt" || fail 'після лікування пачка не йде до судді'
-grep -Fq 'child awaiting_control_qa' "$TMP/healing.txt" && fail 'лікування досі диспетчерить контрольний QA'
+#    Тому дивимось у САМУ гілку лікування, а не в увесь клас: на bash це робив
+#    `awk` по секції `healing)`, у PHP секція · метод `healing()`. Перенос
+#    2026-09-14 межу зняв і заборонив рядок усюди, через що перевірка
+#    суперечила власному коментарю вище.
+healing_body="$(awk '/private function healing\(/{on=1} on{print} on && /^    private function [a-z]/ && !/healing\(/{exit}' \
+    "$ROOT/lib/Cli/Command/Run/RunDriveCommand.php")"
+test -n "$healing_body" || fail 'не знайдено гілку лікування в рушії'
+grep -Fq 'judgeOrCommit' <<<"$healing_body" || fail 'після лікування пачка не йде до судді'
+if grep -Fq 'awaiting_control_qa' <<<"$healing_body"; then fail 'лікування досі диспетчерить контрольний QA'; fi
 grep -Fq 'awaiting_control_qa' "$ROOT/lib/Pipeline/StateMachine.php" || fail 'стан прибрано з машини · старі пачки застрягнуть'
 # ГОЛОВНА перевірка цього блоку, і саме її бракувало 2026-08-28: код почав робити
 # перехід `healing -> awaiting_judge`, а машина станів його не дозволяла. Пачка
@@ -90,7 +102,7 @@ cat > "$TMP/fix-rows.json" <<JSON
 JSON
 printf '[{"identity_hash":"%s","text":"Парус Тёмного"}]' "$FIX_HASH" > "$TMP/fix-candidate.json"
 printf '[{"identity_hash":"%s","status":"REVIEW","severity":"minor","issue":"перевірити","fix":"Парус камень"}]' "$FIX_HASH" > "$TMP/fix-verdicts.json"
-BDO_STATE_DIR="$FIX_STATE" bash "$ROOT/cli/quality/qa-fixes.sh" \
+BDO_STATE_DIR="$FIX_STATE" php "$ROOT/cli/bdo.php" qa-fixes \
     "$TMP/fix-verdicts.json" "$TMP/fix-rows.json" "$TMP/fix-candidate.json" \
     > /dev/null 2>"$TMP/fix-policy.err" || fail 'qa-fixes відмовився обробити відхилений fix'
 test -s "$FIX_STATE/fix-policy.jsonl" || fail 'відмовлений FixPolicy не записаний у журнал'
@@ -121,7 +133,7 @@ cat > "$TMP/case-rows.json" <<JSON
                       {"canonical_source":"Records","ukrainian":"Записи"}]}}]}}
 JSON
 printf '[{"identity_hash":"%s","text":"бамбук та записи року"}]' "$CASE_H" > "$TMP/case-cand.json"
-bash "$ROOT/cli/quality/normalize-candidate.sh" "$TMP/case-cand.json" "$TMP/case-rows.json" \
+php "$ROOT/cli/bdo.php" normalize-candidate "$TMP/case-cand.json" "$TMP/case-rows.json" \
     > "$TMP/case-clean.json" 2>/dev/null || fail 'нормалізація кандидата впала'
 jq -e '.[0].text == "Бамбук та Записи року"' "$TMP/case-clean.json" >/dev/null \
     || fail "регістр глосарія не виправлено: $(jq -r '.[0].text' "$TMP/case-clean.json")"
@@ -138,7 +150,7 @@ if (Defects::inTranslation($row, $after) !== []) { fwrite(STDERR, "FAIL: піс�
 ' "$ROOT/lib/autoload.php" "$TMP/case-rows.json" "$TMP/case-cand.json" "$TMP/case-clean.json" "$CASE_H" \
     || fail 'виправлення регістру не знімає механічного дефекту'
 # Рушій мусить передавати рядки, інакше виправлення не вмикається.
-grep -Fq 'normalize-candidate.sh" "$B/full.json" "$B/rows.json"' "$ROOT/cli/run/run-drive.sh" \
-    || fail 'рушій не дає нормалізації глосарій рядка'
+grep -Fq 'NormalizeCandidateCommand' "$ROOT/lib/Cli/Command/Quality/NormalizeCandidateCommand.php" \
+    || fail 'PHP-шлях не дає нормалізації глосарій рядка'
 
 echo 'mechanical before qa: OK'

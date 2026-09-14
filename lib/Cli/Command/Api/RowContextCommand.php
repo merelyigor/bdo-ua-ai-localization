@@ -19,6 +19,15 @@ final class RowContextCommand implements Command
 {
     public function execute(array $arguments, Output $output): int
     {
+        // Команда САМА піднімає середовище (див. GlossaryListCommand): після
+        // зняття bash-обгортки експортувати базу та ключ більше нікому.
+        try {
+            ApiEnvironment::load(dirname(__DIR__, 4));
+        } catch (\Throwable $exception) {
+            $output->stderr('Середовище не піднялось: '.$exception->getMessage()."\n");
+
+            return 2;
+        }
         if (! isset($arguments[0])) {
             $output->stderr("Потрібен identity_hash рядка\n");
 

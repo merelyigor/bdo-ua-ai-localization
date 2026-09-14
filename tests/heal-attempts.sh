@@ -70,13 +70,13 @@ echo '{}' > "$WORK/qa-fixes.json"
 # власника осторонь.
 export BDO_STATE_DIR="$WORK/state"
 mkdir -p "$BDO_STATE_DIR"
-"$ROOT/cli/batch/batch-new.sh" "$WORK/rows.json" >/dev/null 2>&1 \
+php "$ROOT/cli/bdo.php" batch-new "$WORK/rows.json" >/dev/null 2>&1 \
     || fail 'не вдалося створити тестову пачку'
-BATCH_DIR="$("$ROOT/cli/batch/batch-dir.sh")"
+BATCH_DIR="$(php "$ROOT/cli/bdo.php" batch-dir)"
 REPAIR="$BATCH_DIR/heal-repair-payload.json"
 
 plan() {
-    bash "$ROOT/cli/heal/heal-plan.sh" "$WORK/rows.json" "$WORK/candidate.json" \
+    php "$ROOT/cli/bdo.php" heal-plan "$WORK/rows.json" "$WORK/candidate.json" \
         "$WORK/verdicts.json" "$WORK/validate.json" 2>&1
 }
 

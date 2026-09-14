@@ -93,7 +93,7 @@ if [ -z "$LIST" ]; then
         # це НЕ поломка: там працюють зі знімком, який сервер віддає сам.
         # Порада «перевір ключ і мережу» в цьому разі відправляла б шукати
         # несправність там, де її немає.
-        if ! "$SCRIPT_DIR/cli/api/capabilities.sh" --has patches >/dev/null 2>&1; then
+        if ! php "$SCRIPT_DIR/cli/bdo.php" capabilities --has patches >/dev/null 2>&1; then
             echo "У цій цілі патчів немає взагалі · вона віддає один активний знімок." >&2
             echo "Це не помилка: вибирай режим без патча. Що вміє ціль · ./bdo capabilities" >&2
         else

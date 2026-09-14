@@ -19,7 +19,7 @@ cat > "$TMP/rows.json" <<'JSON'
 "reference":{"ru":{"text":"Сияющая золотая печать","exportable":false}}}]}}
 JSON
 
-build() { BDO_STATE_DIR="$TMP/state" bash "$ROOT/cli/prepare/worker-payload.sh" "$TMP/rows.json" --no-context "$@" 2>/dev/null; }
+build() { BDO_STATE_DIR="$TMP/state" php "$ROOT/cli/bdo.php" worker-payload "$TMP/rows.json" --no-context "$@" 2>/dev/null; }
 # Payload воркера · обʼєкт `{examples, items}` від 2026-08-28: приклади винесені
 # у спільний блок, бо 77% із них були дослівними повторами між рядками пачки.
 has() { php -r '$p=json_decode(stream_get_contents(STDIN),true);$rows=$p["items"]??$p;exit(array_key_exists($argv[1],$rows[0]??[])?0:1);' "$1"; }

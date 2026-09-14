@@ -52,18 +52,18 @@ kill -0 "$SERVER" 2>/dev/null || { cat "$TMP/server.log" >&2; exit 1; }
 export TRANSLATE_ENV_FILE="$TMP/env"
 export BDO_STATE_DIR="$TMP/state"
 mkdir -p "$BDO_STATE_DIR"
-out="$(env BDO_ORCHESTRATOR=sh bash "$ROOT/cli/api/glossary-list.sh" --fresh 2>"$TMP/ok.err")" || { cat "$TMP/ok.err" >&2; fail 'повний обхід не завершився'; }
+out="$(BDO_STATE_DIR="$TMP/state" php "$ROOT/cli/bdo.php" glossary-list --fresh 2>"$TMP/ok.err")" || { cat "$TMP/ok.err" >&2; fail 'повний обхід не завершився'; }
 test "$(grep -c . <<<"$out")" -eq 3 || fail "обхід зібрав не всі сторінки: $out"
 test "$(printf '%s\n' "$out" | jq -r '.canonical_source' | paste -sd, -)" = 'Iron Sword,GO,Week' || fail 'зіпсовано порядок сторінок'
 
 printf 'fail\n' > "$TMP/mode"
-cached="$(BDO_ORCHESTRATOR=php bash "$ROOT/cli/api/glossary-list.sh" 2>"$TMP/cache.err")" || fail 'кеш не використано при 404'
+cached="$(BDO_STATE_DIR="$TMP/state" php "$ROOT/cli/bdo.php" glossary-list 2>"$TMP/cache.err")" || fail 'кеш не використано при 404'
 test "$(grep -c . <<<"$cached")" -eq 3 || fail 'кеш повного обходу не повернув усі рядки'
 rm -f "$BDO_STATE_DIR/glossary-full.json"
 
 printf 'loop\n' > "$TMP/mode"
 set +e
-BDO_ORCHESTRATOR=php bash "$ROOT/cli/api/glossary-list.sh" --fresh >"$TMP/loop.out" 2>"$TMP/loop.err"
+BDO_STATE_DIR="$TMP/state" php "$ROOT/cli/bdo.php" glossary-list --fresh >"$TMP/loop.out" 2>"$TMP/loop.err"
 code=$?
 set -e
 test "$code" -eq 4 || fail "зациклення має код 4, отримано $code"
@@ -71,7 +71,7 @@ grep -q 'зациклилась' "$TMP/loop.err" || fail 'причина зац�
 
 printf 'fail\n' > "$TMP/mode"
 set +e
-BDO_ORCHESTRATOR=php bash "$ROOT/cli/api/glossary-list.sh" --fresh >"$TMP/fail.out" 2>"$TMP/fail.err"
+BDO_STATE_DIR="$TMP/state" php "$ROOT/cli/bdo.php" glossary-list --fresh >"$TMP/fail.out" 2>"$TMP/fail.err"
 code=$?
 set -e
 test "$code" -eq 3 || fail "невдалий обхід має код 3, отримано $code"
@@ -82,7 +82,7 @@ grep -q 'недоступний' "$TMP/fail.err" || fail 'причина нед�
 printf 'ok\n' > "$TMP/mode"
 printf 'not a directory\n' > "$TMP/blocked-state"
 set +e
-BDO_STATE_DIR="$TMP/blocked-state" BDO_ORCHESTRATOR=php bash "$ROOT/cli/api/glossary-list.sh" --fresh \
+BDO_STATE_DIR="$TMP/blocked-state" php "$ROOT/cli/bdo.php" glossary-list --fresh \
     >"$TMP/blocked.out" 2>"$TMP/blocked.err"
 code=$?
 set -e
@@ -91,7 +91,7 @@ grep -q 'Кеш глосарію не пишеться' "$TMP/blocked.err" || fa
 
 mkdir -p "$TMP/rename-state/glossary-full.json"
 set +e
-BDO_STATE_DIR="$TMP/rename-state" BDO_ORCHESTRATOR=php bash "$ROOT/cli/api/glossary-list.sh" --fresh \
+BDO_STATE_DIR="$TMP/rename-state" php "$ROOT/cli/bdo.php" glossary-list --fresh \
     >"$TMP/rename.out" 2>"$TMP/rename.err"
 code=$?
 set -e

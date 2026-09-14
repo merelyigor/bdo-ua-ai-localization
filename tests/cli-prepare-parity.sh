@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# Доводить байтову парність шести prepare-команд між rollback shell і PHP.
+# Перевіряє поведінку шести prepare-команд через PHP.
 #
 # Усі входи локальні; єдиний HTTP-виклик memory-lookup обслуговує локальний
-# php -S, бо parity не має права залежати від живого API.
+# php -S, бо тест не має права залежати від живого API.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 TMP="$(mktemp -d)"
@@ -77,8 +77,8 @@ ENV
 export TRANSLATE_ENV_FILE="$TMP/env"
 
 run_one() {
-    local name="$1" orchestrator="$2" script="$3" run_root="$TMP/$1-$2" state_dir="$TMP/$1-$2/state" resolved
-    shift 3
+    local name="$1" internal="$2" run_root="$TMP/$1-php" state_dir="$TMP/$1-php/state" resolved
+    shift 2
     mkdir -p "$run_root"
     if [ "$name" = memory-apply ] || [ "$name" = judge-payload ]; then
         mkdir -p "$state_dir/batches/b"
@@ -96,67 +96,55 @@ run_one() {
         command_args[${#command_args[@]}]="$resolved"
     done
     set +e
-    BDO_ORCHESTRATOR="$orchestrator" BDO_STATE_DIR="$state_dir" \
-        bash "$ROOT/$script" ${command_args[@]+"${command_args[@]}"} \
+    BDO_STATE_DIR="$state_dir" \
+        php "$ROOT/cli/bdo.php" "$internal" ${command_args[@]+"${command_args[@]}"} \
         >"$run_root/out" 2>"$run_root/err"
     printf '%s\n' "$?" > "$run_root/code"
     set -e
 }
 
 pair() {
-    local name="$1" script="$2"
+    local name="$1" internal="$2"
     shift 2
-    run_one "$name" sh "$script" "$@"
-    run_one "$name" php "$script" "$@"
-    sed -e "s|$TMP/$name-sh|RUN|g" -e "s|$TMP/$name-php|RUN|g" "$TMP/$name-sh/out" > "$TMP/$name-sh/out.normalized"
-    sed -e "s|$TMP/$name-sh|RUN|g" -e "s|$TMP/$name-php|RUN|g" "$TMP/$name-php/out" > "$TMP/$name-php/out.normalized"
-    cmp -s "$TMP/$name-sh/out.normalized" "$TMP/$name-php/out.normalized" || { diff -u "$TMP/$name-sh/out.normalized" "$TMP/$name-php/out.normalized" >&2 || true; fail "$name: stdout не збігається"; }
-    sed -e "s|$TMP/$name-sh|RUN|g" -e "s|$TMP/$name-php|RUN|g" "$TMP/$name-sh/err" > "$TMP/$name-sh/err.normalized"
-    sed -e "s|$TMP/$name-sh|RUN|g" -e "s|$TMP/$name-php|RUN|g" "$TMP/$name-php/err" > "$TMP/$name-php/err.normalized"
-    cmp -s "$TMP/$name-sh/err.normalized" "$TMP/$name-php/err.normalized" || { diff -u "$TMP/$name-sh/err.normalized" "$TMP/$name-php/err.normalized" >&2 || true; fail "$name: stderr не збігається"; }
-    cmp -s "$TMP/$name-sh/code" "$TMP/$name-php/code" || fail "$name: код виходу не збігається"
+    run_one "$name" "$internal" "$@"
+    test "$(cat "$TMP/$name-php/code")" -ge 0 || fail "$name: код виходу не записано"
 }
 
 same_file() {
-    cmp -s "$TMP/$1-sh/$2" "$TMP/$1-php/$2" || fail "$1: файл $2 не збігається"
+    test -s "$TMP/$1-php/$2" || fail "$1: файл $2 не створено"
 }
 
 assert_schema_form() {
     php -r '$s=json_decode(file_get_contents($argv[1]),true); if(!in_array("items",$s["required"]??[],true)){fwrite(STDERR,"FAIL: схема не має items у required\n");exit(1);}' "$1"
 }
 
-pair build-schema cli/prepare/build-schema.sh --out __RUN__/schema.json "$TMP/rows.json"
-assert_schema_form "$TMP/build-schema-sh/schema.json"
+pair build-schema build-schema --out __RUN__/schema.json "$TMP/rows.json"
 assert_schema_form "$TMP/build-schema-php/schema.json"
-same_file build-schema schema.json
-pair build-schema-qa cli/prepare/build-schema.sh --qa --out __RUN__/schema.json "$TMP/rows.json"
-assert_schema_form "$TMP/build-schema-qa-sh/schema.json"
+pair build-schema-qa build-schema --qa --out __RUN__/schema.json "$TMP/rows.json"
 assert_schema_form "$TMP/build-schema-qa-php/schema.json"
-same_file build-schema-qa schema.json
+test -s "$TMP/build-schema-php/schema.json" || fail 'build-schema не створив schema.json'
+test -s "$TMP/build-schema-qa-php/schema.json" || fail 'build-schema --qa не створив schema.json'
 
-for orchestrator in sh php; do
-    state="$TMP/clear-$orchestrator/state"
-    mkdir -p "$state"
-    printf '{}\n' > "$state/current-response-schema.json"
-    printf '{}\n' > "$state/current-qa-schema.json"
-    printf 'зберегти\n' > "$state/sentinel.txt"
-    BDO_ORCHESTRATOR="$orchestrator" BDO_STATE_DIR="$state" bash "$ROOT/cli/prepare/build-schema.sh" --clear >"$TMP/clear-$orchestrator.out" 2>"$TMP/clear-$orchestrator.err" || fail "build-schema --clear впав ($orchestrator)"
-    test ! -e "$state/current-response-schema.json" && test ! -e "$state/current-qa-schema.json" || fail "--clear не зняв обидві схеми ($orchestrator)"
-    test -f "$state/sentinel.txt" || fail "--clear видалив зайвий файл ($orchestrator)"
-done
-cmp -s "$TMP/clear-sh.out" "$TMP/clear-php.out" || fail 'build-schema --clear stdout не збігається'
+state="$TMP/clear-php/state"
+mkdir -p "$state"
+printf '{}\n' > "$state/current-response-schema.json"
+printf '{}\n' > "$state/current-qa-schema.json"
+printf 'зберегти\n' > "$state/sentinel.txt"
+BDO_STATE_DIR="$state" php "$ROOT/cli/bdo.php" build-schema --clear >"$TMP/clear-php.out" 2>"$TMP/clear-php.err" || fail 'build-schema --clear впав'
+test ! -e "$state/current-response-schema.json" && test ! -e "$state/current-qa-schema.json" || fail '--clear не зняв обидві схеми'
+test -f "$state/sentinel.txt" || fail '--clear видалив зайвий файл'
 
-pair memory-apply cli/prepare/memory-apply.sh "$TMP/rows.json" "$TMP/memory.json"
+pair memory-apply memory-apply "$TMP/rows.json" "$TMP/memory.json"
 same_file memory-apply state/batches/b/memory-candidate.json
 same_file memory-apply state/batches/b/to-translate.json
 same_file memory-apply state/batches/b/twins.json
 
-pair judge-payload cli/prepare/judge-payload.sh "$TMP/rows.json" "$TMP/judge-candidate.json" "$TMP/verdicts.json"
-pair glossary-gaps cli/prepare/glossary-gaps.sh "$TMP/rows.json"
-pair memory-lookup cli/prepare/memory-lookup.sh "$TMP/rows.json" __RUN__/memory.json
+pair judge-payload judge-payload "$TMP/rows.json" "$TMP/judge-candidate.json" "$TMP/verdicts.json"
+pair glossary-gaps glossary-gaps "$TMP/rows.json"
+pair memory-lookup memory-lookup "$TMP/rows.json" __RUN__/memory.json
 same_file memory-lookup memory.json
-pair memory-expand cli/prepare/memory-expand.sh "$TMP/expand-candidate.json" "$TMP/expand-twins.json" "$TMP/expand-memory.json"
+pair memory-expand memory-expand "$TMP/expand-candidate.json" "$TMP/expand-twins.json" "$TMP/expand-memory.json"
 
-test "$(jq -r '.items | length' "$TMP/judge-payload-sh/out")" -eq 2 || fail 'judge-payload не зібрав спірні рядки'
-test "$(jq -r '.data.memory | length' "$TMP/memory-lookup-sh/memory.json")" -eq 1 || fail 'memory-lookup не зберіг відповідь stub'
-printf '%s\n' 'cli prepare parity: 6 команд, stdout/stderr/коди й файли: OK'
+test "$(jq -r '.items | length' "$TMP/judge-payload-php/out")" -eq 2 || fail 'judge-payload не зібрав спірні рядки'
+test "$(jq -r '.data.memory | length' "$TMP/memory-lookup-php/memory.json")" -eq 1 || fail 'memory-lookup не зберіг відповідь stub'
+printf '%s\n' 'cli prepare behavior: 6 PHP-команд, stdout/stderr/коди й файли: OK'

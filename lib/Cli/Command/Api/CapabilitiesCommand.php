@@ -10,8 +10,7 @@ use Bdo\Translate\Cli\Output;
 /**
  * Показує можливості цілі з TTL-кешу або оновлює їх через API.
  *
- * Команда лишає старі тексти, коди й імʼя кеш-файла, щоб rollback shell-шляхом
- * міг прочитати результат PHP без міграції стану.
+ * Команда лишає стабільні тексти, коди й імʼя кеш-файла для сумісності стану.
  */
 final class CapabilitiesCommand implements Command, \Bdo\Translate\Cli\CommandHelp
 {

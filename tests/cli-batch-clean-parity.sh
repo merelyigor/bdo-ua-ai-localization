@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Доводить байтову парність batch-clean між rollback shell і прямим PHP Kernel.
+# Перевіряє поведінку batch-clean через прямий PHP Kernel.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -22,27 +22,6 @@ normalize_stream "$TMP/normalizer.in" "$TMP/normalizer.out"
 grep -Fq 'id=20260101_000001 days=0 keep=1 count=3 (SIZE КБ) звільниться ~SIZE КБ' "$TMP/normalizer.out" \
     || fail 'normalizer змінив stable fields'
 grep -Fq '20260101_000001' "$TMP/normalizer.out" || fail 'normalizer приховав ID'
-
-# ПРАВИЛО: default wrapper маршрутизує в точний internal Kernel command.
-# САБОТАЖ: fake php приймає лише cli/bdo.php batch-clean; старий shell body
-# викличе заборонену форму і routing proof впаде.
-FAKE_BIN="$TMP/fake-bin"
-mkdir -p "$FAKE_BIN"
-cat >"$FAKE_BIN/php" <<FAKE
-#!$BASH_BIN
-if [ "\${1:-}" != "$ROOT/cli/bdo.php" ] || [ "\${2:-}" != batch-clean ]; then
-    printf 'FAIL: неправильна форма PHP delegate\n' >&2
-    exit 1
-fi
-printf '__ROUTE__batch-clean\n'
-FAKE
-chmod +x "$FAKE_BIN/php"
-set +e
-PATH="$FAKE_BIN:$PATH" bash "$ROOT/cli/batch/batch-clean.sh" >"$TMP/route.out" 2>"$TMP/route.err"
-route_code=$?
-set -e
-test "$route_code" -eq 0 || fail "routing batch-clean: code $route_code: $(cat "$TMP/route.err")"
-grep -Fq '__ROUTE__batch-clean' "$TMP/route.out" || fail 'routing batch-clean: marker відсутній'
 
 set_mtime() {
     php -r 'if (!touch($argv[1], time() - (int) $argv[2])) { exit(1); }' "$1" "$2"
@@ -125,21 +104,14 @@ snapshot() {
     )
 }
 
-run_side() {
-    local side="$1" base="$2"
+run_php() {
+    local name="$1" base="$2"
     shift 2
-    mkdir -p "$TMP/$side"
     set +e
-    if [ "$side" = sh ]; then
-        BDO_STATE_DIR="$base/state" BDO_KEEP_DAYS=7 BDO_KEEP_RECEIPTS=50 \
-            BDO_ORCHESTRATOR=sh bash "$ROOT/cli/batch/batch-clean.sh" "$@" \
-            >"$TMP/$side/out" 2>"$TMP/$side/err"
-    else
-        BDO_STATE_DIR="$base/state" BDO_KEEP_DAYS=7 BDO_KEEP_RECEIPTS=50 \
-            "$PHP_BIN" "$ROOT/cli/bdo.php" batch-clean "$@" \
-            >"$TMP/$side/out" 2>"$TMP/$side/err"
-    fi
-    printf '%s\n' "$?" >"$TMP/$side/code"
+    BDO_STATE_DIR="$base/state" BDO_KEEP_DAYS=7 BDO_KEEP_RECEIPTS=50 \
+        "$PHP_BIN" "$ROOT/cli/bdo.php" batch-clean "$@" \
+        >"$TMP/$name-run.out" 2>"$TMP/$name-run.err"
+    printf '%s\n' "$?" >"$TMP/$name-run.code"
     set -e
 }
 
@@ -165,68 +137,46 @@ native_code=$?
 set -e
 test "$native_code" -eq 0 || fail "PHP cleanup запустив зовнішню Unix-утиліту: code $native_code: $(cat "$TMP/native/err")"
 
-pair_streams() {
-    local label="$1"
-    normalize_stream "$TMP/sh/out" "$TMP/sh/out.normalized"
-    normalize_stream "$TMP/php/out" "$TMP/php/out.normalized"
-    cmp -s "$TMP/sh/out.normalized" "$TMP/php/out.normalized" \
-        || { diff -u "$TMP/sh/out.normalized" "$TMP/php/out.normalized" >&2 || true; fail "$label: stdout не збігається"; }
-    cmp -s "$TMP/sh/err" "$TMP/php/err" || { diff -u "$TMP/sh/err" "$TMP/php/err" >&2 || true; fail "$label: stderr не збігається"; }
-    cmp -s "$TMP/sh/code" "$TMP/php/code" || fail "$label: код не збігається"
-}
+make_fixture "$TMP/preview"
+snapshot "$TMP/preview" >"$TMP/preview.before"
+run_php preview "$TMP/preview" --days 0 --keep 1
+test "$(cat "$TMP/preview-run.code")" -eq 0 || fail "PHP preview завершився з помилкою: $(cat "$TMP/preview-run.err")"
+grep -Fq 'ВИРОК: це лише показ' "$TMP/preview-run.out" || fail 'preview не надрукував очікуваний stdout'
+snapshot "$TMP/preview" >"$TMP/preview.after"
+cmp -s "$TMP/preview.before" "$TMP/preview.after" || fail 'PHP preview змінив дерево'
 
-make_fixture "$TMP/preview-sh"
-make_fixture "$TMP/preview-php"
-snapshot "$TMP/preview-sh" >"$TMP/preview-sh.before"
-snapshot "$TMP/preview-php" >"$TMP/preview-php.before"
-run_side sh "$TMP/preview-sh" --days 0 --keep 1
-run_side php "$TMP/preview-php" --days 0 --keep 1
-pair_streams preview
-snapshot "$TMP/preview-sh" >"$TMP/preview-sh.after"
-snapshot "$TMP/preview-php" >"$TMP/preview-php.after"
-cmp -s "$TMP/preview-sh.before" "$TMP/preview-sh.after" || fail 'shell preview змінив дерево'
-cmp -s "$TMP/preview-php.before" "$TMP/preview-php.after" || fail 'PHP preview змінив дерево'
-
-make_fixture "$TMP/apply-sh"
-make_fixture "$TMP/apply-php"
-run_side sh "$TMP/apply-sh" --days 0 --keep 1 --apply
-run_side php "$TMP/apply-php" --days 0 --keep 1 --apply
-pair_streams apply
-snapshot "$TMP/apply-sh" >"$TMP/apply-sh.snapshot"
-snapshot "$TMP/apply-php" >"$TMP/apply-php.snapshot"
-sed "s|$TMP/apply-sh|RUN|g" "$TMP/apply-sh.snapshot" >"$TMP/apply-sh.normalized"
-sed "s|$TMP/apply-php|RUN|g" "$TMP/apply-php.snapshot" >"$TMP/apply-php.normalized"
-cmp -s "$TMP/apply-sh.normalized" "$TMP/apply-php.normalized" || fail 'apply exact tree/files не збігається'
+make_fixture "$TMP/apply"
+run_php apply "$TMP/apply" --days 0 --keep 1 --apply
+test "$(cat "$TMP/apply-run.code")" -eq 0 || fail "PHP apply завершився з помилкою: $(cat "$TMP/apply-run.err")"
+snapshot "$TMP/apply" >"$TMP/apply.snapshot"
 
 # ПРАВИЛО: current batch, receipts, drive.lock і dotfile retained лишаються;
 # over-limit batch зникає, safe symlink зникає разом із link, але target живий.
 # САБОТАЖ: зняття current skip, receipt preservation або safe delete має впасти.
-for side in apply-sh apply-php; do
-    base="$TMP/$side"
+base="$TMP/apply"
     state="$base/state"
-    test -s "$state/batches/20260101_000001_current/rows.json" || fail "$side зачепив current batch"
-    test -s "$state/batches/20260101_000003_retained/manifest.json" || fail "$side втратив receipt"
-    test -s "$state/batches/20260101_000003_retained/.dotfile" || fail "$side втратив retained dotfile"
-    test -L "$state/batches/20260101_000003_retained/drive.lock" || fail "$side втратив drive.lock"
-    test ! -e "$state/batches/20260101_000003_retained/rows.json" || fail "$side лишив derived file"
-    test ! -e "$state/batches/20260101_000003_retained/derived-dir" || fail "$side лишив derived directory"
-    test ! -e "$state/batches/20260101_000003_retained/safe-link" || fail "$side лишив safe symlink"
-    test -s "$base/safe-target" || fail "$side зачепив symlink target"
-    test ! -e "$state/batches/20260101_000002_over" || fail "$side лишив over-limit batch"
-    test ! -e "$state/glossary-full.json" || fail "$side лишив stale cache"
-    test -s "$state/game-concepts.json" || fail "$side прибрав fresh cache"
-    test ! -e "$state/quarantine.jsonl.archived" || fail "$side лишив stale archived quarantine"
-    test ! -e "$state/run-transcript.log" || fail "$side лишив stale transcript"
-    test ! -e "$state/sessions/old-session/run-stream.log" || fail "$side лишив old session journal"
-    test -s "$state/sessions/old-session/summary.json" || fail "$side прибрав session summary"
+    test -s "$state/batches/20260101_000001_current/rows.json" || fail 'PHP зачепив current batch'
+    test -s "$state/batches/20260101_000003_retained/manifest.json" || fail 'PHP втратив receipt'
+    test -s "$state/batches/20260101_000003_retained/.dotfile" || fail 'PHP втратив retained dotfile'
+    test -L "$state/batches/20260101_000003_retained/drive.lock" || fail 'PHP втратив drive.lock'
+    test ! -e "$state/batches/20260101_000003_retained/rows.json" || fail 'PHP лишив derived file'
+    test ! -e "$state/batches/20260101_000003_retained/derived-dir" || fail 'PHP лишив derived directory'
+    test ! -e "$state/batches/20260101_000003_retained/safe-link" || fail 'PHP лишив safe symlink'
+    test -s "$base/safe-target" || fail 'PHP зачепив symlink target'
+    test ! -e "$state/batches/20260101_000002_over" || fail 'PHP лишив over-limit batch'
+    test ! -e "$state/glossary-full.json" || fail 'PHP лишив stale cache'
+    test -s "$state/game-concepts.json" || fail 'PHP прибрав fresh cache'
+    test ! -e "$state/quarantine.jsonl.archived" || fail 'PHP лишив stale archived quarantine'
+    test ! -e "$state/run-transcript.log" || fail 'PHP лишив stale transcript'
+    test ! -e "$state/sessions/old-session/run-stream.log" || fail 'PHP лишив old session journal'
+    test -s "$state/sessions/old-session/summary.json" || fail 'PHP прибрав session summary'
     test -s "$state/quarantine.jsonl" && test -s "$state/write-log.jsonl" && test -s "$state/row-attempts.jsonl" \
-        || fail "$side зачепив protected state"
-    test ! -e "$base/output/old-root.json" || fail "$side лишив old output depth 1"
-    test ! -e "$base/output/part/old-level2.json" || fail "$side лишив old output depth 2"
-    test -s "$base/output/part/fresh-level2.json" || fail "$side прибрав fresh output"
-    test -s "$base/output/part/deep/old-level3.json" || fail "$side зачепив output depth 3"
-    test ! -d "$base/output/empty-level1" || fail "$side не прибрав порожню level-1 теку"
-done
+        || fail 'PHP зачепив protected state'
+    test ! -e "$base/output/old-root.json" || fail 'PHP лишив old output depth 1'
+    test ! -e "$base/output/part/old-level2.json" || fail 'PHP лишив old output depth 2'
+    test -s "$base/output/part/fresh-level2.json" || fail 'PHP прибрав fresh output'
+    test -s "$base/output/part/deep/old-level3.json" || fail 'PHP зачепив output depth 3'
+    test ! -d "$base/output/empty-level1" || fail 'PHP не прибрав порожню level-1 теку'
 
 # ПРАВИЛО: --days 0 означає більше одного повного 24-годинного періоду.
 # САБОТАЖ: наївна age > days*86400 видалить і свіжий одногодинний файл.
@@ -239,4 +189,4 @@ test "$(php -r 'echo ((intdiv(max(0, time() - filemtime($argv[1])), 86400) > 0) 
 test "$(php -r 'echo ((intdiv(max(0, time() - filemtime($argv[1])), 86400) > 0) ? "stale" : "fresh");' "$TMP/mtime-fresh")" = fresh \
     || fail '1-годинний файл став stale для --days 0'
 
-printf '%s\n' 'cli batch-clean parity: routing, preview/apply, exact tree/files, keep/current, TTL, sessions, output depth і mtime: OK'
+printf '%s\n' 'cli batch-clean behavior: PHP routing, preview/apply, exact tree/files, keep/current, TTL, sessions, output depth і mtime: OK'

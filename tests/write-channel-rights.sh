@@ -53,10 +53,10 @@ BDO_API_KEY_DEV=test-key
 ENV
 printf '[{"identity_hash":"%064d","source_hash":"%064d","text":"Тест"}]\n' 1 2 > "$TMP/items.json"
 run() {
-    local mode="$1" state="$2" stub="$3" channel="$4"; mkdir -p "$state"
+    local _mode="$1" state="$2" stub="$3" channel="$4"; mkdir -p "$state"
     printf '%s\n' "BDO_ENV=DEV" "BDO_API_TARGET=legacy" "BDO_API_BASE_DEV=$BASE_URL/$stub" "BDO_API_KEY_DEV=test-key" > "$TMP/env-$stub"
-    TRANSLATE_ENV_FILE="$TMP/env-$stub" BDO_STATE_DIR="$state" BDO_ORCHESTRATOR="$mode" \
-        bash "$ROOT/cli/write/write-translations.sh" --channel "$channel" --idempotency-key stable "$TMP/items.json"
+    TRANSLATE_ENV_FILE="$TMP/env-$stub" BDO_STATE_DIR="$state" \
+        php "$ROOT/cli/bdo.php" write --channel "$channel" --idempotency-key stable "$TMP/items.json"
 }
 
 # ПРАВИЛО: права шукаються в LIST за exact layer+mode, mapping не вгадується.

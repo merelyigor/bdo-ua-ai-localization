@@ -16,8 +16,8 @@ make_batch() { # $1 state-dir; $2 mode; $3 memory_layers; $4 memory scenario
         "source_text" => "Ancient Sword",
         "constraints" => ["non_translatable" => $argv[3] === "non-translatable"],
     ]]]], JSON_THROW_ON_ERROR));' "$rows" "$HASH" "$scenario"
-    BDO_STATE_DIR="$state" bash "$ROOT/cli/batch/batch-new.sh" "$rows" >/dev/null
-    batch="$(BDO_STATE_DIR="$state" bash "$ROOT/cli/batch/batch-dir.sh")"
+    BDO_STATE_DIR="$state" php "$ROOT/cli/bdo.php" batch-new "$rows" >/dev/null
+    batch="$(BDO_STATE_DIR="$state" php "$ROOT/cli/bdo.php" batch-dir)"
     php -r 'require $argv[1];Bdo\Translate\Batch\Workspace::requireCurrent($argv[2])
         ->updateManifest(function ($m) use ($argv) {
             $m["mode"] = $argv[3]; $m["channel"] = "machine"; $m["memory_layers"] = $argv[4];
@@ -36,7 +36,7 @@ make_batch() { # $1 state-dir; $2 mode; $3 memory_layers; $4 memory scenario
     file_put_contents($argv[1], json_encode(["data" => ["memory" => [
         $argv[2] => ["source_text" => "Ancient Sword", "variants" => $variants],
     ]]], JSON_THROW_ON_ERROR));' "$batch/memory.json" "$HASH" "$scenario"
-    BDO_PIPELINE_OFFLINE=1 BDO_STATE_DIR="$state" bash "$ROOT/cli/run/run-drive.sh" > "$state/drive.json"
+    BDO_PIPELINE_OFFLINE=1 BDO_STATE_DIR="$state" php "$ROOT/cli/bdo.php" run-drive > "$state/drive.json"
     printf '%s\n' "$batch"
 }
 
@@ -83,7 +83,7 @@ jq -e '.next.kind == "continue" and .state == "awaiting_worker"' "$TMP_PATCH/sta
     || { echo 'FAIL: patch викликав worker для закритої памʼяттю пачки'; exit 1; }
 test "$(count_ready "$BATCH/candidate.json")" = 1 \
     || { echo 'FAIL: memory-candidate не став кандидатом без worker'; exit 1; }
-BDO_PIPELINE_OFFLINE=1 BDO_STATE_DIR="$TMP_PATCH/state" bash "$ROOT/cli/run/run-drive.sh" > "$TMP_PATCH/state/drive-next.json"
+BDO_PIPELINE_OFFLINE=1 BDO_STATE_DIR="$TMP_PATCH/state" php "$ROOT/cli/bdo.php" run-drive > "$TMP_PATCH/state/drive-next.json"
 # Текст із памʼяті вже проходив цей конвеєр і вже прийнятий: QA його не дивиться
 # (D57 · 49 рядків у QA при 4 перекладених). Чистий рядок отримує PASS від коду.
 jq -e '.next.kind == "continue" and .next.reason == "memory_only"' "$TMP_PATCH/state/drive-next.json" >/dev/null \

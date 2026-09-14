@@ -19,48 +19,47 @@ final class Router
     private static function routes(): array
     {
         return [
-            'loop' => ['kind' => 'php', 'command' => 'run-loop', 'rollback' => 'cli/run/run-loop.sh', 'help' => 'cli/run/run-loop.sh'],
+            'loop' => ['kind' => 'php', 'command' => 'run-loop', 'help' => 'run-loop'],
             'tui' => ['kind' => 'script', 'script' => 'bin/tui.sh', 'help' => false],
-            'watch' => ['kind' => 'php', 'command' => 'watch', 'rollback' => 'cli/system/watch.sh', 'help' => 'cli/system/watch.sh'],
+            'watch' => ['kind' => 'php', 'command' => 'watch', 'help' => 'watch'],
             'gif' => ['kind' => 'script', 'script' => 'cli/system/tui-gif.sh'],
-            'timer' => ['kind' => 'php', 'command' => 'session-timer', 'rollback' => 'cli/system/session-timer.sh'],
-            'session' => ['kind' => 'php', 'command' => 'session', 'rollback' => 'cli/system/session.sh', 'help' => 'cli/system/session.sh'],
-            'web' => ['kind' => 'php', 'command' => 'web', 'rollback' => 'cli/system/web.sh', 'help' => 'cli/system/web.sh'],
+            'timer' => ['kind' => 'php', 'command' => 'session-timer'],
+            'session' => ['kind' => 'php', 'command' => 'session', 'help' => 'session'],
+            'web' => ['kind' => 'php', 'command' => 'web', 'help' => 'web'],
             'desktop' => ['kind' => 'php', 'command' => 'desktop'],
             'env' => ['kind' => 'php', 'command' => 'env'],
             'sync' => ['kind' => 'script', 'script' => 'cli/runtime/env-sync.sh'],
             'runtime' => ['kind' => 'script', 'script' => 'cli/runtime/check-runtime.sh'],
             'platform' => ['kind' => 'script', 'script' => 'cli/system/check-platform.sh'],
             'run' => ['kind' => 'nested'],
-            'patches' => ['kind' => 'php', 'command' => 'patches', 'rollback' => 'cli/api/patches-overview.sh', 'load_env' => true],
+            'patches' => ['kind' => 'php', 'command' => 'patches', 'load_env' => true],
             'mode' => ['kind' => 'nested'],
             'gate' => ['kind' => 'script', 'script' => 'scripts/agent-check.sh'],
             'browser' => ['kind' => 'script', 'script' => 'cli/system/browser-check.sh'],
-            'patch' => ['kind' => 'php', 'command' => 'patch', 'rollback' => 'cli/api/patch-info.sh', 'load_env' => true],
-            'fetch' => ['kind' => 'php', 'command' => 'fetch-rows', 'rollback' => 'cli/api/fetch-rows.sh', 'help' => 'cli/api/fetch-rows.sh'],
+            'patch' => ['kind' => 'php', 'command' => 'patch', 'load_env' => true],
+            'fetch' => ['kind' => 'php', 'command' => 'fetch-rows', 'help' => 'fetch-rows'],
             'batch' => ['kind' => 'nested'],
-            'subset' => ['kind' => 'php', 'command' => 'subset-rows', 'rollback' => 'cli/batch/subset-rows.sh', 'help' => 'cli/batch/subset-rows.sh'],
-            'show' => ['kind' => 'php', 'command' => 'show', 'rollback' => 'cli/api/show-rows.sh'],
+            'subset' => ['kind' => 'php', 'command' => 'subset-rows', 'help' => 'subset-rows'],
+            'show' => ['kind' => 'php', 'command' => 'show'],
             // Ім'я PHP-команди тут · `context`, а не `row-context`: саме так її
             // знає `Kernel`, і саме так її кликав старий вхід
-            // (`php_or_sh cli/api/row-context.sh context`). Назва ФАЙЛА до імені
-            // команди відношення не має.
-            'context' => ['kind' => 'php', 'command' => 'context', 'rollback' => 'cli/api/row-context.sh', 'load_env' => true],
+            // Назва файла до імені команди відношення не має.
+            'context' => ['kind' => 'php', 'command' => 'context', 'load_env' => true],
             'memory' => ['kind' => 'nested'],
             'glossary' => ['kind' => 'nested'],
             'schema' => ['kind' => 'nested'],
             'payload' => ['kind' => 'nested'],
-            'normalize' => ['kind' => 'php', 'command' => 'normalize-candidate', 'rollback' => 'cli/quality/normalize-candidate.sh', 'help' => 'cli/quality/normalize-candidate.sh'],
-            'items' => ['kind' => 'php', 'command' => 'build-items', 'rollback' => 'cli/quality/build-items.sh', 'help' => 'cli/quality/build-items.sh'],
-            'russianisms' => ['kind' => 'php', 'command' => 'check-russianisms', 'rollback' => 'cli/quality/check-russianisms.sh', 'help' => 'cli/quality/check-russianisms.sh'],
+            'normalize' => ['kind' => 'php', 'command' => 'normalize-candidate', 'help' => 'normalize-candidate'],
+            'items' => ['kind' => 'php', 'command' => 'build-items', 'help' => 'build-items'],
+            'russianisms' => ['kind' => 'php', 'command' => 'check-russianisms', 'help' => 'check-russianisms'],
             'suspects' => ['kind' => 'script', 'script' => 'cli/audit/glossary-suspects.sh'],
-            'validate' => ['kind' => 'php', 'command' => 'validate', 'rollback' => 'cli/api/validate.sh', 'help' => 'cli/api/validate.sh'],
-            'heal' => ['kind' => 'php', 'command' => 'heal-plan', 'rollback' => 'cli/heal/heal-plan.sh', 'help' => 'cli/heal/heal-plan.sh'],
-            'qa-fixes' => ['kind' => 'php', 'command' => 'qa-fixes', 'rollback' => 'cli/quality/qa-fixes.sh', 'help' => 'cli/quality/qa-fixes.sh'],
-            'merge' => ['kind' => 'php', 'command' => 'merge-items', 'rollback' => 'cli/quality/merge-items.sh', 'help' => 'cli/quality/merge-items.sh'],
-            'commit' => ['kind' => 'php', 'command' => 'commit', 'rollback' => 'cli/batch/batch-commit.sh', 'help' => 'cli/batch/batch-commit.sh'],
-            'write' => ['kind' => 'php', 'command' => 'write', 'rollback' => 'cli/write/write-translations.sh', 'help' => 'cli/write/write-translations.sh'],
-            'moderation' => ['kind' => 'php', 'command' => 'moderation', 'rollback' => 'cli/write/moderation-queue.sh', 'help' => 'cli/write/moderation-queue.sh'],
+            'validate' => ['kind' => 'php', 'command' => 'validate', 'help' => 'validate'],
+            'heal' => ['kind' => 'php', 'command' => 'heal-plan', 'help' => 'heal-plan'],
+            'qa-fixes' => ['kind' => 'php', 'command' => 'qa-fixes', 'help' => 'qa-fixes'],
+            'merge' => ['kind' => 'php', 'command' => 'merge-items', 'help' => 'merge-items'],
+            'commit' => ['kind' => 'php', 'command' => 'commit', 'help' => 'commit'],
+            'write' => ['kind' => 'php', 'command' => 'write', 'help' => 'write'],
+            'moderation' => ['kind' => 'php', 'command' => 'moderation', 'help' => 'moderation'],
             'audit' => ['kind' => 'script', 'script' => 'cli/audit/model-run.sh'],
             'models-run' => ['kind' => 'script', 'script' => 'cli/audit/model-run.sh'],
             'review' => ['kind' => 'script', 'script' => 'cli/audit/project-review.sh'],
@@ -71,11 +70,11 @@ final class Router
             'quarantine' => ['kind' => 'script', 'script' => 'cli/audit/quarantine-report.sh'],
             'judge' => ['kind' => 'script', 'script' => 'cli/audit/judge-report.sh'],
             'terms' => ['kind' => 'nested'],
-            'concepts' => ['kind' => 'php', 'command' => 'glossary-concepts', 'rollback' => 'cli/api/glossary-concepts.sh', 'help' => 'cli/api/glossary-concepts.sh'],
-            'clean' => ['kind' => 'php', 'command' => 'batch-clean', 'rollback' => 'cli/batch/batch-clean.sh', 'help' => 'cli/batch/batch-clean.sh'],
+            'concepts' => ['kind' => 'php', 'command' => 'glossary-concepts', 'help' => 'glossary-concepts'],
+            'clean' => ['kind' => 'php', 'command' => 'batch-clean', 'help' => 'batch-clean'],
             'paths' => ['kind' => 'script', 'script' => 'cli/system/paths.sh'],
-            'api' => ['kind' => 'php', 'command' => 'api', 'rollback' => 'cli/api/test-api.sh', 'load_env' => true],
-            'capabilities' => ['kind' => 'php', 'command' => 'capabilities', 'rollback' => 'cli/api/capabilities.sh', 'help' => 'cli/api/capabilities.sh'],
+            'api' => ['kind' => 'php', 'command' => 'api', 'load_env' => true],
+            'capabilities' => ['kind' => 'php', 'command' => 'capabilities', 'help' => 'capabilities'],
         ];
     }
 
@@ -84,47 +83,47 @@ final class Router
     {
         return [
             'run' => [
-                'start' => ['command' => 'run-start', 'rollback' => 'cli/run/run-start.sh', 'help' => 'cli/run/run-start.sh'],
-                'show' => ['command' => 'run-start', 'rollback' => 'cli/run/run-start.sh', 'help' => 'cli/run/run-start.sh'],
-                'end' => ['command' => 'run-start', 'rollback' => 'cli/run/run-start.sh', 'help' => 'cli/run/run-start.sh'],
-                'drive' => ['command' => 'run-drive', 'rollback' => 'cli/run/run-drive.sh', 'help' => 'cli/run/run-drive.sh'],
-                'stop' => ['command' => 'run-stop', 'rollback' => 'cli/run/run-stop.sh', 'help' => 'cli/run/run-stop.sh'],
+                'start' => ['command' => 'run-start', 'help' => 'run-start'],
+                'show' => ['command' => 'run-start', 'help' => 'run-start'],
+                'end' => ['command' => 'run-start', 'help' => 'run-start'],
+                'drive' => ['command' => 'run-drive', 'help' => 'run-drive'],
+                'stop' => ['command' => 'run-stop', 'help' => 'run-stop'],
             ],
             'mode' => [
-                'status' => ['command' => 'run-spec', 'rollback' => 'cli/run/run-spec.sh', 'help' => 'cli/run/run-spec.sh'],
-                'start' => ['command' => 'run-mode', 'rollback' => 'cli/run/run-mode.sh', 'help' => 'cli/run/run-mode.sh'],
+                'status' => ['command' => 'run-spec', 'help' => 'run-spec'],
+                'start' => ['command' => 'run-mode', 'help' => 'run-mode'],
             ],
             'batch' => [
-                'new' => ['command' => 'batch-new', 'rollback' => 'cli/batch/batch-new.sh', 'help' => 'cli/batch/batch-new.sh'],
-                'dir' => ['command' => 'batch-dir', 'rollback' => 'cli/batch/batch-dir.sh', 'help' => 'cli/batch/batch-dir.sh'],
-                'check' => ['command' => 'batch-assert', 'rollback' => 'cli/batch/batch-assert.sh', 'help' => 'cli/batch/batch-assert.sh'],
-                'end' => ['command' => 'batch-new', 'rollback' => 'cli/batch/batch-new.sh', 'help' => 'cli/batch/batch-new.sh'],
+                'new' => ['command' => 'batch-new', 'help' => 'batch-new'],
+                'dir' => ['command' => 'batch-dir', 'help' => 'batch-dir'],
+                'check' => ['command' => 'batch-assert', 'help' => 'batch-assert'],
+                'end' => ['command' => 'batch-new', 'help' => 'batch-new'],
             ],
             'memory' => [
-                'find' => ['command' => 'memory-lookup', 'rollback' => 'cli/prepare/memory-lookup.sh', 'help' => 'cli/prepare/memory-lookup.sh'],
-                'apply' => ['command' => 'memory-apply', 'rollback' => 'cli/prepare/memory-apply.sh', 'help' => 'cli/prepare/memory-apply.sh'],
-                'expand' => ['command' => 'memory-expand', 'rollback' => 'cli/prepare/memory-expand.sh', 'help' => 'cli/prepare/memory-expand.sh'],
+                'find' => ['command' => 'memory-lookup', 'help' => 'memory-lookup'],
+                'apply' => ['command' => 'memory-apply', 'help' => 'memory-apply'],
+                'expand' => ['command' => 'memory-expand', 'help' => 'memory-expand'],
             ],
             'glossary' => [
-                'gaps' => ['command' => 'glossary-gaps', 'rollback' => 'cli/prepare/glossary-gaps.sh', 'help' => 'cli/prepare/glossary-gaps.sh'],
-                'resolve' => ['command' => 'glossary-resolve', 'rollback' => 'cli/api/glossary-resolve.sh', 'help' => 'cli/api/glossary-resolve.sh', 'load_env' => true],
+                'gaps' => ['command' => 'glossary-gaps', 'help' => 'glossary-gaps'],
+                'resolve' => ['command' => 'glossary-resolve', 'help' => 'glossary-resolve', 'load_env' => true],
             ],
             'schema' => [
-                'build' => ['command' => 'build-schema', 'rollback' => 'cli/prepare/build-schema.sh', 'help' => 'cli/prepare/build-schema.sh'],
-                'qa' => ['command' => 'build-schema', 'rollback' => 'cli/prepare/build-schema.sh', 'help' => 'cli/prepare/build-schema.sh'],
-                'clear' => ['command' => 'build-schema', 'rollback' => 'cli/prepare/build-schema.sh', 'help' => 'cli/prepare/build-schema.sh'],
-                'show' => ['command' => 'build-schema', 'rollback' => 'cli/prepare/build-schema.sh', 'help' => 'cli/prepare/build-schema.sh'],
+                'build' => ['command' => 'build-schema', 'help' => 'build-schema'],
+                'qa' => ['command' => 'build-schema', 'help' => 'build-schema'],
+                'clear' => ['command' => 'build-schema', 'help' => 'build-schema'],
+                'show' => ['command' => 'build-schema', 'help' => 'build-schema'],
             ],
             'payload' => [
-                'worker' => ['command' => 'worker-payload', 'rollback' => 'cli/prepare/worker-payload.sh', 'help' => 'cli/prepare/worker-payload.sh'],
-                'qa' => ['command' => 'qa-payload', 'rollback' => 'cli/prepare/qa-payload.sh', 'help' => 'cli/prepare/qa-payload.sh'],
-                'terminology' => ['command' => 'terminology-payload', 'rollback' => 'cli/prepare/terminology-payload.sh', 'help' => 'cli/prepare/terminology-payload.sh'],
-                'judge' => ['command' => 'judge-payload', 'rollback' => 'cli/prepare/judge-payload.sh', 'help' => 'cli/prepare/judge-payload.sh'],
+                'worker' => ['command' => 'worker-payload', 'help' => 'worker-payload'],
+                'qa' => ['command' => 'qa-payload', 'help' => 'qa-payload'],
+                'terminology' => ['command' => 'terminology-payload', 'help' => 'terminology-payload'],
+                'judge' => ['command' => 'judge-payload', 'help' => 'judge-payload'],
             ],
             'terms' => [
-                'describe' => ['command' => 'term-notes-describe', 'rollback' => 'cli/api/term-notes-describe.sh', 'help' => 'cli/api/term-notes-describe.sh'],
-                'submit' => ['command' => 'term-notes-submit', 'rollback' => 'cli/api/term-notes-submit.sh', 'help' => 'cli/api/term-notes-submit.sh'],
-                '*' => ['command' => 'term-notes-queue', 'rollback' => 'cli/api/term-notes-queue.sh', 'help' => 'cli/api/term-notes-queue.sh'],
+                'describe' => ['command' => 'term-notes-describe', 'help' => 'term-notes-describe'],
+                'submit' => ['command' => 'term-notes-submit', 'help' => 'term-notes-submit'],
+                '*' => ['command' => 'term-notes-queue', 'help' => 'term-notes-queue'],
             ],
         ];
     }
@@ -181,7 +180,7 @@ final class Router
     {
         $group = (string) ($arguments[0] ?? '');
         if ($group === '') {
-            return $this->php('web', [], false, null, 'cli/system/web.sh');
+            return $this->php('web', [], false);
         }
 
         if (in_array($group, ['help', '-h', '--help'], true)) {
@@ -219,7 +218,6 @@ final class Router
             $arguments,
             (bool) ($route['load_env'] ?? false),
             isset($route['help']) ? (string) $route['help'] : null,
-            isset($route['rollback']) ? (string) $route['rollback'] : null,
         );
     }
 
@@ -343,7 +341,6 @@ final class Router
             $arguments,
             (bool) ($route['load_env'] ?? false),
             isset($route['help']) ? (string) $route['help'] : null,
-            isset($route['rollback']) ? (string) $route['rollback'] : null,
         );
     }
 
@@ -408,22 +405,16 @@ FLOW
     }
 
     /** @param list<string> $arguments */
-    private function php(string $command, array $arguments, bool $loadEnv, ?string $helpLabel = null, ?string $rollback = null): int
+    private function php(string $command, array $arguments, bool $loadEnv, ?string $helpLabel = null): int
     {
-        if (getenv('BDO_ORCHESTRATOR') !== false && getenv('BDO_ORCHESTRATOR') !== '' && ! in_array(getenv('BDO_ORCHESTRATOR'), ['php', 'sh'], true)) {
-            return $this->error('BDO_ORCHESTRATOR має бути php або sh');
-        }
         if ($helpLabel !== null && getenv('BDO_SHOW_HELP') === '1') {
             $help = (new Kernel())->helpText($command);
             if ($help === null || $help === '') {
                 return $this->error("PHP-команда '{$command}' не має вбудованої довідки");
             }
-            $this->stdout("Довідка скрипта {$helpLabel} (він же реалізує цю підкоманду):\n\n");
+            $this->stdout("Довідка команди {$helpLabel}:\n\n");
             $this->stdout($help);
             return 0;
-        }
-        if (getenv('BDO_ORCHESTRATOR') === 'sh' && $rollback !== null) {
-            return $this->script($rollback, $arguments);
         }
         if ($loadEnv && ! $this->loadEnvironment()) {
             return 1;

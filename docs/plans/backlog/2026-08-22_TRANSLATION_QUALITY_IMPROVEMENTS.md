@@ -18,18 +18,18 @@ probable_unresolved` · назва предмета, яку API впізнав, 
 
 ```
 $ git grep -l unresolvedEntities | grep -v lib/Batch/Row.php
-cli/batch/batch-commit.sh
-cli/prepare/glossary-gaps.sh
+BatchCommitCommand
+GlossaryGapsCommand
 ```
 
-Тобто такий рядок потрапляє у вирок `glossary gaps` · але ні `cli/prepare/worker-payload.sh`,
-ні `cli/prepare/qa-payload.sh` не кладуть цю позначку в payload. Обидва передають лише
+Тобто такий рядок потрапляє у вирок `glossary gaps` · але ні `WorkerPayloadCommand`,
+ні `QaPayloadCommand` не кладуть цю позначку в payload. Обидва передають лише
 `canonical_pending` (`pendingTerms()`), а це інша множина: mandatory-термін із
 `ukrainian: null`.
 
 **Виправлення попереднього формулювання цього плану.** Тут стояло, що такий
 рядок «маршрутизується в модерацію ПІСЛЯ перекладу». Код цього не робить:
-`cli/batch/batch-commit.sh:136` вимагає `--names-to-moderation` І `domain=item`, тобто за
+`BatchCommitCommand` вимагає `--names-to-moderation` І `domain=item`, тобто за
 замовчуванням (ШІ-шар) нерозпізнана назва ЗАПИСУЄТЬСЯ. Це не деталь · саме через
 це Q1 має вагу: те, що воркер напише для такого рядка, стає назвою предмета в
 базі, і жоден пізніший запобіжник його не перехопить.
@@ -97,7 +97,7 @@ DoD виконано частково. Одне правило замість д
 
 Промпт воркера сам називає `examples` найсильнішим сигналом («тримайся їхнього
 стилю й термінології, навіть якщо маєш свою думку»). При цьому вони вимкнені:
-`cli/prepare/worker-payload.sh --with-context` це opt-in, і `git grep -- --with-context` не
+`WorkerPayloadCommand --with-context` це opt-in, і `git grep -- --with-context` не
 знаходить жодного місця, яке його вживає, крім довідки.
 
 Причина opt-in була слушною й більше не діє: на свіжому патчі
@@ -123,15 +123,15 @@ DoD виконано: дефолт увімкнений, `--no-context` вими
 
 ### Q4. Дати `examples` і QA, не лише воркеру · ЗРОБЛЕНО 2026-08-22
 
-`cli/prepare/qa-payload.sh` мав коментар «Ті самі сигнали, що бачив воркер», але `examples`
+`QaPayloadCommand` мав коментар «Ті самі сигнали, що бачив воркер», але `examples`
 там не було · ні як поля, ні як прапорця. Якщо воркер обрав відповідник за
 прикладом, QA не бачив підстави й міг завернути правильний рядок. Промпт QA при
 цьому ВЖЕ містив правило «`examples`: чи не суперечить кандидат затвердженим
 перекладам» · тобто інструкція була мертвою.
 
-Реалізовано без жодного додаткового виклику API: `cli/prepare/worker-payload.sh` більше не
+Реалізовано без жодного додаткового виклику API: `WorkerPayloadCommand` більше не
 кладе контекст у тимчасовий файл, який видаляє на виході, а пише `context.json`
-у теку пачки. `cli/prepare/qa-payload.sh` підхоплює його сам; `--context FILE` лишається для
+у теку пачки. `QaPayloadCommand` підхоплює його сам; `--context FILE` лишається для
 явного шляху.
 
 Разом із Q3 (приклади типово ввімкнені) це працює без жодного прапорця: воркер і
@@ -185,7 +185,7 @@ DoD виконано: приклади зʼявляються в payload QA ав
    промовчав;
 3. лише залишок віддавати субагенту.
 
-Реалізація · `cli/prepare/terminology-payload.sh` (`./bdo payload terminology`). На термін
+Реалізація · `TerminologyPayloadCommand` (`./bdo payload terminology`). На термін
 у payload ідуть лише канонічна назва, `kind` (`pending` або `unresolved`), один
 представницький рядок з `identity_hash` і `source_text`, і готовий `resolve`.
 `read` прибрано з інструментів субагента; `bash` лишився вузьким фолбеком на

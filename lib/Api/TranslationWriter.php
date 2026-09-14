@@ -109,7 +109,7 @@ final class TranslationWriter
 
         // Старий shell зупинявся на FAIL_ON_REJECTED одразу після summary.
         // Не створюй після цього журнал або карантин: це observable межа його
-        // side effects, і вона потрібна BatchCommit для того самого rollback.
+        // side effects, і вона потрібна BatchCommit для тієї самої межі.
         if ($code === 0) {
             $this->persistArtifacts($result, $items);
         }

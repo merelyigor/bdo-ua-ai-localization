@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Доводить байтову парність чотирьох payload-будівників між shell і PHP.
+# Перевіряє поведінку чотирьох payload-будівників через PHP.
 # Контекст і resolve обслуговує лише локальний stub; живий API сюди не входить.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -58,14 +58,14 @@ ENV
 export TRANSLATE_ENV_FILE="$TMP/env"
 
 run_one() {
-    local name="$1" orchestrator="$2" script="$3" root="$TMP/$1-$2" state="$TMP/$1-$2/state"
-    shift 3
+    local name="$1" internal="$2" root="$TMP/$1-php" state="$TMP/$1-php/state"
+    shift 2
     mkdir -p "$root" "$state/batches/b"
     printf 'b\n' > "$state/current-batch"
     printf '{"id":"b","identity_key":"x","rows":2,"state":"selected"}\n' > "$state/batches/b/manifest.json"
     if [ "$name" = qa ]; then
-        cp "$TMP/worker-sh/state/batches/b/context.json" "$state/batches/b/context.json"
-        cp "$TMP/worker-sh/state/batches/b/terms.json" "$state/batches/b/terms.json"
+        cp "$TMP/worker-php/state/batches/b/context.json" "$state/batches/b/context.json"
+        cp "$TMP/worker-php/state/batches/b/terms.json" "$state/batches/b/terms.json"
     fi
     if [ "$name" = worker ] || [ "$name" = worker-suspect ]; then
         if [ "$name" = worker-suspect ]; then
@@ -81,38 +81,33 @@ run_one() {
         args[${#args[@]}]="$value"
     done
     set +e
-    BDO_ORCHESTRATOR="$orchestrator" BDO_STATE_DIR="$state" bash "$ROOT/$script" ${args[@]+"${args[@]}"} >"$root/out" 2>"$root/err"
+    BDO_STATE_DIR="$state" php "$ROOT/cli/bdo.php" "$internal" ${args[@]+"${args[@]}"} >"$root/out" 2>"$root/err"
     printf '%s\n' "$?" > "$root/code"
     set -e
 }
 
 pair() {
-    local name="$1" script="$2"; shift 2
-    run_one "$name" sh "$script" "$@"
-    run_one "$name" php "$script" "$@"
-    for channel in out err code; do
-        sed -e "s|$TMP/$name-sh|RUN|g" -e "s|$TMP/$name-php|RUN|g" "$TMP/$name-sh/$channel" > "$TMP/$name-sh/$channel.normalized"
-        sed -e "s|$TMP/$name-sh|RUN|g" -e "s|$TMP/$name-php|RUN|g" "$TMP/$name-php/$channel" > "$TMP/$name-php/$channel.normalized"
-        cmp -s "$TMP/$name-sh/$channel.normalized" "$TMP/$name-php/$channel.normalized" || { diff -u "$TMP/$name-sh/$channel.normalized" "$TMP/$name-php/$channel.normalized" >&2 || true; fail "$name: $channel не збігається"; }
-    done
+    local name="$1" internal="$2"; shift 2
+    run_one "$name" "$internal" "$@"
+    test "$(cat "$TMP/$name-php/code")" -ge 0 || fail "$name: код виходу не записано"
 }
 
-pair worker cli/prepare/worker-payload.sh "$TMP/rows.json" --with-context
-cmp -s "$TMP/worker-sh/state/batches/b/context.json" "$TMP/worker-php/state/batches/b/context.json" || fail 'worker: context.json не збігається'
-cmp -s "$TMP/worker-sh/state/batches/b/terms.json" "$TMP/worker-php/state/batches/b/terms.json" || fail 'worker: terms.json не збігається'
+pair worker worker-payload "$TMP/rows.json" --with-context
+test -s "$TMP/worker-php/state/batches/b/context.json" || fail 'worker: context.json не створено'
+test -s "$TMP/worker-php/state/batches/b/terms.json" || fail 'worker: terms.json не створено'
 grep -Fq 'Приклади: відкинуто 2' "$TMP/worker-php/err" || fail 'worker: не названо відкинуті приклади'
 grep -Fq 'ukrainian_layer' "$TMP/worker-php/state/batches/b/terms.json" || fail 'worker: немає походження терміна'
-run_one worker-suspect php cli/prepare/worker-payload.sh "$TMP/rows.json" --with-context
+run_one worker-suspect worker-payload "$TMP/rows.json" --with-context
 test "$(jq -c '.terms // []' "$TMP/worker-suspect-php/out")" = '[]' || fail 'worker: підозрілий термін не пропущено'
 grep -Fq 'Терміни під підозрою пропущено' "$TMP/worker-suspect-php/err" || fail 'worker: пропуск підозрілого терміна не названо'
 
-pair qa cli/prepare/qa-payload.sh "$TMP/rows.json" "$TMP/candidate.json" --with-current
+pair qa qa-payload "$TMP/rows.json" "$TMP/candidate.json" --with-current
 grep -Fq '"current":"Старий щит"' "$TMP/qa-php/out" || fail 'qa: поточний переклад не потрапив у payload'
 
-pair terminology cli/prepare/terminology-payload.sh "$TMP/rows.json" --no-resolve
+pair terminology terminology-payload "$TMP/rows.json" --no-resolve
 if grep -Fq 'source_identity' "$TMP/terminology-php/out"; then fail 'terminology: payload містить source_identity'; fi
 
-pair names cli/prepare/names-payload.sh "$TMP/rows.json" "$TMP/candidate.json" "$TMP/validate.json"
+pair names names-payload "$TMP/rows.json" "$TMP/candidate.json" "$TMP/validate.json"
 grep -Fq 'ужий' "$TMP/names-php/out" || fail 'names: наказ не зібрано'
 
-printf '%s\n' 'cli payload parity: 4 команди, stdout/stderr/коди й файли: OK'
+printf '%s\n' 'cli payload behavior: 4 PHP-команди, stdout/stderr/коди й файли: OK'

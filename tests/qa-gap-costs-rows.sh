@@ -45,7 +45,7 @@ run() {
     local state="$TMP/state-$channel"
     rm -rf "$state"
     BDO_API_BASE=http://127.0.0.1:1 BDO_API_KEY=test-key BDO_API_ENV=local BDO_ENV=DEV \
-        BDO_STATE_DIR="$state" BDO_ORCHESTRATOR=php bash "$ROOT/cli/batch/batch-commit.sh" \
+        BDO_STATE_DIR="$state" php "$ROOT/cli/bdo.php" commit \
         "$TMP/rows.json" "$TMP/cand.json" "$TMP/verdicts.json" --channel "$channel" 2>&1
 }
 

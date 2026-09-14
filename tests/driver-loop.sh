@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Драйвер мусить робити рівно те, що каже конверт, і зупинятися з причиною.
-# Цей тест ганяє ОДНАКОВІ envelope fixtures через frozen shell і native PHP.
+# Цей тест ганяє envelope fixtures через native PHP loop.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 fail() { printf 'FAIL: %s\n' "$1" >&2; exit 1; }
@@ -9,44 +9,13 @@ WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
 
 setup_side() {
-    local side="$1" base="$WORK/$1"
+    local base="$WORK/$1"
     mkdir -p "$base/cli/run" "$base/cli/model" "$base/cli/system" "$base/state" "$base/lib"
-    cp "$ROOT/cli/run/run-loop.sh" "$base/cli/run/run-loop.sh"
     cp "$ROOT/cli/system/timed.sh" "$base/cli/system/timed.sh"
     cp -R "$ROOT/lib/." "$base/lib/"
     cp "$ROOT/cli/command-registry.json" "$base/cli/command-registry.json"
-    if [ "$side" = sh ]; then
-        cat > "$base/bdo" <<'SH'
-#!/usr/bin/env bash
-HERE="$(cd "$(dirname "$0")" && pwd)"
-printf '%s\n' "$*" >> "$HERE/state/calls.log"
-if [ "$1 $2" = "run drive" ]; then
-    if [ -n "${FAKE_DRIVE_BOOM:-}" ]; then
-        printf 'Fatal error: %s\n' "$FAKE_DRIVE_BOOM" >&2
-        exit 1
-    fi
-    test -z "${FAKE_DRIVE_SIGNAL:-}" || exit "$FAKE_DRIVE_SIGNAL"
-    step="$(head -1 "$HERE/state/scenario")"
-    sed -i.bak '1d' "$HERE/state/scenario" && rm -f "$HERE/state/scenario.bak"
-    test -f "$HERE/state/noise" && cat "$HERE/state/noise"
-    printf '%s\n' "$step"
-    exit 0
-fi
-exit 0
-SH
-        chmod +x "$base/bdo"
-        # Звіт кроку · PHP-команда навіть у rollback-гілці (підетап 7.2), тому
-        # фальшивий репортер потрібен і тут: bash-двійника більше не існує.
-        cat > "$base/cli/bdo.php" <<'PHP'
-<?php
-declare(strict_types=1);
-if (($argv[1] ?? '') === 'step-report') {
-    echo "reporter marker\n";
-    exit(getenv('FAKE_REPORT_FAILS') === '1' ? 9 : 0);
-}
-exit(0);
-PHP
-    else
+    # Пісочниця більше не роздвоюється: гілка bash тут була другим боком
+    # відкату, і разом із ним її не стало.
         cat > "$base/cli/bdo.php" <<'PHP'
 <?php
 declare(strict_types=1);
@@ -80,7 +49,6 @@ if ($name === 'step-report') {
 require $root.'/lib/autoload.php';
 exit((new Bdo\Translate\Cli\Kernel())->run($arguments));
 PHP
-    fi
     cat > "$base/cli/model/client.php" <<'PHP'
 <?php
 file_put_contents(dirname(__DIR__, 2).'/state/roles.log', ($argv[1] ?? '')."\n", FILE_APPEND);
@@ -103,48 +71,49 @@ scenario() {
     : > "$base/state/roles.log"
 }
 
+# Після зняття шляху відкату «обидва боки» більше не існують: лишився один,
+# PHP. Назва функції збережена, щоб не переписувати двадцять викликів нижче.
 scenario_both() {
-    for ACTIVE in sh php; do scenario "$@"; done
+    ACTIVE=php
+    scenario "$@"
 }
 
 run_side() {
-    local side="$1" base="$WORK/$1"; shift
+    local base="$WORK/$1"; shift
+    # Копіювання `bdo.php` сюди більше не потрібне: воно освіжало ДРУГУ
+    # пісочницю (bash-бік), а після зняття відкату бік один · і `cp` став
+    # копіюванням файла самого на себе, на чому тест і падав.
     set +e
-    (cd "$base" && BDO_STATE_DIR="$base/state" BDO_ORCHESTRATOR="$side" BDO_STEP_REPORT="${RUN_REPORT:-0}" bash cli/run/run-loop.sh "$@") >"$base/stdout" 2>"$base/stderr"
+    (cd "$base" && BDO_STATE_DIR="$base/state" BDO_STEP_REPORT="${RUN_REPORT:-0}" php cli/bdo.php run-loop "$@") >"$base/stdout" 2>"$base/stderr"
     local code=$?
     set -e
     printf '%s\n' "$code" > "$base/code"
 }
 
 run_both() {
-    for side in sh php; do run_side "$side" "$@"; done
+    run_side php "$@"
 }
 
 expect_codes() {
     local expected="$1"
-    for side in sh php; do
-        test "$(cat "$WORK/$side/code")" = "$expected" \
-            || fail "$side code $(cat "$WORK/$side/code"), expected $expected"
-    done
+    test "$(cat "$WORK/php/code")" = "$expected" \
+        || fail "php code $(cat "$WORK/php/code"), expected $expected"
 }
 
 output() { cat "$WORK/$1/stdout" "$WORK/$1/stderr"; }
 expect_each() {
     local pattern="$1"
-    for side in sh php; do grep -Fq "$pattern" <(output "$side") \
-        || fail "$side output misses: $pattern"; done
+    grep -Fq "$pattern" <(output php) || fail "php output misses: $pattern"
 }
 
-normalize() { sed -E 's/^\[[0-9]{2}:[0-9]{2}:[0-9]{2}\] /[TIME] /' "$1"; }
-compare_streams() {
-    local stream="$1"
-    local a="$WORK/sh/$stream.norm" b="$WORK/php/$stream.norm"
-    normalize "$WORK/sh/$stream" > "$a"
-    normalize "$WORK/php/$stream" > "$b"
-    cmp -s "$a" "$b" || fail "shell/PHP $stream divergence:\n$(diff -u "$a" "$b")"
-}
+# `compare_streams` тут більше немає НАВМИСНО: він звіряв вивід sh із виводом
+# php, а після зняття відкату обидва боки були б одним і тим самим прогоном.
+# Таке порівняння здатне впасти лише на недетермінованості, тобто нічого не
+# доводить. Сценарії нижче тримаються на своїх справжніх твердженнях · порядку
+# ролей, вмісті `calls.log` і відсутності виконання команди з конверта.
 
-# ПРАВИЛО: frozen shell rollback і native PHP loop мусять виконувати ті самі envelope-рішення; порядок тримає код, next.command ніколи не виконується.
+# ПРАВИЛО: native PHP loop виконує лише envelope-рішення; порядок тримає код,
+# next.command ніколи не виконується.
 # САБОТАЖ: дозволити human-mode «патч», обійти blocked/spin guard або почати другу пачку попри --batches 1 · цей тест мусить впасти.
 
 # 1. Кожен child мусить бути виконаний в обох orchestrator paths.
@@ -155,12 +124,9 @@ scenario_both \
     '{"ok":true,"state":"verified","next":{"kind":"complete"}}'
 run_both
 expect_codes 0
-for side in sh php; do
-    roles="$(tr '\n' ' ' < "$WORK/$side/state/roles.log")"
-    test "$roles" = "translation-terminology translation-worker translation-qa " \
-        || fail "$side roles out of order: $roles"
-done
-compare_streams stdout; compare_streams stderr
+roles="$(tr '\n' ' ' < "$WORK/php/state/roles.log")"
+test "$roles" = "translation-terminology translation-worker translation-qa " \
+    || fail "roles out of order: $roles"
 
 # 2. continue_run складає fixed argv, не виконує command із envelope.
 scenario_both \
@@ -168,18 +134,10 @@ scenario_both \
     '{"ok":true,"state":"verified","next":{"kind":"goal_complete","goal":{"mode":"patch","patch":"7","domain":""}}}'
 run_both
 expect_codes 0
-for side in sh php; do
-    if [ "$side" = sh ]; then
-        grep -Fqx 'mode start patch 50 7 quest' "$WORK/$side/state/calls.log" \
-            || fail "$side did not start the next batch"
-    else
-        grep -Fqx 'run-mode patch 50 7 quest' "$WORK/$side/state/calls.log" \
-            || fail "$side did not start the next batch with fixed PHP argv"
-    fi
-    ! grep -Fq 'rm -rf' "$WORK/$side/state/calls.log" \
-        || fail "$side executed envelope command"
-done
-compare_streams stdout; compare_streams stderr
+grep -Fqx 'run-mode patch 50 7 quest' "$WORK/php/state/calls.log" \
+    || fail 'рушій не почав наступну пачку фіксованим argv'
+! grep -Fq 'rm -rf' "$WORK/php/state/calls.log" \
+    || fail 'рушій виконав команду з конверта'
 
 # 3. Unknown mode and suspicious domain are named failures.
 scenario_both '{"ok":true,"state":"verified","next":{"kind":"continue_run","remaining":10,"goal":{"mode":"чужий-режим","patch":"7","domain":""}}}'
@@ -190,12 +148,12 @@ scenario_both '{"ok":true,"state":"verified","next":{"kind":"continue_run","rema
 run_both; expect_codes 1; expect_each 'підозріла категорія'
 
 # 4. Human stdout before envelope is data, not a second step.
-for side in sh php; do printf 'payload QA: 50 рядків | глосарій 26 | без відповідника 0\nще один людський рядок\n' > "$WORK/$side/state/noise"; done
+printf 'payload QA: 50 рядків | глосарій 26 | без відповідника 0\nще один людський рядок\n' > "$WORK/php/state/noise"
 scenario_both \
     '{"ok":true,"state":"awaiting_qa","next":{"kind":"child","role":"translation-qa","payload_path":"p","response_path":"r"}}' \
     '{"ok":true,"state":"verified","next":{"kind":"complete"}}'
 run_both; expect_codes 0
-for side in sh php; do test "$(tr '\n' ' ' < "$WORK/$side/state/roles.log")" = 'translation-qa ' || fail "$side parsed human stdout incorrectly"; done
+test "$(tr '\n' ' ' < "$WORK/php/state/roles.log")" = 'translation-qa ' || fail 'людський stdout розібрано як крок'
 rm -f "$WORK"/*/state/noise
 
 # 5. No envelope, blocked, unknown kind and drive error remain named failures.
@@ -205,7 +163,7 @@ scenario_both '{"ok":true,"state":"awaiting_qa","next":{"kind":"нове_щос�
 scenario_both '{"ok":true,"state":"awaiting_worker","next":{"kind":"stop"}}'; FAKE_DRIVE_BOOM='рушій зламався тут' run_both; unset FAKE_DRIVE_BOOM; expect_codes 1; expect_each 'рушій зламався тут'
 
 # 6. Retry spin budget, signal normalization and child nonzero are equal.
-for side in sh php; do { for _ in $(seq 1 20); do printf '%s\n' '{"ok":true,"state":"awaiting_qa","next":{"kind":"retry","reason":"context_unavailable"}}'; done; } > "$WORK/$side/state/scenario"; done
+{ for _ in $(seq 1 20); do printf '%s\n' '{"ok":true,"state":"awaiting_qa","next":{"kind":"retry","reason":"context_unavailable"}}'; done; } > "$WORK/php/state/scenario"
 BDO_LOOP_SPIN_LIMIT=3 run_both; expect_codes 1; expect_each 'не рухається'
 scenario_both '{"ok":true,"state":"awaiting_worker","next":{"kind":"child","role":"translation-worker","payload_path":"p","response_path":"r"}}'; FAKE_CHILD_FAILS=1 run_both; unset FAKE_CHILD_FAILS; expect_codes 1; expect_each 'не дала відповіді'
 scenario_both 'без конверта'; FAKE_DRIVE_SIGNAL=130 run_both; unset FAKE_DRIVE_SIGNAL; expect_codes 1; expect_each 'перервано ззовні'
@@ -214,13 +172,8 @@ scenario_both 'без конверта'; FAKE_DRIVE_SIGNAL=143 run_both; unset F
 # 7. once/batch limits, reporter fail-soft and unknown CLI args are both paths.
 scenario_both '{"ok":true,"state":"verified","next":{"kind":"continue_run","remaining":10,"goal":{"mode":"patch","patch":"7","domain":"quest"}}}'
 RUN_REPORT=1 run_both --once; unset RUN_REPORT; expect_codes 0
-for side in sh php; do
-    if [ "$side" = sh ]; then
-        grep -Fqx 'mode start patch 50 7 quest' "$WORK/$side/state/calls.log" || fail "$side --once skipped mode start"
-    else
-        grep -Fqx 'run-mode patch 50 7 quest' "$WORK/$side/state/calls.log" || fail "$side --once skipped mode start"
-    fi
-done
+grep -Fqx 'run-mode patch 50 7 quest' "$WORK/php/state/calls.log" \
+    || fail '--once пропустив старт наступної пачки'
 scenario_both '{"ok":true,"state":"verified","next":{"kind":"continue_run","remaining":10,"goal":{"mode":"patch","patch":"7","domain":"quest"}}}'
 run_both --batches 1; expect_codes 0
 scenario_both '{"ok":true,"state":"verified","next":{"kind":"complete"}}'; run_both --what; expect_codes 2
@@ -244,4 +197,4 @@ try { $w->completeStep("terminology", "b.json", str_repeat("2", 64)); exit(1); }
 catch (RuntimeException $e) { if (! str_contains($e->getMessage(), "вже завершений")) exit(1); }
 ' "$ROOT/lib/autoload.php" || fail 'completeStep regression зникла'
 
-echo 'OK: shell і native PHP loop виконують однакові envelope-рішення.'
+echo 'OK: цикл виконує лише рішення з конверта · порядок тримає код, команда з конверта не виконується.'

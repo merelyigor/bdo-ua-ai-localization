@@ -108,10 +108,10 @@ BASE_ENV=(TRANSLATE_ENV_FILE="$TMP/env" BDO_STATE_DIR="$TMP/state")
 mkdir -p "$TMP/state"
 
 run_capture() {
-    local name="$1" orchestrator="$2"
+    local name="$1" _orchestrator="$2"
     shift 2
     set +e
-    env "${BASE_ENV[@]}" BDO_ORCHESTRATOR="$orchestrator" "$ROOT/bdo" "$@" >"$TMP/$name.out" 2>"$TMP/$name.err"
+    env "${BASE_ENV[@]}" "$ROOT/bdo" "$@" >"$TMP/$name.out" 2>"$TMP/$name.err"
     local code=$?
     set -e
     printf '%s\n' "$code" >"$TMP/$name.code"
@@ -148,10 +148,10 @@ echo $output->color('__COLOR_PROBE__', '34')."\n";
 PHP
 
 pty_capture() {
-    local name="$1" orchestrator="$2"
+    local name="$1"
     local session="bdo-cli-api-${name}-$$"
     tmux new-session -d -s "$session" -x 200 -y 40 \
-        "env ${BASE_ENV[*]} BDO_ORCHESTRATOR=$orchestrator '$ROOT/bdo' api; code=\$?; php '$TMP/color-probe.php' '$ROOT/lib/autoload.php'; printf '\\n__CODE__:%s\\n' \$code; sleep 1"
+        "env ${BASE_ENV[*]} '$ROOT/bdo' api; code=\$?; php '$TMP/color-probe.php' '$ROOT/lib/autoload.php'; printf '\\n__CODE__:%s\\n' \$code; sleep 1"
     for _ in $(seq 1 80); do
         if tmux capture-pane -e -t "$session" -p | grep -Fq '__CODE__:'; then
             tmux capture-pane -e -t "$session" -p >"$TMP/$name.pty"
@@ -175,8 +175,10 @@ pty_capture() {
     tmux kill-session -t "$session" 2>/dev/null || true
 }
 
-pty_capture pty-sh sh
-pty_capture pty-php php
-cmp -s "$TMP/pty-sh.pty" "$TMP/pty-php.pty" || { echo 'FAIL: api PTY stdout' >&2; exit 1; }
+# Раніше тут знімались ДВА PTY · sh і php · і порівнювались між собою. Після
+# зняття шляху відкату обидва знімки робила б та сама команда, тому порівняння
+# стало б фіктивним: воно могло впасти лише на недетермінованості. Лишаємо те,
+# що справді щось доводить · живий колір у справжньому терміналі.
+pty_capture pty
 
-echo 'cli api reports: 5 команд, rollback, помилка API, stderr/stdout і PTY: OK'
+echo 'cli api reports: 5 команд, помилка API, stderr/stdout і PTY: OK'

@@ -65,8 +65,8 @@ BDO_API_BASE_DEV=http://127.0.0.1:1
 BDO_API_KEY_DEV=test
 ENV
 
-BDO_STATE_DIR="$STATE" bash "$ROOT/cli/batch/batch-new.sh" "$STATE/rows.json" >/dev/null
-B="$(BDO_STATE_DIR="$STATE" bash "$ROOT/cli/batch/batch-dir.sh")"
+BDO_STATE_DIR="$STATE" php "$ROOT/cli/bdo.php" batch-new "$STATE/rows.json" >/dev/null
+B="$(BDO_STATE_DIR="$STATE" php "$ROOT/cli/bdo.php" batch-dir)"
 php -r '$m=json_decode(file_get_contents($argv[1]),true);$m["state"]="awaiting_terminology";$m["mode"]="patch";$m["channel"]="machine";
     file_put_contents($argv[1],json_encode($m,JSON_PRETTY_PRINT|JSON_UNESCAPED_UNICODE));' "$B/manifest.json"
 
@@ -74,7 +74,7 @@ php -r '$m=json_decode(file_get_contents($argv[1]),true);$m["state"]="awaiting_t
 # після термінолога рушій іде в підготовку воркера, а вона офлайн законно каже
 # `context_unavailable`. Нас цікавить саме конверт, тому код гасимо явно.
 drive() { TRANSLATE_ENV_FILE="$TMP/.env" BDO_AUTO_CLEAN=0 BDO_TERM_RESOLVE_TIMEOUT=1 \
-    BDO_STATE_DIR="$STATE" bash "$ROOT/cli/run/run-drive.sh" 2>/dev/null | tail -1 || true; }
+    BDO_STATE_DIR="$STATE" php "$ROOT/cli/bdo.php" run-drive 2>/dev/null | tail -1 || true; }
 
 # Стан `selected` · саме там рушій сам будує payload і бере ПЕРШУ частину.
 # Ключове: перевіряємо те, що зробив РУШІЙ, а не те, що підклав тест.
@@ -140,8 +140,8 @@ if ($with !== count($d)) {
 # Готуємо ту саму пачку наново й НЕ відповідаємо на першу частину, вичерпавши
 # бюджет повторів. Рушій мусить пропустити саме її й піти далі.
 rm -rf "$STATE/batches" "$STATE/current-batch"
-BDO_STATE_DIR="$STATE" bash "$ROOT/cli/batch/batch-new.sh" "$STATE/rows.json" >/dev/null
-B="$(BDO_STATE_DIR="$STATE" bash "$ROOT/cli/batch/batch-dir.sh")"
+BDO_STATE_DIR="$STATE" php "$ROOT/cli/bdo.php" batch-new "$STATE/rows.json" >/dev/null
+B="$(BDO_STATE_DIR="$STATE" php "$ROOT/cli/bdo.php" batch-dir)"
 php -r '$m=json_decode(file_get_contents($argv[1]),true);$m["state"]="selected";$m["mode"]="patch";$m["channel"]="machine";
     file_put_contents($argv[1],json_encode($m,JSON_PRETTY_PRINT|JSON_UNESCAPED_UNICODE));' "$B/manifest.json"
 drive >/dev/null
@@ -154,7 +154,7 @@ test "$first_chunk" = 0 || fail "курсор частин почався не �
 starve() {
     TRANSLATE_ENV_FILE="$TMP/.env" BDO_AUTO_CLEAN=0 \
         BDO_CHILD_RETRY_WINDOW_SECONDS=1 BDO_CHILD_RETRY_TOTAL_SECONDS=1 \
-        BDO_STATE_DIR="$STATE" bash "$ROOT/cli/run/run-drive.sh" 2>/dev/null | tail -1 || true
+        BDO_STATE_DIR="$STATE" php "$ROOT/cli/bdo.php" run-drive 2>/dev/null | tail -1 || true
 }
 starve >/dev/null
 sleep 2

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Довести парність write/commit/moderation між rollback shell і PHP.
+# Перевіряє поведінку write/commit/moderation через PHP.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 TMP="$(mktemp -d)"
@@ -20,7 +20,7 @@ trap '[ -z "$SERVER" ] || kill "$SERVER" 2>/dev/null || true; rm -rf "$TMP"' EXI
 fail() { printf 'FAIL: %s\n' "$1" >&2; exit 1; }
 
 # ПРАВИЛО: routing proof працює на synthetic DEV env, а не читає production `.env`.
-# САБОТАЖ: відсутній dispatcher не має дістатися до реального target або ключа.
+# САБОТАЖ: відсутній внутрішній PHP-маршрут не має дістатися до реального target або ключа.
 PORT=$((28000 + RANDOM % 1000))
 BASE_URL="http://127.0.0.1:$PORT"
 cat > "$TMP/env" <<ENV
@@ -34,17 +34,6 @@ export TRANSLATE_ENV_FILE="$TMP/env"
 # САБОТАЖ: зміна scheme або host мусить зупинити тест до першого write.
 "$REAL_PHP" -r '$u=parse_url($argv[1]);exit(($u["scheme"]??"")==="http"&&($u["host"]??"")==="127.0.0.1"?0:1);' "$BASE_URL" \
     || fail 'write-test URL не є localhost DEV'
-
-# ПРАВИЛО: default/php wrapper мусить передати internal route у Kernel.
-# САБОТАЖ: вилучення dispatcher має зробити routing proof червоним.
-mkdir -p "$TMP/fake-php"
-printf '%s\n' '#!/usr/bin/env bash' 'case "$1:$2" in' '*/cli/bdo.php:commit|*/cli/bdo.php:write|*/cli/bdo.php:moderation) printf "__ROUTE__ %s\n" "$2"; exit 0 ;;' '*) exit 91 ;;' 'esac' > "$TMP/fake-php/php"
-chmod +x "$TMP/fake-php/php"
-for pair in 'cli/batch/batch-commit.sh commit' 'cli/write/write-translations.sh write' 'cli/write/moderation-queue.sh moderation'; do
-    set -- $pair
-    route="$(PATH="$TMP/fake-php:/usr/bin:/bin" BDO_ORCHESTRATOR=php bash "$ROOT/$1")" || fail "routing $1"
-    grep -Fq "__ROUTE__ $2" <<<"$route" || fail "routing $1 не дала $2"
-done
 
 printf 'list\n' > "$TMP/stub-mode"
 cat > "$TMP/router.php" <<'PHP'
@@ -134,21 +123,26 @@ normalizer_self_test() {
 }
 normalizer_self_test
 run_capture() {
-    local label="$1" state="$2" orchestrator="$3" script="$4"; shift 4
+    local label="$1" state="$2" _side="$3" script="$4" internal; shift 4
+    case "$script" in
+        cli/batch/batch-commit.sh) internal='commit' ;;
+        cli/write/write-translations.sh) internal='write' ;;
+        cli/write/moderation-queue.sh) internal='moderation' ;;
+        *) fail "невідома PHP-команда $script" ;;
+    esac
     mkdir -p "$state"
     : > "$TMP/requests.log"
     set +e
-    STUB_LOG="$TMP/requests.log" BDO_STATE_DIR="$state" BDO_ORCHESTRATOR="$orchestrator" bash "$ROOT/$script" "$@" >"$TMP/$label.out" 2>"$TMP/$label.err"
+    STUB_LOG="$TMP/requests.log" BDO_STATE_DIR="$state" php "$ROOT/cli/bdo.php" "$internal" "$@" >"$TMP/$label.out" 2>"$TMP/$label.err"
     printf '%s\n' "$?" > "$TMP/$label.code"
     cp "$TMP/requests.log" "$TMP/$label.log"
     set -e
 }
-compare_pair() {
+assert_php_capture() {
     local name="$1"
-    cmp -s <(normalize < "$TMP/$name.sh.out") <(normalize < "$TMP/$name.php.out") || { diff -u <(normalize < "$TMP/$name.sh.out") <(normalize < "$TMP/$name.php.out") >&2 || true; fail "$name stdout"; }
-    cmp -s <(normalize < "$TMP/$name.sh.err") <(normalize < "$TMP/$name.php.err") || { diff -u <(normalize < "$TMP/$name.sh.err") <(normalize < "$TMP/$name.php.err") >&2 || true; fail "$name stderr"; }
-    cmp -s "$TMP/$name.sh.code" "$TMP/$name.php.code" || fail "$name code"
-    cmp -s "$TMP/$name.sh.log" "$TMP/$name.php.log" || { diff -u "$TMP/$name.sh.log" "$TMP/$name.php.log" >&2 || true; fail "$name request log"; }
+    test -s "$TMP/$name.php.out" || test -s "$TMP/$name.php.err" || test "$(<"$TMP/$name.php.code")" != 0 \
+        || fail "$name: PHP не залишив observable результату"
+    test -f "$TMP/$name.php.log" || fail "$name: PHP request log відсутній"
 }
 
 # ПРАВИЛО: channel mapping і LIST data.writes.channels є source of truth.
@@ -163,8 +157,8 @@ for channel in machine manual proposal; do
     run_capture "write-$channel.php" "$TMP/state-write-$channel-php" php cli/write/write-translations.sh --channel "$channel" --idempotency-key stable "$TMP/items.json"
     receipt="$(find "$HARNESS_OUTPUT" -maxdepth 1 -name 'write_*.json' -print | sort | tail -1)"; test -n "$receipt" || fail "write $channel php receipt"
     cp "$receipt" "$TMP/write-$channel.php.receipt"
-    compare_pair "write-$channel"
-    cmp -s <(normalize < "$TMP/write-$channel.sh.receipt") <(normalize < "$TMP/write-$channel.php.receipt") || fail "write $channel receipt"
+    assert_php_capture "write-$channel"
+    test -s "$TMP/write-$channel.php.receipt" || fail "write $channel receipt"
     request="$(tail -1 "$TMP/requests.log")"
     grep -Fq '"method":"POST"' <<<"$request" && grep -Fq 'translations' <<<"$request" || { cat "$TMP/requests.log" >&2; fail "write $channel POST"; }
     case "$channel" in
@@ -174,7 +168,7 @@ for channel in machine manual proposal; do
     esac
     test -f "$TMP/state-write-$channel-sh/write-log.jsonl" || fail "write $channel shell write-log"
     test -f "$TMP/state-write-$channel-php/write-log.jsonl" || fail "write $channel php write-log"
-    cmp -s <(normalize < "$TMP/state-write-$channel-sh/write-log.jsonl") <(normalize < "$TMP/state-write-$channel-php/write-log.jsonl") || fail "write $channel write-log"
+    test -s "$TMP/state-write-$channel-php/write-log.jsonl" || fail "write $channel write-log"
 done
 
 # ПРАВИЛО: legacy /me fallback має бути паритетним для кожного channel.
@@ -185,7 +179,7 @@ for channel in machine manual proposal; do
     run_capture "legacy-$channel.sh" "$TMP/state-legacy-$channel-sh" sh cli/write/write-translations.sh --channel "$channel" --idempotency-key stable "$TMP/items.json"
     find "$HARNESS_OUTPUT" -maxdepth 1 -type f -name 'write_*.json' -delete
     run_capture "legacy-$channel.php" "$TMP/state-legacy-$channel-php" php cli/write/write-translations.sh --channel "$channel" --idempotency-key stable "$TMP/items.json"
-    compare_pair "legacy-$channel"
+    assert_php_capture "legacy-$channel"
 done
 printf 'list\n' > "$TMP/stub-mode"
 
@@ -248,7 +242,7 @@ find "$HARNESS_OUTPUT" -maxdepth 1 -type f -name 'write_*.json' -delete
 run_capture no-meta.sh "$TMP/state-no-meta-sh" sh cli/write/write-translations.sh --channel machine --idempotency-key stable "$TMP/items.json"
 find "$HARNESS_OUTPUT" -maxdepth 1 -type f -name 'write_*.json' -delete
 run_capture no-meta.php "$TMP/state-no-meta-php" php cli/write/write-translations.sh --channel machine --idempotency-key stable "$TMP/items.json"
-compare_pair no-meta
+assert_php_capture no-meta
 grep -Fq '"layer":null' "$TMP/state-no-meta-php/write-log.jsonl" || fail 'missing layer не став null'
 grep -Fq '"mode":null' "$TMP/state-no-meta-php/write-log.jsonl" || fail 'missing mode не став null'
 grep -Fq '"auto_approve":null' "$TMP/state-no-meta-php/write-log.jsonl" || fail 'missing auto_approve не став null'
@@ -275,10 +269,10 @@ find "$HARNESS_OUTPUT" -maxdepth 1 -type f -name 'write_*.json' -delete
 run_capture current-write.sh "$TMP/state-current-sh" sh cli/batch/batch-commit.sh "$TMP/rows.json" "$TMP/candidate-dir/candidate.json" "$TMP/verdicts.json" --write --idempotency-key-prefix current
 find "$HARNESS_OUTPUT" -maxdepth 1 -type f -name 'write_*.json' -delete
 run_capture current-write.php "$TMP/state-current-php" php cli/batch/batch-commit.sh "$TMP/rows.json" "$TMP/candidate-dir/candidate.json" "$TMP/verdicts.json" --write --idempotency-key-prefix current
-compare_pair current-write
+assert_php_capture current-write
 test -f "$TMP/state-current-sh/batches/current-sh/batch-summary.json" || fail 'shell summary не в current workspace'
 test -f "$TMP/state-current-php/batches/current-php/batch-summary.json" || fail 'PHP summary не в current workspace'
-cmp -s "$TMP/state-current-sh/batches/current-sh/batch-summary.json" "$TMP/state-current-php/batches/current-php/batch-summary.json" || fail 'current summary розійшовся'
+test -s "$TMP/state-current-php/batches/current-php/batch-summary.json" || fail 'current summary відсутній'
 grep -Fq 'fixture-provider' "$TMP/current-write.php.log" || { cat "$TMP/current-write.php.out" "$TMP/current-write.php.err" "$TMP/current-write.php.log" >&2; fail 'current receipt route не використано'; }
 grep -Fq 'fixture-model' "$TMP/current-write.php.log" || { cat "$TMP/current-write.php.out" "$TMP/current-write.php.err" "$TMP/current-write.php.log" >&2; fail 'current model provenance не використано'; }
 make_current_workspace "$TMP/state-bare-sh" 'bare-route' bare-sh
@@ -287,7 +281,7 @@ find "$HARNESS_OUTPUT" -maxdepth 1 -type f -name 'write_*.json' -delete
 run_capture bare-route.sh "$TMP/state-bare-sh" sh cli/batch/batch-commit.sh "$TMP/rows.json" "$TMP/candidate-dir/candidate.json" "$TMP/verdicts.json" --write --idempotency-key-prefix bare
 find "$HARNESS_OUTPUT" -maxdepth 1 -type f -name 'write_*.json' -delete
 run_capture bare-route.php "$TMP/state-bare-php" php cli/batch/batch-commit.sh "$TMP/rows.json" "$TMP/candidate-dir/candidate.json" "$TMP/verdicts.json" --write --idempotency-key-prefix bare
-compare_pair bare-route
+assert_php_capture bare-route
 grep -Fq '\"provider\":\"bare-route\"' "$TMP/bare-route.php.log" || fail 'bare route provider'
 grep -Fq '\"model\":\"bare-route\"' "$TMP/bare-route.php.log" || fail 'bare route model'
 
@@ -301,7 +295,7 @@ find "$HARNESS_OUTPUT" -maxdepth 1 -type f -name 'write_*.json' -delete
 run_capture config-fallback.sh "$TMP/state-config-sh" sh cli/batch/batch-commit.sh "$TMP/rows.json" "$TMP/candidate-dir/candidate.json" "$TMP/verdicts.json" --write --idempotency-key-prefix config
 find "$HARNESS_OUTPUT" -maxdepth 1 -type f -name 'write_*.json' -delete
 run_capture config-fallback.php "$TMP/state-config-php" php cli/batch/batch-commit.sh "$TMP/rows.json" "$TMP/candidate-dir/candidate.json" "$TMP/verdicts.json" --write --idempotency-key-prefix config
-compare_pair config-fallback
+assert_php_capture config-fallback
 grep -Fq '\"provider\":\"ollama\"' "$TMP/config-fallback.php.log" || fail 'config fallback provider'
 grep -Fq "\\\"model\\\":\\\"$CONFIG_MODEL\\\"" "$TMP/config-fallback.php.log" || fail 'config fallback model'
 test -f "$TMP/state-config-sh/batches/config-sh/batch-summary.json" || fail 'config shell summary location'
@@ -325,7 +319,7 @@ for spec in \
     run_capture "moderation-$name.sh" "$TMP/state-moderation-$name-sh" sh cli/write/moderation-queue.sh "${args[@]+"${args[@]}"}"
     : > "$TMP/requests.log"
     run_capture "moderation-$name.php" "$TMP/state-moderation-$name-php" php cli/write/moderation-queue.sh "${args[@]+"${args[@]}"}"
-    compare_pair "moderation-$name"
+    assert_php_capture "moderation-$name"
 done
 printf 'list\n' > "$TMP/stub-mode"
 
@@ -338,7 +332,7 @@ printf 'list\n' > "$TMP/stub-mode"
 run_capture commit-dry.sh "$TMP/state-commit-sh" sh cli/batch/batch-commit.sh "$TMP/rows20.json" "$TMP/candidate20.json" "$TMP/verdicts20.json" --channel manual
 : > "$TMP/requests.log"
 run_capture commit-dry.php "$TMP/state-commit-php" php cli/batch/batch-commit.sh "$TMP/rows20.json" "$TMP/candidate20.json" "$TMP/verdicts20.json" --channel manual
-compare_pair commit-dry
+assert_php_capture commit-dry
 grep -Fq 'Пачка: 20 рядків' "$TMP/commit-dry.php.out" || fail 'dry-run 20 rows'
 grep -Fq 'До запису: 13 | у модерацію: 7 (з них нерозпізнані назви: 0) | у карантин (збої): 0' "$TMP/commit-dry.php.out" || fail 'dry-run mixed composition'
 if grep -Eq 'Карантин:[^()]*\([[:space:]]+[0-9]+ рядків усього\)' "$TMP/commit-dry.php.out"; then
@@ -392,7 +386,7 @@ for blocker in no-run env-mismatch quota; do
     run_capture "mixed-$blocker.sh" "$state_sh" sh cli/batch/batch-commit.sh "$TMP/blocker-rows.json" "$TMP/blocker-candidate.json" "$TMP/blocker-verdicts.json" --write --channel manual
     : > "$TMP/requests.log"
     run_capture "mixed-$blocker.php" "$state_php" php cli/batch/batch-commit.sh "$TMP/blocker-rows.json" "$TMP/blocker-candidate.json" "$TMP/blocker-verdicts.json" --write --channel manual
-    compare_pair "mixed-$blocker"
+assert_php_capture "mixed-$blocker"
     test "$(grep -c '"method":"POST"' "$TMP/mixed-$blocker.sh.log" || true)" -eq 0 || fail "mixed $blocker shell POST"
     test "$(grep -c '"method":"POST"' "$TMP/mixed-$blocker.php.log" || true)" -eq 0 || fail "mixed $blocker PHP POST"
     case "$blocker" in
@@ -425,8 +419,8 @@ grep -Fq '[суха]' "$TMP/moderation-dry.out" || fail 'moderation dry output'
 # САБОТАЖ: проковтнута відмова або неправильна межа side effects має зробити check червоним.
 printf '[{"identity_hash":"reject","source_hash":"source","text":"Відхилений"}]\n' > "$TMP/rejected-items.json"
 set +e
-FAIL_ON_REJECTED=1 STUB_LOG="$TMP/requests.log" BDO_STATE_DIR="$TMP/state-rejected" BDO_ORCHESTRATOR=php \
-    TRANSLATE_ENV_FILE="$TMP/env" bash "$ROOT/cli/write/write-translations.sh" --idempotency-key rejected "$TMP/rejected-items.json" >"$TMP/rejected.out" 2>"$TMP/rejected.err"
+FAIL_ON_REJECTED=1 STUB_LOG="$TMP/requests.log" BDO_STATE_DIR="$TMP/state-rejected" \
+    TRANSLATE_ENV_FILE="$TMP/env" php "$ROOT/cli/bdo.php" write --idempotency-key rejected "$TMP/rejected-items.json" >"$TMP/rejected.out" 2>"$TMP/rejected.err"
 code=$?
 set -e
 test "$code" -eq 2 || fail "FAIL_ON_REJECTED code=$code"
@@ -437,11 +431,11 @@ unset FAIL_ON_REJECTED
 run_capture rejected.sh "$TMP/state-rejected-sh" sh cli/write/write-translations.sh --idempotency-key rejected "$TMP/rejected-items.json"
 : > "$TMP/requests.log"
 run_capture rejected.php "$TMP/state-rejected-php" php cli/write/write-translations.sh --idempotency-key rejected "$TMP/rejected-items.json"
-compare_pair rejected
+assert_php_capture rejected
 for state_file in write-log.jsonl quarantine.jsonl row-attempts.jsonl; do
     test -f "$TMP/state-rejected-sh/$state_file" || fail "rejected shell $state_file"
     test -f "$TMP/state-rejected-php/$state_file" || fail "rejected php $state_file"
-    cmp -s <(normalize < "$TMP/state-rejected-sh/$state_file") <(normalize < "$TMP/state-rejected-php/$state_file") || fail "rejected $state_file"
+    test -s "$TMP/state-rejected-php/$state_file" || fail "rejected $state_file"
 done
 
 # ПРАВИЛО: individual moderation failure не зупиняє наступне рішення.

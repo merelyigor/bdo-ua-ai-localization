@@ -44,7 +44,7 @@ php -r 'file_put_contents($argv[1], json_encode(["success" => true, "data" => ["
 # 2. Сам payload: лише рядок із наказом, наказ · єдиний дефект.
 php -r 'file_put_contents($argv[1], json_encode([["identity_hash" => $argv[2], "text" => "Рух"], ["identity_hash" => $argv[3], "text" => "Залізний меч"]], JSON_THROW_ON_ERROR));' \
     "$STATE/final-candidate.json" "$H1" "$H2"
-payload="$(bash "$ROOT/cli/prepare/names-payload.sh" "$STATE/rows.json" "$STATE/final-candidate.json" "$STATE/validate.json" 2>/dev/null)"
+payload="$(php "$ROOT/cli/bdo.php" names-payload "$STATE/rows.json" "$STATE/final-candidate.json" "$STATE/validate.json" 2>/dev/null)"
 test "$(jq '.items | length' <<<"$payload")" = 1 || fail "у payload мусив бути 1 рядок: $payload"
 jq -e --arg h "$H1" '.items[0].identity_hash == $h and .items[0].current == "Рух" and .items[0].orders == ["ужий «Переміщення» для «Move»"]' <<<"$payload" >/dev/null \
     || fail "payload не несе єдиного наказу: $payload"
@@ -96,7 +96,7 @@ for layer in machine ''; do
         if ($argv[2] !== "") $t["ukrainian_layer"]=$argv[2];
         $d["data"]["rows"][0]["glossary"]["terms"]=[$t];
         file_put_contents($argv[1],json_encode($d,JSON_THROW_ON_ERROR|JSON_UNESCAPED_UNICODE));' "$STATE/rows.json" "$layer"
-    out="$(bash "$ROOT/cli/prepare/names-payload.sh" "$STATE/rows.json" "$STATE/final-candidate.json" "$STATE/validate.json" 2>"$TMP/err")"
+    out="$(php "$ROOT/cli/bdo.php" names-payload "$STATE/rows.json" "$STATE/final-candidate.json" "$STATE/validate.json" 2>"$TMP/err")"
     test "$(jq '.items | length' <<<"$out")" = 0 || fail "походження назви «${layer:-невідоме}» мусило пропустити наказ: $out"
     grep -q 'пропущено 1' "$TMP/err" || fail "пропуск не названо вголос (${layer:-невідоме}): $(cat "$TMP/err")"
 done
@@ -104,7 +104,7 @@ done
 php -r '$d=json_decode(file_get_contents($argv[1]),true);
     $d["data"]["rows"][0]["glossary"]["terms"]=[["canonical_source"=>"Move","ukrainian"=>"Переміщення","ukrainian_layer"=>"manual","severity"=>"mandatory"]];
     file_put_contents($argv[1],json_encode($d,JSON_THROW_ON_ERROR|JSON_UNESCAPED_UNICODE));' "$STATE/rows.json"
-test "$(bash "$ROOT/cli/prepare/names-payload.sh" "$STATE/rows.json" "$STATE/final-candidate.json" "$STATE/validate.json" 2>/dev/null | jq '.items | length')" = 1 || fail 'людська назва не дала наказу'
+test "$(php "$ROOT/cli/bdo.php" names-payload "$STATE/rows.json" "$STATE/final-candidate.json" "$STATE/validate.json" 2>/dev/null | jq '.items | length')" = 1 || fail 'людська назва не дала наказу'
 
 # 3. Рушій: із ready_to_commit пачка іде в names_pass до repair, і лише раз.
 cat > "$TMP/.env" <<ENV
@@ -112,8 +112,8 @@ BDO_ENV=DEV
 BDO_API_BASE_DEV=http://127.0.0.1:1
 BDO_API_KEY_DEV=test
 ENV
-BDO_STATE_DIR="$STATE" bash "$ROOT/cli/batch/batch-new.sh" "$STATE/rows.json" >/dev/null
-B="$(BDO_STATE_DIR="$STATE" bash "$ROOT/cli/batch/batch-dir.sh")"
+BDO_STATE_DIR="$STATE" php "$ROOT/cli/bdo.php" batch-new "$STATE/rows.json" >/dev/null
+B="$(BDO_STATE_DIR="$STATE" php "$ROOT/cli/bdo.php" batch-dir)"
 php -r '$m=json_decode(file_get_contents($argv[1]),true);$m["state"]="ready_to_commit";$m["mode"]="patch";$m["channel"]="machine";
     file_put_contents($argv[1],json_encode($m,JSON_PRETTY_PRINT|JSON_UNESCAPED_UNICODE));' "$B/manifest.json"
 cp "$STATE/final-candidate.json" "$B/final-candidate.json"
@@ -122,7 +122,7 @@ php -r 'file_put_contents($argv[1], json_encode([
     ["identity_hash" => $argv[3], "status" => "PASS", "severity" => "none", "issue" => "", "fix" => ""]], JSON_THROW_ON_ERROR));' \
     "$B/final-verdicts.json" "$H1" "$H2"
 drive() { TRANSLATE_ENV_FILE="$TMP/.env" BDO_PIPELINE_OFFLINE=1 BDO_AUTO_CLEAN=0 BDO_FINAL_VALIDATE_STUB="$STATE/validate.json" \
-    BDO_STATE_DIR="$STATE" bash "$ROOT/cli/run/run-drive.sh" 2>/dev/null | tail -1; }
+    BDO_STATE_DIR="$STATE" php "$ROOT/cli/bdo.php" run-drive 2>/dev/null | tail -1; }
 
 out="$(drive)"
 # Прохід по назвах виконує ОКРЕМА роль (рішення 2026-09-05): у неї свій вузький
@@ -157,14 +157,14 @@ jq -e '.state != "names_pass" and (.next.role // "") != "translation-repair"' <<
     || fail "прохід по назвах повторився: $out"
 
 # 6. Вимикач і межа: без validate або з BDO_NAMES_PASS=off проходу немає · це у коді, не в промпті.
-grep -Fq 'BDO_NAMES_PASS:-on' "$ROOT/cli/run/run-drive.sh" || fail 'немає вимикача проходу по назвах'
-grep -Fq 'names-pass.done' "$ROOT/cli/run/run-drive.sh" || fail 'немає межі «один прохід на пачку»'
+grep -Fq 'BDO_NAMES_PASS' "$ROOT/lib/Cli/Command/Run/RunDriveCommand.php" || fail 'немає вимикача проходу по назвах'
+grep -Fq 'names-pass.done' "$ROOT/lib/Cli/Command/Run/RunDriveCommand.php" || fail 'немає межі «один прохід на пачку»'
 # Репарувальник мусить знати, що означає наказ · це виміряний дефект промпта, а не смак.
 grep -Fq 'Дефект виду «ужий «X» для «Y»» означає' "$ROOT/roles/translation-repair.md" \
     || fail 'промпт repair не пояснює наказ «ужий»'
 # Межа стоїть у КОДІ, а не в промпті: machine-вимога не стає наказом.
 php -r '$d=json_decode(file_get_contents($argv[1]),true);$d["data"]["rows"][0]["glossary"]["terms"][0]["ukrainian_layer"]="machine";file_put_contents($argv[1],json_encode($d,JSON_UNESCAPED_UNICODE));' "$STATE/rows.json"
-machine_payload="$(bash "$ROOT/cli/prepare/names-payload.sh" "$STATE/rows.json" "$STATE/final-candidate.json" "$STATE/validate.json" 2>/dev/null)" \
+machine_payload="$(php "$ROOT/cli/bdo.php" names-payload "$STATE/rows.json" "$STATE/final-candidate.json" "$STATE/validate.json" 2>/dev/null)" \
     || fail 'прохід по назвах упав на машинному походженні'
 test "$(jq '.items | length' <<<"$machine_payload")" = 0 \
     || fail 'машинна назва потрапила в наказ проходу по назвах'

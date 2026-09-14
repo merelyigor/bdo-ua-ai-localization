@@ -32,7 +32,7 @@ $workspace->transition('awaiting_worker');
 file_put_contents($workspace->path('candidate.json'), '{broken');
 
 $repo = dirname(__DIR__);
-$command = sprintf('BDO_PIPELINE_OFFLINE=1 BDO_STATE_DIR=%s bash %s', escapeshellarg($root), escapeshellarg($repo.'/cli/run/run-drive.sh'));
+$command = sprintf('BDO_PIPELINE_OFFLINE=1 BDO_STATE_DIR=%s php %s run-drive', escapeshellarg($root), escapeshellarg($repo.'/cli/bdo.php'));
 exec($command, $lines, $exit);
 check($exit === 0, 'invalid candidate stopped the driver');
 $envelope = json_decode(implode("\n", $lines), true, 512, JSON_THROW_ON_ERROR);
@@ -60,7 +60,7 @@ file_put_contents($workspaceCandidate->path('candidate.json'), json_encode([[
     'source_hash' => hash('sha256', 'Ancient Sword'),
     'text' => 'Стародавній меч',
 ]], JSON_THROW_ON_ERROR));
-$resumeCommand = sprintf('BDO_PIPELINE_OFFLINE=1 BDO_STATE_DIR=%s bash %s', escapeshellarg($rootCandidate), escapeshellarg($repo.'/cli/run/run-drive.sh'));
+$resumeCommand = sprintf('BDO_PIPELINE_OFFLINE=1 BDO_STATE_DIR=%s php %s run-drive', escapeshellarg($rootCandidate), escapeshellarg($repo.'/cli/bdo.php'));
 $resumeOut = [];
 exec($resumeCommand, $resumeOut, $resumeCode);
 check($resumeCode === 0, 'candidate_valid resume stopped the driver');
@@ -77,7 +77,7 @@ $workspace2 = Workspace::create($root2, RowSet::fromFile($rowsPath), '20260823_1
 copy($rowsPath, $workspace2->path('rows.json'));
 $workspace2->transition('prepared');
 $workspace2->transition('awaiting_worker');
-$command2 = sprintf('BDO_PIPELINE_OFFLINE=1 BDO_CHILD_RETRY_WINDOW_SECONDS=1 BDO_CHILD_RETRY_TOTAL_SECONDS=10 BDO_STATE_DIR=%s bash %s', escapeshellarg($root2), escapeshellarg($repo.'/cli/run/run-drive.sh'));
+$command2 = sprintf('BDO_PIPELINE_OFFLINE=1 BDO_CHILD_RETRY_WINDOW_SECONDS=1 BDO_CHILD_RETRY_TOTAL_SECONDS=10 BDO_STATE_DIR=%s php %s run-drive', escapeshellarg($root2), escapeshellarg($repo.'/cli/bdo.php'));
 // Застаріла схема на диску мусить перебудуватись на КОЖНІЙ емісії child.
 //
 // 2026-08-27: пачка висіла в `awaiting_worker`, а схема була від попереднього
@@ -146,7 +146,7 @@ $partial = [[
 ]];
 $fillVerdicts = $fillRoot.'/verdicts.json';
 file_put_contents($fillVerdicts, json_encode($partial, JSON_UNESCAPED_UNICODE));
-exec(sprintf('bash %s %s %s 2>&1', escapeshellarg($repo.'/cli/quality/qa-coverage-fill.sh'),
+exec(sprintf('php %s qa-coverage-fill %s %s 2>&1', escapeshellarg($repo.'/cli/bdo.php'),
     escapeshellarg($fillRows), escapeshellarg($fillVerdicts)), $fillOut, $fillCode);
 check($fillCode === 0, 'добивання покриття впало: '.implode(' | ', $fillOut));
 $filled = json_decode((string) file_get_contents($fillVerdicts), true);
@@ -156,7 +156,7 @@ check(($added[0]['status'] ?? '') === 'REVIEW' && ($added[0]['severity'] ?? '') 
     'добитий вирок мусить іти до людини, а не в шар');
 check(str_contains($added[0]['issue'] ?? '', 'QA не винесла вирок'), 'причина добивання не названа');
 // Повне покриття добивати нічого · код виходу ненульовий, файл не чіпаємо.
-exec(sprintf('bash %s %s %s 2>&1', escapeshellarg($repo.'/cli/quality/qa-coverage-fill.sh'),
+exec(sprintf('php %s qa-coverage-fill %s %s 2>&1', escapeshellarg($repo.'/cli/bdo.php'),
     escapeshellarg($fillRows), escapeshellarg($fillVerdicts)), $again, $againCode);
 check($againCode !== 0, 'повне покриття не мало давати успіх добивання');
 
@@ -183,7 +183,7 @@ foreach (['prepared', 'awaiting_worker', 'candidate_valid', 'deterministic_valid
 }
 file_put_contents($workspace3->path('qa-payload.json'), '[]');
 file_put_contents($workspace3->path('verdicts.json'), '[]');
-$command3 = sprintf('BDO_PIPELINE_OFFLINE=1 BDO_STATE_DIR=%s bash %s', escapeshellarg($root3), escapeshellarg($repo.'/cli/run/run-drive.sh'));
+$command3 = sprintf('BDO_PIPELINE_OFFLINE=1 BDO_STATE_DIR=%s php %s run-drive', escapeshellarg($root3), escapeshellarg($repo.'/cli/bdo.php'));
 $qaOut = [];
 exec($command3, $qaOut, $qaCode);
 check($qaCode === 0, 'incomplete QA did not schedule a bounded retry');

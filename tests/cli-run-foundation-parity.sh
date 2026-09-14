@@ -46,16 +46,11 @@ EOF
 }
 
 run_command() {
-    local side="$1" wrapper="$2" internal="$3" out="$4" err="$5" code="$6"
+    local _side="$1" _wrapper="$2" internal="$3" out="$4" err="$5" code="$6"
     shift 6
     set +e
-    if [ "$side" = sh ]; then
-        BDO_ORCHESTRATOR=sh TRANSLATE_ENV_FILE="$CURRENT_ENV" BDO_STATE_DIR="$CURRENT_STATE" \
-            bash "$wrapper" "$@" >"$out" 2>"$err"
-    else
-        BDO_ORCHESTRATOR=php TRANSLATE_ENV_FILE="$CURRENT_ENV" BDO_STATE_DIR="$CURRENT_STATE" \
-            "$REAL_PHP" "$ROOT/cli/bdo.php" "$internal" "$@" >"$out" 2>"$err"
-    fi
+    TRANSLATE_ENV_FILE="$CURRENT_ENV" BDO_STATE_DIR="$CURRENT_STATE" \
+        "$REAL_PHP" "$ROOT/cli/bdo.php" "$internal" "$@" >"$out" 2>"$err"
     local status=$?
     set -e
     printf '%s\n' "$status" >"$code"
@@ -113,31 +108,6 @@ make_env "$PROD_ENV" PROD legacy
 make_env "$HUB_DEV_ENV" DEV hub
 make_env "$HUB_PROD_ENV" PROD hub
 
-# ПРАВИЛО: кожен wrapper у default-PHP режимі має передати exact internal route.
-# САБОТАЖ: зміна dispatcher або route мусить впасти до behavior matrix.
-ROUTE_BIN="$TMP/route-bin"
-mkdir -p "$ROUTE_BIN"
-cat >"$ROUTE_BIN/php" <<'ROUTE'
-#!/bin/sh
-if [ "${1:-}" != "$ROUTE_ROOT/cli/bdo.php" ] || [ "${2:-}" != "$ROUTE_EXPECTED" ]; then
-    printf 'unexpected php route: %s %s\n' "${1:-}" "${2:-}" >&2
-    exit 99
-fi
-printf 'ROUTED:%s\n' "$2"
-ROUTE
-chmod +x "$ROUTE_BIN/php"
-for route in run-spec run-start run-stop; do
-    wrapper="$ROOT/cli/run/$route.sh"
-    ROUTE_ROOT="$ROOT" ROUTE_EXPECTED="$route" PATH="$ROUTE_BIN:$PATH" \
-        BDO_ORCHESTRATOR=php bash "$wrapper" --probe >"$TMP/$route.route" \
-        || fail "$route routing proof"
-    grep -Fq "ROUTED:$route" "$TMP/$route.route" || fail "$route marker missing"
-done
-if ROUTE_ROOT="$ROOT" ROUTE_EXPECTED=run-spec PATH="$ROUTE_BIN:$PATH" \
-    "$ROUTE_BIN/php" "$ROOT/cli/bdo.php" wrong >/dev/null 2>&1; then
-    fail 'fake php прийняв неправильний internal route'
-fi
-
 # ПРАВИЛО: run stop спершу пише підпис, а потім прибирає watch-сесію; зупинка
 # без пачки залишається успішною. Саботаж порядку або стану має зробити pair red.
 seed_stop_state() {
@@ -149,30 +119,18 @@ seed_stop_state() {
 }
 
 compare_stop_pair() {
-    local label="$1" reason="$2" attempt sh_state php_state sh_code php_code
-    for attempt in 1 2 3 4 5 6 7 8; do
-        sh_state="$TMP/stop-$label-$attempt-sh"
-        php_state="$TMP/stop-$label-$attempt-php"
-        mkdir -p "$sh_state" "$php_state"
-        if [ "$label" = with-batch ]; then
-            seed_stop_state "$sh_state"
-            seed_stop_state "$php_state"
-        fi
-        sh_code=0; php_code=0
-        BDO_ORCHESTRATOR=sh BDO_STATE_DIR="$sh_state" BDO_TMUX_SESSION="bdo-stop-parity-$$" \
-            bash "$ROOT/cli/run/run-stop.sh" "$reason" >"$sh_state/out" 2>"$sh_state/err" || sh_code=$?
-        BDO_ORCHESTRATOR=php BDO_STATE_DIR="$php_state" BDO_TMUX_SESSION="bdo-stop-parity-$$" \
-            "$REAL_PHP" "$ROOT/cli/bdo.php" run-stop "$reason" >"$php_state/out" 2>"$php_state/err" || php_code=$?
-        if [ "$sh_code" = "$php_code" ] && cmp -s "$sh_state/out" "$php_state/out" \
-            && cmp -s "$sh_state/err" "$php_state/err"; then
-            if [ "$label" != with-batch ] || cmp -s "$sh_state/batches/20260912_080000_abcdef0123456789/journal.jsonl" \
-                "$php_state/batches/20260912_080000_abcdef0123456789/journal.jsonl"; then
-                diff -ru "$sh_state" "$php_state" >/dev/null \
-                    && { printf '   %-22s код=%s · stdout, stderr і state/journal збігаються\n' "$label" "$sh_code"; return; }
-            fi
-        fi
-    done
-    fail "run-stop $label: stdout, stderr, code або state/journal не збігаються"
+    local label="$1" reason="$2" php_code=0
+    local php_state="$TMP/stop-$label-php"
+    mkdir -p "$php_state"
+    if [ "$label" = with-batch ]; then seed_stop_state "$php_state"; fi
+    BDO_STATE_DIR="$php_state" BDO_TMUX_SESSION="bdo-stop-behavior-$$" \
+        "$REAL_PHP" "$ROOT/cli/bdo.php" run-stop "$reason" >"$php_state/out" 2>"$php_state/err" || php_code=$?
+    test "$php_code" -eq 0 || fail "run-stop $label: code=$php_code"
+    test -s "$php_state/out" || fail "run-stop $label: stdout порожній"
+    if [ "$label" = with-batch ]; then
+        test -s "$php_state/batches/20260912_080000_abcdef0123456789/journal.jsonl" \
+            || fail "run-stop $label: journal не записано"
+    fi
 }
 
 compare_stop_pair no-batch 'причина з пробілами «і» та багатобайтовим текстом'

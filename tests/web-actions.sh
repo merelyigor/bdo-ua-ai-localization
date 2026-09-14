@@ -111,12 +111,12 @@ export BDO_STATE_DIR="$TMP/state"
 mkdir -p "$BDO_STATE_DIR"
 export BDO_WEB_DEFAULT_PORT=$(( 45000 + RANDOM % 3000 ))
 cleanup() {
-    bash "$ROOT/cli/system/web.sh" --stop >/dev/null 2>&1 || true
+    php "$ROOT/cli/bdo.php" web --stop >/dev/null 2>&1 || true
     rm -rf "$TMP"
 }
 trap cleanup EXIT
 
-out="$(bash "$ROOT/cli/system/web.sh" --background --no-open 2>&1)" || fail "сервер не запустився: $out"
+out="$(php "$ROOT/cli/bdo.php" web --background --no-open 2>&1)" || fail "сервер не запустився: $out"
 URL="$(printf '%s\n' "$out" | sed -n 's~.*\(http://127\.0\.0\.1:[0-9]*/?t=[0-9a-f]*\).*~\1~p' | head -1)"
 PORT="$(printf '%s' "$URL" | sed -n 's~.*127\.0\.0\.1:\([0-9]*\)/.*~\1~p')"
 TOKEN="$(printf '%s' "$URL" | sed -n 's~.*t=\([0-9a-f]*\).*~\1~p')"

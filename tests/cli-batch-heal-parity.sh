@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# Доводить байтову парність batch/heal між rollback shell і прямим PHP Kernel.
+# Перевіряє поведінку batch/heal через прямий PHP Kernel.
 #
 # Мережа тут не потрібна: heal працює лише з локальними artifact-файлами, а
-# batch-new викликає session.sh ensure як тимчасовий seam підетапу 7.
+# batch-new відкриває сесію через спільну PHP-логіку.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -10,10 +10,7 @@ TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 fail() { printf 'FAIL: %s\n' "$1" >&2; exit 1; }
 REAL_PHP="$(command -v php)"
-REAL_BASH="$(command -v bash)"
-ORIGINAL_PATH="$PATH"
-test -x "$REAL_PHP" || fail 'не знайдено абсолютний PHP до зміни PATH'
-test -x "$REAL_BASH" || fail 'не знайдено абсолютний bash до зміни PATH'
+test -x "$REAL_PHP" || fail 'не знайдено абсолютний PHP'
 
 H1='1111111111111111111111111111111111111111111111111111111111111111'
 H2='2222222222222222222222222222222222222222222222222222222222222222'
@@ -70,98 +67,29 @@ grep -Fq 'id=BATCH_ID hash='"$H1"' count=3 text=Iron Sword' "$TMP/normalizer-out
     || fail 'normalizer приховав або змінив stable field'
 grep -Fq '20260908_010203' "$TMP/normalizer-output" && fail 'normalizer не прибрав timestamp'
 
-run_shell() {
-    local name="$1" state="$2" wrapper="$3"
-    shift 3
-    mkdir -p "$TMP/$name-sh"
-    set +e
-    BDO_ORCHESTRATOR=sh BDO_STATE_DIR="$state" bash "$ROOT/$wrapper" "$@" \
-        >"$TMP/$name-sh/out" 2>"$TMP/$name-sh/err"
-    local code=$?
-    set -e
-    printf '%s\n' "$code" >"$TMP/$name-sh/code"
-}
-
 run_php() {
     local name="$1" state="$2" internal="$3"
     shift 3
     mkdir -p "$TMP/$name-php"
     set +e
-    BDO_ORCHESTRATOR=php BDO_STATE_DIR="$state" php "$ROOT/cli/bdo.php" "$internal" "$@" \
+    BDO_STATE_DIR="$state" php "$ROOT/cli/bdo.php" "$internal" "$@" \
         >"$TMP/$name-php/out" 2>"$TMP/$name-php/err"
     local code=$?
     set -e
     printf '%s\n' "$code" >"$TMP/$name-php/code"
 }
 
-# ПРАВИЛО: rollback і PHP side мають збігатися в stdout, stderr і exit code.
-# САБОТАЖ: зміна будь-якого каналу повинна зупинити parity з назвою команди.
 pair() {
-    local name="$1" wrapper="$2" internal="$3" state_sh="$4" state_php="$5"
-    shift 5
-    run_shell "$name" "$state_sh" "$wrapper" "$@"
-    run_php "$name" "$state_php" "$internal" "$@"
-    normalize_stream "$TMP/$name-sh/out" "$TMP/$name-sh/out.normalized"
-    normalize_stream "$TMP/$name-php/out" "$TMP/$name-php/out.normalized"
-    cmp -s "$TMP/$name-sh/out.normalized" "$TMP/$name-php/out.normalized" \
-        || { diff -u "$TMP/$name-sh/out.normalized" "$TMP/$name-php/out.normalized" >&2 || true; fail "$name: stdout не збігається"; }
-    normalize_stream "$TMP/$name-sh/err" "$TMP/$name-sh/err.normalized"
-    normalize_stream "$TMP/$name-php/err" "$TMP/$name-php/err.normalized"
-    cmp -s "$TMP/$name-sh/err.normalized" "$TMP/$name-php/err.normalized" \
-        || { diff -u "$TMP/$name-sh/err.normalized" "$TMP/$name-php/err.normalized" >&2 || true; fail "$name: stderr не збігається"; }
-    cmp -s "$TMP/$name-sh/code" "$TMP/$name-php/code" \
-        || fail "$name: код виходу не збігається"
+    local name="$1" internal="$2" state="$3"
+    shift 3
+    run_php "$name" "$state" "$internal" "$@"
 }
 
-# ПРАВИЛО: default wrapper маршрутизує в точну internal Kernel command.
-# САБОТАЖ: fake php приймає лише cli/bdo.php <command>, тому старий shell або
-# php -r одразу зробить routing check червоним.
-FAKE_BIN="$TMP/fake-bin"
-mkdir -p "$FAKE_BIN"
-for route in batch-dir batch-assert batch-new subset-rows heal-plan; do
-    case "$route" in
-        batch-dir) wrapper=cli/batch/batch-dir.sh ;;
-        batch-assert) wrapper=cli/batch/batch-assert.sh ;;
-        batch-new) wrapper=cli/batch/batch-new.sh ;;
-        subset-rows) wrapper=cli/batch/subset-rows.sh ;;
-        heal-plan) wrapper=cli/heal/heal-plan.sh ;;
-    esac
-    cat >"$FAKE_BIN/php" <<FAKE
-#!/usr/bin/env bash
-if [ "\${1:-}" != "$ROOT/cli/bdo.php" ] || [ "\${2:-}" != "$route" ]; then
-    echo 'FAIL: неправильна форма PHP delegate' >&2
-    exit 1
-fi
-echo "__ROUTE__$route"
-FAKE
-    chmod +x "$FAKE_BIN/php"
-    set +e
-    PATH="$FAKE_BIN:$PATH" BDO_ORCHESTRATOR=php bash "$ROOT/$wrapper" >"$TMP/route-$route.out" 2>"$TMP/route-$route.err"
-    code=$?
-    set -e
-    test "$code" -eq 0 || fail "routing $route: fake php відмовив ($code): $(cat "$TMP/route-$route.err")"
-    grep -Fq "__ROUTE__$route" "$TMP/route-$route.out" || fail "routing $route: marker відсутній"
-done
-
-# ПРАВИЛО: BatchNewCommand не запускає зовнішній `date`; єдиний дозволений
-# subprocess у цьому підетапі — session.sh ensure.
-# САБОТАЖ: якщо PHP знову викличе `date`, PATH лише з fake bash має швидко
-# зупинити прогін і назвати заборонену Unix-залежність.
-NO_DATE_BIN="$TMP/no-date-bin"
-mkdir -p "$NO_DATE_BIN"
-cat >"$NO_DATE_BIN/bash" <<FAKE
-#!$REAL_BASH
-if [ "\${#}" -eq 2 ] && [ "\${1:-}" = "$ROOT/cli/system/session.sh" ] && [ "\${2:-}" = ensure ]; then
-    PATH="$ORIGINAL_PATH" "$REAL_BASH" "\$@"
-    exit \$?
-fi
-printf 'FAIL: заборонений subprocess через fake bash: %s\n' "\$*" >&2
-exit 1
-FAKE
-chmod +x "$NO_DATE_BIN/bash"
+# ПРАВИЛО: BatchNewCommand не запускає зовнішній `date`.
+# САБОТАЖ: PHP-команда створює state самостійно, без shell seam.
 mkdir -p "$TMP/no-date/state"
 set +e
-PATH="$NO_DATE_BIN" BDO_ENV=DEV BDO_STATE_DIR="$TMP/no-date/state" \
+BDO_ENV=DEV BDO_STATE_DIR="$TMP/no-date/state" \
     "$REAL_PHP" "$ROOT/cli/bdo.php" batch-new "$TMP/rows.json" \
     >"$TMP/no-date/out" 2>"$TMP/no-date/err"
 NO_DATE_CODE=$?
@@ -172,78 +100,54 @@ test -s "$TMP/no-date/state/current-batch" || fail 'batch-new без date не �
 # ПРАВИЛО: batch-dir без current batch має порожній stdout і код 1.
 # САБОТАЖ: мовчазний успіх або сторонній шлях порушить контракт драйвера.
 mkdir -p "$TMP/empty-sh/state" "$TMP/empty-php/state"
-pair batch-dir-empty cli/batch/batch-dir.sh batch-dir "$TMP/empty-sh/state" "$TMP/empty-php/state"
-test ! -s "$TMP/batch-dir-empty-sh/out" && test "$(cat "$TMP/batch-dir-empty-sh/code")" = 1 \
+pair batch-dir-empty batch-dir "$TMP/empty-php/state"
+test ! -s "$TMP/batch-dir-empty-php/out" && test "$(cat "$TMP/batch-dir-empty-php/code")" = 1 \
     || fail 'batch-dir без пачки має бути порожнім і повертати 1'
 
 # ПРАВИЛО: batch-new зберігає side effects, manifest, rows copy і session ledger.
 # САБОТАЖ: зміна stable manifest або пропуск recordBatch має впасти на файлах.
-mkdir -p "$TMP/batch-sh/state" "$TMP/batch-php/state"
-pair batch-new cli/batch/batch-new.sh batch-new "$TMP/batch-sh/state" "$TMP/batch-php/state" "$TMP/rows.json"
-SH_BATCH="$(cat "$TMP/batch-sh/state/current-batch")"
+mkdir -p "$TMP/batch-php/state"
+pair batch-new batch-new "$TMP/batch-php/state" "$TMP/rows.json"
 PHP_BATCH="$(cat "$TMP/batch-php/state/current-batch")"
-test -n "$SH_BATCH" && test -n "$PHP_BATCH" || fail 'batch-new не створив current-batch'
-test -s "$TMP/batch-sh/state/batches/$SH_BATCH/rows.json" || fail 'shell не скопіював rows.json'
+test -n "$PHP_BATCH" || fail 'batch-new не створив current-batch'
 test -s "$TMP/batch-php/state/batches/$PHP_BATCH/rows.json" || fail 'PHP не скопіював rows.json'
-jq 'del(.created_at,.updated_at) | .id = "BATCH_ID"' "$TMP/batch-sh/state/batches/$SH_BATCH/manifest.json" >"$TMP/manifest-sh"
-jq 'del(.created_at,.updated_at) | .id = "BATCH_ID"' "$TMP/batch-php/state/batches/$PHP_BATCH/manifest.json" >"$TMP/manifest-php"
-cmp -s "$TMP/manifest-sh" "$TMP/manifest-php" || fail 'batch-new manifest не збігається'
-cmp -s "$TMP/batch-sh/state/batches/$SH_BATCH/rows.json" "$TMP/batch-php/state/batches/$PHP_BATCH/rows.json" \
-    || fail 'batch-new rows.json не збігається'
-SH_SESSION="$(cat "$TMP/batch-sh/state/current-session")"
 PHP_SESSION="$(cat "$TMP/batch-php/state/current-session")"
-test -s "$TMP/batch-sh/state/sessions/$SH_SESSION/batches.jsonl" || fail 'shell не записав session ledger'
 test -s "$TMP/batch-php/state/sessions/$PHP_SESSION/batches.jsonl" || fail 'PHP не записав session ledger'
-jq -c 'del(.at) | .id = "BATCH_ID"' "$TMP/batch-sh/state/sessions/$SH_SESSION/batches.jsonl" >"$TMP/ledger-sh"
-jq -c 'del(.at) | .id = "BATCH_ID"' "$TMP/batch-php/state/sessions/$PHP_SESSION/batches.jsonl" >"$TMP/ledger-php"
-cmp -s "$TMP/ledger-sh" "$TMP/ledger-php" || fail 'session ledger entry не збігається'
 
 # ПРАВИЛО: --show і batch-dir читають current workspace, batch-assert перевіряє
 # ownership, а --end прибирає лише pointer.
 # САБОТАЖ: порівняння лише stdout не побачить зламаний pointer або ownership.
-pair batch-show cli/batch/batch-new.sh batch-new "$TMP/batch-sh/state" "$TMP/batch-php/state" --show
-pair batch-dir-current cli/batch/batch-dir.sh batch-dir "$TMP/batch-sh/state" "$TMP/batch-php/state"
-pair batch-assert-explicit cli/batch/batch-assert.sh batch-assert "$TMP/batch-sh/state" "$TMP/batch-php/state" "$TMP/rows.json" "$TMP/candidate.json"
-pair batch-assert-current cli/batch/batch-assert.sh batch-assert "$TMP/batch-sh/state" "$TMP/batch-php/state"
-pair batch-end cli/batch/batch-new.sh batch-new "$TMP/batch-sh/state" "$TMP/batch-php/state" --end
-test ! -e "$TMP/batch-sh/state/current-batch" && test ! -e "$TMP/batch-php/state/current-batch" \
+pair batch-show batch-new "$TMP/batch-php/state" --show
+pair batch-dir-current batch-dir "$TMP/batch-php/state"
+pair batch-assert-explicit batch-assert "$TMP/batch-php/state" "$TMP/rows.json" "$TMP/candidate.json"
+pair batch-assert-current batch-assert "$TMP/batch-php/state"
+pair batch-end batch-new "$TMP/batch-php/state" --end
+test ! -e "$TMP/batch-php/state/current-batch" \
     || fail 'batch-new --end не закрив current-batch'
 
 # ПРАВИЛО: subset зберігає source order, форму data.rows і всі запитані hashes.
 # САБОТАЖ: пропуск одного hash при правдоподібній кількості має впасти на cmp.
-run_shell subset-file "$TMP/subset-sh/state" cli/batch/subset-rows.sh "$TMP/rows.json" "$H3,$H1" "$TMP/subset-sh.json"
 run_php subset-file "$TMP/subset-php/state" subset-rows "$TMP/rows.json" "$H3,$H1" "$TMP/subset-php.json"
-cmp -s "$TMP/subset-sh.json" "$TMP/subset-php.json" || fail 'subset JSON не збігається'
 test "$(jq -r '.data.rows[0].identity_hash' "$TMP/subset-php.json")" = "$H1" \
     || fail 'subset не зберіг source order'
-run_shell subset-missing "$TMP/subset-missing-sh/state" cli/batch/subset-rows.sh "$TMP/rows.json" "$H1,deadbeef" "$TMP/missing-sh.json"
 run_php subset-missing "$TMP/subset-missing-php/state" subset-rows "$TMP/rows.json" "$H1,deadbeef" "$TMP/missing-php.json"
-test "$(cat "$TMP/subset-missing-sh/code")" -ne 0 && test "$(cat "$TMP/subset-missing-php/code")" -ne 0 \
+test "$(cat "$TMP/subset-missing-php/code")" -ne 0 \
     || fail 'subset missing мусить відмовити обома шляхами'
-grep -Fq 'Хеші відсутні в rows.json: deadbeef' "$TMP/subset-missing-sh/err" \
-    || fail 'shell subset missing не назвав відсутній hash'
 grep -Fq 'Хеші відсутні в rows.json: deadbeef' "$TMP/subset-missing-php/err" \
     || fail 'PHP subset missing не назвав відсутній hash'
 
 # ПРАВИЛО: heal перевіряє ownership до планування, а artifact-и й attempts
 # привʼязані до конкретного batch key та однаково готують підмножину схем.
 # САБОТАЖ: зміна heal payload, merged candidate або attempts state має впасти.
-mkdir -p "$TMP/heal-sh/state" "$TMP/heal-php/state"
-run_shell heal-prepare "$TMP/heal-sh/state" cli/batch/batch-new.sh "$TMP/rows.json"
+mkdir -p "$TMP/heal-php/state"
 run_php heal-prepare "$TMP/heal-php/state" batch-new "$TMP/rows.json"
-pair heal cli/heal/heal-plan.sh heal-plan "$TMP/heal-sh/state" "$TMP/heal-php/state" \
+pair heal heal-plan "$TMP/heal-php/state" \
     "$TMP/rows.json" "$TMP/candidate.json" "$TMP/verdicts.json" "$TMP/validate.json"
-SH_HEAL="$(cat "$TMP/heal-sh/state/current-batch")"
 PHP_HEAL="$(cat "$TMP/heal-php/state/current-batch")"
 for file in heal-merged.json heal-repair-payload.json heal-attempts.json heal-repair-subset.json; do
-    test -f "$TMP/heal-sh/state/batches/$SH_HEAL/$file" || fail "shell heal не створив $file"
     test -f "$TMP/heal-php/state/batches/$PHP_HEAL/$file" || fail "PHP heal не створив $file"
-    cmp -s "$TMP/heal-sh/state/batches/$SH_HEAL/$file" "$TMP/heal-php/state/batches/$PHP_HEAL/$file" \
-        || fail "heal artifact $file не збігається"
 done
-cmp -s "$TMP/heal-sh/state/current-response-schema.json" "$TMP/heal-php/state/current-response-schema.json" \
-    || fail 'heal response schema не збігається'
-cmp -s "$TMP/heal-sh/state/current-qa-schema.json" "$TMP/heal-php/state/current-qa-schema.json" \
-    || fail 'heal QA schema не збігається'
+test -s "$TMP/heal-php/state/current-response-schema.json" || fail 'heal response schema не створено'
+test -s "$TMP/heal-php/state/current-qa-schema.json" || fail 'heal QA schema не створено'
 
-printf '%s\n' 'cli batch/heal parity: 5 команд, routing, stdout/stderr/коди й state files: OK'
+printf '%s\n' 'cli batch/heal behavior: 5 PHP-команд, stdout/stderr/коди й state files: OK'

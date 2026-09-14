@@ -46,7 +46,7 @@ file_put_contents($argv[1], json_encode([
 ], JSON_UNESCAPED_UNICODE));
 ' "$TMP/verdicts.json" "$H_IDENTICAL" "$H_CLEAN" "$H_BROKEN"
 
-payload="$(bash "$ROOT/cli/prepare/judge-payload.sh" "$TMP/rows.json" "$TMP/candidate.json" "$TMP/verdicts.json" 2>/dev/null)"
+payload="$(php "$ROOT/cli/bdo.php" judge-payload "$TMP/rows.json" "$TMP/candidate.json" "$TMP/verdicts.json" 2>/dev/null)"
 printf '%s' "$payload" > "$TMP/judge-payload.json"
 
 php -r '

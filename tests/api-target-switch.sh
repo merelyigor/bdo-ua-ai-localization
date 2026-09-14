@@ -147,7 +147,7 @@ compare_rejection bad-target "$bad" 'legacy або hub'
 # Той самий запобіжник, що тримає DEV/PROD, мусить тримати й legacy/hub:
 # інакше пачка, відібрана зі старого API, поїхала б записом у хаб.
 STATE="$TMP/state"; mkdir -p "$STATE"
-start() { TRANSLATE_ENV_FILE="$1" BDO_STATE_DIR="$STATE" bash "$ROOT/cli/run/run-start.sh" "${@:2}" 2>&1; }
+start() { TRANSLATE_ENV_FILE="$1" BDO_STATE_DIR="$STATE" php "$ROOT/cli/bdo.php" run-start "${@:2}" 2>&1; }
 
 start "$legacy_prod" >/dev/null || fail 'прогін на старому API не стартував'
 test "$(head -1 "$STATE/run-target")" = prod || fail "зафіксовано ціль «$(head -1 "$STATE/run-target")» замість prod"
@@ -188,12 +188,11 @@ fi
 # Дві вимоги, і друга не менш важлива за першу: ціль, яка приймає ВСЕ, мусить
 # отримати перелік ДОСЛІВНО. Тихо дописати навіть безпечну групу в запит
 # робочої системи заради сумісності з іншою · не можна.
-CAPS="$ROOT/cli/api/capabilities.sh"
 CAPSTATE="$TMP/caps"; mkdir -p "$CAPSTATE"
 fields_for() {   # <перелік дозволених або "" > <бажане>
     local cache="$CAPSTATE/api-capabilities.$2.json"
     printf '{"field_groups":"%s","items":{}}\n' "$1" > "$cache"
-    BDO_STATE_DIR="$CAPSTATE" TRANSLATE_ENV_FILE="$3" bash "$CAPS" --fields "$4" 2>/dev/null | tail -1
+    BDO_STATE_DIR="$CAPSTATE" TRANSLATE_ENV_FILE="$3" php "$ROOT/cli/bdo.php" capabilities --fields "$4" 2>/dev/null | tail -1
 }
 
 want='classification,tokens,constraints,glossary,reference,patch'
@@ -242,7 +241,7 @@ for _ in $(seq 1 40); do
     sleep .1
 done
 set +e
-FETCH_OUTPUT="$(TRANSLATE_ENV_FILE="$TMP/fetch-env" BDO_STATE_DIR="$FETCH_STATE" BDO_FETCH_MAX_PAGES=1 bash "$ROOT/cli/api/fetch-rows.sh" 20 2>"$TMP/fetch.err")"
+FETCH_OUTPUT="$(TRANSLATE_ENV_FILE="$TMP/fetch-env" BDO_STATE_DIR="$FETCH_STATE" BDO_FETCH_MAX_PAGES=1 php "$ROOT/cli/bdo.php" fetch-rows 20 2>"$TMP/fetch.err")"
 FETCH_CODE=$?
 set -e
 kill "$FETCH_SERVER" 2>/dev/null || true

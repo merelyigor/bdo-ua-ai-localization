@@ -28,7 +28,7 @@ export BDO_STATE_DIR="$TMP/state"
 export BDO_KEEP_DAYS=7
 mkdir -p "$BDO_STATE_DIR/batches"
 
-session() { bash "$ROOT/cli/system/session.sh" "$@"; }
+session() { php "$ROOT/cli/bdo.php" session "$@"; }
 
 # Квитанція пачки, як її пишуть `batch-new` і `batch-commit`.
 make_batch() {
@@ -244,7 +244,7 @@ WL_BEFORE="$(cat "$DEL_STATE/write-log.jsonl")"
 
 # 1. За замовчуванням · ПОКАЗ, а не видалення: незворотна дія не має ставатися
 #    від описки в ідентифікаторі.
-BDO_STATE_DIR="$DEL_STATE" bash "$ROOT/cli/system/session.sh" delete 20260101_010101 >/dev/null 2>&1 \
+BDO_STATE_DIR="$DEL_STATE" php "$ROOT/cli/bdo.php" session delete 20260101_010101 >/dev/null 2>&1 \
     || fail 'показ видалення завершився помилкою'
 test -d "$DEL_STATE/sessions/20260101_010101" \
     || fail 'показ видалив сесію · `--apply` перестав бути потрібним'
@@ -252,7 +252,7 @@ test -d "$DEL_STATE/sessions/20260101_010101" \
 # 2. ВІДКРИТУ сесію не видаляємо: у неї може йти пачка просто зараз.
 printf '20260101_010101\n' > "$DEL_STATE/current-session"
 OPEN_ERR="$TMP/delete-open.err"
-if BDO_STATE_DIR="$DEL_STATE" bash "$ROOT/cli/system/session.sh" delete 20260101_010101 --apply >"$TMP/delete-open.out" 2>"$OPEN_ERR"; then
+if BDO_STATE_DIR="$DEL_STATE" php "$ROOT/cli/bdo.php" session delete 20260101_010101 --apply >"$TMP/delete-open.out" 2>"$OPEN_ERR"; then
     fail 'відкриту сесію видалено · теку, у яку пише прогін, забрано з-під нього'
 fi
 grep -q 'сесія 20260101_010101 ВІДКРИТА' "$OPEN_ERR" \
@@ -263,7 +263,7 @@ rm -f "$DEL_STATE/current-session"
 printf '20260101_010101_aaaa\n' > "$DEL_STATE/current-batch"
 ln -s "$$" "$DEL_STATE/batches/20260101_010101_aaaa/drive.lock"
 LIVE_ERR="$TMP/delete-live.err"
-if BDO_STATE_DIR="$DEL_STATE" bash "$ROOT/cli/system/session.sh" delete 20260101_010101 --apply >"$TMP/delete-live.out" 2>"$LIVE_ERR"; then
+if BDO_STATE_DIR="$DEL_STATE" php "$ROOT/cli/bdo.php" session delete 20260101_010101 --apply >"$TMP/delete-live.out" 2>"$LIVE_ERR"; then
     fail 'видалено сесію під живим прогоном'
 fi
 grep -q 'живий прогін на пачці 20260101_010101_aaaa · видалення заблоковано' "$LIVE_ERR" \
@@ -274,7 +274,7 @@ rm -f "$DEL_STATE/batches/20260101_010101_aaaa/drive.lock"
 
 # 4. Застарілий покажчик видно в показі й прибирається лише разом із даними.
 STALE_OUT="$TMP/delete-stale.out"
-BDO_STATE_DIR="$DEL_STATE" bash "$ROOT/cli/system/session.sh" delete 20260101_010101 >"$STALE_OUT" 2>&1 \
+BDO_STATE_DIR="$DEL_STATE" php "$ROOT/cli/bdo.php" session delete 20260101_010101 >"$STALE_OUT" 2>&1 \
     || fail 'показ зі stale покажчиком завершився помилкою'
 grep -q 'Застарілий покажчик current-batch: 20260101_010101_aaaa буде знято під час --apply\.' "$STALE_OUT" \
     || fail "показ не попередив про stale покажчик: $(cat "$STALE_OUT")"
@@ -282,7 +282,7 @@ test -f "$DEL_STATE/current-batch" || fail 'показ зняв покажчик
 
 # 5. `--apply` прибирає сесію РАЗОМ із теками її пачок і stale покажчиком.
 APPLY_OUT="$TMP/delete-apply.out"
-BDO_STATE_DIR="$DEL_STATE" bash "$ROOT/cli/system/session.sh" delete 20260101_010101 --apply >"$APPLY_OUT" 2>&1 \
+BDO_STATE_DIR="$DEL_STATE" php "$ROOT/cli/bdo.php" session delete 20260101_010101 --apply >"$APPLY_OUT" 2>&1 \
     || fail 'видалення завершилось помилкою'
 grep -q 'Застарілий покажчик current-batch: 20260101_010101_aaaa прибрано\.' "$APPLY_OUT" \
     || fail "застосування не назвало прибирання покажчика: $(cat "$APPLY_OUT")"
@@ -296,7 +296,7 @@ printf '{"id":"20260102_010101","status":"closed"}\n' > "$DEL_STATE/sessions/202
 printf '{"id":"20260102_010101_bbbb"}\n' > "$DEL_STATE/sessions/20260102_010101/batches.jsonl"
 printf '20260102_010101_cccc\n' > "$DEL_STATE/current-batch"
 ln -s "$$" "$DEL_STATE/batches/20260102_010101_cccc/drive.lock"
-BDO_STATE_DIR="$DEL_STATE" bash "$ROOT/cli/system/session.sh" delete 20260102_010101 --apply >"$TMP/delete-other-live.out" 2>&1 \
+BDO_STATE_DIR="$DEL_STATE" php "$ROOT/cli/bdo.php" session delete 20260102_010101 --apply >"$TMP/delete-other-live.out" 2>&1 \
     || fail 'живий прогін іншої сесії заблокував видалення цільової'
 test ! -d "$DEL_STATE/sessions/20260102_010101" || fail 'цільову сесію з живим прогоном іншої сесії не прибрано'
 test -e "$DEL_STATE/current-batch" || fail 'чужий покажчик прибрано разом із цільовою сесією'
@@ -309,7 +309,7 @@ test "$(cat "$DEL_STATE/write-log.jsonl")" = "$WL_BEFORE" \
     || fail 'видалення сесії зачепило write-log.jsonl · незнищенний слід записів'
 
 # 8. Кривий ідентифікатор не видаляє нічого.
-if BDO_STATE_DIR="$DEL_STATE" bash "$ROOT/cli/system/session.sh" delete ../../etc --apply >/dev/null 2>&1; then
+if BDO_STATE_DIR="$DEL_STATE" php "$ROOT/cli/bdo.php" session delete ../../etc --apply >/dev/null 2>&1; then
     fail 'кривий ідентифікатор сесії прийнято'
 fi
 

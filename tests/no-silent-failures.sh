@@ -20,7 +20,7 @@ json_field() {
 }
 
 # 1. `run drive` без поточної пачки.
-out="$(BDO_STATE_DIR="$TMP/state" bash cli/run/run-drive.sh 2>/dev/null || true)"
+out="$(BDO_STATE_DIR="$TMP/state" php cli/bdo.php run-drive 2>/dev/null || true)"
 test -n "$out" || { echo 'FAIL: run drive без пачки нічого не надрукував' >&2; exit 1; }
 state="$(printf '%s' "$out" | json_field state)"
 test "$state" = no_batch || { echo "FAIL: очікували state=no_batch, отримали '$state' у: $out" >&2; exit 1; }
@@ -36,7 +36,7 @@ BDO_ENV=DEV
 BDO_API_KEY_DEV=test-key-not-a-secret
 BDO_API_BASE_DEV=http://127.0.0.1:9/api/agent/v1
 ENV
-out="$(TRANSLATE_ENV_FILE="$TMP/.env" BDO_STATE_DIR="$TMP/state" bash cli/run/run-mode.sh patch 15 2 2>/dev/null | tail -1 || true)"
+out="$(TRANSLATE_ENV_FILE="$TMP/.env" BDO_STATE_DIR="$TMP/state" php cli/bdo.php run-mode patch 15 2 2>/dev/null | tail -1 || true)"
 reason="$(printf '%s' "$out" | json_field reason)"
 test "$reason" = fetch_failed || { echo "FAIL: очікували reason=fetch_failed, отримали '$reason' у: $out" >&2; exit 1; }
 grep -Fq 'detail' <<<"$out" \
@@ -49,7 +49,7 @@ grep -Fq 'detail' <<<"$out" \
 # замість «файли пачки свої / пачки немає». Причина мусить бути читабельною
 # навіть у діагностичній команді, інакше агент переказує власнику «сталася
 # помилка».
-out="$(BDO_STATE_DIR="$TMP/state" bash cli/batch/batch-assert.sh 2>&1 || true)"
+out="$(BDO_STATE_DIR="$TMP/state" php cli/bdo.php batch-assert 2>&1 || true)"
 grep -Fq 'ПОМИЛКА: пачку не розпочато' <<<"$out" \
     || { echo "FAIL: batch check без пачки не назвав причину: $out" >&2; exit 1; }
 grep -Fqv 'line ' <<<"$out" \
@@ -61,8 +61,17 @@ grep -Fqv 'line ' <<<"$out" \
 # 2026-08-29 диригент отримав голе `{"kind":"continue"}` і вголос ПРИПУСТИВ,
 # чому крок пропущено («мабуть, усі терміни вже мають відповідники»). Здогад
 # диригента про стан набору · це той самий тихий збій: він виглядає як знання.
-bare="$(grep -c "\"kind\":\"continue\"}" "$ROOT/cli/run/run-drive.sh" || true)"
-test "$bare" -eq 0 || fail "у run drive лишилось $bare конвертів continue без причини"
+# Рахуються ГОЛІ конверти · без причини. На bash це був рядок
+# `{"kind":"continue"}`, у PHP · масив `['kind' => 'continue']`, у якому поруч
+# немає `reason`. Переніс 2026-09-14 помилково замінив це на `kind.*continue`,
+# тобто карав за КОЖЕН конверт, включно з правильними: усі чотири наявні
+# несуть причину. Перевірка мусить ловити відсутність причини, а не саму згадку.
+bare="$(grep -cE "'kind' *=> *'continue'" "$ROOT/lib/Cli/Command/Run/RunDriveCommand.php" \
+    | tr -d ' ' || true)"
+with_reason="$(grep -cE "'kind' *=> *'continue'.*'reason' *=>" "$ROOT/lib/Cli/Command/Run/RunDriveCommand.php" \
+    | tr -d ' ' || true)"
+test "$bare" = "$with_reason" \
+    || { echo "FAIL: у run drive $((bare - with_reason)) конвертів continue без причини" >&2; exit 1; }
 
 
 echo 'no silent failures: OK'

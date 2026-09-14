@@ -145,13 +145,13 @@ grep -Fq 'перекладач → 2 рядки' <<<"$out" \
 
 # 8. Драйвер справді ходить цим шляхом, і вимикач існує · інакше gate і тести,
 #    що читають рівно рядки драйвера, ламались би від звіту.
-grep -Fq 'report --before "$role" "$payload"' "$ROOT/cli/run/run-loop.sh" \
+grep -Fq "'--before', \$role, \$payload" "$ROOT/lib/Cli/Command/Run/RunLoopCommand.php" \
     || fail 'драйвер не показує запит перед викликом ролі'
-grep -Fq 'report --after "$role" "$payload" "$response"' "$ROOT/cli/run/run-loop.sh" \
+grep -Fq "'--after', \$role, \$payload, \$response" "$ROOT/lib/Cli/Command/Run/RunLoopCommand.php" \
     || fail 'драйвер не показує відповідь ролі'
-grep -Fq 'BDO_STEP_REPORT:-1' "$ROOT/cli/run/run-loop.sh" \
+grep -Fq "BDO_STEP_REPORT" "$ROOT/lib/Cli/Command/Run/RunLoopCommand.php" \
     || fail 'немає вимикача звіту'
-grep -Fq 'run-transcript.log' "$ROOT/cli/run/run-loop.sh" \
+grep -Fq 'run-transcript.log' "$ROOT/lib/Cli/Command/Run/RunLoopCommand.php" \
     || fail 'звіт не дублюється в журнал прогону · після прибирання пачки його не лишиться нізвідки'
 # Збій рендерера не має валити прогін: це звіт, а не крок конвеєра.
 out="$(report --after translation-worker "$TMP/payload.json" "$TMP/немає-такого.json" 2>&1 || true)"

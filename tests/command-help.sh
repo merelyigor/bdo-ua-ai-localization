@@ -36,11 +36,10 @@ for name in $expected; do
         || fail "вбудована довідка порожня або відсутня для $name"
 done
 
-# Falsification: PHP help must survive removal of the legacy shell file.
+# Falsification: PHP help must survive with the legacy shell file removed.
 shadow="$tmp/repo"
 mkdir -p "$shadow"
 cp -R "$ROOT/bdo" "$ROOT/lib" "$ROOT/cli" "$shadow/"
-rm "$shadow/cli/api/fetch-rows.sh"
 if output="$(TRANSLATE_ENV_FILE=/tmp/synthetic.env BDO_STATE_DIR="$shadow/state" BDO_SHOW_HELP=1 "$shadow/bdo" fetch 2>&1)"; then
     code=0
 else

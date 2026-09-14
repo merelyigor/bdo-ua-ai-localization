@@ -161,7 +161,7 @@ final class RunDriveCommand implements Command, \Bdo\Translate\Cli\CommandHelp
         $rowsPath = $this->workspace->path('rows.json');
         if (getenv('BDO_PIPELINE_OFFLINE') !== '1') {
             try { $this->capture(new MemoryLookupCommand(), [$rowsPath]); }
-            catch (\Throwable) { /* memory is an optional enrichment, as in rollback */ }
+            catch (\Throwable) { /* memory is an optional enrichment */ }
         }
         $memoryPath = $this->workspace->path('memory.json');
         if (is_file($memoryPath) && filesize($memoryPath) > 0) {
@@ -937,7 +937,7 @@ final class RunDriveCommand implements Command, \Bdo\Translate\Cli\CommandHelp
         $result = $this->capture($command, $arguments); if ($result['code'] !== 0) throw new RuntimeException(trim($result['stderr']) ?: 'Внутрішня команда завершилась із помилкою.');
     }
 
-    /** Optional helper boundaries preserve rollback's non-gating failure semantics. */
+    /** Optional helper boundaries keep enrichment failures non-gating. */
     private function optionalCapture(Command $command, array $arguments): array
     {
         try {

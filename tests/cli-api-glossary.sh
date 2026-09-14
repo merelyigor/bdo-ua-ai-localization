@@ -82,56 +82,42 @@ kill -0 "$SERVER" 2>/dev/null || { cat "$TMP/server.log" >&2; exit 1; }
 export TRANSLATE_ENV_FILE="$TMP/env"
 export BDO_API_TARGET=legacy
 run_command() {
-    local mode="$1" state="$2" script="$3"; shift 3
-    env BDO_ORCHESTRATOR="$mode" BDO_STATE_DIR="$state" bash "$ROOT/$script" "$@"
+    local state="$1" internal="$2"; shift 2
+    BDO_STATE_DIR="$state" php "$ROOT/cli/bdo.php" "$internal" "$@"
 }
-save_outputs() {
-    local label="$1"
-    cp "$TMP/run.out" "$TMP/$label.out"
-    cp "$TMP/run.err" "$TMP/$label.err"
-    printf '%s\n' "$2" > "$TMP/$label.code"
-}
-compare_outputs() {
-    local label="$1"
-    cmp -s "$TMP/$label.sh.out" "$TMP/$label.php.out" || fail "$label stdout"
-    cmp -s "$TMP/$label.sh.err" "$TMP/$label.php.err" || fail "$label stderr"
-    cmp -s "$TMP/$label.sh.code" "$TMP/$label.php.code" || fail "$label exit code"
-}
-compare_files() {
-    local label="$1" state="$2" file
-    while IFS= read -r file; do
-        file="${file#./}"
-        cmp -s "$TMP/$label.files/$file" "$state/$file" || return 1
-    done < <(cd "$TMP/$label.files" && find . -type f -print | sort)
-    diff -qr "$TMP/$label.files" "$state" >/dev/null
-}
-run_pair() {
-    local label="$1" script="$2" setup="$3"; shift 3
+run_case() {
+    local label="$1" internal="$2" setup="$3"; shift 3
     local state="$TMP/state-$label"
-    for _ in 1 2 3 4 5; do
-        rm -rf "$state" "$TMP/$label.files"
-        for mode in sh php; do
-            rm -rf "$state"
-            mkdir -p "$state"
-            "$setup" "$state"
-            : > "$TMP/requests.log"
-            set +e
-            run_command "$mode" "$state" "$script" "$@" >"$TMP/run.out" 2>"$TMP/run.err"
-            local code=$?
-            set -e
-            save_outputs "$label.$mode" "$code"
-            cp "$TMP/requests.log" "$TMP/$label.$mode.requests"
-            if [ "$mode" = sh ]; then
-                cp -a "$state" "$TMP/$label.files"
-            fi
-        done
-    compare_outputs "$label"
-        cmp -s "$TMP/$label.sh.requests" "$TMP/$label.php.requests" || fail "$label HTTP requests"
-        if compare_files "$label" "$state"; then
-            return 0
-        fi
-    done
-    fail "$label files"
+    rm -rf "$state"
+    mkdir -p "$state"
+    "$setup" "$state"
+    : > "$TMP/requests.log"
+    set +e
+    run_command "$state" "$internal" "$@" >"$TMP/$label.out" 2>"$TMP/$label.err"
+    local code=$?
+    set -e
+    test "$code" -eq 0 || fail "$label PHP code=$code: $(cat "$TMP/$label.err")"
+    # Не кожна команда віддає результат у stdout: `glossary-concepts` пише
+    # підсумок у stderr, а самі поняття · у кеш. Вимагати від неї stdout означало
+    # б вимагати того, чого вона ніколи не робила. Раніше цього не було видно,
+    # бо парне порівняння звіряло два порожні stdout між собою.
+    # Очікування ПОІМЕНОВАНІ, бо команди різні за природою, і виміряно це
+    # прогоном 2026-09-14, а не здогадом:
+    #   list      stdout + запит      concepts  stderr + запит
+    #   resolve   stdout + запит      submit    stdout + запит
+    #   queue     stderr, без запиту  describe  stdout, без запиту
+    # `queue` і `describe` працюють із локальними файлами · вимагати від них
+    # звернення до API означало б вимагати того, чого вони не роблять.
+    case "${expect:?очікування каналу не задане для $label}" in
+        stdout) test -s "$TMP/$label.out" || fail "$label не надрукував stdout" ;;
+        stderr) test -s "$TMP/$label.err" || fail "$label не сказав нічого в stderr" ;;
+        *) fail "невідоме очікування «${expect}» для ${label}" ;;
+    esac
+    case "${api:?очікування запиту не задане для $label}" in
+        yes) test -s "$TMP/requests.log" || fail "$label не зробив очікуваного API-запиту" ;;
+        no) test ! -s "$TMP/requests.log" || fail "$label несподівано пішов у API" ;;
+        *) fail "невідоме очікування запиту «${api}» для ${label}" ;;
+    esac
 }
 
 setup_empty() { :; }
@@ -157,12 +143,12 @@ JSON
     printf '{"items":[{"canonical_source":"EmptyDefinition","gist":"Короткий gist","confidence":90}]}\n' > "$state/term-notes-response.json"
 }
 
-label=list run_pair list cli/api/glossary-list.sh setup_list --fresh
-label=concepts run_pair concepts cli/api/glossary-concepts.sh setup_concepts
-label=resolve run_pair resolve cli/api/glossary-resolve.sh setup_resolve 'Iron Sword' "$HASH"
-label=queue run_pair queue cli/api/term-notes-queue.sh setup_queue "$TMP/queue-terms.json" "$TMP/queue-rows.json"
-label=describe run_pair describe cli/api/term-notes-describe.sh setup_describe
-label=submit run_pair submit cli/api/term-notes-submit.sh setup_submit
+label=list expect=stdout api=yes run_case list glossary-list setup_list --fresh
+label=concepts expect=stderr api=yes run_case concepts glossary-concepts setup_concepts
+label=resolve expect=stdout api=yes run_case resolve glossary-resolve setup_resolve 'Iron Sword' "$HASH"
+label=queue expect=stderr api=no run_case queue term-notes-queue setup_queue "$TMP/queue-terms.json" "$TMP/queue-rows.json"
+label=describe expect=stdout api=no run_case describe term-notes-describe setup_describe
+label=submit expect=stdout api=yes run_case submit term-notes-submit setup_submit
 
 safety_case() {
     local name="$1" response="$2" expected="$3"
@@ -174,7 +160,7 @@ JSON
     printf '%s\n' "$response" > "$state/term-notes-response.json"
     : > "$TMP/requests.log"
     set +e
-    BDO_ORCHESTRATOR=php BDO_STATE_DIR="$state" bash "$ROOT/cli/api/term-notes-submit.sh" >"$TMP/safety-$name.out" 2>"$TMP/safety-$name.err"
+    BDO_STATE_DIR="$state" php "$ROOT/cli/bdo.php" term-notes-submit >"$TMP/safety-$name.out" 2>"$TMP/safety-$name.err"
     local code=$?
     set -e
     test "$code" -eq 0 || fail "безпековий випадок $name має код 0"
@@ -188,4 +174,4 @@ safety_case NoDefinition '{"items":[{"canonical_source":"NoDefinition","gist":"g
 safety_case ExistingDefinition '{"items":[{"canonical_source":"ExistingDefinition","gist":"gist","confidence":90}]}' 0
 safety_case EmptyDefinition '{"items":[{"canonical_source":"EmptyDefinition","gist":"gist","confidence":90}]}' 1
 
-echo 'cli api glossary: 6 команд, файли й безпека: OK'
+echo 'cli api glossary: 6 PHP-команд, файли й безпека: OK'

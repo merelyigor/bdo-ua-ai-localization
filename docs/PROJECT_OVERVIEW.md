@@ -24,7 +24,7 @@ Docker, Artisan, SQL/БД, тестів або будь-яких змін. Оп�
 ## Архітектура: код керує, модель виконує
 
 ```
-bin/tui.sh ──► cli/run/run-loop.sh ──► cli/run/run-drive.sh ──► StateMachine
+bin/tui.sh ──► RunLoopCommand ──► RunDriveCommand ──► StateMachine
    меню            драйвер                  рушій               дозволені
                       │                                          переходи
                       └──► cli/model/client.php ──► Ollama (роль + схема)
@@ -41,7 +41,7 @@ bin/tui.sh ──► cli/run/run-loop.sh ──► cli/run/run-drive.sh ──�
 | Шар | Відповідальність |
 |---|---|
 | `bin/tui.sh` | меню, вибір роботи, екрани стану й журналу |
-| `cli/run/run-loop.sh` | виконання конверта рушія, перехід між пачками |
+| `RunLoopCommand` | виконання конверта рушія, перехід між пачками |
 | `cli/model/` | виклик локальної моделі, розгортання відповіді, журнал |
 | `cli/**` (решта) | CLI, HTTP transport, підготовка пачки, запис, коди виходу |
 | `lib/` PHP | identity, належність пачці, дефекти якості, безпечні payload, машина станів |

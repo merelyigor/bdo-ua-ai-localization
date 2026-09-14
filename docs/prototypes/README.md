@@ -36,7 +36,7 @@ start docs/prototypes\01-run-live.html     # Windows
 
 Інтерфейс за цими макетами ПОБУДОВАНО (2026-09-05), тому план закрито й
 видалено за політикою реєстру. Що вийшло насправді · `web/index.html`,
-`cli/system/web.sh`, `cli/system/web-router.php`; правила й межі ·
+`./bdo web`, `cli/system/web-router.php`; правила й межі ·
 [AI_AGENT_RULES_REFERENCE.md](../AI_AGENT_RULES_REFERENCE.md) §14.
 
 Макети лишаються як документація НАМІРУ: за ними видно, чого ми хотіли, і чим

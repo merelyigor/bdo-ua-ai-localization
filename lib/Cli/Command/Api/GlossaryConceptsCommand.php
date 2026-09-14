@@ -20,6 +20,17 @@ final class GlossaryConceptsCommand implements Command, \Bdo\Translate\Cli\Comma
     public function execute(array $arguments, Output $output): int
     {
         $scriptDir = dirname(__DIR__, 4);
+        // Команда САМА піднімає середовище, а не сподівається, що його експортує
+        // викликач. Раніше це робила bash-обгортка через `select-env.sh`; після
+        // зняття шляху відкату (2026-09-14) сподіватись стало ні на кого, і
+        // `./bdo suspects` мовчки деградував до неповного переліку.
+        try {
+            ApiEnvironment::load($scriptDir);
+        } catch (\Throwable $exception) {
+            $output->stderr('Середовище не піднялось: '.$exception->getMessage()."\n");
+
+            return 2;
+        }
         $stateDir = getenv('BDO_STATE_DIR') ?: $scriptDir.'/state';
         $cache = $stateDir.'/game-concepts.json';
         if (($arguments[0] ?? '') === '--path') {

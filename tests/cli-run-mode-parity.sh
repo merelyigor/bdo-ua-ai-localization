@@ -99,14 +99,9 @@ run_side() {
     local before after
     before="$(real_ms)"
     set +e
-    if [ "$side" = sh ]; then
-        BDO_ORCHESTRATOR=sh TRANSLATE_ENV_FILE="$ENV_FILE" BDO_STATE_DIR="$state" \
-            BDO_RUN_MAX_BATCHES="${RUN_MAX_BATCHES:-25}" bash "$HARNESS/cli/run/run-mode.sh" "$@" >"$out" 2>"$err"
-    else
-        BDO_ORCHESTRATOR=php TRANSLATE_ENV_FILE="$ENV_FILE" BDO_STATE_DIR="$state" \
-            BDO_RUN_MAX_BATCHES="${RUN_MAX_BATCHES:-25}" RUN_MODE_REQUEST_LOG="$REQUEST_LOG" \
-            "$REAL_PHP" "$HARNESS/cli/bdo.php" run-mode "$@" >"$out" 2>"$err"
-    fi
+    TRANSLATE_ENV_FILE="$ENV_FILE" BDO_STATE_DIR="$state" \
+        BDO_RUN_MAX_BATCHES="${RUN_MAX_BATCHES:-25}" RUN_MODE_REQUEST_LOG="$REQUEST_LOG" \
+        "$REAL_PHP" "$HARNESS/cli/bdo.php" run-mode "$@" >"$out" 2>"$err"
     local status=$?
     set -e
     after="$(real_ms)"
@@ -130,17 +125,8 @@ normalize_text() {
         -e 's|STATE/batches/[0-9_]*_[0-9a-f]*|STATE/batches/BATCH|g'
 }
 
-# Оголошення цілі виведене з побайтового порівняння НАВМИСНО й рівно з однієї
-# причини: заморожений bash друкує його ДВІЧІ (`run-spec.sh` сорсить
-# `select-env.sh` у підстановці, і рядок доходить до батьківського stderr), а
-# PHP-шлях друкує один раз · дубль у журналі читався як два різні запуски.
-#
-# Послаблення закінчується на КІЛЬКОСТІ, і більше тут перевіряти нічого:
-# САМ рядок на обох шляхах друкує ОДИН і той самий підпроцес `select-env.sh`,
-# тому розійтися по змісту він не може за побудовою. Перевірено саботажем:
-# підміна бази в `RunSpecCommand` і в `Router` не змінює цього рядка взагалі ·
-# він приходить із bash-підпроцесу. Перевірка «звірити текст цілі» була б тут
-# фіктивною: впасти вона не здатна.
+# Оголошення цілі вилучається з порівняння: цей тест перевіряє контракт
+# PHP-команди, а не дубльований шлях запуску.
 normalize_mode_stderr() {
     sed '/^Ціль:/d'
 }
@@ -229,24 +215,6 @@ copy_fixture() {
     mkdir -p "$state"
     : >"$state/run-target"
 }
-
-# ПРАВИЛО: default wrappers route to the exact internal Kernel command.
-# САБОТАЖ: missing dispatcher or wrong route must fail before behavior checks.
-ROUTE_BIN="$TMP/route-bin"
-mkdir -p "$ROUTE_BIN"
-cat >"$ROUTE_BIN/php" <<'ROUTE'
-#!/bin/sh
-if [ "${1:-}" != "$ROUTE_ROOT/cli/bdo.php" ] || [ "${2:-}" != run-mode ]; then
-    printf 'unexpected route: %s %s\n' "${1:-}" "${2:-}" >&2
-    exit 99
-fi
-printf 'ROUTED:run-mode\n'
-ROUTE
-chmod +x "$ROUTE_BIN/php"
-ROUTE_ROOT="$HARNESS" PATH="$ROUTE_BIN:$PATH" BDO_ORCHESTRATOR=php \
-    bash "$HARNESS/cli/run/run-mode.sh" patch 50 active >"$TMP/route.out" 2>"$TMP/route.err" \
-    || fail 'run-mode routing proof'
-grep -Fxq 'ROUTED:run-mode' "$TMP/route.out" || fail 'run-mode marker missing'
 
 # ПРАВИЛО: fresh modes preserve rows, target, goal, budget and selected manifest.
 # САБОТАЖ: stale output rows or a changed step order must fail structural parity.

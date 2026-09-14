@@ -239,9 +239,8 @@ grep -Fq 'BDO_MODEL_THINK' "$ROOT/lib/Run/Actions.php" \
 grep -Fq 'BDO_MODEL_THINK' "$ROOT/cli/model/client.php" \
     || fail 'змінної роздумів не існує в клієнті моделі'
 # tmux бере оточення СЕРВЕРА, а не викликача (той самий клас, що дав D74), тому
-# змінна мусить іти явним префіксом у рядок команди.
-grep -Fq '${ENV_PREFIX}./bdo' "$ROOT/cli/system/watch.sh" \
-    || fail 'змінна прогону не потрапляє в рядок команди tmux · перемикач нічого не змінить (клас D74)'
+# змінна мусить іти явним префіксом у план PHP-команди. Поведінка перевіряється
+# нижче на фактичному результаті Actions::commands().
 php -r '
 require $argv[1];
 use Bdo\Translate\Run\Actions;
@@ -400,9 +399,9 @@ if ($dry["needs_confirm"] !== false || $live["needs_confirm"] !== true) {
 }
 ' || fail 'план тестового прогону неправильний'
 # Різниця мусить бути РІВНО в одному аргументі кроку commit.
-grep -Fq 'BDO_DRY_RUN' "$ROOT/cli/run/run-drive.sh" \
+grep -Fq "if (getenv('BDO_DRY_RUN') !== '1') \$args[] = '--write';" "$ROOT/lib/Cli/Command/Run/RunDriveCommand.php" \
     || fail 'драйвер не знає BDO_DRY_RUN · тестовий прогін усе одно запише в API'
-grep -Fq 'write_args=()' "$ROOT/cli/run/run-drive.sh" \
+grep -Fq 'BDO_DRY_RUN' "$ROOT/lib/Cli/Command/Run/RunDriveCommand.php" \
     || fail 'тестовий прогін не знімає --write'
 # ЧИСТИМО ПОКАЗ, А НЕ ДАНІ: `keep` і placeholders тримаються саме на цих
 # тегах, тому їхнє прибирання в даних зламало б перевірки перед записом.

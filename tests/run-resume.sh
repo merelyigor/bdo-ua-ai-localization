@@ -9,10 +9,10 @@ HASH="$(printf resume-row | shasum -a 256 | awk '{print $1}')"
 php -r 'file_put_contents($argv[1],json_encode(["data"=>["rows"=>[[
     "identity_hash"=>$argv[2],"source_hash"=>hash("sha256","Sword"),"source_text"=>"Sword"]]]],JSON_THROW_ON_ERROR));' \
     "$TMP/rows.json" "$HASH"
-BDO_STATE_DIR="$TMP/state" bash "$ROOT/cli/batch/batch-new.sh" "$TMP/rows.json" >/dev/null
-BATCH="$(BDO_STATE_DIR="$TMP/state" bash "$ROOT/cli/batch/batch-dir.sh")"
+BDO_STATE_DIR="$TMP/state" php "$ROOT/cli/bdo.php" batch-new "$TMP/rows.json" >/dev/null
+BATCH="$(BDO_STATE_DIR="$TMP/state" php "$ROOT/cli/bdo.php" batch-dir)"
 
-result="$(BDO_STATE_DIR="$TMP/state" bash "$ROOT/cli/run/run-mode.sh" patch 20 3)"
+result="$(BDO_STATE_DIR="$TMP/state" php "$ROOT/cli/bdo.php" run-mode patch 20 3)"
 jq -e --arg batch "$BATCH" '.ok == true and .resume == true and .mode == "patch" and .patch == "3" and .state == "selected" and .batch_dir == $batch' <<< "$result" >/dev/null
 jq -e '.mode == "patch" and .patch == "3" and .channel == "machine"' "$BATCH/manifest.json" >/dev/null \
     || { echo 'FAIL: interrupted batch spec was not recovered'; exit 1; }

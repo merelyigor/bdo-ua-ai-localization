@@ -13,7 +13,7 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 fail() { printf 'FAIL: %s\n' "$1" >&2; exit 1; }
 
 command -v php >/dev/null 2>&1 || fail 'немає php'
-test -x "$ROOT/cli/run/run-stop.sh" || fail 'немає cli/run/run-stop.sh'
+test -f "$ROOT/cli/bdo.php" || fail 'немає cli/bdo.php'
 
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
@@ -24,7 +24,7 @@ mkdir -p "$BDO_STATE_DIR"
 # --- 1. Пачки немає · це НЕ помилка ----------------------------------------
 # Прогін могли зупинити до першої пачки, і падати тут означало б, що кнопка
 # «зупинити» дає «відмова, код 500» на цілком законному стані.
-out="$(cd "$ROOT" && bash cli/run/run-stop.sh 'тест без пачки' 2>&1)" \
+out="$(cd "$ROOT" && php cli/bdo.php run-stop 'тест без пачки' 2>&1)" \
     || fail "run stop упав без пачки: $out"
 grep -q 'поточної пачки немає' <<<"$out" \
     || fail "run stop без пачки мовчить про причину: $out"
@@ -41,7 +41,7 @@ cat > "$BDO_STATE_DIR/batches/$BATCH/manifest.json" <<JSON
 JSON
 : > "$BDO_STATE_DIR/batches/$BATCH/journal.jsonl"
 
-out="$(cd "$ROOT" && bash cli/run/run-stop.sh 'натиснуто «зупинити» на сторінці' 2>&1)" \
+out="$(cd "$ROOT" && php cli/bdo.php run-stop 'натиснуто «зупинити» на сторінці' 2>&1)" \
     || fail "run stop упав із пачкою: $out"
 grep -q 'human_stop:натиснуто' "$BDO_STATE_DIR/batches/$BATCH/journal.jsonl" \
     || fail "підпису в журналі пачки немає: $(cat "$BDO_STATE_DIR/batches/$BATCH/journal.jsonl")"

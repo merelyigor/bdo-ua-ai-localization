@@ -6,7 +6,7 @@ declare(strict_types=1);
  * PHP-точка входу для команд, перенесених через `Cli\\Kernel`.
  *
  * Автозавантажувач уже є спільним для `lib/**`, тому новий рантайм не вводить
- * Composer і залишає bash-dispatcher тонким містком для решти команд.
+ * Composer; bash лишається лише для живої оснастки поза PHP-командами.
  */
 require_once dirname(__DIR__).'/lib/autoload.php';
 

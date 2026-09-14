@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
-# Довести байтову ідентичність fetch-rows, capabilities і validate.
-# Старі shell-тіла лишаються rollback-шляхом, тому тест порівнює їх із PHP на
-# одному stub API, включно з файлами кешу та файлами результатів.
+# Перевірити поведінку fetch-rows, capabilities і validate через PHP на одному
+# stub API, включно з файлами кешу та файлами результатів.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 TMP="$(mktemp -d)"
@@ -64,7 +63,10 @@ kill -0 "$SERVER" 2>/dev/null || { cat "$TMP/server.log" >&2; exit 1; }
 export TRANSLATE_ENV_FILE="$TMP/env"
 export BDO_API_TARGET=legacy
 export STUB_LOG="$TMP/requests.log"
-run() { env BDO_ORCHESTRATOR="$1" BDO_STATE_DIR="$2" bash "$ROOT/$3" "${@:4}"; }
+run() {
+    local state="$1" internal="$2"; shift 2
+    BDO_STATE_DIR="$state" php "$ROOT/cli/bdo.php" "$internal" "$@"
+}
 
 normalize_result() {
     sed -E 's#output/(rows|validate)_[0-9]{8}_[0-9]{6}\.json#output/\1_TIMESTAMP.json#g' "$1" > "$2"
@@ -80,58 +82,20 @@ assert_timestamp_normalizer_is_narrow() {
     fi
 }
 
-pair() {
-    local name="$1" script="$2" state="$TMP/state-$1"; shift 2
+run_case() {
+    local name="$1" internal="$2" state="$TMP/state-$1"; shift 2
     local setup="$1"; shift
-    for _ in 1 2 3 4 5; do
-        rm -rf "$state" "$TMP/$name.sh.out" "$TMP/$name.php.out" "$TMP/$name.sh.err" "$TMP/$name.php.err" "$TMP/$name.sh.files"
-        rm -f "$ROOT"/output/rows_*.json "$ROOT"/output/validate_*.json
-        mkdir -p "$state"
-        "$setup" "$state" "$@"
-        : > "$TMP/requests.log"
-        set +e
-        run sh "$state" "$script" "$@" >"$TMP/$name.sh.out" 2>"$TMP/$name.sh.err"
-        local sh_code=$?
-        cp -a "$state" "$TMP/$name.sh.files"
-        case "$name" in
-            fetch) cp "$(ls -t "$ROOT"/output/rows_*.json | head -1)" "$TMP/$name.sh.rows" ;;
-            validate) cp "$(ls -t "$ROOT"/output/validate_*.json | head -1)" "$TMP/$name.sh.validate" ;;
-        esac
-        run php "$state" "$script" "$@" >"$TMP/$name.php.out" 2>"$TMP/$name.php.err"
-        local php_code=$?
-        set -e
-        printf '%s\n' "$sh_code" > "$TMP/$name.sh.code"
-        printf '%s\n' "$php_code" > "$TMP/$name.php.code"
-        # Нормалізація вмикається за ПРЕФІКСОМ, а не за точним іменем: сценарії
-        # стабільності звуться `fetch-stability-N`, і саме вони випадали з неї ·
-        # тобто перевірка, додана проти нестабільності, сама була нестабільною.
-        case "$name" in
-            fetch*|validate*) local normalize=1 ;;
-            *) local normalize=0 ;;
-        esac
-        if [ "$normalize" -eq 1 ]; then
-            normalize_result "$TMP/$name.sh.out" "$TMP/$name.sh.out.normalized"
-            normalize_result "$TMP/$name.php.out" "$TMP/$name.php.out.normalized"
-            normalize_result "$TMP/$name.sh.err" "$TMP/$name.sh.err.normalized"
-            normalize_result "$TMP/$name.php.err" "$TMP/$name.php.err.normalized"
-            cmp -s "$TMP/$name.sh.out.normalized" "$TMP/$name.php.out.normalized" || continue
-            cmp -s "$TMP/$name.sh.err.normalized" "$TMP/$name.php.err.normalized" || continue
-        else
-            cmp -s "$TMP/$name.sh.out" "$TMP/$name.php.out" || continue
-            cmp -s "$TMP/$name.sh.err" "$TMP/$name.php.err" || continue
-        fi
-        cmp -s "$TMP/$name.sh.code" "$TMP/$name.php.code" || continue
-        diff -qr "$TMP/$name.sh.files" "$state" >/dev/null || continue
-        : # sabotage-only: isolate the path-contract assertion from pair comparison
-        case "$name" in
-            fetch) cmp -s "$TMP/$name.sh.rows" "$(ls -t "$ROOT"/output/rows_*.json | head -1)" || continue ;;
-            validate) cmp -s "$TMP/$name.sh.validate" "$(ls -t "$ROOT"/output/validate_*.json | head -1)" || continue ;;
-        esac
-        return 0
-    done
-    diff -u "$TMP/$name.sh.out" "$TMP/$name.php.out" >&2 || true
-    diff -u "$TMP/$name.sh.err" "$TMP/$name.php.err" >&2 || true
-    fail "$name: stdout/stderr/exit code не збігаються"
+    rm -rf "$state"
+    rm -f "$ROOT"/output/rows_*.json "$ROOT"/output/validate_*.json
+    mkdir -p "$state"
+    "$setup" "$state" "$@"
+    : > "$TMP/requests.log"
+    set +e
+    run "$state" "$internal" "$@" >"$TMP/$name.out" 2>"$TMP/$name.err"
+    local code=$?
+    set -e
+    printf '%s\n' "$code" > "$TMP/$name.code"
+    test "$code" -eq 0 || fail "$name: PHP code=$code: $(cat "$TMP/$name.err")"
 }
 
 setup_none() { :; }
@@ -144,43 +108,39 @@ setup_fetch() {
     printf '%s\n' '{"target":"local","base":"stub","at":"2026-01-01T00:00:00Z","field_groups":"classification,tokens,constraints,glossary,reference,patch","items":{"glossary":"no","memory":"no","patches":"no","guide":"no","proposals":"no"}}' > "$state/api-capabilities.local.json"
 }
 
-pair capabilities cli/api/capabilities.sh setup_none
+run_case capabilities capabilities setup_none
 test -f "$TMP/state-capabilities/api-capabilities.local.json" || fail 'capabilities не створила cache'
 test "$(jq -r '.target' "$TMP/state-capabilities/api-capabilities.local.json")" = local || fail 'cache capabilities має неправильну ціль'
 
-pair validate cli/api/validate.sh setup_validate "$TMP/items.json"
+run_case validate validate setup_validate "$TMP/items.json"
 validate_file="$(ls -t "$ROOT"/output/validate_*.json 2>/dev/null | head -1 || true)"
 test -n "$validate_file" && test -s "$validate_file" || fail 'validate не створила файл відповіді'
 
-pair fetch cli/api/fetch-rows.sh setup_fetch 20
+run_case fetch fetch-rows setup_fetch 20
 assert_timestamp_normalizer_is_narrow
-for path_output in sh php; do
-    path="$(grep -oE '/[^ ]*/output/rows_[0-9_]+\.json' "$TMP/fetch.$path_output.out" | tail -1 || true)"
-    test -n "$path" && test -f "$path" || fail "шлях rows у $path_output-виводі не відповідає контракту run-mode.sh:65"
-done
+path="$(grep -oE '/[^ ]*/output/rows_[0-9_]+\.json' "$TMP/fetch.out" | tail -1 || true)"
+test -n "$path" && test -f "$path" || fail 'шлях rows у PHP-виводі не відповідає контракту'
 for repeat in 1 2 3 4 5; do
-    pair "fetch-stability-$repeat" cli/api/fetch-rows.sh setup_fetch 20
-    test "$(cat "$TMP/fetch-stability-$repeat.sh.code")" -eq 0 || fail "fetch stability run $repeat: shell code is not zero"
-    test "$(cat "$TMP/fetch-stability-$repeat.php.code")" -eq 0 || fail "fetch stability run $repeat: PHP code is not zero"
+    run_case "fetch-stability-$repeat" fetch-rows setup_fetch 20
 done
 rows="$(ls -t "$ROOT"/output/rows_*.json | head -1)"
 test "$(jq '.data.rows | length' "$rows")" -eq 2 || fail 'fetch не зберіг рядки'
 
-# ПРАВИЛО: обидві реалізації беруть ОДНУ зону часу · ту саму, що й `date`.
-# САБОТАЖ, який це валить: прибити зону літералом у PHP (як було до D112,
-# `Europe/Kyiv`) · тоді на будь-якій машині поза Києвом імена файлів розійдуться.
+# ПРАВИЛО: PHP бере ОДНУ зону часу · ту саму, що й `date`.
+# САБОТАЖ, який це валить: прибити зону літералом у PHP · тоді на будь-якій
+# машині поза Києвом імена файлів розійдуться.
 # Локальний прогін цього не ловить, бо машина власника живе в Києві, тому зона
 # підставляється ЯВНО, і саме обома значеннями.
 for zone in UTC Europe/Kyiv; do
-    stamp_sh="$(TZ="$zone" date +%Y%m%d_%H%M%S)"
+    stamp_date="$(TZ="$zone" date +%Y%m%d_%H%M%S)"
     stamp_php="$(TZ="$zone" php -r 'require $argv[1]; echo Bdo\Translate\Cli\LocalTime::stamp();' "$ROOT/lib/autoload.php")"
-    test "${stamp_sh:0:12}" = "${stamp_php:0:12}" \
-        || fail "зона $zone: date дає $stamp_sh, PHP дає $stamp_php · імена файлів розійдуться"
+    test "${stamp_date:0:12}" = "${stamp_php:0:12}" \
+        || fail "зона $zone: date дає $stamp_date, PHP дає $stamp_php · імена файлів розійдуться"
 done
 
 for size in 15 19 101; do
     set +e
-    invalid_err="$(TRANSLATE_ENV_FILE="$TMP/env" BDO_STATE_DIR="$TMP/invalid-$size" bash "$ROOT/cli/api/fetch-rows.sh" "$size" 2>&1 >/dev/null)"
+    invalid_err="$(TRANSLATE_ENV_FILE="$TMP/env" BDO_STATE_DIR="$TMP/invalid-$size" php "$ROOT/cli/bdo.php" fetch-rows "$size" 2>&1 >/dev/null)"
     invalid_code=$?
     set -e
     test "$invalid_code" -eq 2 || fail "розмір $size не відхилено кодом 2"

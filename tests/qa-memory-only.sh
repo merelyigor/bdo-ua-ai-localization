@@ -37,8 +37,8 @@ BDO_API_BASE_DEV=http://127.0.0.1:1
 BDO_API_KEY_DEV=test
 ENV
 
-BDO_STATE_DIR="$STATE" bash "$ROOT/cli/batch/batch-new.sh" "$STATE/rows.json" >/dev/null
-B="$(BDO_STATE_DIR="$STATE" bash "$ROOT/cli/batch/batch-dir.sh")"
+BDO_STATE_DIR="$STATE" php "$ROOT/cli/bdo.php" batch-new "$STATE/rows.json" >/dev/null
+B="$(BDO_STATE_DIR="$STATE" php "$ROOT/cli/bdo.php" batch-dir)"
 
 # Стан рівно той, у якому жив дефект: переклад готовий, механіка перевірена,
 # і ВСІ рядки закрито памʼяттю · до QA не йде жоден.
@@ -63,7 +63,7 @@ file_put_contents($argv[2], json_encode($out, JSON_UNESCAPED_UNICODE));
 cp "$B/pre-verdicts.json" "$B/verdicts.json"
 
 drive() { TRANSLATE_ENV_FILE="$TMP/.env" BDO_AUTO_CLEAN=0 BDO_STATE_DIR="$STATE" \
-    bash "$ROOT/cli/run/run-drive.sh" 2>/dev/null | tail -1 || true; }
+    php "$ROOT/cli/bdo.php" run-drive 2>/dev/null | tail -1 || true; }
 
 state_of() { php -r '$m=json_decode(file_get_contents($argv[1]),true); echo $m["state"] ?? "";' "$B/manifest.json"; }
 

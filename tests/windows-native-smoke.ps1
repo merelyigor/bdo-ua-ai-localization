@@ -144,7 +144,6 @@ if ($json.ok -ne $true -or $json.mode -ne 'patch' -or $json.patch -ne 'active' -
 $runLoopState = Join-Path $work 'run-loop-no-batch-state'
 New-Item -ItemType Directory -Force -Path $runLoopState | Out-Null
 $env:BDO_STATE_DIR = $runLoopState
-$env:BDO_ORCHESTRATOR = 'php'
 $runLoop = Invoke-NativeProcess @($entry, 'run-loop', '--once') 10000
 if ($runLoop.Code -ne 1) {
     Fail "run-loop --once returned code $($runLoop.Code), expected 1."

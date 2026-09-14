@@ -16,15 +16,15 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 fail() { printf 'FAIL: %s\n' "$1" >&2; exit 1; }
 
-WATCH="$ROOT/cli/system/watch.sh"
-test -x "$WATCH" || fail 'немає cli/system/watch.sh'
+WATCH="$ROOT/lib/Cli/Command/System/WatchCommand.php"
+test -f "$WATCH" || fail 'немає lib/Cli/Command/System/WatchCommand.php'
 
 # Межу перевіряємо БЕЗ tmux теж: вона у коді, а не в наявності інструмента.
 # Тому спершу те, що не залежить від оточення.
 grep -Fq 'дозволено лише «loop» і «tui»' "$WATCH" \
     || fail 'watch не називає дозволений перелік підкоманд'
-grep -Fq '${SESSION}' "$WATCH" \
-    || fail 'watch пише $SESSION без дужок · під set -u це падіння на багатобайтовому символі (§13.7)'
+grep -Fq '{$session}' "$WATCH" \
+    || fail 'watch не використовує заекрановане імʼя PHP-сесії у повідомленнях'
 # Реєстр не має відкривати через watch більше, ніж дозволяє код.
 php -r '
 $r = json_decode((string) file_get_contents($argv[1]), true, 512, JSON_THROW_ON_ERROR);
@@ -54,7 +54,7 @@ export BDO_TMUX_SESSION="$SESSION"
 cleanup() { tmux kill-session -t "$SESSION" 2>/dev/null || true; }
 trap cleanup EXIT
 
-watch() { bash "$WATCH" "$@"; }
+watch() { php "$ROOT/cli/bdo.php" watch "$@"; }
 
 # 1. Кожна відмова називає ПРИЧИНУ, а не просто «не можна».
 reject() {

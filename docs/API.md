@@ -41,7 +41,7 @@
 `max_rows_per_page`, `max_context_rows`), `writes` і `effective_abilities`.
 
 `writes.channels` · СПИСОК обʼєктів `{layer, mode, allowed, result}`, а не мапа
-за назвою каналу. Саме цю форму читає `cli/write/write-translations.sh`: 2026-08-29
+за назвою каналу. Саме цю форму читає команда `write`: 2026-08-29
 вигадана мапа заблокувала кожен коміт із `api_write_failed` (D33).
 
 Для машинного шару потрібне `translations:write-machine` у `effective_abilities`.
@@ -145,7 +145,7 @@ machine-перекладу, у патчі 5 · два, у патчі 3 · 442, �
 `{"identity_hashes": [...]}`, відповідь · `data.contexts` і `meta`
 (`requested`, `found`).
 
-Саме цей ендпоінт вживає `cli/prepare/worker-payload.sh`: одиничний GET на 50
+Саме цей ендпоінт вживає `WorkerPayloadCommand`: одиничний GET на 50
 рядків коштував 50 запитів, і на цьому крок деградував мовчки. Одиничний
 лишається для ручної перевірки одного рядка.
 

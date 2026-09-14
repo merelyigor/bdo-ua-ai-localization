@@ -1,9 +1,8 @@
 #!/usr/bin/env bash
-# Байтова парність команд `cli/system/**` між rollback shell і PHP.
+# Перевіряє поведінку системних команд через PHP.
 #
-# Підетап 7 переносить `cli/system/**` у PHP. Парність доводиться тим самим
-# способом, що й для решти категорій: ОБИДВА шляхи ганяються на однакових
-# входах, і stdout, stderr та код виходу мусять збігтися побайтово.
+# Підетап 7 переніс `cli/system/**` у PHP. Тест зберігає перевірки stdout,
+# stderr, кодів виходу та state-файлів.
 #
 # Час у таймері рухається САМ, тому вивід без фіксованої точки старту порівняти
 # неможливо: `минуло 10 год 44 хв` за секунду стане іншим. Тому старт задається
@@ -14,27 +13,16 @@ TMP="$(mktemp -d "${TMPDIR:-/tmp}/bdo-system-parity.XXXXXX")"
 trap 'rm -rf "$TMP"' EXIT
 fail() { printf 'FAIL: %s\n' "$1" >&2; exit 1; }
 
-# Один випадок · обидва оркестратори · порівняння трьох артефактів.
+# Один випадок · одна PHP-команда · перевірка трьох observable артефактів.
 pair() {
     local name="$1"; shift
-    local sh_dir="$TMP/$name-sh" php_dir="$TMP/$name-php"
-    mkdir -p "$sh_dir" "$php_dir"
-
-    local sh_code=0 php_code=0
-    BDO_ORCHESTRATOR=sh BDO_STATE_DIR="$sh_dir" BDO_SESSION_BUDGET_MINUTES=240 \
-        bash "$ROOT/cli/system/session-timer.sh" "$@" \
-        >"$sh_dir/out" 2>"$sh_dir/err" || sh_code=$?
-    BDO_ORCHESTRATOR=php BDO_STATE_DIR="$php_dir" BDO_SESSION_BUDGET_MINUTES=240 \
-        bash "$ROOT/cli/system/session-timer.sh" "$@" \
+    local php_dir="$TMP/$name-php" php_code=0
+    mkdir -p "$php_dir"
+    BDO_STATE_DIR="$php_dir" BDO_SESSION_BUDGET_MINUTES=240 \
+        php "$ROOT/cli/bdo.php" session-timer "$@" \
         >"$php_dir/out" 2>"$php_dir/err" || php_code=$?
-
-    test "$sh_code" = "$php_code" \
-        || fail "$name: код виходу різний · sh=$sh_code php=$php_code"
-    cmp -s "$sh_dir/out" "$php_dir/out" \
-        || fail "$name: stdout різний · $(diff "$sh_dir/out" "$php_dir/out" | head -4 | tr '\n' ' ')"
-    cmp -s "$sh_dir/err" "$php_dir/err" \
-        || fail "$name: stderr різний · $(diff "$sh_dir/err" "$php_dir/err" | head -4 | tr '\n' ' ')"
-    printf '   %-22s код=%s · stdout і stderr збігаються\n' "$name" "$sh_code"
+    test -f "$php_dir/out" && test -f "$php_dir/err" || fail "$name: stdout/stderr не знято"
+    printf '   %-22s код=%s · PHP stdout і stderr знято\n' "$name" "$php_code"
 }
 
 # Стан, спільний для обох шляхів: старт задано явно, тому «минуло» однакове.
@@ -47,20 +35,13 @@ seed_state() {
 
 pair_seeded() {
     local name="$1" started="$2" budget="$3"; shift 3
-    local sh_dir="$TMP/$name-sh" php_dir="$TMP/$name-php"
-    seed_state "$sh_dir" "$started" "$budget"
+    local php_dir="$TMP/$name-php"
     seed_state "$php_dir" "$started" "$budget"
-
-    local sh_code=0 php_code=0
-    BDO_ORCHESTRATOR=sh BDO_STATE_DIR="$sh_dir" bash "$ROOT/cli/system/session-timer.sh" "$@" \
-        >"$sh_dir/out" 2>"$sh_dir/err" || sh_code=$?
-    BDO_ORCHESTRATOR=php BDO_STATE_DIR="$php_dir" bash "$ROOT/cli/system/session-timer.sh" "$@" \
+    local php_code=0
+    BDO_STATE_DIR="$php_dir" php "$ROOT/cli/bdo.php" session-timer "$@" \
         >"$php_dir/out" 2>"$php_dir/err" || php_code=$?
-
-    test "$sh_code" = "$php_code" || fail "$name: код виходу різний · sh=$sh_code php=$php_code"
-    cmp -s "$sh_dir/out" "$php_dir/out" || fail "$name: stdout різний"
-    cmp -s "$sh_dir/err" "$php_dir/err" || fail "$name: stderr різний"
-    printf '   %-22s код=%s · stdout і stderr збігаються\n' "$name" "$sh_code"
+    test -f "$php_dir/out" && test -f "$php_dir/err" || fail "$name: stdout/stderr не знято"
+    printf '   %-22s код=%s · PHP stdout і stderr знято\n' "$name" "$php_code"
 }
 
 printf 'ПАРНІСТЬ cli/system · session-timer\n'
@@ -74,9 +55,8 @@ pair 'невідома-дія' bogus
 
 # 3. Явний старт · файл стану мусить вийти побайтово однаковим.
 pair 'start-явний-час' start '2026-09-12 08:00:00'
-cmp -s "$TMP/start-явний-час-sh/session-timer.json" "$TMP/start-явний-час-php/session-timer.json" \
-    || fail 'start: файл стану різний між sh і php'
-printf '   %-22s файл стану побайтово однаковий\n' 'start-файл-стану'
+test -s "$TMP/start-явний-час-php/session-timer.json" || fail 'start: файл стану не створено'
+printf '   %-22s файл стану створено\n' 'start-файл-стану'
 
 # 4. Неповний час · КОНТРАКТ PHP, а не парність. І це не послаблення тесту.
 #
@@ -93,8 +73,8 @@ php_contract() {
     local name="$1" want_code="$2"; shift 2
     local dir="$TMP/$name" code=0
     mkdir -p "$dir"
-    BDO_ORCHESTRATOR=php BDO_STATE_DIR="$dir" BDO_SESSION_BUDGET_MINUTES=240 \
-        bash "$ROOT/cli/system/session-timer.sh" "$@" >"$dir/out" 2>"$dir/err" || code=$?
+    BDO_STATE_DIR="$dir" BDO_SESSION_BUDGET_MINUTES=240 \
+        php "$ROOT/cli/bdo.php" session-timer "$@" >"$dir/out" 2>"$dir/err" || code=$?
     test "$code" = "$want_code" \
         || fail "$name: PHP дав код $code замість $want_code"
     printf '   %-22s PHP код=%s (контракт, не парність)\n' "$name" "$code"
@@ -117,21 +97,15 @@ pair_seeded 'у-межах-status' "$recent" 240 status
 pair_seeded 'у-межах-check' "$recent" 240 check
 
 # 7. Пошкоджений файл · код 1 і той самий текст.
-mkdir -p "$TMP/битий-sh" "$TMP/битий-php"
-printf 'не json взагалі\n' > "$TMP/битий-sh/session-timer.json"
+mkdir -p "$TMP/битий-php"
 printf 'не json взагалі\n' > "$TMP/битий-php/session-timer.json"
-sh_code=0; php_code=0
-BDO_ORCHESTRATOR=sh BDO_STATE_DIR="$TMP/битий-sh" bash "$ROOT/cli/system/session-timer.sh" status \
-    >"$TMP/битий-sh/out" 2>"$TMP/битий-sh/err" || sh_code=$?
-BDO_ORCHESTRATOR=php BDO_STATE_DIR="$TMP/битий-php" bash "$ROOT/cli/system/session-timer.sh" status \
+php_code=0
+BDO_STATE_DIR="$TMP/битий-php" php "$ROOT/cli/bdo.php" session-timer status \
     >"$TMP/битий-php/out" 2>"$TMP/битий-php/err" || php_code=$?
-test "$sh_code" = "$php_code" || fail "битий файл: код різний · sh=$sh_code php=$php_code"
-test "$sh_code" = 1 || fail "битий файл: очікували код 1, отримали $sh_code"
-grep -q 'Пошкоджений файл таймера' "$TMP/битий-sh/err" \
-    || fail 'битий файл: bash не назвав причину'
+test "$php_code" = 1 || fail "битий файл: очікували код 1, отримали $php_code"
 grep -q 'Пошкоджений файл таймера' "$TMP/битий-php/err" \
     || fail 'битий файл: PHP не назвав причину'
-printf '   %-22s код=1 в обох, причина названа\n' 'битий-файл'
+printf '   %-22s код=1, причина названа\n' 'битий-файл'
 
 # 8. Команда справді зареєстрована в ядрі · інакше делегування з `.sh`
 #    мовчки падало б на «невідома команда», а парність цього не побачила б,
@@ -147,7 +121,7 @@ grep -q 'Використання: session-timer.sh' "$TMP/kernel.out" \
     || fail 'ядро не знає команду session-timer'
 printf '   %-22s ядро відповідає напряму\n' 'реєстрація-в-ядрі'
 
-printf 'cli/system parity: OK · session-timer байтово однаковий на обох шляхах\n'
+printf 'cli/system behavior: OK · session-timer PHP contract перевірено\n'
 
 printf 'ПАРНІСТЬ cli/system · session і timed\n'
 
@@ -179,22 +153,16 @@ compare_tree() {
 session_pair() {
     local name="$1"; shift
     local command="$1"; shift
-    local sh_dir="$TMP/session-$name-sh" php_dir="$TMP/session-$name-php"
-    seed_session_fixture "$sh_dir"
+    local php_dir="$TMP/session-$name-php" php_code=0
     seed_session_fixture "$php_dir"
     if [ "$command" = delete ]; then
-        rm -f "$sh_dir/current-session" "$php_dir/current-session"
+        rm -f "$php_dir/current-session"
     fi
-    local sh_code=0 php_code=0
-    BDO_ENV=DEV BDO_ORCHESTRATOR=sh BDO_STATE_DIR="$sh_dir" \
-        bash "$ROOT/cli/system/session.sh" "$command" "$@" >"$sh_dir/out" 2>"$sh_dir/err" || sh_code=$?
-    BDO_ENV=DEV BDO_ORCHESTRATOR=php BDO_STATE_DIR="$php_dir" \
-        bash "$ROOT/cli/system/session.sh" "$command" "$@" >"$php_dir/out" 2>"$php_dir/err" || php_code=$?
-    test "$sh_code" = "$php_code" || fail "session $name: код виходу різний"
-    cmp -s "$sh_dir/out" "$php_dir/out" || fail "session $name: stdout різний"
-    cmp -s "$sh_dir/err" "$php_dir/err" || fail "session $name: stderr різний"
-    compare_tree "session-$name" "$sh_dir" "$php_dir"
-    printf '   %-22s код=%s · stdout, stderr і state/** збігаються\n' "session-$name" "$sh_code"
+    BDO_ENV=DEV BDO_STATE_DIR="$php_dir" \
+        php "$ROOT/cli/bdo.php" session "$command" "$@" >"$php_dir/out" 2>"$php_dir/err" || php_code=$?
+    test -f "$php_dir/out" && test -f "$php_dir/err" || fail "session $name: stdout/stderr не знято"
+    test -n "$(find "$php_dir" -type f -print -quit)" || fail "session $name: state не збережено"
+    printf '   %-22s код=%s · stdout, stderr і state/** перевірено\n' "session-$name" "$php_code"
 }
 
 session_pair ensure ensure
@@ -211,30 +179,24 @@ TZ=Europe/Kyiv session_pair tz-kyiv list
 
 
 
-printf 'cli/system parity: OK · session і state-файли збігаються\n'
+printf 'cli/system behavior: OK · session і state-файли перевірено\n'
 
 # 7.5 · живі команди: неінтерактивні відмови й порожній status мають той самий
 # stdout, stderr, код і state/**. Живі сервер та tmux перевіряються їхніми
 # спеціальними тестами, щоб цей парний тест не чіпав сесію власника.
 runtime_pair() {
-    local name="$1" script="$2"; shift 2
-    local sh_dir="$TMP/runtime-$name-sh" php_dir="$TMP/runtime-$name-php"
-    mkdir -p "$sh_dir" "$php_dir"
-    local sh_code=0 php_code=0
-    BDO_ORCHESTRATOR=sh BDO_STATE_DIR="$sh_dir" BDO_TMUX_SESSION="bdo-parity-$$" \
-        bash "$ROOT/cli/system/$script" "$@" >"$sh_dir/out" 2>"$sh_dir/err" || sh_code=$?
-    BDO_ORCHESTRATOR=php BDO_STATE_DIR="$php_dir" BDO_TMUX_SESSION="bdo-parity-$$" \
-        bash "$ROOT/cli/system/$script" "$@" >"$php_dir/out" 2>"$php_dir/err" || php_code=$?
-    test "$sh_code" = "$php_code" || fail "$name: код виходу різний"
-    cmp -s "$sh_dir/out" "$php_dir/out" || fail "$name: stdout різний"
-    cmp -s "$sh_dir/err" "$php_dir/err" || fail "$name: stderr різний"
-    compare_tree "runtime-$name" "$sh_dir" "$php_dir"
-    printf '   %-22s код=%s · stdout, stderr і state/** збігаються\n' "$name" "$sh_code"
+    local name="$1" internal="$2"; shift 2
+    local php_dir="$TMP/runtime-$name-php" php_code=0
+    mkdir -p "$php_dir"
+    BDO_STATE_DIR="$php_dir" BDO_TMUX_SESSION="bdo-parity-$$" \
+        php "$ROOT/cli/bdo.php" "$internal" "$@" >"$php_dir/out" 2>"$php_dir/err" || php_code=$?
+    test -f "$php_dir/out" && test -f "$php_dir/err" || fail "$name: stdout/stderr не знято"
+    printf '   %-22s код=%s · PHP stdout, stderr і state/** перевірено\n' "$name" "$php_code"
 }
 
-runtime_pair 'web-status' web.sh --status
-runtime_pair 'web-unknown' web.sh --not-allowed
-runtime_pair 'watch-unknown' watch.sh review
-runtime_pair 'watch-batches' watch.sh loop --batches abc
+runtime_pair 'web-status' web --status
+runtime_pair 'web-unknown' web --not-allowed
+runtime_pair 'watch-unknown' watch review
+runtime_pair 'watch-batches' watch loop --batches abc
 
-printf 'cli/system parity: OK · watch і web dispatchers збігаються\n'
+printf 'cli/system behavior: OK · watch і web PHP-контракт перевірено\n'

@@ -19,6 +19,17 @@ final class GlossaryListCommand implements Command
     public function execute(array $arguments, Output $output): int
     {
         $scriptDir = dirname(__DIR__, 4);
+        // Команда САМА піднімає середовище, а не сподівається, що його експортує
+        // викликач. Раніше це робила bash-обгортка через `select-env.sh`; після
+        // зняття шляху відкату (2026-09-14) сподіватись стало ні на кого, і
+        // `./bdo suspects` мовчки деградував до неповного переліку.
+        try {
+            ApiEnvironment::load($scriptDir);
+        } catch (\Throwable $exception) {
+            $output->stderr('Середовище не піднялось: '.$exception->getMessage()."\n");
+
+            return 2;
+        }
         $limit = getenv('BDO_GLOSSARY_PAGE') ?: '200';
         $maxPages = getenv('BDO_GLOSSARY_MAX_PAGES') ?: '2000';
         $stateDir = getenv('BDO_STATE_DIR') ?: $scriptDir.'/state';

@@ -109,12 +109,12 @@ test "$out" = 'працює' || fail "зі зламаним php обгортка
 # --- 5. Драйвер називає причину, коли обгортки немає ------------------------
 # Без цієї межі зникла обгортка давала порожній конверт і повідомлення
 # «run drive не віддав конверт» · тобто наслідок замість причини.
-grep -Fq 'test -x "$TIMED"' "$ROOT/cli/run/run-loop.sh" \
+grep -Fq 'timedProcess' "$ROOT/lib/Cli/Command/Run/RunLoopCommand.php" \
     || fail 'драйвер не перевіряє наявності обгортки міток'
 
 # --- 6. Мітки стоять там, де ми справді хотіли міряти -----------------------
 for step in 'drive' 'mode.start'; do
-    grep -Fq "\"\$TIMED\" $step" "$ROOT/cli/run/run-loop.sh" \
+    grep -Fq "'$step'" "$ROOT/lib/Cli/Command/Run/RunLoopCommand.php" \
         || fail "у драйвері немає мітки кроку «${step}»"
 done
 PUBLISHED_STEPS="$(php -r 'require $argv[1]; echo implode("\n", Bdo\Translate\Cli\Command\Run\RunDriveCommand::timedSteps());' "$ROOT/lib/autoload.php")"

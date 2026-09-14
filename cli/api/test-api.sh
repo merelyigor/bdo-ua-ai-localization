@@ -33,7 +33,7 @@ echo "== 2. /guide (хедер) =="
 # Машинна інструкція є лише в старому API. У хабі її немає ЩЕ, і це не привід
 # оголошувати з'єднання зламаним: перевірка каже про відсутність вголос і йде
 # далі. Що саме є в цій цілі · `./bdo capabilities`.
-if ! "$SCRIPT_DIR/cli/api/capabilities.sh" --has guide >/dev/null 2>&1; then
+if ! php "$SCRIPT_DIR/cli/bdo.php" capabilities --has guide >/dev/null 2>&1; then
     echo "немає в цій цілі · інструкція береться з docs/, прогін це не спиняє"
 else
 GUIDE_FILE=$(mktemp)

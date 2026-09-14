@@ -12,13 +12,22 @@ use Bdo\Translate\Http\Request;
 
 /**
  * Друкує статистику патча з п'яти читальних API-запитів.
- * Старий shell-файл лишається еталоном і шляхом відкату, а PHP повторює його
- * порядок запитів і формат без запуску curl або php-підпроцесу.
+ * Команда зберігає порядок запитів і формат без запуску curl або
+ * php-підпроцесу.
  */
 final class PatchInfoCommand implements Command
 {
     public function execute(array $arguments, Output $output): int
     {
+        // Команда САМА піднімає середовище (див. GlossaryListCommand): після
+        // зняття bash-обгортки експортувати базу та ключ більше нікому.
+        try {
+            ApiEnvironment::load(dirname(__DIR__, 4));
+        } catch (\Throwable $exception) {
+            $output->stderr('Середовище не піднялось: '.$exception->getMessage()."\n");
+
+            return 2;
+        }
         $snapshot = (string) ($arguments[0] ?? 'active');
         $text = "================================================\n";
         $text .= "  СТАТИСТИКА ПАТЧУ: {$snapshot}\n";

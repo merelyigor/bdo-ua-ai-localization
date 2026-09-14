@@ -36,7 +36,7 @@ JSON
 cp "$TMP/state/batches/b/context.json" "$TMP/context-backup.json"
 
 # shellcheck disable=SC2120  # прапорці передаються не в кожному виклику
-build() { BDO_STATE_DIR="$TMP/state" bash "$ROOT/cli/prepare/worker-payload.sh" "$TMP/rows.json" "$@" 2>"$TMP/err.txt"; }
+build() { BDO_STATE_DIR="$TMP/state" php "$ROOT/cli/bdo.php" worker-payload "$TMP/rows.json" "$@" 2>"$TMP/err.txt"; }
 
 out="$(build)" || fail "worker-payload впав: $(cat "$TMP/err.txt")"
 printf '%s' "$out" | jq -e 'has("examples") and has("items")' >/dev/null \
@@ -82,7 +82,7 @@ grep -q 'відкинуто понад стелю 1' "$TMP/err.txt" || fail 'в�
 # QA бачить payload тієї самої форми, інакше промпти двох ролей розійдуться.
 printf '[{"identity_hash":"%s","text":"Залізний меч"},{"identity_hash":"%s","text":"Залізний щит"},{"identity_hash":"%s","text":"Залізний шолом"}]' \
     "$H1" "$H2" "$H3" > "$TMP/candidate.json"
-qa="$(BDO_STATE_DIR="$TMP/state" bash "$ROOT/cli/prepare/qa-payload.sh" "$TMP/rows.json" "$TMP/candidate.json" 2>"$TMP/qa-err.txt")" \
+qa="$(BDO_STATE_DIR="$TMP/state" php "$ROOT/cli/bdo.php" qa-payload "$TMP/rows.json" "$TMP/candidate.json" 2>"$TMP/qa-err.txt")" \
     || fail "qa-payload впав: $(cat "$TMP/qa-err.txt")"
 printf '%s' "$qa" | jq -e 'has("examples") and has("items")' >/dev/null \
     || fail 'qa-payload лишився зі старою формою'
@@ -105,7 +105,7 @@ JSON
 out="$(build)" || fail 'payload з описом терміна не зібрався'
 printf '%s' "$out" | jq -e '.terms[0].definition and .terms[0].wiki_url' >/dev/null \
     || fail 'опис із вікі не доходить до моделі'
-qa2="$(BDO_STATE_DIR="$TMP/state" bash "$ROOT/cli/prepare/qa-payload.sh" "$TMP/rows.json" "$TMP/candidate.json" 2>/dev/null)"
+qa2="$(BDO_STATE_DIR="$TMP/state" php "$ROOT/cli/bdo.php" qa-payload "$TMP/rows.json" "$TMP/candidate.json" 2>/dev/null)"
 printf '%s' "$qa2" | jq -e '.terms[0].definition' >/dev/null \
     || fail 'QA судить без тих самих термінів, що бачив воркер'
 
@@ -123,7 +123,7 @@ chmod +x "$TMP/http-fail.sh"
 : > "$TMP/state/batches/b/context.json"
 set +e
 BDO_CONTEXT_HTTP="$TMP/http-fail.sh" BDO_API_BASE=https://example.invalid BDO_API_KEY=x \
-    BDO_STATE_DIR="$TMP/state" bash "$ROOT/cli/prepare/worker-payload.sh" "$TMP/rows.json" \
+    BDO_STATE_DIR="$TMP/state" php "$ROOT/cli/bdo.php" worker-payload "$TMP/rows.json" \
     >"$TMP/broken.json" 2>"$TMP/broken-err.txt"
 code=$?
 set -e
@@ -136,11 +136,16 @@ cp "$TMP/context-backup.json" "$TMP/state/batches/b/context.json" 2>/dev/null ||
 # Рушій мусить перетворити цю зупинку на повтор, а не впасти з порожнім файлом.
 # Живий прогін тут не відтворити (крок онлайновий), тому перевіряється звʼязок:
 # код виходу враховано, недобудований payload прибрано, причина названа.
-grep -Fq 'if ! "$SCRIPT_DIR/cli/prepare/worker-payload.sh"' "$ROOT/cli/run/run-drive.sh" \
+# У bash це був рядок `if ! "$SCRIPT_DIR/cli/prepare/worker-payload.sh"`, у PHP
+# той самий звʼязок виражений трьома символами. Перенос 2026-09-14 шукав літерал
+# `worker-payload.json.new`, якого в коді немає: шлях будується як `$payload.'.new'`.
+worker_region="$(grep -A 8 'new WorkerPayloadCommand()' "$ROOT/lib/Cli/Command/Run/RunDriveCommand.php")"
+test -n "$worker_region" || fail 'run drive більше не будує worker-payload'
+grep -Fq "\$result['code'] !== 0" <<<"$worker_region" \
     || fail 'run drive ігнорує код виходу worker-payload'
-grep -Fq 'context_unavailable' "$ROOT/cli/run/run-drive.sh" \
+grep -Fq 'context_unavailable' <<<"$worker_region" \
     || fail 'run drive не називає недоступний контекст окремою причиною'
-grep -Fq 'rm -f "$B/worker-payload.json.new"' "$ROOT/cli/run/run-drive.sh" \
+grep -Fq "rename(\$payload.'.new', \$payload)" <<<"$worker_region" \
     || fail 'недобудований payload лишається на диску'
 
 # Приклад, що суперечить затвердженому терміну, до моделі не їде.
@@ -187,7 +192,9 @@ if ($filtered["terms"] !== ["Cheongsa Island"]) $fail("причина відки
 
 bash "$ROOT/tests/cli-payload-parity.sh" >"$TMP/filter-parity.out" 2>"$TMP/filter-parity.err" \
     || fail "payload parity не довів фільтрацію прикладів: $(cat "$TMP/filter-parity.err")"
-grep -Fq 'cli payload parity' "$TMP/filter-parity.out" \
+# Підтест перейменувався разом зі зняттям парності: він більше не порівнює два
+# шляхи, а перевіряє поведінку PHP-команд.
+grep -Fq 'cli payload behavior' "$TMP/filter-parity.out" \
     || fail 'фільтрація прикладів не пройдена поведінково'
 
 # Підозрілий запис глосарію не подається моделі як закон.
@@ -275,7 +282,7 @@ cat > "$TMP/concept-rows.json" <<JSON
  {"identity_hash":"$H2","source_hash":"b","source_text":"Open the map and walk."}
 ]}}
 JSON
-out="$(BDO_STATE_DIR="$TMP/state" bash "$ROOT/cli/prepare/worker-payload.sh" "$TMP/concept-rows.json" --no-context 2>/dev/null)" \
+out="$(BDO_STATE_DIR="$TMP/state" php "$ROOT/cli/bdo.php" worker-payload "$TMP/concept-rows.json" --no-context 2>/dev/null)" \
     || fail 'payload із поняттями не зібрався'
 printf '%s' "$out" | jq -e '[.concepts[].term] | sort == ["AP","Set Effect"]' >/dev/null \
     || fail "у payload не ті поняття: $(printf '%s' "$out" | jq -c '[.concepts[].term]')"
@@ -297,7 +304,9 @@ for role in worker qa; do
 done
 # Перелік тягнеться ОДИН раз на прогін, а не на кожну пачку: другий виклик
 # читає свіжий кеш і тому не доходить до мертвого API.
-grep -Fq 'glossary-concepts.sh' "$ROOT/cli/run/run-drive.sh" || fail 'рушій не оновлює перелік понять'
+# У bash рушій кликав `glossary-concepts.sh`, у PHP · сам клас команди.
+grep -Fq 'new GlossaryConceptsCommand()' "$ROOT/lib/Cli/Command/Run/RunDriveCommand.php" \
+    || fail 'рушій не оновлює перелік понять'
 mkdir -p "$TMP/concepts-state"
 cat > "$TMP/concepts-state/game-concepts.json" <<'JSON'
 {"fetched_at":"now","concepts":[{"term":"AP","gist":"Сила атаки."}]}
@@ -311,7 +320,7 @@ BDO_API_KEY_DEV=test-key
 ENV
 concepts_err="$TMP/concepts.err"
 TRANSLATE_ENV_FILE="$TMP/concepts-env" BDO_STATE_DIR="$TMP/concepts-state" \
-    bash "$ROOT/cli/api/glossary-concepts.sh" 2>"$concepts_err" >/dev/null \
+    php "$ROOT/cli/bdo.php" glossary-concepts 2>"$concepts_err" >/dev/null \
     || fail 'свіжий кеш понять не читається'
 grep -q 'із кешу' "$concepts_err" || fail 'TTL-кеш понять не захищає від мережевого запиту'
 
@@ -331,9 +340,9 @@ JSON
 cat > "$TMP/queue-rows.json" <<JSON
 {"data":{"rows":[{"identity_hash":"$H1","source_hash":"a","source_text":"Set Effect of Tears of the Falling Moon is active."}]}}
 JSON
-BDO_STATE_DIR="$TMP/state" bash "$ROOT/cli/api/term-notes-queue.sh" "$TMP/queue-terms.json" "$TMP/queue-rows.json" 2>/dev/null \
+BDO_STATE_DIR="$TMP/state" php "$ROOT/cli/bdo.php" term-notes-queue "$TMP/queue-terms.json" "$TMP/queue-rows.json" 2>/dev/null \
     || fail 'черга термінів без опису не збирається'
-BDO_STATE_DIR="$TMP/state" bash "$ROOT/cli/api/term-notes-queue.sh" "$TMP/queue-terms.json" "$TMP/queue-rows.json" 2>/dev/null || true
+BDO_STATE_DIR="$TMP/state" php "$ROOT/cli/bdo.php" term-notes-queue "$TMP/queue-terms.json" "$TMP/queue-rows.json" 2>/dev/null || true
 jq -e '[.terms[].canonical_source] == ["Tears of the Falling Moon"]' "$TMP/state/term-notes-queue.json" >/dev/null \
     || fail "у черзі не ті терміни: $(jq -c '[.terms[].canonical_source]' "$TMP/state/term-notes-queue.json")"
 jq -e '.terms[0].seen == 2' "$TMP/state/term-notes-queue.json" >/dev/null \
@@ -341,7 +350,7 @@ jq -e '.terms[0].seen == 2' "$TMP/state/term-notes-queue.json" >/dev/null \
 jq -e '.terms[0].samples | length >= 1' "$TMP/state/term-notes-queue.json" >/dev/null \
     || fail 'у черзі немає живого рядка, з якого писати опис'
 # Термін, про опис якого сервер не сказав, у чергу НЕ потрапляє й про це видно.
-BDO_STATE_DIR="$TMP/state" bash "$ROOT/cli/api/term-notes-queue.sh" "$TMP/queue-terms.json" "$TMP/queue-rows.json" 2>"$TMP/queue-err.txt" || true
+BDO_STATE_DIR="$TMP/state" php "$ROOT/cli/bdo.php" term-notes-queue "$TMP/queue-terms.json" "$TMP/queue-rows.json" 2>"$TMP/queue-err.txt" || true
 grep -q 'не сказав, чи є в них опис' "$TMP/queue-err.txt" \
     || fail 'невідомий стан опису пропущено мовчки'
 jq -e '[.terms[].canonical_source] | index("Ancient Relic") == null' "$TMP/state/term-notes-queue.json" >/dev/null \
@@ -351,7 +360,7 @@ mkdir -p "$TMP/definition-state/batches/b"
 printf 'b\n' > "$TMP/definition-state/current-batch"
 printf '%s\n' '{}' > "$TMP/definition-state/batches/b/context.json"
 printf '%s\n' '[{"canonical_source":"Unknown","ukrainian":"Невідомо"}]' > "$TMP/definition-state/batches/b/terms.json"
-definition_out="$(BDO_STATE_DIR="$TMP/definition-state" bash "$ROOT/cli/prepare/worker-payload.sh" "$TMP/rows.json" 2>/dev/null)" \
+definition_out="$(BDO_STATE_DIR="$TMP/definition-state" php "$ROOT/cli/bdo.php" worker-payload "$TMP/rows.json" 2>/dev/null)" \
     || fail 'payload не зібрався для терміна без definition'
 printf '%s' "$definition_out" | jq -e '.terms[0] | has("has_definition") | not' >/dev/null \
     || fail 'відсутність definition помилково стала false'
@@ -361,11 +370,11 @@ mkdir -p "$TMP/queue-state"
 printf '[{"canonical_source":"Offline Term","ukrainian":"Офлайн термін","has_definition":false}]\n' > "$TMP/offline-terms.json"
 printf '{"data":{"rows":[{"identity_hash":"%s","source_text":"Offline Term"}]} }\n' "$H1" > "$TMP/offline-rows.json"
 BDO_API_BASE=http://127.0.0.1:1 BDO_STATE_DIR="$TMP/queue-state" \
-    bash "$ROOT/cli/api/term-notes-queue.sh" "$TMP/offline-terms.json" "$TMP/offline-rows.json" \
+    php "$ROOT/cli/bdo.php" term-notes-queue "$TMP/offline-terms.json" "$TMP/offline-rows.json" \
     >/dev/null 2>"$TMP/queue-offline.err" \
     || fail 'черга звертається до API або не збирається офлайн'
 test -s "$TMP/queue-state/term-notes-queue.json" || fail 'офлайн-черга не записала результат'
-grep -Fq 'term-notes-queue.sh' "$ROOT/cli/run/run-drive.sh" || fail 'рушій не наповнює чергу термінів'
+grep -Fq 'term-notes-queue' "$ROOT/lib/Cli/Command/Run/RunDriveCommand.php" || fail 'рушій не наповнює чергу термінів'
 
 # Описувач термінів: завдання будується лише з придатних кандидатів, а
 # надсилання відсіює низьку впевненість. Поріг 60 · рішення власника 2026-08-28.
@@ -375,7 +384,7 @@ cat > "$TMP/state/term-notes-queue.json" <<JSON
   "samples":["Tears of the Falling Moon glows."],"identity_hash":"$H1","snapshot_id":7},
  {"canonical_source":"No Identity","ukrainian":"Без ідентичності","seen":9,"samples":["x"]}]}
 JSON
-BDO_STATE_DIR="$TMP/state" bash "$ROOT/cli/api/term-notes-describe.sh" > "$TMP/describe.json" 2>/dev/null \
+BDO_STATE_DIR="$TMP/state" php "$ROOT/cli/bdo.php" term-notes-describe > "$TMP/describe.json" 2>/dev/null \
     || fail 'завдання на опис термінів не будується'
 jq -e '.next.role == "translation-glossary"' "$TMP/describe.json" >/dev/null \
     || fail 'завдання не адресоване ролі translation-glossary'
@@ -387,7 +396,7 @@ jq -e '[.items[].canonical_source] == ["Tears of the Falling Moon"]' "$TMP/state
 # Низька впевненість НЕ надсилається, і причина названа.
 printf '{"items":[{"canonical_source":"Tears of the Falling Moon","gist":"g","definition":"d","confidence":45}]}' \
     > "$TMP/state/term-notes-response.json"
-out="$(BDO_STATE_DIR="$TMP/state" bash "$ROOT/cli/api/term-notes-submit.sh" 2>/dev/null)" || true
+out="$(BDO_STATE_DIR="$TMP/state" php "$ROOT/cli/bdo.php" term-notes-submit 2>/dev/null)" || true
 grep -q 'Пропозицій надіслано: 0' <<<"$out" || fail "опис із впевненістю 45 надіслано: $out"
 grep -q 'низька впевненість 1' <<<"$out" || fail 'причину пропуску не названо'
 # Найдорожче правило: перед записом стан терміна перечитується з API, а
@@ -408,12 +417,12 @@ JSON
 php -r '$t=[];for($i=1;$i<=6;$i++){$t[]=["canonical_source"=>"Term $i","ukrainian"=>"Термін $i","seen"=>$i,"samples"=>["зразок"],"identity_hash"=>$argv[2],"snapshot_id"=>7];}
     file_put_contents($argv[1], json_encode(["updated_at"=>"x","terms"=>$t], JSON_UNESCAPED_UNICODE));' \
     "$DRIVE/term-notes-queue.json" "$H1"
-out="$(BDO_STATE_DIR="$DRIVE" bash "$ROOT/cli/run/run-drive.sh" 2>/dev/null)" || true
+out="$(BDO_STATE_DIR="$DRIVE" php "$ROOT/cli/bdo.php" run-drive 2>/dev/null)" || true
 printf '%s' "$out" | jq -e '.next.role == "translation-glossary"' >/dev/null \
     || fail "описи не вмикаються самі при повній черзі: $(printf '%s' "$out" | head -c 120)"
 # Порожня черга · крок не вмикається взагалі, пачка йде своїм шляхом.
 rm -f "$DRIVE/term-notes-queue.json" "$DRIVE/term-notes-payload.json"
-out="$(BDO_STATE_DIR="$DRIVE" BDO_PIPELINE_OFFLINE=1 bash "$ROOT/cli/run/run-drive.sh" 2>/dev/null)" || true
+out="$(BDO_STATE_DIR="$DRIVE" BDO_PIPELINE_OFFLINE=1 php "$ROOT/cli/bdo.php" run-drive 2>/dev/null)" || true
 printf '%s' "$out" | jq -e '.next.role != "translation-glossary"' >/dev/null \
     || fail 'описи вмикаються навіть тоді, коли описувати нічого'
 # Завдання без відповіді не зациклює пачку. Стан пачки повертаємо на `selected`:
@@ -422,7 +431,7 @@ cat > "$DRIVE/batches/b/manifest.json" <<'JSON'
 {"id":"b","state":"selected","rows":1,"mode":"patch","patch":"7","channel":"machine","steps":{},"attempts":{}}
 JSON
 printf '{"items":[]}' > "$DRIVE/term-notes-payload.json"
-out="$(BDO_STATE_DIR="$DRIVE" BDO_PIPELINE_OFFLINE=1 bash "$ROOT/cli/run/run-drive.sh" 2>/dev/null)" || true
+out="$(BDO_STATE_DIR="$DRIVE" BDO_PIPELINE_OFFLINE=1 php "$ROOT/cli/bdo.php" run-drive 2>/dev/null)" || true
 printf '%s' "$out" | jq -e '.next.role != "translation-glossary"' >/dev/null \
     || fail 'завдання без відповіді видається знову й зациклює пачку'
 if [ -f "$DRIVE/term-notes-payload.json" ]; then fail 'застаріле завдання не прибрано'; fi
@@ -434,19 +443,19 @@ if [ -f "$DRIVE/term-notes-payload.json" ]; then fail 'застаріле зав
 # Лічильник ніхто не пише, тому підказка спрацьовувала кожні дві пачки з нулем
 # у КБ і радила дію, якої не існує. Порада, яку неможливо виконати, гірша за
 # мовчання.
-grep -Fq 'BDO_SESSION_HINT_BATCHES' "$ROOT/cli/run/run-drive.sh" \
+grep -Fq 'BDO_SESSION_HINT_BATCHES' "$ROOT/lib/Cli/Command/Run/RunDriveCommand.php" \
     && fail 'у рушій повернулась підказка про сесію диригента'
-grep -Fq 'staged_kb' "$ROOT/cli/run/run-drive.sh" \
+grep -Fq 'staged_kb' "$ROOT/lib/Cli/Command/Run/RunDriveCommand.php" \
     && fail 'у конверт повернувся лічильник ваги транскрипту'
 # Суддя бачить той самий набір спільних прикладів, що й перекладач. Перевіряємо
-# живу поведінку обох будівників, бо старий текст shell лишається rollback-шляхом.
+# живу поведінку обох PHP-будівників.
 printf '[{"identity_hash":"%s","text":"Iron Sword"},{"identity_hash":"%s","text":"Iron Shield"},{"identity_hash":"%s","text":"Iron Helmet"}]\n' \
     "$H1" "$H2" "$H3" > "$TMP/judge-candidate.json"
 printf '[{"identity_hash":"%s","status":"PASS","severity":"none","issue":"","fix":""},{"identity_hash":"%s","status":"PASS","severity":"none","issue":"","fix":""},{"identity_hash":"%s","status":"PASS","severity":"none","issue":"","fix":""}]\n' \
     "$H1" "$H2" "$H3" > "$TMP/judge-verdicts.json"
 worker_examples="$(build | jq -cS '.examples // []')" \
     || fail 'worker payload для диференційної перевірки не зібрався'
-judge_examples="$(BDO_STATE_DIR="$TMP/state" bash "$ROOT/cli/prepare/judge-payload.sh" \
+judge_examples="$(BDO_STATE_DIR="$TMP/state" php "$ROOT/cli/bdo.php" judge-payload \
     "$TMP/rows.json" "$TMP/judge-candidate.json" "$TMP/judge-verdicts.json" 2>"$TMP/judge-err.txt" \
     | jq -cS '.examples // []')" \
     || fail 'payload судді для диференційної перевірки не зібрався'

@@ -1,5 +1,10 @@
 # Етап: оркестрація в PHP · застосунок із браузерним GUI
 
+**Актуальний стан · 2026-09-14.** Підетап 9.2 виконано: старий rollback-шлях
+із frozen `cli/**/*.sh` знято, старий перемикач прибрано, а shell-файли, що
+залишились, є лише живою оснасткою. Нижче згадки rollback описують попередні
+ревʼю та не є чинним механізмом.
+
 - **Статус:** у роботі
 - **Створено:** 2026-09-07
 - **Реєстр:** [docs/plans/stages/README.md](README.md)
@@ -43,7 +48,7 @@
 | `cli/**` (PHP) | 1 248 рядків | уже перенесені частини |
 | `tests/**` (bash) | 7 895 рядків | перевірки поведінки |
 
-`cli/run/run-drive.sh` викликає `php` **34** рази, `cli/batch/batch-commit.sh`
+`RunDriveCommand` викликає PHP **34** рази, `BatchCommitCommand`
 · **8**. Тобто bash тут не логіка, а клей навколо PHP.
 
 Python або Node означали б ТРЕТЮ мову: на Windows довелося б ставити і PHP (бо
@@ -178,7 +183,7 @@ passed за 199 с; `phpstorm lint_files` · 0 ERROR; жоден із 17 вик�
 - `-fsS` (22 виклики), `-sS` (3), окремо `-s`, `-f` · будь-яка комбінація;
 - `-H <заголовок>`, ДО ТРЬОХ разів в одному виклику: `X-API-Key`,
   `Content-Type: application/json`, `Idempotency-Key`
-  (`cli/write/write-translations.sh:138`);
+  (`WriteTranslationsCommand`);
 - `-X POST` (5 викликів);
 - тіло чотирма формами, вони НЕ взаємозамінні: `--data <рядок>`
   (`glossary-resolve.sh:34`), `--data @<файл>` (`validate.sh:43`,
@@ -188,7 +193,7 @@ passed за 199 с; `phpstorm lint_files` · 0 ERROR; жоден із 17 вик�
   URL (`memory-lookup.sh:42`);
 - `-w '%{http_code}'` (`capabilities.sh:80`) · вивід рівно код без переводу;
 - `-m 30` · ЛЕГКО ПРОПУСТИТИ. Він не видний у `rg 'http-request.sh' cli/`, бо
-  живе всередині PHP-рядка: `cli/api/glossary-list.sh:59`.
+  живе всередині PHP-рядка: `GlossaryListCommand`.
 
 **Три виклики нетипові: клієнт запускається з PHP через `exec()`** і шлях до
 нього приходить рядком в `argv` · `glossary-list.sh:52,59`,
@@ -247,7 +252,7 @@ passed за 199 с; `phpstorm lint_files` · 0 ERROR; жоден із 17 вик�
   це доведено: пʼять вихідних `.sh` не змінені, підпроцесів `curl`/`php` у
   класах немає, саботажі «зайвий пробіл», «код 0 замість помилки» і «витік
   ключа» відтворені рев'юером і валять тест за 1-3 с, `./bdo gate full` passed
-  за 199 с, `phpstorm lint_files` · 0 ERROR, `BDO_ORCHESTRATOR=sh` повертає
+  за 199 с, `phpstorm lint_files` · 0 ERROR, старий shell-перемикач повертає
   старий шлях. Причина невідповідності одна й вона в ПЕРЕВІРЦІ: PTY-порівняння
   ганяє `context`, у якої нуль ANSI в обох реалізаціях, тоді як фарбує єдина з
   пʼяти · `test-api.sh` (2 послідовності). Рев'юер вимкнув `Output::color()`
@@ -271,7 +276,7 @@ passed за 199 с; `phpstorm lint_files` · 0 ERROR; жоден із 17 вик�
   за 193 с. СВІДОМЕ відхилення від байтової ідентичності, дозволене
   corrective-промптом: там, де старий bash мовчки повертав 0 на невдалому
   записі кеша, PHP повертає 1 · тому обидва нові сценарії в
-  `tests/glossary-listing.sh:82-99` ганяються лише під `BDO_ORCHESTRATOR=php`.
+  `tests/glossary-listing.sh:82-99` ганяються лише через PHP-маршрут.
 
   Історія першого кола лишається навмисно. `83ad55c` було НЕ ПРИЙНЯТО. Робота
   по суті зроблена й це доведено: `git diff` по шести `.sh` дає рівно +50/−0, тобто
@@ -289,7 +294,7 @@ passed за 199 с; `phpstorm lint_files` · 0 ERROR; жоден із 17 вик�
   нього недоступний, лінт прогнав рев'юер.
 
   **Борг, зафіксований на 3c.** Заголовок-диспетчер у
-  `cli/api/glossary-concepts.sh` виріс до 21 рядка й ДУБЛЮЄ правило TTL, яке
+  `GlossaryConceptsCommand` виріс до 21 рядка й ДУБЛЮЄ правило TTL, яке
   вже є в `GlossaryConceptsCommand.php:31-34`: bash рахує вік кеша лише для
   того, щоб вирішити, чи підвантажувати `select-env.sh`. Заразом зʼявився новий
   контракт `BDO_CONCEPTS_ENV_UNAVAILABLE`. Поведінка вірна, обидві гілки вкриті
@@ -401,9 +406,9 @@ passed за 199 с; `phpstorm lint_files` · 0 ERROR; жоден із 17 вик�
 
 Останній PROD/API-write залишок підетапу 5 був:
 
-- `cli/batch/batch-commit.sh`
-- `cli/write/moderation-queue.sh`
-- `cli/write/write-translations.sh`
+- `BatchCommitCommand`
+- `ModerationQueueCommand`
+- `WriteTranslationsCommand`
 
 Цю межу прийнято ланцюгом 6.4.5–6.4.7; фінальний D151/D153 dry-run identity proof прийнято review 6.6.0.
 
@@ -440,8 +445,8 @@ alias до запуску write-тестів. Висновок про повне
 **Перевірка.** Спершу `BDO_DRY_RUN=1` двічі: старим і новим шляхом, порівняння
 `commit-report.txt`. Бойовий прогін · ЛИШЕ після рев'ю цього підетапу.
 
-**Шлях відкату:** старі `.sh` лишаються в дереві до приймання підетапу 8;
-перемикач · змінна `BDO_ORCHESTRATOR=php|sh`.
+**Шлях відкату:** знятий підетапом 9.2. Frozen dispatcher `.sh` видалено,
+перемикач маршруту більше не існує; у `cli/` залишилась лише жива оснастка.
 
 ### Підетап 6 · `cli/run/**` (7 файлів, 1 773 рядки)
 
@@ -449,7 +454,7 @@ alias до запуску write-тестів. Висновок про повне
 
 **Пакет 6.5.0:** safe pilot підетапу 6 · `run-spec.sh` і `run-start.sh`.
 Вони переносять preset/target foundation без driver loop, викликів моделей або
-PROD write; rollback лишається через `BDO_ORCHESTRATOR=sh`.
+PROD write; старий rollback-шлях на цій стадії ще був окремим.
 
 **Ревʼю 6.5.0:** `NEEDS CORRECTION`. Exact CI `87cfa84` зелений, але D129
 виявив фіктивну timestamp-нормалізацію й неповну перевірку причин invalid
@@ -505,7 +510,7 @@ rollback-shell. Бойовий PROD write не використовується 
 
 **Ревʼю 6.5.7:** `NEEDS CORRECTION`. Exact GitHub Actions run №26 (`34532213472`) на `249d8a0` зелений, але executable review знайшов D148-D150. Native invalid `names-fixes` retry досі не rebuild-ив schema як rollback; D140 effective-threshold proof був недосяжний через ready-response fixture; D143 перевіряв лише term-notes queue, а прямі in-process optional calls не зберігали subprocess fail-soft semantics для `Throwable`. Тому green gate не доводить заявлену recovery/fallback matrix.
 
-**Corrective 6.5.8:** виправляє лише D148-D150 у межах `run-drive`: останню names schema divergence, пропущені D142/D140 behavioral cases і повну explicit non-gating helper failure matrix. Frozen rollback `cli/run/run-drive.sh`, `run-loop`, Stage7 і PROD/API contract не змінюються. Підетап 6 лишається `у роботі` до окремого Architect-review exact diff + CI.
+**Corrective 6.5.8:** виправляє лише D148-D150 у межах `run-drive`: останню names schema divergence, пропущені D142/D140 behavioral cases і повну explicit non-gating helper failure matrix. Native PHP `RunDriveCommand`, `RunLoopCommand`, Stage7 і PROD/API contract не змінюються. Підетап 6 лишається `у роботі` до окремого Architect-review exact diff + CI.
 
 **Ревʼю 6.5.8:** `ACCEPTED`. Exact GitHub Actions run №27 (`34541372494`) на `98d7834` зелений: `./bdo gate full` і `cli-api-fetch × 5` завершились success. D148 доведений actual subset schema artifact після invalid names response; D149 має окремі negative/positive effective-threshold branches; D150 ганяє вісім explicit fail-soft helper boundaries із marker-backed shell nonzero та PHP exception injection. Ланцюг `run-drive` 6.5.6-6.5.8 прийнято.
 
@@ -531,7 +536,7 @@ rollback-shell. Бойовий PROD write не використовується 
 
 **Ревʼю 6.6.4:** `ACCEPTED`. Exact main commit `d10922140008d49947441e4b2517afb797641b71`, parent `fca119fda9e63bd2ed845165062758db25141063`; exact GitHub Actions run №34 (`34672774867`) завершився `success` у всіх чотирьох jobs. Windows smoke фактично виконав native `php cli/bdo.php run-loop --once` без `bash` і завершився до hard timeout із очікуваним `no_current_batch`; D155/D156 закриті. Разом із прийнятим D135 це закриває підетап 6 цілком. Stage7 цим пакетом не починається.
 
-**Межа visibility:** `cli/run/run-stop.sh` і step-report
+**Межа visibility:** `RunStopCommand` і step-report
 переносяться з підетапом 7, а не з driver. Перший прямо делегує
 `cli/system/watch.sh`/tmux, другий визначає ширину через `/dev/tty` і `stty`;
 обидва залежать від Stage7 process/visibility design.
@@ -592,8 +597,8 @@ bash-викликачі живі.
 **Підетап 7 ЗАКРИТО 2026-09-13 (версія 6.8.8).** `run-stop` перенесено
 останнім; разом із ним зникли два шви оболонки · `php -r '…'` і
 `exec bash watch.sh --stop`. У шляху виконання продукту bash більше немає:
-кожен `cli/**/*.sh` є диспетчером, тіло під ним лишається шляхом відкату через
-`BDO_ORCHESTRATOR=sh`.
+старі dispatcher `cli/**/*.sh` видалено; shell-оснастка, що залишилась, не є
+другим шляхом виконання.
 
 **Підетап 8.1 ЗАКРИТО 2026-09-13 (версії 6.8.9-6.9.1).** `bdo.bat` піднімає
 інтерфейс НАТИВНИМ PHP; WSL2 лишився запасним шляхом лише для машин без
@@ -683,8 +688,8 @@ submit` замість довідки ЗАПУСКАВ команду, яка п
   людина на своїй машині;
 - **«жодного `.sh` у шляху виконання»** · виконано на обох ОС. Windows ·
   `bdo.bat` → `php cli\bdo.php`. Unix · підетап 8.3 (нижче): `bdo` має шебанг
-  `#!/usr/bin/env php`, маршрут живе в `lib/Cli/Router.php`. Заморожені тіла
-  `.sh` лишаються ШЛЯХОМ ВІДКАТУ через `BDO_ORCHESTRATOR=sh`, а оснастка
+  `#!/usr/bin/env php`, маршрут живе в `lib/Cli/Router.php`. Старі dispatcher-
+  тіла `.sh` видалено, а оснастка
   (гейт, тести, аудит, `tui`, `mac-app`) як була bash, так і лишається · її
   запускає PHP через `pcntl_exec`;
 - **живий прогін на 50 рядках новим шляхом** · не виконано. Причина не
@@ -701,14 +706,14 @@ submit` замість довідки ЗАПУСКАВ команду, яка п
 
 **Пілот 7.1 · що доведено.** `session-timer` перенесено в
 `lib/Cli/Command/System/SessionTimerCommand.php`, bash лишився тонкою
-обгорткою з rollback через `BDO_ORCHESTRATOR=sh`, парність тримає
+PHP-командою, поведінкові тести тримають
 `tests/cli-system-parity.sh` (13 випадків). Перенос знайшов ДВА дефекти,
 яких не бачив жоден із 69 попередніх тестів: розходження в три години між
 оркестраторами (клас D112 · `date()` бере зону з php.ini, а не системну;
 лікується канонічним `Cli\LocalTime`) і D157 · `status` віддавав код 1 при
 вичерпаній межі. Обидва закриті в цьому ж пакеті.
 
-До цього підетапу також входять `cli/run/run-stop.sh` і
+До цього підетапу також входять `RunStopCommand` і
 step-report: їхній перенос неможливо коректно відділити від
 watch/process і terminal-visibility abstraction.
 
@@ -724,10 +729,10 @@ watch/process і terminal-visibility abstraction.
 
 ### Підетап 8 · вхідні точки й прибирання
 
-D135 входить у пакет 6.6.3: central `bdo::print_header()` отримує behavioral regression разом із `run-loop`, тому Stage8 не має окремого D135 fix і займається фінальними entrypoints та видаленням rollback-shell. Приймання D135 і Stage6 визначає review 6.6.3.
+D135 входить у пакет 6.6.3: central `bdo::print_header()` отримує behavioral regression разом із `run-loop`, тому Stage8 не має окремого D135 fix. Видалення rollback-shell завершено підетапом 9.2.
 
 **Мета.** `bdo` стає тонким (пошук php → `php cli/bdo.php`), `bdo.bat` працює
-БЕЗ WSL2, старі `.sh` видаляються, `BDO_ORCHESTRATOR` прибирається.
+БЕЗ WSL2; старі dispatcher `.sh` видалено, перемикач rollback-шляху прибрано.
 
 **Критерії.** `rg -l '\.sh' cli/ | wc -l` → 0 (крім `scripts/`); Windows-запуск
 перевірений власником на реальній машині; `./bdo gate full` зелений.

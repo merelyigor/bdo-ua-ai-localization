@@ -32,7 +32,7 @@ printf '20260101_000001_current\n' > "$TMP/state/current-batch"
 printf 'old\n' > "$TMP/output/rows_old.json"
 touch -t 200001010000 "$TMP/output/rows_old.json"
 
-run() { BDO_STATE_DIR="$TMP/state" bash "$ROOT/cli/batch/batch-clean.sh" "$@"; }
+run() { BDO_STATE_DIR="$TMP/state" php "$ROOT/cli/bdo.php" batch-clean "$@"; }
 
 # Показ нічого не змінює: різниця між «показати» і «зробити» лишається у прапорці.
 preview="$(run --days 0)"

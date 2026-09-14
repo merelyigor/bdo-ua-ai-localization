@@ -20,7 +20,7 @@ export BDO_STATE_DIR="$TMP/state"
 mkdir -p "$BDO_STATE_DIR/batches/20260906_120000_abc123"
 export BDO_WEB_DEFAULT_PORT=$(( 45000 + RANDOM % 3000 ))
 cleanup() {
-    bash "$ROOT/cli/system/web.sh" --stop >/dev/null 2>&1 || true
+    php "$ROOT/cli/bdo.php" web --stop >/dev/null 2>&1 || true
     rm -rf "$TMP"
 }
 trap cleanup EXIT
@@ -37,7 +37,7 @@ cat > "$BDO_STATE_DIR/model-calls.jsonl" <<JSONL
 {"at":"2026-09-06T09:01:00+00:00","role":"translation-qa","state":"awaiting_qa","rows":1,"payload":"../outside.txt","answer":"/etc/hosts","batch":"20260906_120000_abc123","model":"m","provider":"ollama","verdict":"ok","ms":5}
 JSONL
 
-out="$(bash "$ROOT/cli/system/web.sh" --background --no-open 2>&1)" || fail "сервер не піднявся: $out"
+out="$(php "$ROOT/cli/bdo.php" web --background --no-open 2>&1)" || fail "сервер не піднявся: $out"
 URL="$(printf '%s\n' "$out" | sed -n 's~.*\(http://127\.0\.0\.1:[0-9]*/?t=[0-9a-f]*\).*~\1~p' | head -1)"
 test -n "$URL" || fail "немає посилання у виводі: $out"
 PORT="$(printf '%s' "$URL" | sed -n 's~.*127\.0\.0\.1:\([0-9]*\)/.*~\1~p')"

@@ -19,6 +19,15 @@ final class GlossaryResolveCommand implements Command, \Bdo\Translate\Cli\Comman
 {
     public function execute(array $arguments, Output $output): int
     {
+        // Команда САМА піднімає середовище (див. GlossaryListCommand): після
+        // зняття bash-обгортки експортувати базу та ключ більше нікому.
+        try {
+            ApiEnvironment::load(dirname(__DIR__, 4));
+        } catch (\Throwable $exception) {
+            $output->stderr('Середовище не піднялось: '.$exception->getMessage()."\n");
+
+            return 2;
+        }
         $canonical = (string) ($arguments[0] ?? '');
         if ($canonical === '') {
             $output->stderr("Потрібен canonical_source, точно як в English source\n");

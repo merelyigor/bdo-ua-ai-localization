@@ -3,8 +3,8 @@
 #
 # 2026-09-05 (D79) `roles/translation-repair.md` казав моделі «`semantic_type` і
 # `domain` кажуть, що саме перед тобою» і «сильніші за нього `glossary`, `terms`
-# і `examples` цієї пачки», а будівники його payload (`cli/heal/heal-plan.sh`,
-# `cli/prepare/names-payload.sh`) не клали з цього НІЧОГО, крім `glossary`.
+# і `examples` цієї пачки», а будівники його payload не клали з цього НІЧОГО,
+# крім `glossary`.
 # Роль правила назву предмета й репліку квесту з однаковим знанням про них ·
 # тобто без нього. Розходження не давало жодної помилки: модель просто не
 # знаходила поля й мовчки працювала наосліп.
@@ -18,17 +18,17 @@ fail() { printf 'FAIL: %s\n' "$1" >&2; exit 1; }
 # Роль -> файли, які будують її payload. Роль без рядка тут перевіряється лише
 # на те, що вона взагалі згадана нижче · інакше новий будівник тихо випав би.
 declare -a PAIRS=(
-    "translation-worker|cli/prepare/worker-payload.sh"
-    "translation-qa|cli/prepare/qa-payload.sh"
-    "translation-repair|cli/heal/heal-plan.sh"
-    "translation-names|cli/prepare/names-payload.sh"
-    "translation-judge|cli/prepare/judge-payload.sh"
-    "translation-terminology|cli/prepare/terminology-payload.sh"
+    "translation-worker|lib/Cli/Command/Prepare/WorkerPayloadCommand.php"
+    "translation-qa|lib/Cli/Command/Prepare/QaPayloadCommand.php"
+    "translation-repair|lib/Cli/Command/Heal/HealPlanCommand.php"
+    "translation-names|lib/Cli/Command/Prepare/NamesPayloadCommand.php"
+    "translation-judge|lib/Cli/Command/Prepare/JudgePayloadCommand.php"
+    "translation-terminology|lib/Cli/Command/Prepare/TerminologyPayloadCommand.php"
 )
 
 # Роль, яку кличе драйвер, мусить мати рядок ВИЩЕ. Інакше наступна роль тихо
 # випаде з перевірки · рівно так само, як D79 випав з усіх перевірок разом.
-for role in $(grep -oE 'child [a-z_]+ (translation-[a-z-]+)' "$ROOT/cli/run/run-drive.sh" | awk '{print $3}' | sort -u); do
+for role in $(grep -oE "translation-[a-z-]+" "$ROOT/lib/Cli/Command/Run/RunDriveCommand.php" | sort -u); do
     printf '%s\n' "${PAIRS[@]}" | grep -q "^${role}|" \
         || fail "роль ${role} драйвер кличе, а в переліку перевірки її немає"
 done
@@ -53,10 +53,17 @@ for pair in "${PAIRS[@]}"; do
         grep -Fq "\`${field}\`" "$prompt" || continue
         checked=$((checked + 1))
         # Спільні блоки payload будує окремий клас, тому шукаємо і поле, і його.
-        if grep -Fq "\"${field}\"" "$ROOT/$builder"; then
+        # Ключ може бути в подвійних лапках (JSON, bash) або в одинарних (PHP).
+        # Після переносу будівники стали PHP-класами, де ключі одинарні, і
+        # перевірка перестала бачити навіть ті поля, які лежать поруч у
+        # `['examples' => ..., 'items' => ...]`.
+        if grep -Eq "['\"]${field}['\"]" "$ROOT/$builder"; then
             continue
         fi
-        if [ "$field" = concepts ] && grep -Fq 'Payload\Concepts::forTexts' "$ROOT/$builder"; then
+        # Виклик іде через імпорт (`use ...Payload\Concepts;`), тому в коді він
+        # виглядає як `Concepts::forTexts`, а не повним іменем. Перенос
+        # 2026-09-14 лишив стару форму, і запобіжник перестав спрацьовувати.
+        if [ "$field" = concepts ] && grep -Fq 'Concepts::forTexts' "$ROOT/$builder"; then
             continue
         fi
         if [ "$field" = semantic_type ] && grep -Fq 'semanticType()' "$ROOT/$builder"; then
@@ -74,7 +81,7 @@ test "$checked" -ge 12 \
 
 # Зворотна межа: роль, яку кличе драйвер, мусить існувати в конфізі й мати
 # промпт. Без цього поділ ролей ламав би прогін уже на живій пачці.
-for role in $(grep -oE 'child [a-z_]+ (translation-[a-z-]+)' "$ROOT/cli/run/run-drive.sh" | awk '{print $3}' | sort -u); do
+for role in $(grep -oE "translation-[a-z-]+" "$ROOT/lib/Cli/Command/Run/RunDriveCommand.php" | sort -u); do
     test -s "$ROOT/roles/${role}.md" || fail "драйвер кличе роль ${role}, а промпта роль не має"
     php -r '
         $c = json_decode((string) file_get_contents($argv[1]), true);

@@ -24,7 +24,7 @@ if [ "$BDO_API_ENV" = prod ]; then wrong=local; else wrong=prod; fi
 printf '%s\n' "$wrong" > "$TMP/run-target"
 # Застарілий lock без незавершеної пачки має переїхати автоматично: агент не
 # повинен вгадувати окрему cleanup-команду.
-BDO_STATE_DIR="$TMP" bash "$ROOT/cli/run/run-start.sh" >/dev/null
+BDO_STATE_DIR="$TMP" php "$ROOT/cli/bdo.php" run-start >/dev/null
 test "$(cat "$TMP/run-target")" = "$BDO_API_ENV"
 
 # Але активну пачку між середовищами переносити не можна.
@@ -32,7 +32,7 @@ mkdir -p "$TMP/batches/active-test"
 printf '%s\n' 'active-test' > "$TMP/current-batch"
 printf '%s\n' '{"state":"awaiting_worker"}' > "$TMP/batches/active-test/manifest.json"
 printf '%s\n' "$wrong" > "$TMP/run-target"
-if BDO_STATE_DIR="$TMP" bash "$ROOT/cli/run/run-start.sh" >/dev/null 2>&1; then
+if BDO_STATE_DIR="$TMP" php "$ROOT/cli/bdo.php" run-start >/dev/null 2>&1; then
     echo 'active batch crossed environments' >&2
     exit 1
 fi
@@ -40,8 +40,8 @@ test "$(cat "$TMP/run-target")" = "$wrong"
 
 # Термінальна пачка вже не блокує новий прогін.
 printf '%s\n' '{"state":"verified"}' > "$TMP/batches/active-test/manifest.json"
-BDO_STATE_DIR="$TMP" bash "$ROOT/cli/run/run-start.sh" >/dev/null
+BDO_STATE_DIR="$TMP" php "$ROOT/cli/bdo.php" run-start >/dev/null
 test "$(cat "$TMP/run-target")" = "$BDO_API_ENV"
 printf '%s\n' "$BDO_API_ENV" > "$TMP/run-target"
-BDO_STATE_DIR="$TMP" bash "$ROOT/cli/run/run-start.sh" >/dev/null
+BDO_STATE_DIR="$TMP" php "$ROOT/cli/bdo.php" run-start >/dev/null
 echo 'run target env guard: OK'

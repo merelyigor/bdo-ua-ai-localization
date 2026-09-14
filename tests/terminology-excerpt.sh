@@ -67,7 +67,7 @@ file_put_contents($argv[1], json_encode(["data" => ["rows" => [[
     ]]],
 ]]]], JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE));' "$TMP/rows.json" "$H1"
 
-out="$(BDO_PIPELINE_OFFLINE=1 bash "$ROOT/cli/prepare/terminology-payload.sh" "$TMP/rows.json" --no-resolve 2>/dev/null)"
+out="$(BDO_PIPELINE_OFFLINE=1 php "$ROOT/cli/bdo.php" terminology-payload "$TMP/rows.json" --no-resolve 2>/dev/null)"
 test -n "$out" || fail 'будівник payload термінолога нічого не віддав'
 php -r '
 require $argv[1];
@@ -133,7 +133,7 @@ if (isset($out[1]["source_identity"])) {
 }' "$ROOT/lib/autoload.php" "$TMP/rows.json" "$H1" || fail 'код не відновлює identity за canonical_source'
 
 # І рушій мусить це РОБИТИ, а не лише вміти.
-grep -Fq 'TermIndex::attachIdentity(' "$ROOT/cli/run/run-drive.sh" \
+grep -Fq 'TermIndex::attachIdentity(' "$ROOT/lib/Cli/Command/Run/RunDriveCommand.php" \
     || fail 'рушій не повертає identity в пропозиції термінів · артефакт для власника буде неповний'
 
 # --- 3. Промпт не має обіцяти повного рядка ---------------------------------

@@ -153,7 +153,7 @@ BDO_API_BASE_DEV=http://127.0.0.1:1
 BDO_API_KEY_DEV=test-key
 ENV
 MECH_OUT="$(TRANSLATE_ENV_FILE="$MECH_TMP/env" BDO_ENV=DEV BDO_STATE_DIR="$MECH_TMP/state" \
-    BDO_ORCHESTRATOR=php bash "$ROOT/cli/batch/batch-commit.sh" \
+    php "$ROOT/cli/bdo.php" commit \
     "$MECH_TMP/rows.json" "$MECH_TMP/candidate.json" "$MECH_TMP/verdicts.json" 2>&1 || true)"
 grep -Fq 'До запису: 1' <<<"$MECH_OUT" \
     || fail "actual batch-commit не лишив clean row у PASS: $MECH_OUT"
@@ -186,7 +186,7 @@ cat > "$FINAL_TMP/validate.json" <<JSON
  "message":"Порушено глосарій.","details":{"glossary":[{"termId":1,"canonical":"Cheongsa Island",
  "expected":"Острів Ліхтарів","issue":"missing","severity":"mandatory"}]}}]}}
 JSON
-out="$(BDO_STATE_DIR="$FINAL_TMP/state" bash "$ROOT/cli/batch/batch-commit.sh" "$FINAL_TMP/rows.json" \
+out="$(BDO_STATE_DIR="$FINAL_TMP/state" php "$ROOT/cli/bdo.php" commit "$FINAL_TMP/rows.json" \
     "$FINAL_TMP/candidate.json" "$FINAL_TMP/verdicts.json" --channel machine \
     --api-rejected "$FINAL_TMP/validate.json" 2>&1 || true)"
 grep -Eq 'До запису: 0' <<<"$out" \
@@ -194,14 +194,20 @@ grep -Eq 'До запису: 0' <<<"$out" \
 grep -Eq 'у модерацію: 1' <<<"$out" \
     || fail "рядок із відмовою API не потрапив до людини: $out"
 # Без прапорця поведінка лишається старою: PASS іде в запис.
-out="$(BDO_STATE_DIR="$FINAL_TMP/state" bash "$ROOT/cli/batch/batch-commit.sh" "$FINAL_TMP/rows.json" \
+out="$(BDO_STATE_DIR="$FINAL_TMP/state" php "$ROOT/cli/bdo.php" commit "$FINAL_TMP/rows.json" \
     "$FINAL_TMP/candidate.json" "$FINAL_TMP/verdicts.json" --channel machine 2>&1 || true)"
 grep -Eq 'До запису: 1' <<<"$out" \
     || fail "без відмови API рядок мусить іти в запис: $out"
 rm -rf "$FINAL_TMP"
 
-grep -Fq 'final_validate' "$ROOT/cli/run/run-drive.sh" \
+# У bash це звалось `final_validate`, у PHP · `$finalValidate`. Перенос
+# 2026-09-14 змінив лише ШЛЯХ, лишивши стару назву, тому перевірка шукала те,
+# чого в класі ніколи не було. Зміст той самий: валідація мусить існувати Й
+# стояти перед кроком запису, а не просто згадуватись.
+grep -Fq 'finalValidate' "$ROOT/lib/Cli/Command/Run/RunDriveCommand.php" \
     || fail 'run drive більше не робить фінальної валідації перед комітом'
+grep -Eq "state === 'ready_to_commit' && \\\$finalValidate !== ''" "$ROOT/lib/Cli/Command/Run/RunDriveCommand.php" \
+    || fail 'фінальна валідація більше не стоїть умовою перед комітом'
 
 
 echo 'mechanical final check: OK'

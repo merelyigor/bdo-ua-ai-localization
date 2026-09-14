@@ -427,8 +427,8 @@ check_rules() {
     #   lib/Cli/Command/Run/RunLoopCommand.php · native loop opens the next
     #                           batch from a validated envelope;
     #   lib/Run/Actions.php   · composes the operator-selected start plan.
-    # Frozen cli/run/run-loop.sh is rollback only and is excluded from this
-    # live-source scan, so it cannot hide a missing native composer.
+    # The former shell rollback loop was removed; this live-source scan checks
+    # the native PHP loop and cannot hide a missing native composer.
     # Третє місце означає другу правду: доки їх було два, вони розходилися тихо.
     composers="$(
         {
@@ -471,7 +471,7 @@ check_rules() {
         || fail "приклад команди з українським ключем режиму (це і є D50): $ua_key"
     # Драйвер мусить починати наступну пачку САМ: зупинка з питанням «продовжити?»
     # була найдорожчою звичкою диригента (D25, D34).
-    grep -Fq 'Наступну пачку відкриваємо САМІ' cli/run/run-loop.sh \
+    grep -Fq 'починаю наступну пачку' lib/Cli/Command/Run/RunLoopCommand.php \
         || fail 'драйвер більше не починає наступну пачку самостійно'
     local prompt_include
     prompt_include="$(rg -n '^[[:space:]]*(@include|!include|include:)|[Пп]рочитай .*\.md' \
@@ -547,7 +547,7 @@ check_rules() {
     # конверта він НЕ виконує (це перевірено `tests/driver-loop.sh`). Модель
     # інструментів не має: `cli/model/client.php` шле повідомлення й читає
     # відповідь, і нічого більше.
-    grep -qE '\b(eval|source|bash -c|sh -c)\b' cli/run/run-loop.sh \
+    grep -qE '\b(eval|shell_exec|system|passthru|popen|exec)\s*\(' lib/Cli/Command/Run/RunLoopCommand.php \
         && fail 'драйвер отримав спосіб виконати довільний рядок'
     grep -qE '\b(exec|shell_exec|system|passthru|popen|proc_open)\s*\(' cli/model/client.php \
         && fail 'клієнт моделі отримав спосіб виконати довільну команду'
@@ -576,7 +576,7 @@ linked_docs() {
     {
         git ls-files '*.md'
         git ls-files --others --exclude-standard '*.md'
-    } | awk '!/^docs\/plans\//' | sort -u
+    } | awk '!/^docs\/plans\// && !/^docs\/verification\//' | sort -u
 }
 
 # Шлях може бути записаний відносно свого документа, кореня repo або жити в
@@ -605,7 +605,7 @@ check_references() {
     # Імена, які НЕ мусять існувати в дереві:
     #   - довідники СЕРВЕРНОГО проєкту (доступні через TRANSLATE_PROJECT_ROOT);
     #   - шаблон імені файла плану;
-    #   - чотири скрипти видаленого 2026-08-22 скриптового флоу. Журнал і плани
+    #   - пʼять скриптів видаленого скриптового флоу. Журнал і плани
     #     називають їх як ІСТОРІЮ, і це правильно: рішення видалити зафіксоване
     #     разом із хешем, з якого їх можна відновити. Забороняє подавати їх як
     #     команду окрема перевірка нижче.
@@ -624,7 +624,7 @@ check_references() {
     # МІНІМАЛЬНИЙ · рівно ті три посилання, що справді трапляються; `ROLES.md`
     # і `REVIEW.md` сюди не додані навмисно, бо загальне імʼя в skip-списку
     # маскує майбутнє справді відсутнє посилання з тією самою назвою.
-    local -r external='docs/AGENT_TRANSLATION_API.md YYYY-MM-DD_SLUG.md translate-patch.sh translate-menu.sh agent-call.sh merge-verdicts.sh inspect.sh HANDOFF.md PROMPTS.md docs/ai-workflow/HANDOFF.md'
+    local -r external='docs/AGENT_TRANSLATION_API.md YYYY-MM-DD_SLUG.md translate-patch.sh translate-menu.sh agent-call.sh merge-verdicts.sh watch.sh inspect.sh HANDOFF.md PROMPTS.md docs/ai-workflow/HANDOFF.md'
     local doc ref plan base checked=0
     while IFS= read -r doc; do
         test -f "$doc" || continue
@@ -1487,7 +1487,7 @@ $braceless"
 # Ролі й драйвер · те, що замінило шар OpenCode.
 #
 # Раніше тут перевірялись плагіни, промпти диригента й конфіг чужого застосунку.
-# Нічого з цього більше немає: порядок кроків тримає `cli/run/run-loop.sh`,
+# Нічого з цього більше немає: порядок кроків тримає PHP-команда run-loop,
 # моделі викликає `cli/model/client.php`, а ролі описані в `config/roles.json`
 # і `roles/*.md`. Перевіряємо саме цей контракт · роль без промпта або без
 # схеми зупинить пачку так само мовчки, як колись неоголошена модель.

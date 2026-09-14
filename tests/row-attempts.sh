@@ -79,7 +79,7 @@ for _ in $(seq 1 40); do
     sleep .1
 done
 set +e
-out="$(TRANSLATE_ENV_FILE="$TMP/env" BDO_STATE_DIR="$STATE" BDO_FETCH_MAX_PAGES=5 bash "$ROOT/cli/api/fetch-rows.sh" 20 2>"$TMP/fetch.err")"
+out="$(TRANSLATE_ENV_FILE="$TMP/env" BDO_STATE_DIR="$STATE" BDO_FETCH_MAX_PAGES=5 php "$ROOT/cli/bdo.php" fetch-rows 20 2>"$TMP/fetch.err")"
 code=$?
 set -e
 test "$code" -eq 0 || fail "fetch з фільтром завершився кодом $code: $(cat "$TMP/fetch.err")"
@@ -88,8 +88,12 @@ grep -Fq 'Пропущено 1 рядків із вичерпаними спро
 test "$(grep -c '^/rows$' "$TMP/rows.log")" -eq 2 || fail 'порожня сторінка не зупинила обхід'
 kill "$SERVER" 2>/dev/null || true
 SERVER=''
-grep -Fq 'attempts->record' "$ROOT/cli/write/write-translations.sh" || fail 'відмова API не пише в журнал спроб'
-grep -Fq 'attempts->record' "$ROOT/cli/batch/batch-commit.sh" || fail 'збій на коміті не пише в журнал спроб'
+# Шлях запису делегує сам запис у `Api\TranslationWriter`, і журнал спроб
+# ведеться там. У bash це робило тіло `write-translations.sh`, тому перевірка
+# й дивилась у нього; після зняття відкату місце змінилось, зміст · ні.
+grep -Fq 'attempts->record' "$ROOT/lib/Api/TranslationWriter.php" \
+    || fail 'відмова API не пише в журнал спроб'
+grep -Fq 'attempts->record' "$ROOT/lib/Cli/Command/Batch/BatchCommitCommand.php" || fail 'збій на коміті не пише в журнал спроб'
 grep -Fq 'RowAttempts($argv[2]))->clear()' "$ROOT/cli/audit/quarantine-report.sh" || fail '--clear не обнуляє журнал спроб'
 
 # 3. Ціль прогону враховує виключені рядки: сервер каже «лишилось 3», усі три
@@ -97,22 +101,22 @@ grep -Fq 'RowAttempts($argv[2]))->clear()' "$ROOT/cli/audit/quarantine-report.sh
 php -r '
 $rows = [["identity_hash" => $argv[2], "source_hash" => hash("sha256", "One"), "source_text" => "One"]];
 file_put_contents($argv[1], json_encode(["data" => ["rows" => $rows]], JSON_THROW_ON_ERROR));' "$STATE/rows.json" "$H1"
-BDO_STATE_DIR="$STATE" bash "$ROOT/cli/batch/batch-new.sh" "$STATE/rows.json" >/dev/null
-B="$(BDO_STATE_DIR="$STATE" bash "$ROOT/cli/batch/batch-dir.sh")"
+BDO_STATE_DIR="$STATE" php "$ROOT/cli/bdo.php" batch-new "$STATE/rows.json" >/dev/null
+B="$(BDO_STATE_DIR="$STATE" php "$ROOT/cli/bdo.php" batch-dir)"
 # Завершена пачка · фікстура: перевіряємо конверт completion, не шлях до нього.
 php -r '$m=json_decode(file_get_contents($argv[1]),true);$m["state"]="verified";$m["mode"]="patch";$m["patch"]="7";$m["channel"]="machine";
     file_put_contents($argv[1],json_encode($m,JSON_PRETTY_PRINT|JSON_UNESCAPED_UNICODE));' "$B/manifest.json"
 printf '{"rows":1,"channel":"machine","target_written":1,"target_skipped":0,"target_rejected":0,"moderation_written":0,"moderation_skipped":0,"moderation_rejected":0,"quarantine":0}' > "$B/batch-summary.json"
 printf '{"mode":"patch","patch":"7","domain":"","channel":"machine","query":"patch=7&missing=machine"}' > "$STATE/run-goal.json"
 printf '{"query":"patch=7&missing=machine","identities":["%s","%s","%s"]}' "$H1" "$H2" "$H3" > "$STATE/run-excluded.json"
-out="$(BDO_PIPELINE_OFFLINE=1 BDO_AUTO_CLEAN=0 BDO_GOAL_REMAINING_STUB=3 BDO_STATE_DIR="$STATE" bash "$ROOT/cli/run/run-drive.sh" 2>/dev/null | tail -1)"
+out="$(BDO_PIPELINE_OFFLINE=1 BDO_AUTO_CLEAN=0 BDO_GOAL_REMAINING_STUB=3 BDO_STATE_DIR="$STATE" php "$ROOT/cli/bdo.php" run-drive 2>/dev/null | tail -1)"
 jq -e '.next.kind == "goal_complete" and .next.waiting_human == 3' <<<"$out" >/dev/null \
     || fail "три виключені рядки мусили дати goal_complete з waiting_human=3: $out"
 jq -e '.next.hint | contains("чекають людину")' <<<"$out" >/dev/null || fail "підказка не каже, що рядки чекають людину: $out"
 
 # 3б. Список від ІНШОЇ цілі не рахується.
 printf '{"query":"patch=8&missing=machine","identities":["%s"]}' "$H1" > "$STATE/run-excluded.json"
-out="$(BDO_PIPELINE_OFFLINE=1 BDO_AUTO_CLEAN=0 BDO_GOAL_REMAINING_STUB=3 BDO_STATE_DIR="$STATE" bash "$ROOT/cli/run/run-drive.sh" 2>/dev/null | tail -1)"
+out="$(BDO_PIPELINE_OFFLINE=1 BDO_AUTO_CLEAN=0 BDO_GOAL_REMAINING_STUB=3 BDO_STATE_DIR="$STATE" php "$ROOT/cli/bdo.php" run-drive 2>/dev/null | tail -1)"
 jq -e '.next.kind == "continue_run" and .next.remaining == 3' <<<"$out" >/dev/null \
     || fail "виключення чужої цілі не мало вплинути на залишок: $out"
 

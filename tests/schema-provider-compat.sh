@@ -29,7 +29,7 @@ file_put_contents($argv[1], json_encode(["data" => ["rows" => $rows]], JSON_THRO
 for mode in rows qa; do
     args=("$TMP/rows.json")
     test "$mode" = qa && args=(--qa "$TMP/rows.json")
-    BDO_STATE_DIR="$TMP/state" bash "$ROOT/cli/prepare/build-schema.sh" --out "$TMP/schema-$mode.json" ${args[@]+"${args[@]}"} >/dev/null
+    BDO_STATE_DIR="$TMP/state" php "$ROOT/cli/bdo.php" build-schema --out "$TMP/schema-$mode.json" ${args[@]+"${args[@]}"} >/dev/null
     php -r '
     $s = json_decode((string) file_get_contents($argv[1]), true, 512, JSON_THROW_ON_ERROR);
     $mode = $argv[2];
@@ -100,12 +100,12 @@ php -r 'file_put_contents($argv[1], json_encode([
     ["identity_hash" => $argv[2], "text" => "Один"],
     ["identity_hash" => $argv[2], "text" => "Один"],
 ], JSON_THROW_ON_ERROR));' "$TMP/dup.json" "$H1"
-if BDO_STATE_DIR="$TMP/state" bash "$ROOT/cli/quality/build-items.sh" \
+if BDO_STATE_DIR="$TMP/state" php "$ROOT/cli/bdo.php" build-items \
         "$TMP/pair.json" "$TMP/dup.json" "$TMP/items.json" "" --require-all >/dev/null 2>&1; then
     fail 'повторений identity_hash пройшов гейт items'
 fi
 php -r 'file_put_contents($argv[1], json_encode([["identity_hash" => $argv[2], "text" => "Один"]], JSON_THROW_ON_ERROR));' "$TMP/short.json" "$H1"
-if BDO_STATE_DIR="$TMP/state" bash "$ROOT/cli/quality/build-items.sh" \
+if BDO_STATE_DIR="$TMP/state" php "$ROOT/cli/bdo.php" build-items \
         "$TMP/pair.json" "$TMP/short.json" "$TMP/items.json" "" --require-all >/dev/null 2>&1; then
     fail 'неповна відповідь пройшла гейт items'
 fi

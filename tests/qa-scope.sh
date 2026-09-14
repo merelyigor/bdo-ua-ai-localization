@@ -30,14 +30,14 @@ file_put_contents($argv[1], json_encode(["data" => ["rows" => $rows]], JSON_THRO
 file_put_contents($argv[2], json_encode(["data" => ["memory" => $memory]], JSON_THROW_ON_ERROR));
 ' "$STATE/rows.json" "$STATE/memory.json"
 
-BDO_STATE_DIR="$STATE" bash "$ROOT/cli/batch/batch-new.sh" "$STATE/rows.json" >/dev/null
-B="$(BDO_STATE_DIR="$STATE" bash "$ROOT/cli/batch/batch-dir.sh")"
+BDO_STATE_DIR="$STATE" php "$ROOT/cli/bdo.php" batch-new "$STATE/rows.json" >/dev/null
+B="$(BDO_STATE_DIR="$STATE" php "$ROOT/cli/bdo.php" batch-dir)"
 php -r 'require $argv[1];Bdo\Translate\Batch\Workspace::requireCurrent($argv[2])
     ->updateManifest(function ($m) { $m["mode"] = "patch"; $m["channel"] = "machine"; $m["memory_layers"] = "all"; return $m; }, "test_spec");' \
     "$ROOT/lib/autoload.php" "$STATE"
 cp "$STATE/memory.json" "$B/memory.json"
 
-drive() { BDO_PIPELINE_OFFLINE=1 BDO_STATE_DIR="$STATE" bash "$ROOT/cli/run/run-drive.sh" 2>/dev/null; }
+drive() { BDO_PIPELINE_OFFLINE=1 BDO_STATE_DIR="$STATE" php "$ROOT/cli/bdo.php" run-drive 2>/dev/null; }
 
 # 1. Памʼять закриває 45, воркер отримує 5.
 out="$(drive)"
@@ -82,14 +82,14 @@ file_put_contents($argv[2], json_encode([
     ["identity_hash" => $h1, "text" => "Парус Тёмного"],
     ["identity_hash" => $h2, "text" => "Залізний меч"],
 ], JSON_THROW_ON_ERROR));' "$STATE2/rows.json" "$STATE2/memory-candidate.json"
-left="$(bash "$ROOT/cli/quality/mechanical-split.sh" "$STATE2/rows.json" "$STATE2/memory-candidate.json" \
+left="$(php "$ROOT/cli/bdo.php" mechanical-split "$STATE2/rows.json" "$STATE2/memory-candidate.json" \
     "$STATE2/pre.json" "$STATE2/subset.json" --memory "$STATE2/memory-candidate.json" 2>/dev/null)"
 test "$left" = 0 || fail "обидва рядки з памʼяті, а до QA їде $left"
 jq -e '[.[] | .status] | sort == ["PASS","REJECT"]' "$STATE2/pre.json" >/dev/null \
     || fail "памʼять із русизмом мусила дістати REJECT, чиста · PASS: $(cat "$STATE2/pre.json")"
 
 # 7. Рушій справді передає памʼять розділювачу.
-grep -Fq -- '--memory "$B/memory-candidate.json"' "$ROOT/cli/run/run-drive.sh" \
+grep -Fq 'memory-candidate.json' "$ROOT/lib/Cli/Command/Run/RunDriveCommand.php" \
     || fail 'dispatch_qa не передає memory-candidate розділювачу'
 
 echo 'qa scope: OK · QA бачить лише текст моделі, памʼять отримує PASS від коду.'

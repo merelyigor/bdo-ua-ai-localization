@@ -32,7 +32,7 @@
 ## Інтерфейс
 
 Робочий інтерфейс · `./bdo web`: сторінка `web/index.html`, сервер
-`cli/system/web.sh` (лише читання `state/**`) і дії через
+`./bdo web` (лише читання `state/**`) і дії через
 `cli/system/web-router.php`. Межі, причини й регресії описані в
 [AI_AGENT_RULES_REFERENCE.md](AI_AGENT_RULES_REFERENCE.md) §14.
 

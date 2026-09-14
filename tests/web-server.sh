@@ -38,13 +38,13 @@ export BDO_WEB_STREAM_SECONDS=6
 
 BLOCKER_PID=""
 cleanup() {
-    bash "$ROOT/cli/system/web.sh" --stop >/dev/null 2>&1 || true
+    php "$ROOT/cli/bdo.php" web --stop >/dev/null 2>&1 || true
     test -n "$BLOCKER_PID" && kill "$BLOCKER_PID" 2>/dev/null || true
     rm -rf "$TMP"
 }
 trap cleanup EXIT
 
-web() { bash "$ROOT/cli/system/web.sh" "$@"; }
+web() { php "$ROOT/cli/bdo.php" web "$@"; }
 # Код HTTP або `000`, якщо зʼєднання не відкрилось. Голе `x="$(curl …)"` під
 # `set -e` валить тест на очікуваній відмові зʼєднання (саме те, що ми
 # перевіряємо після `--stop`), тому невдача curl тут не є аварією тесту.
@@ -210,8 +210,8 @@ rm -f "$BDO_STATE_DIR/run-stream.log"
 # відкритих вкладках звичайний запит чекав 10.5 с · сторінка «підвисала».
 # Дві межі проти цього: воркерів більше за типову кількість вкладок, і схована
 # вкладка сама відпускає зʼєднання.
-workers_default="$(sed -n 's/^WORKERS="${BDO_WEB_WORKERS:-\([0-9]*\)}"/\1/p' "$ROOT/cli/system/web.sh")"
-test -n "$workers_default" || fail 'не вдалося прочитати кількість воркерів із cli/system/web.sh'
+workers_default="$(sed -n 's/.*BDO_WEB_WORKERS.*'"'"'8'"'"'.*/8/p' "$ROOT/lib/Cli/Command/System/WebCommand.php" | head -1)"
+test -n "$workers_default" || fail 'не вдалося прочитати кількість воркерів із WebCommand.php'
 test "$workers_default" -ge 8 \
     || fail "воркерів $workers_default · чотирьох не вистачало вже на четвертій вкладці (D76)"
 grep -Fq 'visibilitychange' "$ROOT/web/app.js" \
@@ -476,10 +476,17 @@ test "$stopped_code" = 000 \
 # убивав ГРУПУ процесів, і разом із сервером загинула жива пачка на кроці
 # `awaiting_worker` (D68) · при обіцянці «сервер можна перезапустити, робота
 # триває». Тому групового вбивства в коді бути не може.
-if grep -nE 'kill[[:space:]]+--[[:space:]]+-' "$ROOT/cli/system/web.sh" | grep -v '^[0-9]*:#'; then
+# Дивимось ЛИШЕ на код. Текст довідки переїхав із `web.sh` у сам клас
+# (підетап 9.1) і ОПИСУЄ цей дефект словами, разом із прикладом `kill -- -PGID`.
+# Перевірка на всьому файлі падала саме на прозі · тобто карала за те, що ми
+# пояснили власнику причину. Нижче вирізається nowdoc-блок довідки, і лишається
+# виконуваний код, який і є предметом правила.
+web_command_code="$(awk '/<<</ && /BDO_HELP_TEXT/ {skip=1} skip && /^BDO_HELP_TEXT;/ {skip=0; next} !skip' \
+    "$ROOT/lib/Cli/Command/System/WebCommand.php")"
+if grep -nE "['\"]--['\"]|kill[[:space:]]+--[[:space:]]+-" <<<"$web_command_code" | grep -v '^[0-9]*:[[:space:]]*//'; then
     fail 'зупинка вбиває ГРУПУ процесів · разом із сервером загине живий прогін (D68)'
 fi
-grep -Fq 'port_owners' "$ROOT/cli/system/web.sh" \
+grep -Fq 'portOwners' "$ROOT/lib/Cli/Command/System/WebCommand.php" \
     || fail 'зупинка не цілиться у власників порту · без цього вона або не звільнить порт, або вбʼє зайве'
 again="$(web --stop)" || fail 'повторний --stop упав'
 grep -q 'Зупиняти нічого' <<<"$again" || fail "повторний --stop мусить сказати, що зупиняти нічого: $again"

@@ -9,8 +9,8 @@ HASH="$(printf summary-row | shasum -a 256 | awk '{print $1}')"
 php -r 'file_put_contents($argv[1],json_encode(["data"=>["rows"=>[[
     "identity_hash"=>$argv[2],"source_hash"=>hash("sha256","Sword"),"source_text"=>"Sword"]]]],JSON_THROW_ON_ERROR));' \
     "$TMP/rows.json" "$HASH"
-BDO_STATE_DIR="$TMP/state" bash "$ROOT/cli/batch/batch-new.sh" "$TMP/rows.json" >/dev/null
-BATCH="$(BDO_STATE_DIR="$TMP/state" bash "$ROOT/cli/batch/batch-dir.sh")"
+BDO_STATE_DIR="$TMP/state" php "$ROOT/cli/bdo.php" batch-new "$TMP/rows.json" >/dev/null
+BATCH="$(BDO_STATE_DIR="$TMP/state" php "$ROOT/cli/bdo.php" batch-dir)"
 php -r 'require $argv[1];Bdo\Translate\Batch\Workspace::requireCurrent($argv[2])->updateManifest(function($m){
     $m["state"]="verified";$m["mode"]="patch";$m["patch"]="3";$m["channel"]="machine";return $m;},"test_verified");' \
     "$ROOT/lib/autoload.php" "$TMP/state"
@@ -20,12 +20,12 @@ printf '%s\n' \
     'Записано: 1  Пропущено: 0  Відкинуто: 0' \
     > "$BATCH/commit-report.txt"
 
-first="$(BDO_STATE_DIR="$TMP/state" bash "$ROOT/cli/run/run-drive.sh")"
+first="$(BDO_STATE_DIR="$TMP/state" php "$ROOT/cli/bdo.php" run-drive)"
 jq -e '.next.kind == "complete" and .next.batch.rows == 1 and .next.batch.target_written == 1
     and .next.batch.moderation_written == 0 and .next.batch.quarantine == 0
     and .next.run.rows == 1 and .next.run.target_written == 1' <<< "$first" >/dev/null
 
-second="$(BDO_STATE_DIR="$TMP/state" bash "$ROOT/cli/run/run-drive.sh")"
+second="$(BDO_STATE_DIR="$TMP/state" php "$ROOT/cli/bdo.php" run-drive)"
 jq -e '.next.run.rows == 1 and .next.run.target_written == 1' <<< "$second" >/dev/null \
     || { echo 'FAIL: repeated complete double-counted run totals'; exit 1; }
 
@@ -42,7 +42,7 @@ printf '{"mode":"patch","patch":"7","domain":"knowledge","channel":"machine","qu
 # Офлайн залишок невідомий · конверт мусить лишитись старим `complete`.
 # «Невідомо» і «роботи немає» це різні стани: сплутати їх означає зупинити
 # прогін саме тоді, коли робота ще є.
-offline="$(BDO_PIPELINE_OFFLINE=1 BDO_STATE_DIR="$TMP/state" bash "$ROOT/cli/run/run-drive.sh")"
+offline="$(BDO_PIPELINE_OFFLINE=1 BDO_STATE_DIR="$TMP/state" php "$ROOT/cli/bdo.php" run-drive)"
 jq -e '.next.kind == "complete"' <<< "$offline" >/dev/null \
     || { echo 'FAIL: невідомий залишок змінив вирок'; exit 1; }
 
@@ -50,7 +50,7 @@ jq -e '.next.kind == "complete"' <<< "$offline" >/dev/null \
 # пачку. Готового рядка команди в конверті немає навмисно: його копіювала
 # модель-диригент, а драйвер складає виклик із перевірених полів `goal`.
 export BDO_GOAL_REMAINING_STUB=141
-withwork="$(BDO_STATE_DIR="$TMP/state" BDO_PIPELINE_OFFLINE=1 bash "$ROOT/cli/run/run-drive.sh")"
+withwork="$(BDO_STATE_DIR="$TMP/state" BDO_PIPELINE_OFFLINE=1 php "$ROOT/cli/bdo.php" run-drive)"
 jq -e '.next.kind == "continue_run" and .next.remaining == 141
     and .next.goal.mode == "patch" and .next.goal.patch == "7" and .next.goal.domain == "knowledge"
     and (.next | has("command") | not)' <<< "$withwork" >/dev/null \
@@ -58,7 +58,7 @@ jq -e '.next.kind == "continue_run" and .next.remaining == 141
 
 # Залишку немає · ціль досягнута, і це теж сказано словом, а не мовчанням.
 export BDO_GOAL_REMAINING_STUB=0
-done_env="$(BDO_STATE_DIR="$TMP/state" BDO_PIPELINE_OFFLINE=1 bash "$ROOT/cli/run/run-drive.sh")"
+done_env="$(BDO_STATE_DIR="$TMP/state" BDO_PIPELINE_OFFLINE=1 php "$ROOT/cli/bdo.php" run-drive)"
 jq -e '.next.kind == "goal_complete"' <<< "$done_env" >/dev/null \
     || { echo "FAIL: нульовий залишок не дав goal_complete: $done_env"; exit 1; }
 unset BDO_GOAL_REMAINING_STUB
@@ -70,7 +70,7 @@ unset BDO_GOAL_REMAINING_STUB
 # переводить ціль на ПАТЧ без категорії · категорія була лише способом роботи.
 export BDO_GOAL_REMAINING_STUB=0
 export BDO_PATCH_REMAINING_STUB=1210
-next="$(BDO_STATE_DIR="$TMP/state" BDO_PIPELINE_OFFLINE=1 bash "$ROOT/cli/run/run-drive.sh")"
+next="$(BDO_STATE_DIR="$TMP/state" BDO_PIPELINE_OFFLINE=1 php "$ROOT/cli/bdo.php" run-drive)"
 jq -e '.next.kind == "continue_run" and .next.goal.domain == ""
     and .next.remaining == 1210 and .next.goal.patch == "7"
     and (.next | has("command") | not)' <<< "$next" >/dev/null \
@@ -78,7 +78,7 @@ jq -e '.next.kind == "continue_run" and .next.goal.domain == ""
 
 # А коли роботи немає в ЖОДНІЙ категорії · ціль справді досягнута.
 export BDO_PATCH_REMAINING_STUB=0
-done_all="$(BDO_STATE_DIR="$TMP/state" BDO_PIPELINE_OFFLINE=1 bash "$ROOT/cli/run/run-drive.sh")"
+done_all="$(BDO_STATE_DIR="$TMP/state" BDO_PIPELINE_OFFLINE=1 php "$ROOT/cli/bdo.php" run-drive)"
 jq -e '.next.kind == "goal_complete"' <<< "$done_all" >/dev/null \
     || { echo "FAIL: порожній патч не дав goal_complete: $done_all"; exit 1; }
 unset BDO_GOAL_REMAINING_STUB BDO_PATCH_REMAINING_STUB

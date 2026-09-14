@@ -128,13 +128,8 @@ make_custom_workspace() {
 run_side() {
     local side="$1" state="$2" out="$3" err="$4"
     set +e
-    if [ "$side" = sh ]; then
-        BDO_ORCHESTRATOR=sh BDO_PIPELINE_OFFLINE=1 BDO_AUTO_CLEAN=0 TRANSLATE_ENV_FILE="$ENV_FILE" BDO_STATE_DIR="$state" \
-            bash "$HARNESS/cli/run/run-drive.sh" >"$out" 2>"$err"
-    else
-        BDO_ORCHESTRATOR=php BDO_PIPELINE_OFFLINE=1 BDO_AUTO_CLEAN=0 TRANSLATE_ENV_FILE="$ENV_FILE" BDO_STATE_DIR="$state" \
-            "$REAL_PHP" "$HARNESS/cli/bdo.php" run-drive >"$out" 2>"$err"
-    fi
+    BDO_PIPELINE_OFFLINE=1 BDO_AUTO_CLEAN=0 TRANSLATE_ENV_FILE="$ENV_FILE" BDO_STATE_DIR="$state" \
+        "$REAL_PHP" "$HARNESS/cli/bdo.php" run-drive >"$out" 2>"$err"
     local code=$?
     set -e
     printf '%s\n' "$code"
@@ -146,25 +141,8 @@ assert_same_output() {
     diff -u <(normalize "$a") <(normalize "$b") || fail "shell/PHP output mismatch: $a $b"
 }
 
-# ПРАВИЛО: default wrapper маршрутизує саме live internal command.
-# САБОТАЖ: прибраний/зіпсований dispatcher має впасти до behavior matrix.
-BIN="$TMP/bin"; mkdir -p "$BIN"
-cat >"$BIN/php" <<'PHP'
-#!/usr/bin/env bash
-set -eu
-test "$#" -ge 2 || exit 91
-test "$1" = "__EXPECTED_REAL_PHP__" && test "$2" = "run-drive" || { printf 'wrong route\n' >&2; exit 92; }
-printf 'ROUTING_MARKER:run-drive\n'
-PHP
-sed "s#__EXPECTED_REAL_PHP__#$HARNESS/cli/bdo.php#" "$BIN/php" >"$BIN/php.tmp"
-mv "$BIN/php.tmp" "$BIN/php"
-chmod +x "$BIN/php"
-routing_out="$TMP/routing.out"
-PATH="$BIN:$PATH" BDO_STATE_DIR="$TMP/no-routing-state" bash "$HARNESS/cli/run/run-drive.sh" >"$routing_out"
-grep -Fqx 'ROUTING_MARKER:run-drive' "$routing_out" || fail 'run-drive wrapper routing proof failed'
-
-# ПРАВИЛО: missing current batch is a real blocked envelope and must match rollback.
-# САБОТАЖ: default PHP route or rollback route returning success invalidates the proof.
+# ПРАВИЛО: missing current batch is a real blocked envelope.
+# САБОТАЖ: direct PHP route returning success invalidates the proof.
 mkdir -p "$TMP/sh-no-batch" "$TMP/php-no-batch"
 sh_code="$(run_side sh "$TMP/sh-no-batch" "$TMP/sh-no-batch.out" "$TMP/sh-no-batch.err")"
 php_code="$(run_side php "$TMP/php-no-batch" "$TMP/php-no-batch.out" "$TMP/php-no-batch.err")"
@@ -225,13 +203,8 @@ make_d151_workspace() {
 run_dry_side() {
     local side="$1" state="$2" out="$3" err="$4"
     set +e
-    if [ "$side" = sh ]; then
-        BDO_ORCHESTRATOR=sh BDO_PIPELINE_OFFLINE=1 BDO_DRY_RUN=1 BDO_AUTO_CLEAN=0 TRANSLATE_ENV_FILE="$ENV_FILE" BDO_STATE_DIR="$state" \
-            bash "$HARNESS/cli/run/run-drive.sh" >"$out" 2>"$err"
-    else
-        BDO_ORCHESTRATOR=php BDO_PIPELINE_OFFLINE=1 BDO_DRY_RUN=1 BDO_AUTO_CLEAN=0 TRANSLATE_ENV_FILE="$ENV_FILE" BDO_STATE_DIR="$state" \
-            "$REAL_PHP" "$HARNESS/cli/bdo.php" run-drive >"$out" 2>"$err"
-    fi
+    BDO_PIPELINE_OFFLINE=1 BDO_DRY_RUN=1 BDO_AUTO_CLEAN=0 TRANSLATE_ENV_FILE="$ENV_FILE" BDO_STATE_DIR="$state" \
+        "$REAL_PHP" "$HARNESS/cli/bdo.php" run-drive >"$out" 2>"$err"
     local code=$?
     set -e
     printf '%s\n' "$code"
@@ -302,13 +275,8 @@ printf 'D151: 20 rows; same state path; snapshot restore diff=0; shell=%s bytes/
 run_write_side() {
     local side="$1" state="$2" out="$3" err="$4"
     set +e
-    if [ "$side" = sh ]; then
-        BDO_ORCHESTRATOR=sh BDO_PIPELINE_OFFLINE=1 BDO_AUTO_CLEAN=0 TRANSLATE_ENV_FILE="$ENV_FILE" BDO_STATE_DIR="$state" \
-            bash "$HARNESS/cli/run/run-drive.sh" >"$out" 2>"$err"
-    else
-        BDO_ORCHESTRATOR=php BDO_PIPELINE_OFFLINE=1 BDO_AUTO_CLEAN=0 TRANSLATE_ENV_FILE="$ENV_FILE" BDO_STATE_DIR="$state" \
-            "$REAL_PHP" "$HARNESS/cli/bdo.php" run-drive >"$out" 2>"$err"
-    fi
+    BDO_PIPELINE_OFFLINE=1 BDO_AUTO_CLEAN=0 TRANSLATE_ENV_FILE="$ENV_FILE" BDO_STATE_DIR="$state" \
+        "$REAL_PHP" "$HARNESS/cli/bdo.php" run-drive >"$out" 2>"$err"
     local code=$?
     set -e
     printf '%s\n' "$code"
@@ -336,13 +304,8 @@ assert_same_output "$TMP/sh-write.out" "$TMP/php-write.out"
 run_goal_unavailable_side() {
     local side="$1" state="$2" out="$3" err="$4"
     set +e
-    if [ "$side" = sh ]; then
-        BDO_ORCHESTRATOR=sh RUN_DRIVE_GOAL_FAILURE=1 BDO_AUTO_CLEAN=0 TRANSLATE_ENV_FILE="$ENV_FILE" BDO_STATE_DIR="$state" \
-            bash "$HARNESS/cli/run/run-drive.sh" >"$out" 2>"$err"
-    else
-        BDO_ORCHESTRATOR=php RUN_DRIVE_GOAL_FAILURE=1 BDO_AUTO_CLEAN=0 TRANSLATE_ENV_FILE="$ENV_FILE" BDO_STATE_DIR="$state" \
-            "$REAL_PHP" "$HARNESS/cli/bdo.php" run-drive >"$out" 2>"$err"
-    fi
+    RUN_DRIVE_GOAL_FAILURE=1 BDO_AUTO_CLEAN=0 TRANSLATE_ENV_FILE="$ENV_FILE" BDO_STATE_DIR="$state" \
+        "$REAL_PHP" "$HARNESS/cli/bdo.php" run-drive >"$out" 2>"$err"
     local code=$?
     set -e
     printf '%s\n' "$code"
@@ -368,13 +331,8 @@ assert_same_output "$TMP/sh-goal-unavailable.out" "$TMP/php-goal-unavailable.out
 run_custom_side() {
     local side="$1" state="$2" out="$3" err="$4" offline="$5"
     set +e
-    if [ "$side" = sh ]; then
-        BDO_ORCHESTRATOR=sh BDO_PIPELINE_OFFLINE="$offline" BDO_AUTO_CLEAN=0 TRANSLATE_ENV_FILE="$ENV_FILE" BDO_STATE_DIR="$state" \
-            bash "$HARNESS/cli/run/run-drive.sh" >"$out" 2>"$err"
-    else
-        BDO_ORCHESTRATOR=php BDO_PIPELINE_OFFLINE="$offline" BDO_AUTO_CLEAN=0 TRANSLATE_ENV_FILE="$ENV_FILE" BDO_STATE_DIR="$state" \
-            "$REAL_PHP" "$HARNESS/cli/bdo.php" run-drive >"$out" 2>"$err"
-    fi
+    BDO_PIPELINE_OFFLINE="$offline" BDO_AUTO_CLEAN=0 TRANSLATE_ENV_FILE="$ENV_FILE" BDO_STATE_DIR="$state" \
+        "$REAL_PHP" "$HARNESS/cli/bdo.php" run-drive >"$out" 2>"$err"
     local code=$?
     set -e
     printf '%s\n' "$code"
@@ -571,18 +529,10 @@ make_memory_fixture() {
 run_layer_side() {
     local layer="$1" side="$2" state="$3" out="$4" err="$5"
     set +e
-    if [ "$side" = sh ]; then
-        if [ "$layer" = unset ]; then
-            env -u BDO_MEMORY_LAYERS BDO_ORCHESTRATOR=sh BDO_PIPELINE_OFFLINE=1 BDO_AUTO_CLEAN=0 TRANSLATE_ENV_FILE="$ENV_FILE" BDO_STATE_DIR="$state" bash "$HARNESS/cli/run/run-drive.sh" >"$out" 2>"$err"
-        else
-            BDO_MEMORY_LAYERS="$layer" BDO_ORCHESTRATOR=sh BDO_PIPELINE_OFFLINE=1 BDO_AUTO_CLEAN=0 TRANSLATE_ENV_FILE="$ENV_FILE" BDO_STATE_DIR="$state" bash "$HARNESS/cli/run/run-drive.sh" >"$out" 2>"$err"
-        fi
+    if [ "$layer" = unset ]; then
+        env -u BDO_MEMORY_LAYERS BDO_PIPELINE_OFFLINE=1 BDO_AUTO_CLEAN=0 TRANSLATE_ENV_FILE="$ENV_FILE" BDO_STATE_DIR="$state" "$REAL_PHP" "$HARNESS/cli/bdo.php" run-drive >"$out" 2>"$err"
     else
-        if [ "$layer" = unset ]; then
-            env -u BDO_MEMORY_LAYERS BDO_ORCHESTRATOR=php BDO_PIPELINE_OFFLINE=1 BDO_AUTO_CLEAN=0 TRANSLATE_ENV_FILE="$ENV_FILE" BDO_STATE_DIR="$state" "$REAL_PHP" "$HARNESS/cli/bdo.php" run-drive >"$out" 2>"$err"
-        else
-            BDO_MEMORY_LAYERS="$layer" BDO_ORCHESTRATOR=php BDO_PIPELINE_OFFLINE=1 BDO_AUTO_CLEAN=0 TRANSLATE_ENV_FILE="$ENV_FILE" BDO_STATE_DIR="$state" "$REAL_PHP" "$HARNESS/cli/bdo.php" run-drive >"$out" 2>"$err"
-        fi
+        BDO_MEMORY_LAYERS="$layer" BDO_PIPELINE_OFFLINE=1 BDO_AUTO_CLEAN=0 TRANSLATE_ENV_FILE="$ENV_FILE" BDO_STATE_DIR="$state" "$REAL_PHP" "$HARNESS/cli/bdo.php" run-drive >"$out" 2>"$err"
     fi
     local code=$?
     set -e
@@ -645,20 +595,6 @@ for side in sh php; do
 done
 assert_same_output "$TMP/sh-term-threshold-positive.out" "$TMP/php-term-threshold-positive.out"
 
-helper_shell_path() {
-    case "$1" in
-        term-notes-describe) printf '%s\n' 'cli/api/term-notes-describe.sh' ;;
-        concepts) printf '%s\n' 'cli/api/glossary-concepts.sh' ;;
-        memory-apply) printf '%s\n' 'cli/prepare/memory-apply.sh' ;;
-        term-notes-queue) printf '%s\n' 'cli/api/term-notes-queue.sh' ;;
-        terminology-payload) printf '%s\n' 'cli/prepare/terminology-payload.sh' ;;
-        check-russianisms) printf '%s\n' 'cli/quality/check-russianisms.sh' ;;
-        judge-payload) printf '%s\n' 'cli/prepare/judge-payload.sh' ;;
-        names-payload) printf '%s\n' 'cli/prepare/names-payload.sh' ;;
-        *) fail "unknown helper shell path: $1" ;;
-    esac
-}
-
 helper_php_path() {
     case "$1" in
         term-notes-describe) printf '%s\n' 'lib/Cli/Command/Api/TermNotesDescribeCommand.php' ;;
@@ -675,36 +611,21 @@ helper_php_path() {
 
 inject_helper_failure() {
     local helper="$1" side="$2" tag="$3"
-    if [ "$side" = sh ]; then
-        local relative
-        relative="$(helper_shell_path "$helper")"
-        cp "$ROOT/$relative" "$HARNESS/$relative"
-        "$REAL_PHP" -r '
-            $path=$argv[1]; $tag=$argv[2]; $source=(string) file_get_contents($path);
-            $needle="#!/usr/bin/env bash\n";
-            $line="if [ -n \"\$D150_MARKER\" ]; then printf \"%s\\n\" \"D150-".$tag."\" > \"\$D150_MARKER\"; exit 7; fi\n";
-            if (substr_count($source, $needle) !== 1) exit(1);
-            $count=0;
-            file_put_contents($path, str_replace($needle, $needle.$line, $source, $count));
-        ' "$HARNESS/$relative" "$tag"
-    else
-        local relative
-        relative="$(helper_php_path "$helper")"
-        cp "$ROOT/$relative" "$HARNESS/$relative"
-        "$REAL_PHP" -r '
-            $path=$argv[1]; $tag=$argv[2]; $source=(string) file_get_contents($path);
-            $needle="    public function execute(array \$arguments, Output \$output): int\n    {\n";
-            $line="        file_put_contents((string) getenv(\"D150_MARKER\"), \"D150-".$tag."\\n\"); throw new \\RuntimeException(\"D150 injected\");\n";
-            if (substr_count($source, $needle) !== 1) exit(1);
-            $count=0;
-            file_put_contents($path, str_replace($needle, $needle.$line, $source, $count));
-        ' "$HARNESS/$relative" "$tag"
-    fi
+    local relative
+    relative="$(helper_php_path "$helper")"
+    cp "$ROOT/$relative" "$HARNESS/$relative"
+    "$REAL_PHP" -r '
+        $path=$argv[1]; $tag=$argv[2]; $source=(string) file_get_contents($path);
+        $needle="    public function execute(array \$arguments, Output \$output): int\n    {\n";
+        $line="        file_put_contents((string) getenv(\"D150_MARKER\"), \"D150-".$tag."\\n\"); throw new \\RuntimeException(\"D150 injected\");\n";
+        if (substr_count($source, $needle) !== 1) exit(1);
+        $count=0;
+        file_put_contents($path, str_replace($needle, $needle.$line, $source, $count));
+    ' "$HARNESS/$relative" "$tag"
 }
 
 restore_helper_failure() {
     local helper="$1"
-    cp "$ROOT/$(helper_shell_path "$helper")" "$HARNESS/$(helper_shell_path "$helper")"
     cp "$ROOT/$(helper_php_path "$helper")" "$HARNESS/$(helper_php_path "$helper")"
 }
 
@@ -758,7 +679,7 @@ prepare_optional_helper_fixture() {
     esac
 }
 
-# ПРАВИЛО: усі rollback-optional helpers nonzero/Throwable є non-gating, але виклик має бути доведений marker-ом.
+# ПРАВИЛО: усі optional helpers nonzero/Throwable є non-gating, але виклик має бути доведений marker-ом.
 # САБОТАЖ: прибрати відповідний catch і injected exception мусить зробити саме helper case red.
 for helper in concepts memory-apply term-notes-describe term-notes-queue terminology-payload check-russianisms judge-payload names-payload; do
     for side in sh php; do
@@ -893,6 +814,10 @@ done
 # ПРАВИЛО: direct PHP drive no-Unix proof uses the absolute interpreter and a PATH
 # whose helper executables all fail; no migrated drive code may invoke them.
 # САБОТАЖ: a subprocess call in RunDriveCommand must make this scenario fail.
+# Тека з підробками створюється ТУТ: раніше її готував блок налаштування
+# sh-шляху, і разом зі шляхом відкату він зник, лишивши $BIN без присвоєння.
+BIN="$TMP/no-unix-bin"
+mkdir -p "$BIN"
 for helper in bash date grep tail ls head sed awk tr shasum; do
     printf '#!/usr/bin/env bash\nexit 99\n' >"$BIN/$helper"; chmod +x "$BIN/$helper"
 done
