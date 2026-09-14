@@ -11,7 +11,7 @@ use Bdo\Translate\Run\StepTimes;
 use RuntimeException;
 
 /** Execute one deterministic loop over run-drive envelopes. */
-final class RunLoopCommand implements Command
+final class RunLoopCommand implements Command, \Bdo\Translate\Cli\CommandHelp
 {
     // ПРАВИЛО: loop invokes only fixed PHP argv; the reporter is the sole
     // temporary shell bridge until Stage7 process/visibility design.
@@ -553,4 +553,31 @@ final class RunLoopCommand implements Command
             // Timing telemetry is non-gating, matching cli/system/timed.sh.
         }
     }
+    /** Повернути дослівну довідку legacy-маршруту. */
+    public static function help(): string
+    {
+        return <<<'BDO_HELP_TEXT'
+Драйвер конвеєра: цикл замість моделі-диригента.
+
+  ./run-loop.sh                 # вести поточну ціль до кінця
+  ./run-loop.sh --batches 3     # рівно три пачки й зупинитись
+  ./run-loop.sh --once          # рівно один крок (для тестів і діагностики)
+
+Навіщо. До 2026-09-04 цей цикл виконувала МОДЕЛЬ: читала конверт
+`./bdo run drive`, вирішувала, що з ним робити, і кликала дитячу сесію. Вона ж
+була найненадійнішою частиною набору. З 45 записаних дефектів 14 виникли саме
+тут (D15-D17, D20, D21, D25, D30, D34-D36, D38-D40, D45), а на 12 пачках одна
+її сесія витратила 2 767 379 вхідних токенів проти 336 тис. у всіх семи
+ролей разом · тобто 89% плати йшло на переказ станів самій собі.
+
+Рішення нічого не змінює у ФЛОУ: порядок ролей, ретраї, карантин і фінальна
+валідація перед записом лишаються там, де були · у `run-drive.sh`. Змінюється
+лише виконавець: замість моделі, яка «розуміє» конверт, його читає `case`.
+
+Код виходу: 0 · ціль досягнута або задану кількість пачок зроблено;
+1 · зупинка з причиною (вона надрукована).
+
+BDO_HELP_TEXT;
+    }
+
 }

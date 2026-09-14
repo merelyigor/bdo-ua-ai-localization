@@ -16,7 +16,7 @@ use Bdo\Translate\Cli\Output;
  * Причина переносу: ця діагностична команда мусить мати названу відмову без
  * bash line-number і без PHP trace, бо її stdout/stderr читає диригент.
  */
-final class BatchAssertCommand implements Command
+final class BatchAssertCommand implements Command, \Bdo\Translate\Cli\CommandHelp
 {
     public function execute(array $arguments, Output $output): int
     {
@@ -61,4 +61,22 @@ final class BatchAssertCommand implements Command
     {
         return getenv('BDO_STATE_DIR') ?: dirname(__DIR__, 4).'/state';
     }
+    /** Повернути дослівну довідку legacy-маршруту. */
+    public static function help(): string
+    {
+        return <<<'BDO_HELP_TEXT'
+Перевірити, що файли належать поточній пачці.
+
+  ./batch-assert.sh rows.json [candidate.json]
+
+Окремий крок, а не частина кожного скрипта, з двох причин: його може викликати
+і диригент перед будь-якою дією, і сусідні скрипти; і вивід тут чистий -
+у `php -r` уроджений обробник виключень не працює, тому текст помилки інакше
+тонув би у PHP-трасуванні, яке агент переказує власнику як «сталася помилка».
+
+Код виходу: 0 - файли свої, 1 - чужі або пачку не розпочато.
+
+BDO_HELP_TEXT;
+    }
+
 }

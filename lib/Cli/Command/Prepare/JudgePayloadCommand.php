@@ -19,7 +19,7 @@ use RuntimeException;
  * `JudgePolicy` і `Defects` залишаються єдиними джерелами маршруту та
  * механічних правил; тут зібрано тільки форму payload і його спільні приклади.
  */
-final class JudgePayloadCommand implements Command
+final class JudgePayloadCommand implements Command, \Bdo\Translate\Cli\CommandHelp
 {
     public function execute(array $arguments, Output $output): int
     {
@@ -139,4 +139,29 @@ final class JudgePayloadCommand implements Command
 
         return $value;
     }
+    /** Повернути дослівну довідку legacy-маршруту. */
+    public static function help(): string
+    {
+        return <<<'BDO_HELP_TEXT'
+Побудувати payload для translation-judge · лише спірні рядки пачки.
+
+  ./judge-payload.sh rows.json candidate.json verdicts.json [validate.json]
+
+Друкує JSON-масив спірних рядків у stdout, а в stderr · підсумок. Порожній
+масив означає, що судити нема чого й виклик моделі не потрібен.
+
+ЩО ТАКЕ СПІРНИЙ РЯДОК. Не «будь-який не-PASS»: механічний дефект (зламаний
+токен, довжина, гомогліф, русизм) є фактом, і його маршрут визначено без
+моделі. Спір · це там, де рішення потребує судження:
+  - переклад дорівнює джерелу (назва продукту або справді пропущений рядок);
+  - QA дав не-PASS, але механіка чиста.
+
+Суддя не отримує інструментів (виклик інструмента вимикає constrained
+decoding), тому все потрібне для рішення кладеться сюди скриптом: джерело,
+кандидат, глосарій, приклади, межі, вердикт QA, механічні дефекти й код
+відмови API, якщо він був.
+
+BDO_HELP_TEXT;
+    }
+
 }

@@ -19,7 +19,7 @@ use RuntimeException;
  * Будує payload translation-terminology та, за запитом, додає resolve із API.
  * Індекс identity лишається локальним файлом і не потрапляє до моделі.
  */
-final class TerminologyPayloadCommand implements Command
+final class TerminologyPayloadCommand implements Command, \Bdo\Translate\Cli\CommandHelp
 {
     public function execute(array $arguments, Output $output): int
     {
@@ -99,4 +99,38 @@ final class TerminologyPayloadCommand implements Command
         if (! is_string($value) || $value === '') throw new RuntimeException($message);
         return $value;
     }
+    /** Повернути дослівну довідку legacy-маршруту. */
+    public static function help(): string
+    {
+        return <<<'BDO_HELP_TEXT'
+Побудувати компактний payload для translation-terminology.
+
+  ./terminology-payload.sh rows.json
+  ./terminology-payload.sh rows.json --no-resolve   # без звернень до API
+
+Навіщо цей скрипт існує. Раніше primary передавав субагенту ШЛЯХ до
+`rows.json`, і той читав пачку сам інструментом `read`. Пачка містить
+classification, tokens, constraints, glossary, reference і patch на КОЖЕН
+рядок, тобто субагент отримував десятки кілобайт службових полів, щоб дістати
+звідти шість назв. Виміряно на живому прогоні 2026-08-16: дві сесії
+terminology зʼїли 420 244 і 124 920 вхідних токенів · більше за решту флоу
+разом узяту.
+
+Тут з пачки дістається рівно те, що потрібно для роботи з термінами:
+канонічна назва, один представницький рядок для неї (identity_hash плюс
+джерело для контексту) і ГОТОВИЙ результат resolve.
+
+Resolve робиться ТУТ, а не моделлю. Це детермінований факт із каталогу, і
+віддавати його моделі означає додати ймовірність там, де її не було: субагент
+один раз уже вигадав хост `http://localhost/...` і впав. Спершу запит без
+identity; якщо каталог відповів `blocked_identity` (назву мають кілька
+сутностей), запит повторюється з `identity_hash` того рядка, для якого термін
+і потрібен. Обидва кроки механічні.
+
+Наслідок для промпта: субагенту лишається рівно те, що правилом не описати ·
+запропонувати український відповідник. Тому `read` йому більше не потрібен.
+
+BDO_HELP_TEXT;
+    }
+
 }

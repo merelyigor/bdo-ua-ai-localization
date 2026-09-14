@@ -14,7 +14,7 @@ use RuntimeException;
  * Матеріалізує status/plan для RunSpec без shell або subprocess.
  * Preset, filters і validation лишаються в канонічному Pipeline\RunSpec.
  */
-final class RunSpecCommand implements Command
+final class RunSpecCommand implements Command, \Bdo\Translate\Cli\CommandHelp
 {
     // ПРАВИЛО: RunSpec command is native PHP and has no external process seam.
     // САБОТАЖ: any Unix subprocess in this class must make the runtime guard fail.
@@ -81,4 +81,19 @@ final class RunSpecCommand implements Command
         $prefix = str_starts_with($environment['environment'], 'hub-') ? 'ХАБ ' : '';
         $output->stderr("Ціль: {$prefix}{$env} ({$environment['base']})\n");
     }
+    /** Повернути дослівну довідку legacy-маршруту. */
+    public static function help(): string
+    {
+        return <<<'BDO_HELP_TEXT'
+Керувати immutable RunSpec для чотирьох готових режимів прогону.
+
+  ./run-spec.sh status patch
+  ./run-spec.sh plan patch <parent-session-id> [batch-size]
+
+Цей скрипт не викликає API та не викликає моделей. Він лише формує машинний
+контракт, який драйвер і рушій приймають без розбору тексту.
+
+BDO_HELP_TEXT;
+    }
+
 }

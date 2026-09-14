@@ -19,7 +19,7 @@ use RuntimeException;
  * Сесія відкривається тією самою PHP-логікою, що й команда `session ensure`,
  * до створення workspace.
  */
-final class BatchNewCommand implements Command
+final class BatchNewCommand implements Command, \Bdo\Translate\Cli\CommandHelp
 {
     public function execute(array $arguments, Output $output): int
     {
@@ -118,4 +118,26 @@ final class BatchNewCommand implements Command
 
         return '';
     }
+    /** Повернути дослівну довідку legacy-маршруту. */
+    public static function help(): string
+    {
+        return <<<'BDO_HELP_TEXT'
+Почати пачку: створити ізольовану теку під її робочі файли.
+
+  ./batch-new.sh rows.json      # почати пачку з цієї вибірки
+  ./batch-new.sh --show         # яка пачка зараз поточна
+  ./batch-new.sh --end          # закрити пачку (тека лишається)
+
+Навіщо. Робочі файли пачки раніше мали фіксовані імена в state/, тож друга
+пачка мовчки затирала першу, а імена rows і candidate диригент вигадував сам.
+Схема з enum рятувала від чужого identity всередині відповіді моделі, але не
+від чужого ФАЙЛА на вході. Тепер кожна пачка має власну теку
+state/batches/<час>_<ключ>/, а manifest зберігає ключ набору identity, тому
+приналежність файла перевіряється, а не мається на увазі.
+
+Друкує шлях теки: усі наступні кроки складають свої файли саме туди.
+
+BDO_HELP_TEXT;
+    }
+
 }

@@ -16,7 +16,7 @@ use RuntimeException;
  * Словник і правило пріоритету глосарія живуть у Russianisms; команда лише
  * відтворює старий звіт і код виходу для рушія.
  */
-final class CheckRussianismsCommand implements Command
+final class CheckRussianismsCommand implements Command, \Bdo\Translate\Cli\CommandHelp
 {
     public function execute(array $arguments, Output $output): int
     {
@@ -81,4 +81,26 @@ final class CheckRussianismsCommand implements Command
 
         return $value;
     }
+    /** Повернути дослівну довідку legacy-маршруту. */
+    public static function help(): string
+    {
+        return <<<'BDO_HELP_TEXT'
+Знайти русизми в перекладах пачки. Детермінована перевірка, без моделі.
+
+  ./check-russianisms.sh candidate.json [rows.json]
+
+candidate.json - масив {identity_hash, text} від воркера або після merge.
+rows.json передавати ЗАВЖДИ: без нього не видно затвердженого глосарію, і
+канонічний термін на кшталт «Доспехи Жарів Іксіна» дасть хибне спрацювання.
+Глосарій має пріоритет над цим словником.
+
+Навіщо окремо від перевірки російських літер: найнебезпечніші русизми пишуться
+українськими буквами. На A/B qwen3.8 видала «Сумерки кінця» і «Серга», і
+літерна перевірка показала нуль дефектів. Словник ловить саме такі випадки.
+
+Код виходу: 0 - чисто, 1 - знайдено русизми (щоб можна було зчепити в ланцюг).
+
+BDO_HELP_TEXT;
+    }
+
 }

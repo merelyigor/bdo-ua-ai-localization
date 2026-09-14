@@ -19,7 +19,7 @@ use RecursiveIteratorIterator;
  *
  * Порт `cli/system/session.sh`; підкоманди й тексти лишаються його контрактом.
  */
-final class SessionCommand implements Command
+final class SessionCommand implements Command, \Bdo\Translate\Cli\CommandHelp
 {
     public function execute(array $arguments, Output $output): int
     {
@@ -410,4 +410,41 @@ final class SessionCommand implements Command
 
         return 1;
     }
+    /** Повернути дослівну довідку legacy-маршруту. */
+    public static function help(): string
+    {
+        return <<<'BDO_HELP_TEXT'
+Сесія роботи: період, у якому власник провів N пачок.
+
+  ./session.sh new                    # почати нову (поточну закриє сама)
+  ./session.sh close                  # закрити: підсумок, журнали, прибирання
+  ./session.sh close --drop-journals   # закрити й видалити журнали одразу
+  ./session.sh list [N]               # історія сесій, найновіші зверху
+  ./session.sh show [id]              # пачки однієї сесії (типово · поточної)
+  ./session.sh ensure                 # внутрішнє: відкрити, якщо немає
+
+Навіщо. Квитанція є в кожної пачки, а між пачками не було нічого: питання
+«що я зробив за сьогодні» вимагало читати теки руками, а живі журнали
+(`run-transcript.log`, `run-stream.log`, `model-calls.jsonl`) росли назавжди
+й змішували сьогоднішній прогін із тижневим. Власник попросив рівно це:
+бачити історію по кожній пачці, закривати сесію й починати нову, і щоб
+закриття прибирало файли попередньої (рішення 2026-09-04).
+
+ЩО ЗАКРИТТЯ НЕ ЧІПАЄ НІКОЛИ: `write-log.jsonl` (незнищенний слід записів у
+PROD), `quarantine.jsonl` і його архів, `row-attempts.jsonl`,
+`glossary-suspects.json`, `term-notes-queue.json`. Правда про переклад живе
+на сервері, а не в сесії, тому сесія прибирає лише СВОЇ журнали.
+
+ЗАКРИТТЯ ПІД ЖИВИМ ПРОГОНОМ ЗАБОРОНЕНЕ. Перенести `model-calls.jsonl`, у який
+зараз пише драйвер, означає лишити його дописувати в перейменований файл ·
+частина викликів прогону просто зникне з живого журналу. Тому наявність
+живого `drive.lock` дає відмову з причиною, а не тихе перенесення.
+
+Журнали закритої сесії живуть `BDO_KEEP_DAYS` днів (типово 7 · рішення
+власника). Підсумок і перелік пачок лишаються НАЗАВЖДИ: вони дрібні, і саме
+вони є історією.
+
+BDO_HELP_TEXT;
+    }
+
 }

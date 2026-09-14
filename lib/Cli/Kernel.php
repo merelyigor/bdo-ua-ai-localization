@@ -111,6 +111,17 @@ final class Kernel
         return $this->command($name) !== null;
     }
 
+    /** Повернути вбудовану довідку PHP-команди, якщо вона її має. */
+    public function helpText(string $name): ?string
+    {
+        $command = $this->command($name);
+        if (! $command instanceof CommandHelp) {
+            return null;
+        }
+
+        return $command::help();
+    }
+
     private function command(string $name): ?Command
     {
         return match ($name) {

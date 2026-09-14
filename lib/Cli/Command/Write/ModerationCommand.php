@@ -20,7 +20,7 @@ use RuntimeException;
  * через той самий Client, `--dry` не створює жодного POST, а помилка окремої
  * пропозиції не зупиняє решту списку як у старому shell.
  */
-final class ModerationCommand implements Command
+final class ModerationCommand implements Command, \Bdo\Translate\Cli\CommandHelp
 {
     // ПРАВИЛО: moderation використовує лише PHP Http\Client і не обходить API guard.
     // САБОТАЖ: альтернативний transport або fail-fast decision змінює контракт.
@@ -222,4 +222,34 @@ final class ModerationCommand implements Command
 
         return $value;
     }
+    /** Повернути дослівну довідку legacy-маршруту. */
+    public static function help(): string
+    {
+        return <<<'BDO_HELP_TEXT'
+Черга модерації перекладів: подивитись і розібрати пачками через API.
+
+  ./moderation-queue.sh                          # показати чергу (20 перших)
+  ./moderation-queue.sh --limit 100              # більше за раз (стеля 100)
+  ./moderation-queue.sh --row <identity_hash>    # лише пропозиції цього рядка
+  ./bdo moderation --approve 12,15,18       # схвалити перелічені
+  ./moderation-queue.sh --reject 12,15 --reason "калька"
+  ./bdo moderation --approve-batch 20       # схвалити перші N з черги
+  ./bdo moderation --approve-batch 20 --dry # показати, кого б схвалив
+  ./bdo moderation --limit 20 --json        # черга як JSON (для інтерфейсу)
+
+Навіщо: прогін пачками відправляє в чергу десятки рядків, і розбирати їх у
+адмінці кліками неможливо. Скрипт ходить у ті самі маршрути, що й UI-модератор
+(claim+decide workflow, той самий audit trail), тому «швидко» тут не означає
+«в обхід».
+
+Ключу потрібна здатність `translations:review`, а його власнику - право
+модерувати. Здатність сама нічого не дозволяє: якщо власник ключа не модератор,
+API поверне 403 навіть із увімкненою галочкою.
+
+`--approve-batch` навмисно вимагає ЧИСЛА, а не працює «до кінця»: масове
+схвалення наосліп - єдина операція тут, яку неможливо відкотити одним рухом.
+
+BDO_HELP_TEXT;
+    }
+
 }

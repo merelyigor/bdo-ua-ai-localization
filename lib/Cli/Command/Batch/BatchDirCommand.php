@@ -15,7 +15,7 @@ use Bdo\Translate\Cli\Output;
  * точний сигнал, що пачку ще не розпочато, тому шлях не можна складати в
  * shell або підміняти спільною текою state.
  */
-final class BatchDirCommand implements Command
+final class BatchDirCommand implements Command, \Bdo\Translate\Cli\CommandHelp
 {
     public function execute(array $arguments, Output $output): int
     {
@@ -33,4 +33,16 @@ final class BatchDirCommand implements Command
     {
         return getenv('BDO_STATE_DIR') ?: dirname(__DIR__, 4).'/state';
     }
+    /** Повернути дослівну довідку legacy-маршруту. */
+    public static function help(): string
+    {
+        return <<<'BDO_HELP_TEXT'
+Надрукувати теку поточної пачки; порожньо й код 1, якщо пачку не розпочато.
+
+Допоміжний однорядковий скрипт: інші скрипти й диригент питають шлях саме
+так, замість складати його вручну з ідентифікатора.
+
+BDO_HELP_TEXT;
+    }
+
 }

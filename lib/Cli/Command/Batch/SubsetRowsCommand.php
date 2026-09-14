@@ -16,7 +16,7 @@ use RuntimeException;
  * та порядок rows, тому вибір не можна будувати в порядку CSV-хешів або лише
  * за кількістю збігів.
  */
-final class SubsetRowsCommand implements Command
+final class SubsetRowsCommand implements Command, \Bdo\Translate\Cli\CommandHelp
 {
     public function execute(array $arguments, Output $output): int
     {
@@ -65,4 +65,19 @@ final class SubsetRowsCommand implements Command
 
         return 0;
     }
+    /** Повернути дослівну довідку legacy-маршруту. */
+    public static function help(): string
+    {
+        return <<<'BDO_HELP_TEXT'
+Вирізати підмножину рядків із rows.json для повтору лише проблемної частини пачки.
+
+  ./subset-rows.sh rows.json hash1,hash2,... subset.json
+
+Вихід має ту саму структуру {data:{rows:[...]}}, тому cli/prepare/build-schema.sh і
+cli/prepare/worker-payload.sh працюють із ним без змін. Невідомий хеш - помилка, щоб
+повтор не розійшовся з реальною пачкою.
+
+BDO_HELP_TEXT;
+    }
+
 }

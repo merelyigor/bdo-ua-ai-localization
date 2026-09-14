@@ -15,7 +15,7 @@ use RuntimeException;
  * Команда змінює тільки результуючий JSON у stdout; вхідні артефакти пачки
  * лишаються незмінними, як і в старому кроці.
  */
-final class MemoryExpandCommand implements Command
+final class MemoryExpandCommand implements Command, \Bdo\Translate\Cli\CommandHelp
 {
     public function execute(array $arguments, Output $output): int
     {
@@ -52,4 +52,19 @@ final class MemoryExpandCommand implements Command
 
         return 0;
     }
+    /** Повернути дослівну довідку legacy-маршруту. */
+    public static function help(): string
+    {
+        return <<<'BDO_HELP_TEXT'
+Зібрати повного кандидата: переклад моделі + близнюки + те, що дала памʼять.
+
+  ./memory-expand.sh candidate.json twins.json memory-candidate.json > full.json
+
+Близнюк отримує текст свого представника з тієї самої пачки: однаковий
+англійський оригінал не має давати двох різних українських варіантів у межах
+однієї пачки - саме так корпус і починає суперечити сам собі.
+
+BDO_HELP_TEXT;
+    }
+
 }

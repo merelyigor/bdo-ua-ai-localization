@@ -15,7 +15,7 @@ use RuntimeException;
  * Форма лишається в одному місці з попереднім кроком: constrained decoding
  * очікує кореневий обʼєкт з `items`, тому команда не вигадує іншого конверта.
  */
-final class BuildSchemaCommand implements Command
+final class BuildSchemaCommand implements Command, \Bdo\Translate\Cli\CommandHelp
 {
     public function execute(array $arguments, Output $output): int
     {
@@ -130,4 +130,24 @@ final class BuildSchemaCommand implements Command
 
         return 0;
     }
+    /** Повернути дослівну довідку legacy-маршруту. */
+    public static function help(): string
+    {
+        return <<<'BDO_HELP_TEXT'
+Створити JSON Schema для constrained decoding із rows.json і поставити її як активну.
+
+Схема робить структурно неможливим втратити або вигадати identity_hash: список хешів
+задається enum, а довжина масиву фіксується. Формат виходу моделі збігається з тим,
+що очікує cli/quality/build-items.sh, тому перепакування не потрібне.
+
+Використання:
+  ./build-schema.sh rows.json          # схема для worker/repair
+  ./build-schema.sh --qa rows.json     # схема для translation-qa (статус на КОЖЕН рядок)
+  ./build-schema.sh --clear            # зняти обидві схеми
+  ./build-schema.sh --show             # показати активні схеми
+  ./build-schema.sh --out FILE rows.json   # у свій файл, активну НЕ чіпати
+
+BDO_HELP_TEXT;
+    }
+
 }

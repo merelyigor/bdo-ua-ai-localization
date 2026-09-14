@@ -15,7 +15,7 @@ use Bdo\Translate\Http\Request;
  * контракту payload; недоступність API без старого кешу є слабшим сигналом, а
  * не помилкою всього прогону.
  */
-final class GlossaryConceptsCommand implements Command
+final class GlossaryConceptsCommand implements Command, \Bdo\Translate\Cli\CommandHelp
 {
     public function execute(array $arguments, Output $output): int
     {
@@ -122,4 +122,29 @@ final class GlossaryConceptsCommand implements Command
             return null;
         }
     }
+    /** Повернути дослівну довідку legacy-маршруту. */
+    public static function help(): string
+    {
+        return <<<'BDO_HELP_TEXT'
+Поняття гри з глосарія · один запит на прогін, далі з кешу.
+
+  ./glossary-concepts.sh              # оновити кеш за потреби й показати підсумок
+  ./glossary-concepts.sh --path       # надрукувати шлях до кешу
+
+Навіщо. Поняття гри (`AP`, `Set Effect`, `Node`, пробудження, вузли) не є
+назвами в рядку: індекс згадок їх не містить свідомо, тому через
+`/glossary/terms?q=` вони не прийдуть НІКОЛИ. Сервер віддає їх окремим
+ендпоінтом `GET /glossary/concepts` повним переліком (`meta.complete: true`,
+83 записи на 2026-08-28), і саме з нього payload бере пояснення.
+
+Кеш обовʼязковий: перелік змінюється рідко, а тягнути 83 записи на кожну пачку
+означає платити мережею за незмінні дані. TTL · `BDO_CONCEPTS_TTL_HOURS`.
+
+Деградація названа прямо: якщо API недоступний, лишається старий кеш, а без
+нього · порожній перелік. Payload будується без понять · це слабший сигнал,
+але робочий payload, і про це пишеться в stderr, а не мовчиться.
+
+BDO_HELP_TEXT;
+    }
+
 }

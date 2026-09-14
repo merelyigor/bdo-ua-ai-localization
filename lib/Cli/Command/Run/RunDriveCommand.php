@@ -46,7 +46,7 @@ use Bdo\Translate\Run\StepTimes;
 use RuntimeException;
 
 /** One deterministic state-machine step for the current batch. */
-final class RunDriveCommand implements Command
+final class RunDriveCommand implements Command, \Bdo\Translate\Cli\CommandHelp
 {
     // ПРАВИЛО: child roles і timed steps мають одне live PHP source of truth.
     // САБОТАЖ: роль поза allowlist або subprocess у цьому класі має валити gate.
@@ -997,4 +997,13 @@ final class RunDriveCommand implements Command
         if (is_link($path) || is_file($path)) { @unlink($path); return; }
         if (is_dir($path)) { foreach (glob($path.'/*') ?: [] as $child) $this->removeTree($child); @rmdir($path); }
     }
+    /** Повернути дослівну довідку legacy-маршруту. */
+    public static function help(): string
+    {
+        return <<<'BDO_HELP_TEXT'
+Детермінований OpenCode-only driver поточної пачки.
+
+BDO_HELP_TEXT;
+    }
+
 }

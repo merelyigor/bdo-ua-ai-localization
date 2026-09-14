@@ -16,7 +16,7 @@ use RuntimeException;
  * Identity та source_hash беруться з RowSet, а фінальна форма додатково
  * проходить WritePayload: формат запису має лишатися одним контрактом.
  */
-final class BuildItemsCommand implements Command
+final class BuildItemsCommand implements Command, \Bdo\Translate\Cli\CommandHelp
 {
     public function execute(array $arguments, Output $output): int
     {
@@ -85,4 +85,15 @@ final class BuildItemsCommand implements Command
 
         return $value;
     }
+    /** Повернути дослівну довідку legacy-маршруту. */
+    public static function help(): string
+    {
+        return <<<'BDO_HELP_TEXT'
+Створити безпечний items.json із rows JSON.
+Hashes беруться тільки з API-вибірки; ручне введення identity/source hash не потрібне.
+Використання: ./build-items.sh rows.json translations.json items.json
+
+BDO_HELP_TEXT;
+    }
+
 }

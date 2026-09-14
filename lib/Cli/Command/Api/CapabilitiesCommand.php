@@ -13,7 +13,7 @@ use Bdo\Translate\Cli\Output;
  * Команда лишає старі тексти, коди й імʼя кеш-файла, щоб rollback shell-шляхом
  * міг прочитати результат PHP без міграції стану.
  */
-final class CapabilitiesCommand implements Command
+final class CapabilitiesCommand implements Command, \Bdo\Translate\Cli\CommandHelp
 {
     public function execute(array $arguments, Output $output): int
     {
@@ -70,4 +70,33 @@ final class CapabilitiesCommand implements Command
 
         return 0;
     }
+    /** Повернути дослівну довідку legacy-маршруту. */
+    public static function help(): string
+    {
+        return <<<'BDO_HELP_TEXT'
+ЩО ВМІЄ ЦЯ ЦІЛЬ · перевіряється запитом, а не переліком у коді.
+
+Поки живі два бекенди (старий Agent API BDO UA і хаб локалізацій), частина
+ендпоінтів є лише в одному з них: у хабі поки немає глосарія, контексту,
+памʼяті перекладів, патчів, машинної інструкції та черги модерації.
+
+ЧОМУ НЕ СПИСОК У КОДІ. Перелік того, чого «немає в хабі», застаріває в день,
+коли хаб щось додасть, і клієнт продовжить обходити вже наявну можливість.
+Тому джерело правди · ВІДПОВІДЬ: 404 означає «тут цієї можливості немає»,
+200 · «є». Перелік нижче задає лише, ЩО саме питати, і це закритий набір
+ендпоінтів контракту, а не каталог винятків.
+
+Результат кешується на ціль (`state/api-capabilities.<ціль>.json`): питати
+шість ендпоінтів на кожну пачку означало б платити мережею за відповідь, яка
+змінюється раз на місяць. Кеш має TTL і скидається `--refresh`.
+
+Використання:
+  ./capabilities.sh                    показати таблицю для поточної цілі
+  ./capabilities.sh --has glossary     код 0 · можливість є, 1 · немає
+  ./capabilities.sh --fields a,b,c     лишити з переліку те, що ціль приймає
+  ./capabilities.sh --refresh          перепитати, не дивлячись у кеш
+
+BDO_HELP_TEXT;
+    }
+
 }

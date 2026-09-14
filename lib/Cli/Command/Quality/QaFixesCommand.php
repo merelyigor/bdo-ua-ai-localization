@@ -18,7 +18,7 @@ use RuntimeException;
  * Причини відмови журналюються тут, бо stderr пачки зникає після очищення
  * стану; самі правила не копіюються й залишаються в `lib/Quality`.
  */
-final class QaFixesCommand implements Command
+final class QaFixesCommand implements Command, \Bdo\Translate\Cli\CommandHelp
 {
     public function execute(array $arguments, Output $output): int
     {
@@ -126,4 +126,24 @@ final class QaFixesCommand implements Command
 
         return $value;
     }
+    /** Повернути дослівну довідку legacy-маршруту. */
+    public static function help(): string
+    {
+        return <<<'BDO_HELP_TEXT'
+Витягти БЕЗПЕЧНІ виправлення з вердиктів QA у формат для cli/quality/merge-items.sh.
+
+  ./qa-fixes.sh verdicts.json rows.json candidate.json > fixes.json
+
+QA повертає в полі fix повний виправлений текст, тож лікування зазвичай не
+потребує ще одного виклику моделі. АЛЕ довіряти цьому полю наосліп не можна:
+на живому прогоні 4 з 6 fix виявились зіпсованим текстом («Сутінки Кінця -
+Сережки» -> «Суттинки Слитинця - Серінка»), і сліпе застосування замінило б
+добрі переклади кашею. Модель судить краще, ніж переписує.
+
+Кожен fix проходить детерміновані перевірки з Quality\FixPolicy і потрапляє у
+вихід, лише якщо пройшов усі. Відхилені рядки віддаються translation-repair.
+
+BDO_HELP_TEXT;
+    }
+
 }

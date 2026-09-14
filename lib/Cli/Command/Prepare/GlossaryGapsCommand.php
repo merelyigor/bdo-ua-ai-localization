@@ -15,7 +15,7 @@ use RuntimeException;
  * Обчислення делеговані `Row`, щоб назви й нерозпізнані сутності мали ту саму
  * семантику, що й решта кроків підготовки.
  */
-final class GlossaryGapsCommand implements Command
+final class GlossaryGapsCommand implements Command, \Bdo\Translate\Cli\CommandHelp
 {
     public function execute(array $arguments, Output $output): int
     {
@@ -66,4 +66,23 @@ final class GlossaryGapsCommand implements Command
 
         return 0;
     }
+    /** Повернути дослівну довідку legacy-маршруту. */
+    public static function help(): string
+    {
+        return <<<'BDO_HELP_TEXT'
+Показати терміни пачки, для яких канонічний відповідник ще не затверджено.
+
+  ./glossary-gaps.sh rows.json
+
+Термін із severity=mandatory і ukrainian=null означає: назва оголошена
+канонічною, але жоден варіант не затверджений. Якщо перекласти такий рядок
+наосліп, вигадка воркера стане фактичним стандартом патча. Тому цей крок
+виконується ЗАВЖДИ після fetch-rows, а не «за потреби».
+
+Код виходу завжди 0: це запит стану, а не помилка, і він не має обривати
+ланцюг команд. Рішення приймається за текстом вироку в останньому рядку.
+
+BDO_HELP_TEXT;
+    }
+
 }

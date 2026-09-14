@@ -15,3 +15,9 @@ interface Command
     /** Повернути код виходу процесу команди. */
     public function execute(array $arguments, Output $output): int;
 }
+
+/** Команда, що зберігає власний дослівний текст довідки. */
+interface CommandHelp
+{
+    public static function help(): string;
+}

@@ -14,7 +14,7 @@ use Bdo\Translate\Pipeline\RunSpec;
 use RuntimeException;
 
 /** Оркеструє одну пачку прогону без shell-посередника. */
-final class RunModeCommand implements Command
+final class RunModeCommand implements Command, \Bdo\Translate\Cli\CommandHelp
 {
     // ПРАВИЛО: порядок env/spec/lock/resume/fetch/budget/goal/batch тримає код.
     // САБОТАЖ: будь-який зовнішній process call у цій команді має зупинити gate.
@@ -300,4 +300,13 @@ final class RunModeCommand implements Command
     {
         $output->stdout(json_encode($value, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR)."\n");
     }
+    /** Повернути дослівну довідку legacy-маршруту. */
+    public static function help(): string
+    {
+        return <<<'BDO_HELP_TEXT'
+Почати наступну пачку за preset режиму.
+
+BDO_HELP_TEXT;
+    }
+
 }

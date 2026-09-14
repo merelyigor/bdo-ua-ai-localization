@@ -12,7 +12,7 @@ use Bdo\Translate\Cli\Output;
  * Файли стану лишаються тими самими, бо run-drive читає їх незалежно від
  * того, який диспетчер виконав команду.
  */
-final class TermNotesDescribeCommand implements Command
+final class TermNotesDescribeCommand implements Command, \Bdo\Translate\Cli\CommandHelp
 {
     public function execute(array $arguments, Output $output): int
     {
@@ -94,4 +94,22 @@ final class TermNotesDescribeCommand implements Command
             @unlink($path);
         }
     }
+    /** Повернути дослівну довідку legacy-маршруту. */
+    public static function help(): string
+    {
+        return <<<'BDO_HELP_TEXT'
+Підготувати завдання для child `translation-glossary`: описати терміни з черги.
+
+  ./term-notes-describe.sh          # payload + envelope для наступного Task
+
+Черга наповнюється сама під час прогону (`cli/api/term-notes-queue.sh`) і
+містить ЛИШЕ терміни з доведено порожнім описом · тобто такі, де опис не може
+нічого перезаписати. Тут ми беремо найчастіші й будуємо для них payload.
+
+Виводить той самий envelope, що й `run drive`, тому диригент обробляє його
+звичайним CHILD-КОНТРАКТОМ і нічого нового вчити не мусить.
+
+BDO_HELP_TEXT;
+    }
+
 }

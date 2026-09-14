@@ -23,7 +23,7 @@ use RuntimeException;
  * живим шляхом рушія; форма context.json і порядок полів навмисно лишаються
  * такими самими, як у попередньому shell-будівнику.
  */
-final class WorkerPayloadCommand implements Command
+final class WorkerPayloadCommand implements Command, \Bdo\Translate\Cli\CommandHelp
 {
     public function execute(array $arguments, Output $output): int
     {
@@ -291,4 +291,54 @@ final class WorkerPayloadCommand implements Command
 
         return $value;
     }
+    /** Повернути дослівну довідку legacy-маршруту. */
+    public static function help(): string
+    {
+        return <<<'BDO_HELP_TEXT'
+Побудувати компактний payload для translation-worker або translation-repair.
+
+  ./worker-payload.sh rows.json                 # з прикладами (за замовчуванням)
+  ./worker-payload.sh rows.json --no-context     # без прикладів, без звернень до API
+  ./worker-payload.sh rows.json --with-current   # + поточний machine-переклад (для retranslate)
+  ./worker-payload.sh rows.json --with-reference # + російський довідковий текст
+
+ПРИКЛАДИ ВВІМКНЕНІ ЗА ЗАМОВЧУВАННЯМ. Промпт воркера сам називає їх найсильнішим
+сигналом («тримайся їхнього стилю й термінології, навіть якщо маєш свою думку»),
+і при цьому вони роками були opt-in, тобто фактично не вживались ніколи.
+Робить по одному запиту `GET /rows/{hash}/context` на рядок і додає до 3 вже
+затверджених пар en/ua зі спільним терміном.
+
+Причина, через яку вони були opt-in, більше не діє: на свіжому патчі endpoint
+віддавав порожньо, і це були N марних викликів. Тепер ШІ-шар покриває 941 273
+записи, тобто корпус є. А проти того самого ризику стоять три запобіжники:
+
+  1. Проба. Перші 3 рядки питаються першими; якщо ЖОДЕН не дав прикладів,
+     решта не питається взагалі. На справді свіжому патчі ціна · 3 виклики, а
+     не 20.
+  2. Готовий контекст не перепитується. Якщо `context.json` у теці пачки вже
+     є (наприклад, повторний виклик після збою воркера), він просто читається.
+  3. Недоступний API не валить пачку. Немає `.env`, ключ не той, мережа впала ·
+     попередження в stderr і payload БЕЗ прикладів. Payload без прикладів
+     робочий; зламана побудова payload зупиняє прогін.
+
+`--with-context` лишається прийнятним і нічого не змінює: це тепер дефолт.
+
+--with-current додає поточний machine-переклад рядка як поле "current". Для
+переперекладу: модель бачить наявний текст і може вирішити, чи варто його
+змінювати. Працює лише якщо rows.json містить поля layers (cli/api/fetch-rows.sh з
+fields=...,layers).
+
+Друкує в stdout мінімальний JSON-масив: identity_hash, source_text,
+semantic_type, mandatory glossary і must_preserve токени. Це єдине, що
+треба вставляти в промпт субагента; повний rows.json з classification та
+службовими полями в промпт не потрапляє, що економить токени primary-моделі.
+
+Контекст зберігається у теку пачки (`context.json`), а не в тимчасовий файл:
+ті самі приклади потрібні `cli/prepare/qa-payload.sh`, інакше QA судить рядок, не бачачи
+підстави, за якою воркер обрав відповідник. Повторно питати API за ними
+означало б заплатити N викликів удруге за те саме.
+
+BDO_HELP_TEXT;
+    }
+
 }

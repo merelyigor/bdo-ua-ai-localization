@@ -408,16 +408,22 @@ FLOW
     }
 
     /** @param list<string> $arguments */
-    private function php(string $command, array $arguments, bool $loadEnv, ?string $helpScript = null, ?string $rollback = null): int
+    private function php(string $command, array $arguments, bool $loadEnv, ?string $helpLabel = null, ?string $rollback = null): int
     {
-        if (getenv('BDO_ORCHESTRATOR') === 'sh' && $rollback !== null) {
-            return $this->script($rollback, $arguments);
-        }
         if (getenv('BDO_ORCHESTRATOR') !== false && getenv('BDO_ORCHESTRATOR') !== '' && ! in_array(getenv('BDO_ORCHESTRATOR'), ['php', 'sh'], true)) {
             return $this->error('BDO_ORCHESTRATOR має бути php або sh');
         }
-        if ($helpScript !== null && getenv('BDO_SHOW_HELP') === '1') {
-            return $this->script($helpScript, [], true);
+        if ($helpLabel !== null && getenv('BDO_SHOW_HELP') === '1') {
+            $help = (new Kernel())->helpText($command);
+            if ($help === null || $help === '') {
+                return $this->error("PHP-команда '{$command}' не має вбудованої довідки");
+            }
+            $this->stdout("Довідка скрипта {$helpLabel} (він же реалізує цю підкоманду):\n\n");
+            $this->stdout($help);
+            return 0;
+        }
+        if (getenv('BDO_ORCHESTRATOR') === 'sh' && $rollback !== null) {
+            return $this->script($rollback, $arguments);
         }
         if ($loadEnv && ! $this->loadEnvironment()) {
             return 1;

@@ -17,7 +17,7 @@ use RuntimeException;
  * Шлях до файла є машинним контрактом run-mode.sh, тому формат імені та
  * фінальний рядок лишаються такими самими, як у старому shell-виклику.
  */
-final class FetchRowsCommand implements Command
+final class FetchRowsCommand implements Command, \Bdo\Translate\Cli\CommandHelp
 {
     public const MIN_BATCH = 20;
 
@@ -177,4 +177,24 @@ final class FetchRowsCommand implements Command
 
         return $code > 0 && $code < 256 ? $code : 1;
     }
+    /** Повернути дослівну довідку legacy-маршруту. */
+    public static function help(): string
+    {
+        return <<<'BDO_HELP_TEXT'
+Завантажити пачку рядків для перекладу з API й зберегти у JSON-файл.
+
+Використання:
+  ./fetch-rows.sh [кількість] [параметри_додаткові]
+
+Приклади:
+  ./fetch-rows.sh 20                                         # 20 неперекладених
+  ./fetch-rows.sh 20 "domain=item&semantic_type=name"        # 20 назв предметів
+  ./fetch-rows.sh 20 "patch=active&diff=added"               # 20 нових з патча
+  ./fetch-rows.sh 20 "state=stale"                           # 20 застарілих
+
+Вихід: ./output/rows_YYYYMMDD_HHMMSS.json
+
+BDO_HELP_TEXT;
+    }
+
 }

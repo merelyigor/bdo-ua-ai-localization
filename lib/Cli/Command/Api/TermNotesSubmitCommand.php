@@ -14,7 +14,7 @@ use Bdo\Translate\Http\Request;
  * Свіжий GET перед кожним POST є запобіжником від перезапису вже заповненого
  * глосарія, тому він лишається в PHP-коді, а не ховається в shell-процесі.
  */
-final class TermNotesSubmitCommand implements Command
+final class TermNotesSubmitCommand implements Command, \Bdo\Translate\Cli\CommandHelp
 {
     public function execute(array $arguments, Output $output): int
     {
@@ -181,4 +181,26 @@ final class TermNotesSubmitCommand implements Command
 
         return (string) ($role['model'] ?? ($config['default_model'] ?? 'unknown'));
     }
+    /** Повернути дослівну довідку legacy-маршруту. */
+    public static function help(): string
+    {
+        return <<<'BDO_HELP_TEXT'
+Надіслати описи термінів як пропозиції · з повторною перевіркою перед записом.
+
+  ./term-notes-submit.sh
+
+Правило безпеки даних (AGENTS.md, дефект D18): пропозиція можлива ЛИШЕ коли
+API прямо каже, що опис порожній. Стан із черги для цього не годиться · між
+збиранням і надсиланням минають хвилини або дні, і людина могла вже написати
+опис. Тому кожен термін перечитується з API безпосередньо перед надсиланням:
+  опис є     · пропускаємо, чужу роботу не чіпаємо;
+  поля немає · пропускаємо ВГОЛОС, бо «невідомо» не дорівнює «порожньо»;
+  опису немає· надсилаємо.
+
+`ukrainian` НІКОЛИ не змінюється: у пропозицію йде рівно те значення, яке
+зараз затверджене на сервері. Ми доповнюємо опис, а не переклад.
+
+BDO_HELP_TEXT;
+    }
+
 }

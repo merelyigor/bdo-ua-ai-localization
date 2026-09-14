@@ -16,7 +16,7 @@ use RuntimeException;
  * Складає payload translation-qa з тими самими рядками, сигналами й прикладами,
  * що вже отримав worker, тому QA не робить висновків із урізаного контексту.
  */
-final class QaPayloadCommand implements Command
+final class QaPayloadCommand implements Command, \Bdo\Translate\Cli\CommandHelp
 {
     public function execute(array $arguments, Output $output): int
     {
@@ -102,4 +102,31 @@ final class QaPayloadCommand implements Command
         if (! is_string($value) || $value === '') throw new RuntimeException($message);
         return $value;
     }
+    /** Повернути дослівну довідку legacy-маршруту. */
+    public static function help(): string
+    {
+        return <<<'BDO_HELP_TEXT'
+Побудувати компактний payload для translation-qa.
+
+  ./qa-payload.sh rows.json candidate.json [--with-current]  # + поточний ШІ-текст
+  ./qa-payload.sh rows.json candidate.json [--with-current]  # + поточний ШІ-текст --context FILE   # приклади з іншого файла
+
+Друкує JSON-масив: identity_hash, source_text, candidate, glossary, keep.
+QA працює під constrained decoding, а обмежена відповідь не може містити
+викликів інструментів, тому QA НЕ читає файли сам: усе, що йому потрібно,
+приходить цим payload.
+
+Принцип входу: QA має бачити ТІ САМІ сигнали, що бачив воркер. Інакше він
+судить у гірших умовах, ніж той, кого перевіряє, і вигадує претензії до
+канонічності · виміряно, що саме такі сумніви дали 121 із 162 не-PASS
+вердиктів на живому патчі. Тому сюди входять і `unresolved`, і `examples`.
+
+`examples` беруться з `context.json` теки пачки, який пише
+`cli/prepare/worker-payload.sh --with-context`. Свого запиту до API цей скрипт не робить:
+платити вдруге за ті самі приклади сенсу немає, а без файла поле просто
+відсутнє.
+
+BDO_HELP_TEXT;
+    }
+
 }

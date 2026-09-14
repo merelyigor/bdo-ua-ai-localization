@@ -18,7 +18,7 @@ use RuntimeException;
  * Перевірки перекладу викликаються з канонічного `Defects`; команда не дублює
  * правила й зберігає три артефакти, які читають наступні кроки пачки.
  */
-final class MemoryApplyCommand implements Command
+final class MemoryApplyCommand implements Command, \Bdo\Translate\Cli\CommandHelp
 {
     public function execute(array $arguments, Output $output): int
     {
@@ -111,4 +111,27 @@ final class MemoryApplyCommand implements Command
             throw new RuntimeException('Не вдалося записати файл: '.$path);
         }
     }
+    /** Повернути дослівну довідку legacy-маршруту. */
+    public static function help(): string
+    {
+        return <<<'BDO_HELP_TEXT'
+Закрити памʼяттю те, що вже перекладено, і лишити моделі тільки решту.
+
+  ./memory-apply.sh rows.json memory.json
+
+Робить три речі, кожна з яких економить виклик моделі й тримає корпус
+узгодженим:
+  1. точний збіг оригіналу з памʼяті підставляється як готовий переклад;
+  2. однакові оригінали ВСЕРЕДИНІ пачки перекладаються один раз, решті
+     підставляється той самий текст (twins.json);
+  3. кожен підставлений текст проходить ті самі механічні перевірки, що й
+     машинний, - чужий переклад не звільняється від контролю. Рядок, який їх
+     не пройшов, повертається моделі.
+
+Пише в теку пачки: memory-candidate.json (готове), to-translate.json (для моделі,
+у форматі rows.json), twins.json (кого заповнити після воркера).
+
+BDO_HELP_TEXT;
+    }
+
 }

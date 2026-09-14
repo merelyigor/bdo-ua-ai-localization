@@ -27,7 +27,7 @@ use RuntimeException;
  * фактичний write проходить одним in-process service, тому counts не парсяться
  * з human stdout і жоден shell write не запускається.
  */
-final class BatchCommitCommand implements Command
+final class BatchCommitCommand implements Command, \Bdo\Translate\Cli\CommandHelp
 {
     // ПРАВИЛО: commit перевіряє benchmark і blockers до будь-якого write.
     // САБОТАЖ: обхід preflight може дозволити небезпечний або заборонений POST.
@@ -438,4 +438,50 @@ final class BatchCommitCommand implements Command
 
         return $value;
     }
+    /** Повернути дослівну довідку legacy-маршруту. */
+    public static function help(): string
+    {
+        return <<<'BDO_HELP_TEXT'
+Завершити пачку без зупинки процесу: PASS - записати, решту - у карантин.
+
+  ./batch-commit.sh rows.json candidate.json verdicts.json [--write] [опції]
+
+Опції:
+  --channel machine|manual|proposal   куди пишуться PASS-рядки (типово machine)
+  --names-to-moderation      нові назви предметів - у чергу модерації.
+                             Вмикається лише разом із `--channel manual`:
+                             у ШІ-шарі нова назва - це звичайний новий
+                             переклад, а не дефект, і засмічувати нею чергу
+                             не можна. У ручному прогоні рядок і так іде на
+                             розгляд людини, тож нову назву варто показати.
+
+PASS-рядки йдуть у канал `--channel`; усе не-PASS завжди йде каналом
+`proposal` (auto_approve=false), бо це і є заміна карантину.
+
+  machine  - ШІ-шар напряму;
+  manual   - ручний шар: auto_approve=true є запитом, але сервер схвалює
+             лише за дозволом API-ключа; без нього лишає proposal;
+  proposal - ручний шар, але завжди в чергу модерації, навіть коли роль
+             дозволяє автоапрув. Потрібно, коли власник хоче переглянути
+             геть усе, а не лише проблемне.
+
+verdicts.json - масив від translation-qa: identity_hash, status, severity,
+issue, fix.
+
+Без --write нічого не пишеться, лише рахується й формується карантин: це
+режим за замовчуванням і саме він безпечний.
+
+З --write записуються ЛИШЕ рядки зі status=PASS, і лише якщо:
+  1) прогін розпочато через cli/run/run-start.sh (є state/run-target);
+  2) зафіксована ціль прогону збігається з поточним BDO_API_ENV;
+  3) денної квоти вистачає на цю пачку.
+Інакше пачка йде в карантин як no_run/env_mismatch/quota, і процес НЕ падає.
+
+Карантин: state/quarantine.jsonl, по одному JSON-рядку на проблемний рядок.
+Ідея - не втрачати час на зупинку всього прогону через кілька рядків; розбір
+карантину робиться потім однією вибіркою.
+
+BDO_HELP_TEXT;
+    }
+
 }

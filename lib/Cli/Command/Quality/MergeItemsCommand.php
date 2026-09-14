@@ -14,7 +14,7 @@ use RuntimeException;
  * Тут немає quality-правила: команда лише перевіряє належність identity_hash,
  * дублікати й непорожній текст, як робив старий локальний крок.
  */
-final class MergeItemsCommand implements Command
+final class MergeItemsCommand implements Command, \Bdo\Translate\Cli\CommandHelp
 {
     public function execute(array $arguments, Output $output): int
     {
@@ -73,4 +73,18 @@ final class MergeItemsCommand implements Command
 
         return $value;
     }
+    /** Повернути дослівну довідку legacy-маршруту. */
+    public static function help(): string
+    {
+        return <<<'BDO_HELP_TEXT'
+Влити виправлення repair у наявний кандидат без повторного перекладу пачки.
+
+  ./merge-items.sh candidate.json fixes.json merged.json
+
+candidate.json і fixes.json - масиви {identity_hash, text}. Кожен хеш із
+fixes мусить існувати в candidate; дублікат або чужий хеш - помилка.
+
+BDO_HELP_TEXT;
+    }
+
 }

@@ -17,7 +17,7 @@ use RuntimeException;
  * але actual write та side effects виконуються TranslationWriter без shell або
  * проміжного `cli/api/http-request.sh`.
  */
-final class WriteTranslationsCommand implements Command
+final class WriteTranslationsCommand implements Command, \Bdo\Translate\Cli\CommandHelp
 {
     // ПРАВИЛО: CLI adapter передає actual write до TranslationWriter in-process.
     // САБОТАЖ: shell/process transport або розбір human output порушує єдиний write path.
@@ -157,4 +157,33 @@ final class WriteTranslationsCommand implements Command
             }
         }
     }
+    /** Повернути дослівну довідку legacy-маршруту. */
+    public static function help(): string
+    {
+        return <<<'BDO_HELP_TEXT'
+Записати переклади через POST /translations.
+Контракт доступу: API_WRITE_CONTRACT.md.
+
+Використання:
+  ./write-translations.sh <items.json> [provider] [model]
+  ./write-translations.sh --channel proposal <items.json>
+  ./write-translations.sh --idempotency-key <stable-key> <items.json>
+
+Канали (власник обирає явно):
+  machine  - layer=machine, mode=direct. ШІ-шар, як і раніше (типово).
+  manual   - layer=manual, mode=proposal, auto_approve=true. Те саме, що ручна
+             правка на сайті: сервер схвалює лише за дозволом API-ключа;
+             інакше рядок лишається пропозицією на модерацію.
+  proposal - те саме, але auto_approve=false: рядок лишається в черзі
+             навіть для ключа з правом схвалення. Це заміна файлового карантину - недосконалий переклад
+             краще показати в адмінці, ніж лишити у state/quarantine.jsonl.
+
+Формат items.json:
+  [{"identity_hash": "...", "source_hash": "...", "text": "переклад"}, ...]
+
+Вихід: ./output/write_YYYYMMDD_HHMMSS.json
+
+BDO_HELP_TEXT;
+    }
+
 }

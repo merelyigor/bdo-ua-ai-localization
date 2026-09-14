@@ -18,7 +18,7 @@ use RuntimeException;
  * Файл відповіді та весь звіт збережені у формі старого validate.sh, бо їх
  * читає драйвер і власник використовує як доказ перед записом.
  */
-final class ValidateCommand implements Command
+final class ValidateCommand implements Command, \Bdo\Translate\Cli\CommandHelp
 {
     private ?string $resultPath = null;
 
@@ -115,4 +115,21 @@ final class ValidateCommand implements Command
 
         return $code > 0 && $code < 256 ? $code : 1;
     }
+    /** Повернути дослівну довідку legacy-маршруту. */
+    public static function help(): string
+    {
+        return <<<'BDO_HELP_TEXT'
+Перевірити переклади через POST /translations/validate (без запису).
+
+Використання:
+  ./validate.sh <items.json>
+
+Формат items.json:
+  [{"identity_hash": "...", "text": "переклад"}, ...]
+
+Вихід: ./output/validate_YYYYMMDD_HHMMSS.json
+
+BDO_HELP_TEXT;
+    }
+
 }

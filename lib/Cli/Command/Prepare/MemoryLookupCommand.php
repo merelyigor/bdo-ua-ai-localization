@@ -20,7 +20,7 @@ use RuntimeException;
  * файл і лише потім розбирається: це зберігає контракт старого `-o` шляху без
  * запуску shell або зовнішнього curl-процесу.
  */
-final class MemoryLookupCommand implements Command
+final class MemoryLookupCommand implements Command, \Bdo\Translate\Cli\CommandHelp
 {
     public function execute(array $arguments, Output $output): int
     {
@@ -101,4 +101,22 @@ final class MemoryLookupCommand implements Command
 
         return $id !== '' && is_dir($directory) ? $directory : null;
     }
+    /** Повернути дослівну довідку legacy-маршруту. */
+    public static function help(): string
+    {
+        return <<<'BDO_HELP_TEXT'
+Спитати API, чи цей самий англійський оригінал уже перекладено деінде.
+
+  ./memory-lookup.sh rows.json [memory.json]
+
+Виміряно на живій базі: 80,9% неперекладених активних рядків мають точний збіг
+оригіналу серед уже перекладених; на реальних вибірках агента - 25%. Але
+головне не економія викликів моделі, а узгодженість: без цього кроку воркер
+вигадує свій варіант там, де в проєкті вже є усталений.
+
+Читання: денної квоти рядків не витрачає.
+
+BDO_HELP_TEXT;
+    }
+
 }

@@ -15,7 +15,7 @@ use Bdo\Translate\Http\Request;
  * Запит виконується в цьому процесі, щоб живий рушій не запускав shell, але
  * формат вердикту лишається тим самим, що його читають ролі та власник.
  */
-final class GlossaryResolveCommand implements Command
+final class GlossaryResolveCommand implements Command, \Bdo\Translate\Cli\CommandHelp
 {
     public function execute(array $arguments, Output $output): int
     {
@@ -112,4 +112,24 @@ final class GlossaryResolveCommand implements Command
 
         return $code > 0 && $code < 256 ? $code : 1;
     }
+    /** Повернути дослівну довідку legacy-маршруту. */
+    public static function help(): string
+    {
+        return <<<'BDO_HELP_TEXT'
+Перевірити immutable identity канонічної назви через POST /glossary/terms/resolve.
+
+  ./glossary-resolve.sh "Agris Gold Coin"
+  ./glossary-resolve.sh "Agris Gold Coin" <identity_hash>
+
+Другий аргумент потрібен, коли однакову назву мають кілька сутностей: тоді
+resolve без identity повертає blocked_identity. Хеш беруть із того самого
+rows.json, а не звідкись іще.
+
+Чому скрипт, а не curl руками: роль не знає базового URL і вигадала б його.
+Реальний випадок - виклик пішов на http://localhost/glossary/terms/resolve і
+впав. Тут URL і ключ підставляє cli/system/select-env.sh, а не модель.
+
+BDO_HELP_TEXT;
+    }
+
 }

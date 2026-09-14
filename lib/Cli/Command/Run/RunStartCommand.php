@@ -11,7 +11,7 @@ use Bdo\Translate\Cli\Output;
 use RuntimeException;
 
 /** Фіксує target прогону без мережі й без зовнішніх Unix-процесів. */
-final class RunStartCommand implements Command
+final class RunStartCommand implements Command, \Bdo\Translate\Cli\CommandHelp
 {
     // ПРАВИЛО: target locking and timestamps stay inside PHP without Unix helpers.
     // САБОТАЖ: any external process in this class must make the runtime guard fail.
@@ -175,4 +175,28 @@ final class RunStartCommand implements Command
             throw new RuntimeException('Не вдалося записати файл стану: '.$path);
         }
     }
+    /** Повернути дослівну довідку legacy-маршруту. */
+    public static function help(): string
+    {
+        return <<<'BDO_HELP_TEXT'
+Зафіксувати ціль прогону перекладу. Ціль НЕ обирається тут і не виводиться з
+формулювання власника · вона вже оголошена в `.env` константою BDO_ENV.
+
+  ./run-start.sh                  # почати прогін у середовищі з .env
+  ./run-start.sh --show           # яка ціль зафіксована зараз
+  ./run-start.sh --end            # завершити прогін, зняти фіксацію
+
+Аргумент (`local`/`prod`/`DEV`/`PROD`) досі приймається, але лише як ПІДТВЕРДЖЕННЯ:
+якщо він не збігається з BDO_ENV, скрипт падає. Так зроблено тому, що
+розпізнавання цілі з живої мови було найдорожчим джерелом помилок · агент мав
+вгадати середовище, і половина прогону могла поїхати не туди.
+
+Навіщо файл, а не просто змінна: прогін іде годинами й сотнями пачок. Якщо
+середовище зміниться посеред нього (інший префікс команди, новий термінал),
+частина перекладів поїде не туди. cli/batch/batch-commit.sh звіряє кожну пачку із цим
+файлом і відкладає її в карантин замість запису не в те середовище.
+
+BDO_HELP_TEXT;
+    }
+
 }
