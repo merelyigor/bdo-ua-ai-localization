@@ -6,6 +6,36 @@ function Fail([string] $Message) {
 }
 
 $repo = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
+$batSource = [System.IO.File]::ReadAllText((Join-Path $repo 'bdo.bat'))
+function Test-BatPortableRuntimeContract([string] $Source) {
+    foreach ($required in @(
+        'php-8.4.25-nts-Win32-vs17-x64.zip',
+        '43a8f67ed2e5223fafb21293c85976361808855405278cef2cf3037c3ae2529c',
+        'https://windows.php.net/downloads/releases/',
+        'Get-FileHash',
+        'Expand-Archive',
+        'extension_dir=ext',
+        'extension=curl',
+        'extension=openssl',
+        'extension=mbstring',
+        'extension=fileinfo',
+        'Microsoft Visual C++ Redistributable 2015-2022 x64'
+    )) {
+        if (-not $Source.Contains($required)) {
+            return $false
+        }
+    }
+
+    return $true
+}
+if (-not (Test-BatPortableRuntimeContract $batSource)) {
+    Fail 'bdo.bat portable PHP contract is incomplete.'
+}
+$withoutHashCheck = $batSource.Replace('Get-FileHash', 'HASH_CHECK_REMOVED_BY_SABOTAGE')
+if (Test-BatPortableRuntimeContract $withoutHashCheck) {
+    Fail 'checksum sabotage was not detected.'
+}
+Write-Output 'bdo.bat portable contract: checksum-sabotage=detected; pinned-version=1; php.ini-extensions=4'
 $phpCommand = Get-Command php.exe -ErrorAction SilentlyContinue
 if ($null -eq $phpCommand) {
     Fail 'php.exe is not available before PATH sanitization.'
@@ -207,6 +237,74 @@ function Invoke-Bat([string[]] $Arguments, [string] $Label) {
         $process.Dispose()
     }
 }
+
+function Invoke-BatProbe([string] $BatPath, [string] $WorkingDirectory, [string] $PathValue, [string] $StateDirectory, [string[]] $Arguments, [string] $Label) {
+    $startInfo = [System.Diagnostics.ProcessStartInfo]::new()
+    $startInfo.FileName = $comspec
+    $startInfo.WorkingDirectory = $WorkingDirectory
+    $startInfo.UseShellExecute = $false
+    $startInfo.RedirectStandardOutput = $true
+    $startInfo.RedirectStandardError = $true
+    $startInfo.Environment['PATH'] = $PathValue
+    $startInfo.Environment['BDO_STATE_DIR'] = $StateDirectory
+    $inner = '"' + $BatPath + '"'
+    foreach ($argument in $Arguments) {
+        $inner += ' "' + $argument + '"'
+    }
+    $startInfo.Arguments = '/d /c "' + $inner + '"'
+    $process = [System.Diagnostics.Process]::new()
+    $process.StartInfo = $startInfo
+    $watch = [System.Diagnostics.Stopwatch]::StartNew()
+    try {
+        if (-not $process.Start()) {
+            Fail "bdo.bat $Label process did not start."
+        }
+        $stdout = $process.StandardOutput.ReadToEnd()
+        $stderr = $process.StandardError.ReadToEnd()
+        $process.WaitForExit()
+        $watch.Stop()
+        [pscustomobject] @{
+            Code = $process.ExitCode
+            Stdout = $stdout
+            Stderr = $stderr
+            Milliseconds = $watch.ElapsedMilliseconds
+        }
+    } finally {
+        $process.Dispose()
+    }
+}
+
+# ПРАВИЛО: наявний runtime\php\php.exe має перемагати завантаження навіть коли
+# PATH навмисно не містить PHP. Копія PHP з runner лише підробляє вже завантажений
+# runtime; мережевий шлях і PowerShell у цьому сценарії не потрібні.
+$runtimeRepo = Join-Path $work 'bdo portable runtime кирилиця'
+New-Item -ItemType Directory -Force -Path $runtimeRepo | Out-Null
+foreach ($directory in @('cli', 'lib', 'web')) {
+    Copy-Item -Path (Join-Path $repo $directory) -Destination $runtimeRepo -Recurse -Force
+}
+Copy-Item -Path (Join-Path $repo 'bdo.bat') -Destination $runtimeRepo -Force
+$runtimePhp = Join-Path $runtimeRepo 'runtime\php'
+New-Item -ItemType Directory -Force -Path $runtimePhp | Out-Null
+Copy-Item -Path (Join-Path $phpDirectory '*') -Destination $runtimePhp -Recurse -Force
+$emptyPath = Join-Path $work 'path-without-php'
+New-Item -ItemType Directory -Force -Path $emptyPath | Out-Null
+$runtimeState = Join-Path $work 'portable-runtime-state'
+New-Item -ItemType Directory -Force -Path $runtimeState | Out-Null
+$runtimeFirst = Invoke-BatProbe (Join-Path $runtimeRepo 'bdo.bat') $runtimeRepo $emptyPath $runtimeState @('--stop') 'portable-runtime-first'
+$runtimeSecond = Invoke-BatProbe (Join-Path $runtimeRepo 'bdo.bat') $runtimeRepo $emptyPath $runtimeState @('--stop') 'portable-runtime-second'
+if ($runtimeFirst.Code -ne 0 -or $runtimeSecond.Code -ne 0) {
+    Fail "portable runtime probe failed: first=$($runtimeFirst.Code), second=$($runtimeSecond.Code)."
+}
+if ($runtimeFirst.Stdout -match [regex]::Escape('Буде завантажено портативний PHP') -or $runtimeSecond.Stdout -match [regex]::Escape('Буде завантажено портативний PHP')) {
+    Fail 'portable runtime probe attempted a download.'
+}
+if ($runtimeSecond.Milliseconds -ge 5000) {
+    Fail "portable runtime second launch was not fast: $($runtimeSecond.Milliseconds) ms."
+}
+if (Get-ChildItem -Path (Join-Path $runtimeRepo 'runtime') -Filter '*.zip*' -File -ErrorAction SilentlyContinue) {
+    Fail 'portable runtime probe left a download archive.'
+}
+Write-Output "bdo.bat portable runtime: runtime-selected=1; second-silent=1; second-ms=$($runtimeSecond.Milliseconds); download=0"
 
 $batStartInfo = [System.Diagnostics.ProcessStartInfo]::new()
 $batStartInfo.FileName = $comspec
