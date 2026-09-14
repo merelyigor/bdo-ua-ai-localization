@@ -300,8 +300,42 @@ final class SessionCommand implements Command, \Bdo\Translate\Cli\CommandHelp
             @unlink($stateDir.'/current-batch');
             $output->stdout("Застарілий покажчик current-batch: {$currentBatch} прибрано.\n");
         }
+        $this->forgetRunWhenEmpty($stateDir, $output);
 
         return 0;
+    }
+
+    /**
+     * Сесій не лишилось · прогін закінчився разом із ними.
+     *
+     * Власник видалив УСІ сесії разом із даними, а сторінка прогону далі писала
+     * «патч 8»: ціль (`run-goal.json`), фіксація середовища (`run-target`) і
+     * лічильники пачок переживали власний прогін (2026-09-14). Стан, якого вже
+     * нікому читати, є сміттям, що виглядає як робота.
+     *
+     * Чужого тут не чіпаємо: журнал записів в API, карантин і лічильник спроб
+     * лишаються назавжди · вони описують те, що вже поїхало на прод.
+     */
+    private function forgetRunWhenEmpty(string $stateDir, Output $output): void
+    {
+        $sessions = glob($stateDir.'/sessions/*', GLOB_ONLYDIR);
+        if ($sessions !== false && $sessions !== []) {
+            return;
+        }
+        $forgotten = [];
+        foreach (['run-target', 'run-started-at', 'run-batches.json', 'run-seen.json', 'run-goal.json', 'run-excluded.json'] as $file) {
+            $path = $stateDir.'/'.$file;
+            if (! file_exists($path)) {
+                continue;
+            }
+            if (@unlink($path)) {
+                $forgotten[] = $file;
+            }
+        }
+        if ($forgotten === []) {
+            return;
+        }
+        $output->stdout('Сесій не лишилось · прогін забуто разом із ними: '.implode(', ', $forgotten)."\n");
     }
 
     /** @param list<string> $arguments */

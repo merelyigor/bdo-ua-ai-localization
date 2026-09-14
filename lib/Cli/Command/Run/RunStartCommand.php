@@ -15,8 +15,19 @@ final class RunStartCommand implements Command, \Bdo\Translate\Cli\CommandHelp
 {
     // ПРАВИЛО: target locking and timestamps stay inside PHP without Unix helpers.
     // САБОТАЖ: any external process in this class must make the runtime guard fail.
+    // `run-goal.json` і `run-excluded.json` теж належать ПРОГОНУ, а не пачці:
+    // перший тримає запит до API (`patch=8&missing=machine`), другий · рядки,
+    // виключені саме цим запитом. Доти, доки існував bash-шлях відкату, додати
+    // їх сюди було не можна · заморожене тіло знімало рівно чотири файли, і
+    // паритет упав би. Після зняття відкату (7.0.8) обмеження немає.
+    //
+    // Навіщо: власник видалив УСІ сесії, пачок не лишилось, а сторінка прогону
+    // далі показувала «патч 8» · ціль переживала власний прогін (2026-09-14).
     /** @var list<string> */
-    private const RESET_FILES = ['run-target', 'run-started-at', 'run-batches.json', 'run-seen.json'];
+    private const RESET_FILES = [
+        'run-target', 'run-started-at', 'run-batches.json', 'run-seen.json',
+        'run-goal.json', 'run-excluded.json',
+    ];
 
     public function execute(array $arguments, Output $output): int
     {

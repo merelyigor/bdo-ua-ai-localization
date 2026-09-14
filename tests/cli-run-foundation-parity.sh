@@ -286,13 +286,17 @@ compare_start() {
 prepare_reset_state() {
     local state="$1"
     mkdir -p "$state"
-    for file in run-target run-started-at run-batches.json run-seen.json; do
+    # Шість файлів, не чотири: з версії 7.1.3 `run end` знімає ще й ціль
+    # прогону (`run-goal.json`) та її виключення (`run-excluded.json`). Доти
+    # цього не можна було зробити · заморожене bash-тіло знімало рівно чотири,
+    # і паритет упав би.
+    for file in run-target run-started-at run-batches.json run-seen.json run-goal.json run-excluded.json; do
         printf '%s\n' marker >"$state/$file"
     done
     printf '%s\n' protected >"$state/protected"
 }
 
-# ПРАВИЛО: --show/--end локальні, а end видаляє рівно чотири reset files.
+# ПРАВИЛО: --show/--end локальні, а end видаляє рівно шість reset files.
 # САБОТАЖ: env read або зайве видалення state має зробити differential red.
 compare_start show-empty '' --show
 mkdir -p "$TMP/show-state-sh" "$TMP/show-state-php"
@@ -306,7 +310,11 @@ prepare_reset_state "$TMP/end-state-php"
 CURRENT_ENV="$TMP/missing.env" CURRENT_STATE="$TMP/end-state-sh" run_command sh "$ROOT/cli/run/run-start.sh" run-start "$TMP/end.sh.out" "$TMP/end.sh.err" "$TMP/end.sh.code" --end
 CURRENT_STATE="$TMP/end-state-php" run_command php "$ROOT/cli/run/run-start.sh" run-start "$TMP/end.php.out" "$TMP/end.php.err" "$TMP/end.php.code" --end
 compare_outputs end "$TMP/end.sh.out" "$TMP/end.php.out" "$TMP/end.sh.err" "$TMP/end.php.err" "$TMP/end.sh.code" "$TMP/end.php.code"
-test -f "$TMP/end-state-sh/protected" && test ! -e "$TMP/end-state-sh/run-target" || fail '--end removed wrong files'
+test -f "$TMP/end-state-sh/protected" || fail '--end прибрав чужий файл стану'
+for gone in run-target run-started-at run-batches.json run-seen.json run-goal.json run-excluded.json; do
+    test ! -e "$TMP/end-state-sh/$gone" \
+        || fail "--end лишив «${gone}» · ціль прогону переживе власний прогін"
+done
 
 for target_env in "$DEV_ENV" "$PROD_ENV" "$HUB_DEV_ENV" "$HUB_PROD_ENV"; do
     compare_start "fresh-$(basename "$target_env" .env)" "$target_env"

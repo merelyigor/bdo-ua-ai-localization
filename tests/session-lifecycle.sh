@@ -313,4 +313,29 @@ if BDO_STATE_DIR="$DEL_STATE" php "$ROOT/cli/bdo.php" session delete ../../etc -
     fail 'кривий ідентифікатор сесії прийнято'
 fi
 
+# --- СЕСІЙ НЕ ЛИШИЛОСЬ · ПРОГІН ЗАБУТО ---------------------------------------
+#
+# Власник видалив УСІ сесії разом із даними, а сторінка прогону далі писала
+# «патч 8»: ціль і фіксація середовища переживали власний прогін (2026-09-14).
+# Стан, якого вже нікому читати, виглядає як робота й вводить в оману.
+EMPTY_STATE="$TMP/forget-run"
+mkdir -p "$EMPTY_STATE/sessions/20260303_030303" "$EMPTY_STATE/batches"
+printf '%s\n' '{"id":"20260303_030303","status":"closed","batches":0}' > "$EMPTY_STATE/sessions/20260303_030303/summary.json"
+: > "$EMPTY_STATE/sessions/20260303_030303/batches.jsonl"
+printf 'prod\n' > "$EMPTY_STATE/run-target"
+printf '%s\n' '{"mode":"patch","patch":"8"}' > "$EMPTY_STATE/run-goal.json"
+printf '%s\n' '{"query":"patch=8"}' > "$EMPTY_STATE/run-excluded.json"
+printf '%s\n' '{"written":1}' > "$EMPTY_STATE/write-log.jsonl"
+FORGET_OUT="$TMP/forget-run.out"
+BDO_STATE_DIR="$EMPTY_STATE" php "$ROOT/cli/bdo.php" session delete 20260303_030303 --apply >"$FORGET_OUT" 2>&1 \
+    || fail "видалення останньої сесії впало: $(cat "$FORGET_OUT")"
+for gone in run-target run-goal.json run-excluded.json; do
+    test ! -e "$EMPTY_STATE/$gone" \
+        || fail "після видалення ОСТАННЬОЇ сесії лишився «${gone}» · сторінка показуватиме мертвий прогін"
+done
+grep -Fq 'прогін забуто разом із ними' "$FORGET_OUT" \
+    || fail 'прибирання стану прогону зроблено мовчки · власник не дізнається, що саме зникло'
+test -f "$EMPTY_STATE/write-log.jsonl" \
+    || fail 'слід записів у API знищено · він описує те, що вже поїхало на прод'
+
 echo 'session lifecycle: OK · пачки потрапляють у сесію самі, підсумок сходиться, втрата квитанції названа, живі журнали чисті, строк 7 днів працює.'
