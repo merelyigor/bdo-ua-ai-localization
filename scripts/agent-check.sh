@@ -135,7 +135,8 @@ touched_map() {
             printf 'test|tests/http-retry.sh|повтор HTTP-запиту\n' ;;
         lib/Model/*)
             printf 'test|tests/model-client.sh|клієнт моделі\n'
-            printf 'test|tests/model-transports.sh|транспорти моделі\n' ;;
+            printf 'test|tests/model-transports.sh|транспорти моделі\n'
+            printf 'test|tests/model-selection.sh|перелік і вибір моделей\n' ;;
         lib/Payload/*)
             printf 'test|tests/cli-payload-parity.sh|парність payload\n'
             printf 'test|tests/prompt-payload-contract.sh|контракт prompt payload\n'
@@ -1464,6 +1465,7 @@ $braceless"
     run bash tests/api-target-switch.sh
     run bash tests/http-retry.sh
     run bash tests/http-client.sh
+    run bash tests/model-selection.sh
     run bash tests/rotation.sh
     run bash tests/session-lifecycle.sh
     run bash tests/web-server.sh
