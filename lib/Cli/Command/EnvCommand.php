@@ -4,42 +4,69 @@ declare(strict_types=1);
 
 namespace Bdo\Translate\Cli\Command;
 
+use Bdo\Translate\Cli\Command\Api\ApiEnvironment;
 use Bdo\Translate\Cli\Command;
 use Bdo\Translate\Cli\Output;
 
 /**
- * Запускає наявний `select-env.sh` як окремий процес і передає його потоки.
- *
- * Скрипт призначений для `source` у десятках інших місць, тому його не можна
- * переписувати: цей перехід зберігає його вивід і код виходу без розбору.
+ * Показує ціль API або експортує її як KEY=VALUE для shell-оснастки.
  */
 final class EnvCommand implements Command
 {
-    private readonly string $scriptPath;
-
-    public function __construct(?string $scriptPath = null)
-    {
-        $this->scriptPath = $scriptPath ?? dirname(__DIR__, 3).'/cli/system/select-env.sh';
-    }
-
     public function execute(array $arguments, Output $output): int
     {
-        if ($arguments !== []) {
+        $shell = $arguments === ['--shell'];
+        if ($arguments !== [] && ! $shell) {
             $output->stderr("bdo: env: команда не приймає аргументів\n");
 
             return 2;
         }
 
-        $descriptors = [
-            0 => ['file', 'php://stdin', 'r'],
-            1 => ['file', 'php://stdout', 'w'],
-            2 => ['file', 'php://stderr', 'w'],
-        ];
-        $process = proc_open(['bash', $this->scriptPath], $descriptors, $pipes);
-        if (! is_resource($process)) {
-            throw new \RuntimeException('не вдалося запустити '.$this->scriptPath);
+        $root = dirname(__DIR__, 3);
+        try {
+            $environment = ApiEnvironment::resolve($root);
+        } catch (\Throwable $exception) {
+            $this->printFailure($exception, $root, $output);
+
+            return 1;
         }
 
-        return proc_close($process);
+        if ($shell) {
+            foreach (['env' => 'BDO_ENV', 'target' => 'BDO_API_TARGET', 'environment' => 'BDO_API_ENV', 'base' => 'BDO_API_BASE', 'key' => 'BDO_API_KEY'] as $field => $name) {
+                $output->stdout($name.'='.$this->shellQuote((string) $environment[$field])."\n");
+            }
+
+            return 0;
+        }
+
+        $target = $environment['target'] === 'hub' ? 'ХАБ ' : '';
+        $output->stderr('Ціль: '.$target.$environment['env'].' ('.$environment['base'].")\n");
+        if ($environment['target_from_file'] === '') {
+            $envFile = $environment['env_file'];
+            $output->stderr("Є другий бекенд · хаб локалізацій. Щоб перемкнутись, додай у {$envFile}:\n");
+            $output->stderr("  BDO_API_TARGET=hub          (legacy · старий API BDO UA, типово)\n");
+            $output->stderr("  HUB_API_BASE_PROD=https://<домен>/api/bdo/agent/v1\n");
+            $output->stderr("  HUB_API_KEY_PROD=hub_...\n");
+            $output->stderr("  HUB_API_BASE_DEV / HUB_API_KEY_DEV · те саме для BDO_ENV=DEV\n");
+            $output->stderr("Що вміє вибрана ціль: ./bdo capabilities\n");
+        }
+
+        return 0;
+    }
+
+    private function printFailure(\Throwable $exception, string $root, Output $output): void
+    {
+        $envFile = getenv('TRANSLATE_ENV_FILE') ?: $root.'/.env';
+        if (! is_file($envFile)) {
+            $output->stderr("Немає файлу з ключами: {$envFile}\n");
+            $output->stderr("Скопіюй .env.example у .env і впиши BDO_ENV та ключ.\n");
+            return;
+        }
+        $output->stderr($exception->getMessage()."\n");
+    }
+
+    private function shellQuote(string $value): string
+    {
+        return escapeshellarg($value);
     }
 }

@@ -12,14 +12,18 @@ BDO_API_KEY_PROD=test
 BDO_API_BASE_PROD=https://prod.example/api
 BDO_API_BASE=https://dev.example/api
 EOF
-resolved="$(TRANSLATE_ENV_FILE="$TMP/prod.env" bash -c 'source "$1/cli/system/select-env.sh" >/dev/null; printf "%s|%s" "$BDO_ENV" "$BDO_API_BASE"' _ "$ROOT")"
+env_exports="$(TRANSLATE_ENV_FILE="$TMP/prod.env" "$ROOT/bdo" env --shell 2>/dev/null)" \
+    || { echo 'env --shell не розвʼязав PROD' >&2; exit 1; }
+eval "$env_exports"
+resolved="$BDO_ENV|$BDO_API_BASE"
 test "$resolved" = 'PROD|https://prod.example/api' || {
     printf 'BDO_ENV=PROD перебито чужим URL: %s\n' "$resolved" >&2
     exit 1
 }
 
-# shellcheck source=/dev/null
-source "$ROOT/cli/system/select-env.sh" >/dev/null
+env_exports="$(TRANSLATE_ENV_FILE="$TMP/prod.env" "$ROOT/bdo" env --shell 2>/dev/null)" \
+    || { echo 'env --shell не розвʼязав ціль для run-target' >&2; exit 1; }
+eval "$env_exports"
 if [ "$BDO_API_ENV" = prod ]; then wrong=local; else wrong=prod; fi
 printf '%s\n' "$wrong" > "$TMP/run-target"
 # Застарілий lock без незавершеної пачки має переїхати автоматично: агент не

@@ -22,17 +22,18 @@ env_file() {   # <ім'я> <рядки…>
     printf '%s' "$TMP/$name"
 }
 
-# Значення змінної після резолву. `select-env.sh` пише підпис у stderr, тому
+# Значення змінної після резолву. env --shell пише підпис у stderr, тому
 # читаємо саме stdout · інакше підпис потрапив би у значення.
 resolve() {   # <env-файл> <змінна>
-    TRANSLATE_ENV_FILE="$1" bash -c '
-        source "$0" >/dev/null 2>&1
-        printf "%s" "${!1}"
-    ' "$ROOT/cli/system/select-env.sh" "$2"
+    local exports value
+    exports="$(TRANSLATE_ENV_FILE="$1" "$ROOT/bdo" env --shell 2>/dev/null)" || return 1
+    eval "$exports"
+    value="${!2}"
+    printf '%s' "$value"
 }
 resolve_err() {   # <env-файл> · причина відмови
     # Причина йде в stderr, і саме її ми читаємо; stdout не потрібен.
-    { TRANSLATE_ENV_FILE="$1" bash "$ROOT/cli/system/select-env.sh" >/dev/null; } 2>&1 || true
+    { TRANSLATE_ENV_FILE="$1" "$ROOT/bdo" env --shell >/dev/null; } 2>&1 || true
 }
 
 # PHP-резолвер порівнюється з тим самим `.env`, але ключ ніколи не друкується.
@@ -52,22 +53,23 @@ php_resolve() {
 }
 
 compare_target() {   # <назва> <env-файл>
-    local name="$1" file="$2" shell_values php_values
-    shell_values="$(TRANSLATE_ENV_FILE="$file" bash -c '
-        source "$0" >/dev/null 2>&1
-        printf "%s\n%s\n%s\n" "$BDO_API_BASE" "$BDO_API_KEY" "$BDO_API_ENV"
-    ' "$ROOT/cli/system/select-env.sh")" \
-        || fail "$name: shell-резолвер відмовив"
+    local name="$1" file="$2" exports shell_values php_values
+    exports="$(TRANSLATE_ENV_FILE="$file" "$ROOT/bdo" env --shell 2>/dev/null)" \
+        || fail "$name: env --shell відмовив"
+    eval "$exports"
+    shell_values="$BDO_API_BASE
+$BDO_API_KEY
+$BDO_API_ENV"
     php_values="$(php_resolve "$file")" \
         || fail "$name: PHP-резолвер відмовив"
     test "$shell_values" = "$php_values" \
-        || fail "$name: shell і PHP розійшлися в адресі, ключі або внутрішній назві цілі"
+        || fail "$name: env --shell і PHP розійшлися в адресі, ключі або внутрішній назві цілі"
 }
 
 compare_rejection() {   # <назва> <env-файл> <спільний фрагмент причини>
     local name="$1" file="$2" expected="$3" shell_reason php_reason shell_code php_code shell_token php_token
     set +e
-    shell_reason="$( { TRANSLATE_ENV_FILE="$file" bash "$ROOT/cli/system/select-env.sh" >/dev/null; } 2>&1 )"
+    shell_reason="$( { TRANSLATE_ENV_FILE="$file" "$ROOT/bdo" env --shell >/dev/null; } 2>&1 )"
     shell_code=$?
     php_reason="$(php_resolve "$file" 2>&1)"
     php_code=$?
@@ -117,7 +119,7 @@ out="$(resolve_err "$no_base")"
 grep -Fq 'HUB_API_BASE_PROD' <<<"$out" \
     || fail "адреса хаба не названа у відмові: $out"
 # Вбудованої адреси в хаба бути не має: домен ще змінюється.
-if grep -Fq 'HUB_API_BASE_PROD_DEFAULT' "$ROOT/cli/system/select-env.sh"; then
+if grep -Fq 'HUB_API_BASE_PROD_DEFAULT' "$ROOT/lib/Cli/Command/Api/ApiEnvironment.php"; then
     fail 'у хаба зʼявилась вбудована адреса · вона тихо розійдеться з дійсністю'
 fi
 
@@ -131,9 +133,8 @@ alias_env="$(env_file alias 'BDO_ENV=PROD' 'BDO_API_TARGET=bdo' 'BDO_API_KEY_PRO
 test "$(resolve "$alias_env" BDO_API_TARGET)" = legacy || fail 'BDO_API_TARGET=bdo не прийнято як legacy'
 
 # --- 2b. PHP не має другої, неперевіреної карти цілей ------------------------
-# select-env.sh є source-only shell-скриптом: PHP не може імпортувати його
-# export-и без shell-підпроцесу. Такий підпроцес повернув би залежність від
-# WSL2, тому тут зафіксовано диференційний контракт на однакових `.env`.
+# env --shell є єдиним bridge для shell-оснастки; він не має другої карти цілей.
+# Тут зафіксовано його узгодженість із тим самим PHP-класом.
 compare_target legacy-prod "$legacy_prod"
 compare_target legacy-dev "$legacy_dev"
 compare_target hub-prod "$hub_prod"

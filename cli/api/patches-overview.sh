@@ -26,8 +26,11 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")/../.." && pwd)"
-# shellcheck source=/dev/null
-source "$SCRIPT_DIR/cli/system/select-env.sh"
+if ! _bdo_env_exports="$("$SCRIPT_DIR/bdo" env --shell)"; then
+    exit 1
+fi
+eval "$_bdo_env_exports"
+unset _bdo_env_exports
 API="${BDO_API_BASE:?}"
 KEY="${BDO_API_KEY:?}"
 

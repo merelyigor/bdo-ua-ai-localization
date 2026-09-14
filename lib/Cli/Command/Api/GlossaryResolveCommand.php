@@ -134,9 +134,9 @@ final class GlossaryResolveCommand implements Command, \Bdo\Translate\Cli\Comman
 resolve без identity повертає blocked_identity. Хеш беруть із того самого
 rows.json, а не звідкись іще.
 
-Чому скрипт, а не curl руками: роль не знає базового URL і вигадала б його.
+Чому команда, а не curl руками: роль не знає базового URL і вигадала б його.
 Реальний випадок - виклик пішов на http://localhost/glossary/terms/resolve і
-впав. Тут URL і ключ підставляє cli/system/select-env.sh, а не модель.
+впав. Тут URL і ключ підставляє ApiEnvironment, а не модель.
 
 BDO_HELP_TEXT;
     }

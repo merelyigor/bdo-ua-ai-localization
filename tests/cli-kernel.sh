@@ -58,7 +58,7 @@ set +e
 TRANSLATE_ENV_FILE="$TMP/missing.env" php cli/bdo.php env >"$TMP/env.out" 2>"$TMP/env.err"
 env_code=$?
 set -e
-test "$env_code" -eq 1 || fail "EnvCommand не віддав код select-env.sh: отримано $env_code"
+test "$env_code" -eq 1 || fail "EnvCommand не віддав код помилки середовища: отримано $env_code"
 grep -Fq "$TMP/missing.env" "$TMP/env.err" || fail 'EnvCommand не передав stderr підпроцесу'
 
 grep -Fq 'Bdo\Translate\Cli\Router' bdo \

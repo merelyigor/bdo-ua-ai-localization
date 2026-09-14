@@ -15,8 +15,6 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")/../.." && pwd)"
 readonly SCRIPT_DIR
-# shellcheck source=cli/system/paths.sh
-source "$SCRIPT_DIR/cli/system/paths.sh"
 readonly OLLAMA_URL="${OLLAMA_URL:-http://127.0.0.1:11434}"
 
 # Модель ролі більше не живе в конфізі чужого застосунку: єдине джерело ·

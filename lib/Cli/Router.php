@@ -72,7 +72,7 @@ final class Router
             'terms' => ['kind' => 'nested'],
             'concepts' => ['kind' => 'php', 'command' => 'glossary-concepts', 'help' => 'glossary-concepts'],
             'clean' => ['kind' => 'php', 'command' => 'batch-clean', 'help' => 'batch-clean'],
-            'paths' => ['kind' => 'script', 'script' => 'cli/system/paths.sh'],
+            'paths' => ['kind' => 'php', 'command' => 'paths', 'help' => 'paths'],
             'api' => ['kind' => 'php', 'command' => 'api', 'load_env' => true],
             'capabilities' => ['kind' => 'php', 'command' => 'capabilities', 'help' => 'capabilities'],
         ];
@@ -189,6 +189,9 @@ final class Router
 
         $route = self::routes()[$group] ?? null;
         if ($route === null) {
+            if ($group === 'mac-app') {
+                return $this->php('mac-app', array_slice($arguments, 1), false);
+            }
             return $this->error("невідома команда '{$group}'. Дерево команд · ./bdo");
         }
 

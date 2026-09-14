@@ -13,8 +13,6 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")/../.." && pwd)"
-# shellcheck source=cli/system/paths.sh
-source "$SCRIPT_DIR/cli/system/paths.sh"
 STATE_DIR="${BDO_STATE_DIR:-$SCRIPT_DIR/state}"
 
 line() { printf '%s\n' "------------------------------------------------------------"; }

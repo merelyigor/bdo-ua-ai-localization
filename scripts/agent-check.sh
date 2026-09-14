@@ -738,8 +738,9 @@ check_env_contract() {
     grep -Eq '^BDO_API_KEY_PROD=$' .env.example || fail '.env.example не має порожнього BDO_API_KEY_PROD'
     # Адреса production живе в коді, а не в шаблоні: константа, розмножена по
     # копіях `.env`, розходиться від описки, і жодна перевірка цього не бачить.
-    grep -Eq "^readonly BDO_API_BASE_PROD_DEFAULT=" cli/system/select-env.sh \
-        || fail 'cli/system/select-env.sh не має дефолта BDO_API_BASE_PROD_DEFAULT'
+    grep -Fq "public const BDO_API_BASE_PROD_DEFAULT = 'https://bdo-ua.com.ua/api/agent/v1';" \
+        lib/Cli/Command/Api/ApiEnvironment.php \
+        || fail 'ApiEnvironment.php не має дефолта BDO_API_BASE_PROD_DEFAULT'
     if grep -Eq '^[[:space:]]*BDO_API_BASE(_PROD|_DEV)?=' .env.example; then
         fail '.env.example задає адресу API активним рядком · вона мусить бути прикладом у комментарі'
     fi
@@ -1566,15 +1567,18 @@ check_api() {
     # ті домени, які трапились у ЦЬОМУ патчі. Перша версія перевірки брала
     # активний патч і не помітила відсутнього `market`, бо в патчі 6 його немає.
     local missing
-    missing="$(bash -c '
-        source cli/system/select-env.sh >/dev/null 2>&1
-        curl -sS -H "X-API-Key: $BDO_API_KEY" "$BDO_API_BASE/taxonomy" \
-            | php -r "
-                require \"lib/autoload.php\";
-                \$d = json_decode((string) file_get_contents(\"php://stdin\"), true);
-                \$api = array_values(\$d[\"data\"][\"domains\"] ?? []);
-                echo implode(\" \", array_diff(\$api, Bdo\\Translate\\Pipeline\\RunSpec::domains()));
-            "')"
+    local env_exports
+    env_exports="$(./bdo env --shell 2>/dev/null)" \
+        || fail 'env --shell не розвʼязав середовище для API taxonomy'
+    eval "$env_exports"
+    unset env_exports
+    missing="$(curl -sS -H "X-API-Key: $BDO_API_KEY" "$BDO_API_BASE/taxonomy" \
+        | php -r '
+            require "lib/autoload.php";
+            $d = json_decode((string) file_get_contents("php://stdin"), true);
+            $api = array_values($d["data"]["domains"] ?? []);
+            echo implode(" ", array_diff($api, Bdo\Translate\Pipeline\RunSpec::domains()));
+        ')"
     test -z "$missing" || fail "API знає категорії, яких немає в RunSpec::DOMAINS: $missing"
     note "перелік категорій збігається з API"
 }
@@ -1595,7 +1599,7 @@ report_preflight() {
     # про те, що написано у файлі, або йде в чуже. Ключ тут не друкується.
     step 'Ціль прогону'
     if [ -f .env ] || [ -n "${TRANSLATE_ENV_FILE:-}" ]; then
-        bash ./cli/system/select-env.sh 2>&1 >/dev/null | sed 's/^/   /'
+        ./bdo env 2>&1 >/dev/null | sed 's/^/   /'
     else
         note 'немає .env · скопіюй .env.example і задай BDO_ENV, BDO_API_BASE, BDO_API_KEY'
     fi

@@ -249,7 +249,7 @@ BDO_API_KEY_PROD=ваш-ключ
 ```
 
 `BDO_ENV` керує і читанням, і записом. Перемикання середовища · правка **одного**
-рядка: адресу API правити не треба, вона зашита в `cli/system/select-env.sh` як публічна
+рядка: адресу API правити не треба, вона зашита в `ApiEnvironment` як публічна
 константа. У `.env` лишається тільки те, що справді різне у кожного · ключі.
 
 Що стоїть зараз:
@@ -577,7 +577,7 @@ bdo.bat                     нативний запуск інтерфейсу �
 BDO.app                     значок для Dock на macOS · applet, збирає scripts/build-mac-app.sh
 lib/Cli/Command/System/DesktopCommand.php
                             встановлення Linux `.desktop`-ярлика в меню програм
-cli/system/mac-app.sh       логіка значка: start · підняти або перехопити, alive, stop
+cli/system/mac-app.sh       тонкий Dock-вхід: PATH bootstrap і передача в PHP-команду
 cli/system/mac-app.applescript  джерело значка · бандл є applet, інакше Dock стрибає вічно
 bdo.ico                     значок для ярлика Windows · сам .bat його не несе
 roles/translation-*.md      промпт кожної ролі · самодостатній, без include

@@ -262,21 +262,20 @@ final class Snapshot
      * на два різні питання: «куди пише пачка, яка вже йде» і «куди піде та,
      * яку я зараз запускаю».
      *
-     * Резолв робить той самий `cli/system/select-env.sh`, що й увесь набір ·
-     * другого правила читання `.env` тут не зʼявляється. Ціна · один короткий
-     * процес на знімок; він дешевий і не ходить у мережу.
+     * Резолв робить той самий `ApiEnvironment`, що й увесь набір · другого
+     * правила читання `.env` тут не зʼявляється. Це виклик у тому самому PHP
+     * процесі, він дешевий і не ходить у мережу.
      */
     private function envNow(): string
     {
         $root = dirname(__DIR__, 2);
-        $cmd = 'BDO_STATE_DIR='.escapeshellarg($this->stateDir)
-            .' bash '.escapeshellarg($root.'/cli/system/select-env.sh').' 2>&1 >/dev/null';
-        $out = (string) @shell_exec($cmd);
-        if (preg_match('/Ціль:\s*(ХАБ\s+)?(PROD|DEV)/u', $out, $m) !== 1) {
+        try {
+            $environment = \Bdo\Translate\Cli\Command\Api\ApiEnvironment::resolve($root);
+        } catch (\Throwable) {
             return '';
         }
 
-        return (trim($m[1] ?? '') !== '' ? 'hub-' : '').strtolower($m[2]);
+        return $environment['environment'];
     }
 
     /**

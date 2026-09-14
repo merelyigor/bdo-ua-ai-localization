@@ -590,9 +590,9 @@ grep -Fq "B.el('payloadLoad').innerHTML = ''" "$ROOT/web/call.html" \
 
 # Друге джерело правди про хаб: набір мусить САМ сказати, куди вписувати ключі.
 # Власник не бачив цих змінних узагалі · вони були лише в `.env.example`.
-grep -Fq 'Є другий бекенд' "$ROOT/cli/system/select-env.sh" \
+grep -Fq 'Є другий бекенд' "$ROOT/lib/Cli/Command/EnvCommand.php" \
     || fail 'про існування хаба ніде не сказано · власник шукатиме навмання'
-grep -Fq 'HUB_API_BASE_PROD=https' "$ROOT/cli/system/select-env.sh" \
+grep -Fq 'HUB_API_BASE_PROD=https' "$ROOT/lib/Cli/Command/EnvCommand.php" \
     || fail 'підказка не називає, що саме вписувати'
 
 # --- «Згорнути всі» · крім ВІДКРИТОЇ сесії ----------------------------------

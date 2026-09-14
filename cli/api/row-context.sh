@@ -6,7 +6,11 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")/../.." && pwd)"
-source "$SCRIPT_DIR/cli/system/select-env.sh"
+if ! _bdo_env_exports="$("$SCRIPT_DIR/bdo" env --shell)"; then
+    exit 1
+fi
+eval "$_bdo_env_exports"
+unset _bdo_env_exports
 
 IDENTITY_HASH="${1:?Потрібен identity_hash рядка}"
 API="${BDO_API_BASE:?}"

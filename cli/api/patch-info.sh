@@ -10,7 +10,11 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")/../.." && pwd)"
 TMP_DIR="$(mktemp -d)"
 trap 'rm -rf "$TMP_DIR"' EXIT
-source "$SCRIPT_DIR/cli/system/select-env.sh"
+if ! _bdo_env_exports="$("$SCRIPT_DIR/bdo" env --shell)"; then
+    exit 1
+fi
+eval "$_bdo_env_exports"
+unset _bdo_env_exports
 
 SNAPSHOT="${1:-active}"
 API="${BDO_API_BASE:?}"

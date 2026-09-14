@@ -56,6 +56,8 @@ use Bdo\Translate\Cli\Command\System\SessionTimerCommand;
 use Bdo\Translate\Cli\Command\System\WatchCommand;
 use Bdo\Translate\Cli\Command\System\WebCommand;
 use Bdo\Translate\Cli\Command\System\DesktopCommand;
+use Bdo\Translate\Cli\Command\System\MacAppCommand;
+use Bdo\Translate\Cli\Command\System\PathsCommand;
 use Bdo\Translate\Cli\Command\Write\ModerationCommand;
 use Bdo\Translate\Cli\Command\Write\WriteTranslationsCommand;
 
@@ -177,6 +179,8 @@ final class Kernel
             'watch' => new WatchCommand(),
             'web' => new WebCommand(),
             'desktop' => new DesktopCommand(),
+            'paths' => new PathsCommand(),
+            'mac-app' => new MacAppCommand(),
             'write' => new WriteTranslationsCommand(),
             'moderation' => new ModerationCommand(),
             default => null,

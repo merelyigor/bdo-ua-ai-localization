@@ -1,106 +1,23 @@
 #!/usr/bin/env bash
-# Значок у Dock: поки він живий · живий і інтерфейс. Закрив значок · зупинився.
-#
-#   ./mac-app.sh start   підняти інтерфейс або ПЕРЕХОПИТИ вже піднятий, відкрити браузер
-#   ./mac-app.sh alive   код 0, поки сервер відповідає (значок питає раз на дві секунди)
-#   ./mac-app.sh stop    зупинити інтерфейс
-#
-# Навіщо. Для Windows такий місток уже є (`bdo.bat`), і там закриття вікна гасить
-# сервер саме тому, що він тримається того вікна. Власник попросив те саме на
-# macOS (2026-09-06): перетягнути значок у Dock, клікнути · відкрилось,
-# закрити значок · зупинилось.
-#
-# ЧОМУ ТУТ НЕМАЄ ОЧІКУВАННЯ. Воно було, поки бандл виконував цей скрипт напряму
-# · і саме тому значок СТРИБАВ БЕЗКІНЕЧНО (D91): бандл зі скриптом не відкриває
-# зʼєднання з WindowServer, тож LaunchServices не бачить запуск завершеним.
-# Тепер бандл є applet-ом (`cli/system/mac-app.applescript`), і чекає він сам ·
-# обробником `on idle`, який раз на дві секунди питає `alive`. Пасток на сигнал
-# теж немає: «Завершити» в Dock і Cmd+Q приходять до applet-а як `on quit`, а
-# той кличе `stop`.
-#
-# ЛОГІКА ЖИВЕ ТУТ, а не в бандлі: усередині `BDO.app` її не бачать ні `bash -n`,
-# ні ShellCheck, ні gate, ні тест.
+# Виконуваний shell-вхід для BDO.app. Уся логіка Dock живе в PHP-команді
+# `mac-app`; тут лишається тільки PATH bootstrap і передача керування.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 readonly SCRIPT_DIR
+
+# LaunchServices може запустити скопійований бандл без теки набору поруч.
+# Це єдина помилка, яку треба пояснити до переходу в PHP: самого entrypoint
+# поруч уже немає.
+if [ ! -x "$SCRIPT_DIR/bdo" ]; then
+    printf '%s\n' 'Набір не знайдено поруч із додатком.' >&2
+    exit 1
+fi
 
 # LaunchServices starts this script without the terminal PATH. Bootstrap it
 # before the PHP entrypoint is called; PHP cannot repair PATH after its shebang.
 # shellcheck source=/dev/null
 . "$SCRIPT_DIR/cli/system/gui-path.sh"
 
-# Діалог macOS. Без термінала `echo` нікуди не веде: додаток запускають кліком,
-# і єдина видима поверхня · вікно системи.
-say() {   # <текст> [опції osascript…]
-    local text="$1"
-    shift
-    if command -v osascript >/dev/null 2>&1; then
-        osascript -e "display dialog \"${text//\"/\\\"}\" with title \"BDO Локалізація\" $*" 2>/dev/null
-    else
-        printf '%s\n' "$text"
-    fi
-}
-
-die_gui() {   # <текст>  · сказати вікном і вийти ненульовим кодом
-    say "$1" 'buttons {"Зрозуміло"} default button 1' >/dev/null || true
-    exit 1
-}
-
-test -x "$SCRIPT_DIR/bdo" || die_gui "Набір не знайдено поруч із додатком."
-cd "$SCRIPT_DIR"
-
-status_url() {
-    ./bdo web --status 2>/dev/null | sed -n 's~.*\(http://127\.0\.0\.1:[0-9]*/?t=[0-9a-f]*\).*~\1~p' | head -1
-}
-
-case "${1:-start}" in
-    start)
-        # ЗНАЧОК ПЕРЕХОПЛЮЄ СЕРВЕР БЕЗ ПИТАНЬ · вимога власника 2026-09-06.
-        #
-        # Раніше тут стояло вікно з вибором «Взяти під значок» чи «Просто
-        # відкрити», і воно було помилкою двічі. По суті: значок є ПУЛЬТОМ
-        # інтерфейсу, а не ще одним його запускачем · кому належить сервер,
-        # власника не цікавить. І по формі: кнопкою за замовчуванням була саме
-        # та, що ЗАКРИВАЛА додаток, тож Enter гасив значок (D90).
-        #
-        # Наслідок названий прямо, бо він реальний: закриття значка зупиняє й
-        # той інтерфейс, який підняли з термінала. Це і є «керувати сервером».
-        URL="$(status_url || true)"
-        if [ -z "$URL" ]; then
-            if ! out="$(./bdo web --background --no-open 2>&1)"; then
-                # «немає php» з-під значка майже завжди означає не відсутній
-                # php, а PATH без Homebrew (D89). Це лагодить
-                # `cli/system/gui-path.sh`, тому напис тут ще й каже, що саме
-                # зламалось, якщо він усе-таки вигулькнув.
-                case "$out" in
-                    *'немає php'*) out="$out
-
-PATH клікового запуску не бачить php. Перевірка: ./bdo gate shell" ;;
-                esac
-                die_gui "Не вдалося підняти інтерфейс.
-
-$out"
-            fi
-            URL="$(status_url || true)"
-            test -n "$URL" \
-                || die_gui "Сервер стартував, але посилання не знайдено: ./bdo web --status"
-        fi
-        # Один вихід на обидві гілки: підняли ми сервер чи перехопили чужий ·
-        # власник бачить те саме вікно браузера.
-        open "$URL" 2>/dev/null || true
-        printf '%s\n' "$URL"
-        ;;
-    alive)
-        # Мовчки й дешево: applet питає це раз на дві секунди. Ненульовий код
-        # означає «сервера більше немає» · значок після цього зникає з Dock.
-        test -n "$(status_url || true)"
-        ;;
-    stop)
-        ./bdo web --stop >/dev/null 2>&1 || true
-        ;;
-    *)
-        printf 'mac-app: дозволено лише start, alive і stop, отримано «%s»\n' "$1" >&2
-        exit 2
-        ;;
-esac
+PHP_BIN="$(command -v php)"
+exec "$PHP_BIN" "$SCRIPT_DIR/cli/bdo.php" mac-app "${1:-start}"
