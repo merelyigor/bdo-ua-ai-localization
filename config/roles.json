@@ -7,6 +7,13 @@
       "transport": "ollama",
       "endpoint": "http://127.0.0.1:11434"
     },
+    "omlx": {
+      "runtime": "omlx",
+      "transport": "openai",
+      "endpoint": "http://127.0.0.1:18080/v1",
+      "admin_endpoint": "http://127.0.0.1:18080",
+      "api_key_env": ""
+    },
     "openai": {
       "transport": "openai",
       "endpoint": "https://api.openai.com/v1",

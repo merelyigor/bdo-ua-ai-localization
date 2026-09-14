@@ -41,6 +41,7 @@ final class Factory
                 apiKeyEnv: (string) ($settings['api_key_env'] ?? 'OPENAI_API_KEY'),
                 reasoningEffort: (string) ($settings['reasoning_effort'] ?? 'low'),
                 organization: (string) (getenv((string) ($settings['organization_env'] ?? 'OPENAI_ORG')) ?: ''),
+                providerName: $name,
             ),
             default => throw new TransportError(
                 'unknown_provider',

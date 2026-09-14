@@ -25,6 +25,7 @@ use Bdo\Translate\Cli\Command\Batch\BatchDirCommand;
 use Bdo\Translate\Cli\Command\Batch\BatchNewCommand;
 use Bdo\Translate\Cli\Command\Batch\SubsetRowsCommand;
 use Bdo\Translate\Cli\Command\EnvCommand;
+use Bdo\Translate\Cli\Command\ModelsCommand;
 use Bdo\Translate\Cli\Command\Heal\HealPlanCommand;
 use Bdo\Translate\Cli\Command\HelpCommand;
 use Bdo\Translate\Cli\Command\Quality\BuildItemsCommand;
@@ -141,6 +142,7 @@ final class Kernel
             'term-notes-describe' => new TermNotesDescribeCommand(),
             'term-notes-submit' => new TermNotesSubmitCommand(),
             'capabilities' => new CapabilitiesCommand(),
+            'models' => new ModelsCommand(),
             'fetch-rows' => new FetchRowsCommand(),
             'validate' => new ValidateCommand(),
             'mechanical-split' => new MechanicalSplitCommand(),

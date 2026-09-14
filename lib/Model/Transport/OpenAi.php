@@ -39,11 +39,12 @@ final class OpenAi implements Transport
         private readonly string $apiKeyEnv = 'OPENAI_API_KEY',
         private readonly string $reasoningEffort = 'low',
         private readonly string $organization = '',
+        private readonly string $providerName = 'openai',
     ) {}
 
     public function name(): string
     {
-        return 'openai';
+        return $this->providerName;
     }
 
     public function window(string $model): int
@@ -53,8 +54,8 @@ final class OpenAi implements Transport
 
     public function send(Request $request, ?callable $onChunk = null): Reply
     {
-        $key = (string) (getenv($this->apiKeyEnv) ?: '');
-        if ($key === '') {
+        $key = $this->apiKeyEnv === '' ? '' : (string) (getenv($this->apiKeyEnv) ?: '');
+        if ($this->apiKeyEnv !== '' && $key === '') {
             throw new TransportError(
                 'provider_key_missing',
                 'немає ключа в оточенні: '.$this->apiKeyEnv.' · додай його в локальний .env'
@@ -90,7 +91,10 @@ final class OpenAi implements Transport
             $body['reasoning_effort'] = $this->reasoningEffort;
         }
 
-        $headers = "Content-Type: application/json\r\nAuthorization: Bearer ".$key."\r\n";
+        $headers = "Content-Type: application/json\r\n";
+        if ($key !== '') {
+            $headers .= "Authorization: Bearer ".$key."\r\n";
+        }
         if ($this->organization !== '') {
             $headers .= 'OpenAI-Organization: '.$this->organization."\r\n";
         }

@@ -63,6 +63,22 @@ if (! is_array($config) || ! isset($config['roles'][$role])) {
 }
 $roleConfig = $config['roles'][$role];
 require_once $root.'/lib/autoload.php';
+$stateDir = getenv('BDO_STATE_DIR') ?: $root.'/state';
+try {
+    // Операційний вибір сильніший за конфіг, але живий каталог перевіряється
+    // тут, безпосередньо перед викликом ролі: модель могла зникнути після
+    // `./bdo models select`.
+    $selection = \Bdo\Translate\Model\ModelSelection::forRole($stateDir, $role);
+    if ($selection !== null) {
+        $catalog = new \Bdo\Translate\Model\RuntimeModels($config);
+        $catalog->assertModel($selection['runtime'], $selection['model']);
+        $roleConfig['provider'] = $selection['runtime'];
+        $roleConfig['model'] = $selection['model'];
+    }
+} catch (\Bdo\Translate\Model\ModelRuntimeError $e) {
+    fwrite(STDERR, $e->reason.': '.$e->getMessage()."\n");
+    exit(1);
+}
 try {
     $transport = \Bdo\Translate\Model\Transport\Factory::forRole($config, $roleConfig);
 } catch (\Bdo\Translate\Model\Transport\TransportError $e) {
@@ -93,7 +109,6 @@ if (! is_file($payloadPath)) {
 }
 
 // Схема: явний `--schema FILE`, інакше активна схема стану під тип ролі.
-$stateDir = getenv('BDO_STATE_DIR') ?: $root.'/state';
 $schemaPath = null;
 $explicit = array_search('--schema', $argv, true);
 if ($explicit !== false && isset($argv[$explicit + 1])) {

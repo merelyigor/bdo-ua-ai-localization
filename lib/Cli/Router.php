@@ -75,6 +75,7 @@ final class Router
             'paths' => ['kind' => 'php', 'command' => 'paths', 'help' => 'paths'],
             'api' => ['kind' => 'php', 'command' => 'api', 'load_env' => true],
             'capabilities' => ['kind' => 'php', 'command' => 'capabilities', 'help' => 'capabilities'],
+            'models' => ['kind' => 'php', 'command' => 'models', 'help' => 'models'],
         ];
     }
 

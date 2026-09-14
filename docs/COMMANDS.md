@@ -87,3 +87,4 @@
 | `./bdo paths` | що куди вирішилось із розкладкою |
 | `./bdo api` | read-only smoke Agent API |
 | `./bdo capabilities` | що вміє поточна ціль API (перевіряється запитом) |
+| `./bdo models list&#124;select&#124;clear&#124;load` | перелік моделей Ollama/oMLX, операційний вибір і завантаження |
