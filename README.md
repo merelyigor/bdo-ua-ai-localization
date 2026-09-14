@@ -273,8 +273,7 @@ BDO_API_KEY_PROD=ваш-ключ
 
 ## Хто працює: драйвер і сім ролей
 
-Порядок кроків тримає [`cli/run/run-loop.sh`](cli/run/run-loop.sh). Він читає
-конверт `./bdo run drive` і виконує його: `child` · виклик ролі, `retry` ·
+Порядок кроків тримає `RunLoopCommand`. Він читає конверт `./bdo run drive` і виконує його: `child` · виклик ролі, `retry` ·
 пауза, `continue_run` · наступна пачка, `blocked` · зупинка з причиною. Жодна
 модель не вирішує, що робити далі.
 
@@ -572,7 +571,7 @@ repair її будує рушій під рядки пачки, для решт�
 bdo                         єдиний вхід: ./bdo · сторінка, ./bdo help · дерево команд
 bin/tui.sh                  вікно-монітор у терміналі (./bdo tui)
 web/index.html              сторінка інтерфейсу · один файл, без CDN, офлайн
-cli/system/web.sh           сервер сторінки: вільний порт, токен, посилання
+./bdo web                   сервер сторінки: вільний порт, токен, посилання
 cli/system/web-router.php   межа читання й дій: лише GET, дії лише POST
 bdo.bat                     нативний запуск інтерфейсу з Windows (WSL2 · запасний спосіб)
 BDO.app                     значок для Dock на macOS · applet, збирає scripts/build-mac-app.sh
@@ -583,7 +582,8 @@ cli/system/mac-app.applescript  джерело значка · бандл є app
 bdo.ico                     значок для ярлика Windows · сам .bat його не несе
 roles/translation-*.md      промпт кожної ролі · самодостатній, без include
 config/roles.json           модель, схема й температура кожної ролі
-cli/run/run-loop.sh         драйвер: виконує конверт `run drive`
+lib/Cli/Command/Run/RunLoopCommand.php
+                            драйвер: виконує конверт `run drive`
 cli/model/client.php        виклик локальної моделі під strict-схемою
 cli/{api,batch,prepare,quality,heal,write,run,runtime,audit,system}/
                             реалізація підкоманд за доменами

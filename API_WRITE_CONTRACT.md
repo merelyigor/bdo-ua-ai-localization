@@ -1,6 +1,6 @@
 # Запис ШІ-перекладів через API
 
-`cli/write/write-translations.sh` записує результат у машинний шар з тілом
+Команда `write` записує результат у машинний шар з тілом
 `layer=machine` і `mode=direct`.
 
 Перед записом скрипт мусить викликати `GET /me`. Прямий машинний запис доступний,
@@ -30,7 +30,7 @@ super_admin.
 
 ## Реалізація клієнта
 
-`cli/write/write-translations.sh` лишається rollback-wrapper для старого shell-шляху.
-Типовий маршрут веде до PHP `WriteTranslationsCommand`, а фактична write-семантика
+Старий shell-шлях відкату знято. Типовий маршрут веде до PHP
+`WriteTranslationsCommand`, а фактична write-семантика
 централізована в `TranslationWriter`. `BatchCommitCommand` використовує той самий
 writer in-process і не запускає shell-команду запису.
