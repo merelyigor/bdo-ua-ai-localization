@@ -27,6 +27,7 @@ final class Request
         public readonly bool $think,
         public readonly float $temperature,
         public readonly int $numCtx,
+        public readonly int $numPredict,
         public readonly int $timeout,
     ) {}
 }

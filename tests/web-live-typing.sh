@@ -26,6 +26,7 @@ const fs = require('fs');
 // Кадри малює НЕ таймер, а черга, яку тест сам і проганяє: інакше вимір
 // «скільки символів додав один кадр» залежав би від навантаження машини.
 const frames = [];
+const clickHandlers = [];
 global.requestAnimationFrame = (fn) => { frames.push(fn); return frames.length; };
 global.cancelAnimationFrame = () => {};
 const store = {};
@@ -41,7 +42,11 @@ global.window = {
     }
 };
 global.requestAnimationFrame = global.requestAnimationFrame;
-global.document = { addEventListener() {}, getElementById() { return null; }, hidden: false };
+global.document = {
+    addEventListener(type, fn) { if (type === 'click') clickHandlers.push(fn); },
+    getElementById() { return null; },
+    hidden: false
+};
 global.sessionStorage = { getItem() { return ''; }, setItem() {}, removeItem() {} };
 global.history = { replaceState() {} };
 global.fetch = () => Promise.resolve({});
@@ -143,6 +148,24 @@ if (worst > 60) {
 if (paints.length < 500) {
     die('кадрів усього ' + paints.length + ' на ' + wantText.length
         + ' символів · текст вивалюється великими шматками');
+}
+
+// --- 3а. STOP обриває друк ДО відповіді API ---------------------------------
+// Клік і POST розділені мережею: локальна черга не має дочекатися відповіді
+// сервера, інакше після «зупинити» ще друкується вже отриманий буфер.
+const stopped = B.typer(null, { now: () => vclock, onPaint() {} });
+stopped.push('вже показаний текст');
+drainFrames();
+const visible = stopped.text();
+stopped.push(' хвіст, який не можна дописати після stop');
+const stopEvent = { target: { closest(selector) { return selector === '#stopBtn' ? {} : null; } } };
+clickHandlers.forEach((handler) => handler(stopEvent));
+drainFrames();
+stopped.push(' нова порція після stop');
+drainFrames();
+if (stopped.text() !== visible) {
+    die('після stop друкарка продовжила показ: було ' + visible.length
+        + ', стало ' + stopped.text().length);
 }
 // --- 3б. ПАУЗА МОДЕЛІ не є відсутністю потоку ---------------------------------
 //

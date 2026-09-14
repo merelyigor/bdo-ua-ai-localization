@@ -526,6 +526,18 @@
   // складається в чергу, а показується рівним темпом · один кадр браузера
   // (~16 мс) віддає стільки символів, щоб черга спорожніла приблизно за
   // `DRAIN_MS`. Відстає черга · темп сам зростає, тож затримка не накопичується.
+  // ЗУПИНКА ПРОГОНУ · друкарки мають отримати той самий сигнал, що й API.
+  // Кнопка спершу робить POST, а відповідь сервера приходить пізніше; без
+  // локального halt черга ще друкувала буфер після натискання «зупинити».
+  var ACTIVE_TYPERS = [];
+  document.addEventListener('click', function (ev) {
+    var target = ev && ev.target;
+    if (!target || typeof target.closest !== 'function' || ! target.closest('#stopBtn')) {
+      return;
+    }
+    ACTIVE_TYPERS.forEach(function (printer) { printer.halt(); });
+  }, true);
+
   function typer(node, options) {
     var opts = options || {};
     var DRAIN_MS = opts.drainMs || 260;   // за скільки прагнемо показати чергу
@@ -537,6 +549,7 @@
     var pending = '';
     var frame = null;
     var timer = null;
+    var halted = false;
     var onPaint = opts.onPaint || function () {};
 
     function stop() {
@@ -547,6 +560,7 @@
     function step() {
       frame = null;
       timer = null;
+      if (halted) { pending = ''; return; }
       if (!pending) { carry = 0; return; }
       var now = clock();
       // Крок міряється ЧАСОМ, а не кадрами: у власника екран на 120 Гц, у
@@ -593,40 +607,71 @@
       schedule();
     });
 
-    return {
+    var printer = {
       // Дописати порцію в чергу.
       push: function (text) {
-        if (!text) { return; }
+        if (!text || halted) { return; }
         pending += text;
         schedule();
       },
       // Показати все негайно · роль завершила відповідь, тягнути нема сенсу.
       flush: function () {
+        if (halted) { return; }
         if (pending) { shown += pending; pending = ''; onPaint(shown); }
         stop();
       },
       // Новий виклик ролі · починаємо з чистого аркуша.
       reset: function () {
+        halted = false;
         shown = ''; pending = '';
         stop();
         onPaint('');
       },
+      // Кнопка «зупинити» не стирає вже показане · лише обриває чергу й таймер.
+      halt: function () {
+        halted = true;
+        pending = '';
+        stop();
+      },
       // Синхронізація з сервером: він знає ПОВНИЙ текст, ми · показаний плюс
       // черга. Різницю дописуємо, розбіжність назад означає новий виклик.
       sync: function (full) {
+        if (halted) { return; }
         var have = shown + pending;
         if (full === have) { return; }
+        // НАЗДОГАНЯННЯ НЕ НАБИРАЄТЬСЯ. Друкар видає ~4 символи за крок · це
+        // правильно для живих токенів і згубно для історії: після
+        // перезавантаження сторінки сервер віддає ВЕСЬ накопичений текст, і
+        // власник бачив, як 50 КБ роздумів «друкуються з нуля» хвилинами
+        // (2026-09-14). Тому миттєво показуємо все, крім хвоста, а хвіст
+        // лишаємо анімації · рух на екрані зберігається, відставання зникає.
+        var CATCH_UP = 600;
         if (full.length > have.length && full.slice(0, have.length) === have) {
-          this.push(full.slice(have.length));
+          var add = full.slice(have.length);
+          if (add.length > CATCH_UP) {
+            shown += add.slice(0, add.length - CATCH_UP);
+            add = add.slice(add.length - CATCH_UP);
+            onPaint(shown);
+          }
+          this.push(add);
           return;
         }
+        // Розбіжність назад · новий виклик ролі або відновлення історії.
         shown = ''; pending = '';
         stop();
+        if (full.length > CATCH_UP) {
+          shown = full.slice(0, full.length - CATCH_UP);
+          onPaint(shown);
+          this.push(full.slice(full.length - CATCH_UP));
+          return;
+        }
         this.push(full);
       },
       text: function () { return shown + pending; },
       done: function () { return pending === ''; }
     };
+    ACTIVE_TYPERS.push(printer);
+    return printer;
   }
 
   // --- що робити з потоком ролі --------------------------------------------

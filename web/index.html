@@ -173,7 +173,11 @@
     if (!wrap || !box) { return; }
     if (!text) { wrap.style.display = 'none'; return; }
     wrap.style.display = 'block';
+    // Хвіст тримаємо, ПОКИ читач унизу · те саме правило, що в журналі кроків.
+    // Інакше прокрутка вгору воювала б із потоком і читати було б неможливо.
+    var atBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 24;
     box.textContent = text;
+    if (atBottom) { box.scrollTop = box.scrollHeight; }
     box.scrollTop = box.scrollHeight;
   }
 
@@ -563,7 +567,10 @@
           + '<div id="thinkwrap" style="display:none">'
           + '<div class="empty" style="margin-top:6px;color:var(--wr-tx)">'
           + 'роздуми моделі · чернетка, не переклад</div>'
-          + '<div class="box mono" id="thinkbox" style="color:var(--tm)"></div></div>'
+          // Роздуми МОЖНА перечитати: без межі висоти й прокрутки блок ріс
+          // нескінченно, показував лише хвіст, і повернутись до початку думки
+          // було нікуди (власник 2026-09-14, жива пачка на 42 КБ роздумів).
+          + '<div class="box mono" id="thinkbox" style="color:var(--tm);max-height:260px;overflow-y:auto"></div></div>'
           + (loading
               ? '<div class="empty" style="margin-top:6px">Це не зависання: Ollama вивантажує модель за своїм '
                 + 'налаштуванням, і наступні виклики підуть без цієї паузи.</div>'

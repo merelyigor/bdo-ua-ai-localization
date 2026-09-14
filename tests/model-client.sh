@@ -61,6 +61,10 @@ $answers = [
     // порожній, це відмова, скільки б роздумів не було (переміряно 2026-09-04).
     "think_only" => ["done_reason" => "stop", "prompt_eval_count" => 10, "eval_count" => 900,
              "message" => ["content" => "", "thinking" => "Спершу подумаю дуже довго…"]],
+    // Заміна живого зациклення: модель віддає тільки thinking великим потоком.
+    // Клієнт мусить розірвати читання до завершального чанка й назвати empty_content.
+    "thinking_loop" => ["done_reason" => "stop", "prompt_eval_count" => 10, "eval_count" => 9000,
+             "message" => ["content" => "", "thinking" => str_repeat("думай ", 20000)]],
 ];
 $answer = $answers[$mode] ?? $answers["ok"];
 header("Content-Type: application/json");
@@ -116,8 +120,8 @@ printf '{"items":[{"identity_hash":"aa","source_text":"Sword"}]}' > "$WORK/paylo
 printf '{"type":"object"}' > "$WORK/schema.json"
 cat > "$WORK/roles.json" <<JSON
 { "version": 1, "endpoint": "http://127.0.0.1:$PORT", "default_model": "тест-модель",
-  "num_ctx": 131072, "timeout_seconds": 30,
-  "roles": { "translation-worker": { "schema": "response", "temperature": 0.1 } } }
+  "num_ctx": 131072, "num_predict": 19, "timeout_seconds": 30,
+  "roles": { "translation-worker": { "schema": "response", "temperature": 0.1, "num_predict": 17 } } }
 JSON
 
 run() {
@@ -135,6 +139,8 @@ run() {
 run ok
 test "$CODE" = 0 || fail "успішний виклик дав код $CODE: $STDERR"
 test -s "$WORK/response.json" || fail 'успішний виклик не створив файл відповіді'
+grep -q '"num_predict":17' "$SCENARIO_FILE.request" \
+    || fail "рольове num_predict не дійшло до Ollama: $(cat "$SCENARIO_FILE.request")"
 php -r 'exit(is_array(json_decode(file_get_contents($argv[1]), true)) && array_is_list(json_decode(file_get_contents($argv[1]), true)) ? 0 : 1);' \
     "$WORK/response.json" || fail 'відповідь не є JSON-масивом · конвеєр такого не прийме'
 
@@ -143,7 +149,7 @@ run envelopeless
 test "$CODE" = 0 || fail "голий масив відхилено: $STDERR"
 
 # 3-7. Кожна відмова · свій код і своя причина. Порожнього stderr бути не може.
-for case_reason in "truncated:truncated" "empty:empty_content" "thinking:empty_content" \
+for case_reason in "truncated:truncated" "empty:empty_content" \
                    "prose:not_json" "error:model_error" "overflow:context_overflow"; do
     scenario="${case_reason%%:*}"
     expected="${case_reason##*:}"
@@ -159,6 +165,18 @@ done
 #    дефект у промпті, а не у `think`.
 run thinking
 grep -q 'thinking' <<<"$STDERR" || fail "порожній content через думання не назвав причини: $STDERR"
+grep -q '^empty_content' <<<"$STDERR" || fail "роздуми без відповіді не названі empty_content: $STDERR"
+grep -q '"think_mismatch":true' "$WORK/state/model-calls.jsonl" \
+    || fail 'журнал не показав розбіжність: requested think=false, received thinking'
+
+# 8б. Штучне зациклення: межа thinking-only перериває потік за секунди, а не
+#      чекає `done` від моделі, яка його може не дати.
+SECONDS=0
+run thinking_loop
+elapsed="$SECONDS"
+test "$CODE" = 1 || fail "зациклений thinking-виклик дав код $CODE"
+grep -q '^empty_content' <<<"$STDERR" || fail "зациклений thinking не зупинено з empty_content: $STDERR"
+test "$elapsed" -lt 3 || fail "зациклений thinking не обірвано за секунди: ${elapsed}s"
 
 # 9. Журнал бачить КОЖЕН виклик, і успішний, і невдалий.
 lines="$(wc -l < "$WORK/state/model-calls.jsonl" | tr -d ' ')"

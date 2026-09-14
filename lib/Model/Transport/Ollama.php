@@ -58,6 +58,7 @@ final class Ollama implements Transport
             'options' => [
                 'temperature' => $request->temperature,
                 'num_ctx' => $request->numCtx,
+                'num_predict' => $request->numPredict,
             ],
         ];
         if ($request->schema !== null) {
@@ -117,37 +118,39 @@ final class Ollama implements Transport
         $thinking = '';
         $final = [];
         $chunks = 0;
-        while (($line = fgets($handle)) !== false) {
-            $line = trim($line);
-            if ($line === '') {
-                continue;
-            }
-            $chunk = json_decode($line, true);
-            if (! is_array($chunk)) {
-                continue;
-            }
-            if (isset($chunk['error'])) {
-                fclose($handle);
-                throw new TransportError('model_error', (string) $chunk['error']);
-            }
-            $chunks++;
-            $piece = (string) ($chunk['message']['content'] ?? '');
-            $reason = (string) ($chunk['message']['thinking'] ?? '');
-            $content .= $piece;
-            $thinking .= $reason;
-            if ($onChunk !== null) {
-                if ($piece !== '') {
-                    $onChunk($piece, false);
+        try {
+            while (($line = fgets($handle)) !== false) {
+                $line = trim($line);
+                if ($line === '') {
+                    continue;
                 }
-                if ($reason !== '') {
-                    $onChunk($reason, true);
+                $chunk = json_decode($line, true);
+                if (! is_array($chunk)) {
+                    continue;
+                }
+                if (isset($chunk['error'])) {
+                    throw new TransportError('model_error', (string) $chunk['error']);
+                }
+                $chunks++;
+                $piece = (string) ($chunk['message']['content'] ?? '');
+                $reason = (string) ($chunk['message']['thinking'] ?? '');
+                $content .= $piece;
+                $thinking .= $reason;
+                if ($onChunk !== null) {
+                    if ($piece !== '') {
+                        $onChunk($piece, false);
+                    }
+                    if ($reason !== '') {
+                        $onChunk($reason, true);
+                    }
+                }
+                if (! empty($chunk['done'])) {
+                    $final = $chunk;
                 }
             }
-            if (! empty($chunk['done'])) {
-                $final = $chunk;
-            }
+        } finally {
+            fclose($handle);
         }
-        fclose($handle);
         if ($final === []) {
             throw new TransportError('stream_incomplete', "потік обірвався без завершального чанка (отримано $chunks)");
         }

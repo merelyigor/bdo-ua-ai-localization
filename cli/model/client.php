@@ -96,6 +96,7 @@ if (trim($model) === '') {
     exit(1);
 }
 $numCtx = (int) ($roleConfig['num_ctx'] ?? $config['num_ctx']);
+$numPredict = max(1, (int) ($roleConfig['num_predict'] ?? $config['num_predict'] ?? 8192));
 $timeout = (int) ($config['timeout_seconds'] ?? 900);
 
 $promptPath = $root.'/roles/'.$role.'.md';
@@ -172,6 +173,10 @@ if (getenv('BDO_ROW_ALIAS') !== '0' && $schema !== null && \Bdo\Translate\Model\
 $started = microtime(true);
 $callsFile = $stateDir.'/model-calls.jsonl';
 $stats = ['in' => null, 'out' => null];
+$stream = getenv('BDO_MODEL_STREAM') !== '0';
+$think = getenv('BDO_MODEL_THINK') === '1';
+$thinkObserved = false;
+$thinkMismatch = false;
 
 /** Журнал викликів · власна заміна бази OpenCode. Пишеться ЗАВЖДИ. */
 // Пачка, до якої належить виклик. Без цього поля журнал розповідає про сесію
@@ -229,7 +234,7 @@ $relative = static function (string $path) use ($stateDir): ?string {
     return substr($full, strlen($base) + 1);
 };
 
-$journal = static function (string $verdict) use ($callsFile, $role, $model, $provider, $started, $currentBatch, $runState, $rows, $payloadBytes, $relative, $payloadPath, $responsePath, &$stats): void {
+$journal = static function (string $verdict) use ($callsFile, $role, $model, $provider, $started, $currentBatch, $runState, $rows, $payloadBytes, $relative, $payloadPath, $responsePath, &$stats, $numPredict, $think, &$thinkObserved, &$thinkMismatch): void {
     $dir = dirname($callsFile);
     if (! is_dir($dir) && ! mkdir($dir, 0777, true) && ! is_dir($dir)) {
         return;
@@ -251,7 +256,11 @@ $journal = static function (string $verdict) use ($callsFile, $role, $model, $pr
         'ms' => (int) round((microtime(true) - $started) * 1000),
         'in' => $stats['in'],
         'out' => $stats['out'],
-        'think' => getenv('BDO_MODEL_THINK') === '1',
+        'think' => $think,
+        'think_observed' => $thinkObserved,
+        'think_mismatch' => $thinkMismatch,
+        'think_note' => $thinkMismatch ? 'requested_false_received_thinking' : '',
+        'num_predict' => $numPredict,
         'stream' => getenv('BDO_MODEL_STREAM') !== '0',
     ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)."\n", FILE_APPEND);
 };
@@ -277,9 +286,6 @@ $journal = static function (string $verdict) use ($callsFile, $role, $model, $pr
 // Межа не змінилась: усі перевірки (`done_reason`, порожній `content`,
 // `not_json`, вікно, схема) робляться на ЗІБРАНІЙ відповіді, тобто там само,
 // де й раніше. Потік змінює лише спосіб доставки байтів.
-$stream = getenv('BDO_MODEL_STREAM') !== '0';
-$think = getenv('BDO_MODEL_THINK') === '1';
-
 $request = new \Bdo\Translate\Model\Transport\Request(
     role: $role,
     model: $model,
@@ -290,6 +296,7 @@ $request = new \Bdo\Translate\Model\Transport\Request(
     think: $think,
     temperature: (float) ($roleConfig['temperature'] ?? 0.1),
     numCtx: $numCtx,
+    numPredict: $numPredict,
     timeout: $timeout,
 );
 
@@ -322,11 +329,37 @@ if ($stream) {
 $dim = ($show && getenv('NO_COLOR') === false) ? "\033[2m" : '';
 $off = $dim !== '' ? "\033[0m" : '';
 $chunkSeen = 0;
-$onChunk = static function (string $text, bool $isThinking) use (
-    $show, $dim, $off, $streamLog, $stream, &$chunkSeen
+$thinkingOnlyBytes = 0;
+$contentSeen = false;
+$thinkingOnlyLimit = min($numPredict, 2048) * 4;
+$onChunk = function (string $text, bool $isThinking) use (
+    $show, $dim, $off, $streamLog, $stream, &$chunkSeen, &$thinkingOnlyBytes,
+    &$contentSeen, $thinkingOnlyLimit, &$thinkObserved, &$thinkMismatch, $think
 ): void {
     if ($text === '') {
         return;
+    }
+    if ($isThinking) {
+        $thinkObserved = true;
+        if (! $think) {
+            $thinkMismatch = true;
+        }
+        if (! $contentSeen) {
+            $thinkingOnlyBytes += strlen($text);
+            if ($thinkingOnlyBytes > $thinkingOnlyLimit) {
+                // Код причини · САМЕ `empty_content`, бо його вже знають шість
+                // місць набору: звіт інцидентів, драйвер і три тести. А
+                // `no_answer` у наборі означає ІНШЕ · «терміну немає в
+                // каталозі» (`TerminologyPayloadCommand`), і перевантажувати
+                // його другим змістом означало б плутати два різні стани.
+                throw new \Bdo\Translate\Model\Transport\TransportError(
+                    'empty_content',
+                    'модель не дійшла до відповіді після '.$thinkingOnlyLimit.' байт thinking'
+                );
+            }
+        }
+    } else {
+        $contentSeen = true;
     }
     $chunkSeen++;
     if ($show) {
@@ -346,6 +379,8 @@ try {
     // переписує, лише журналює й показує.
     $fail($e->reason, $e->getMessage());
 }
+$thinkObserved = $thinkObserved || trim($reply->thinking) !== '';
+$thinkMismatch = $thinkMismatch || ($thinkObserved && ! $think);
 if ($show && $chunkSeen > 0) {
     fwrite(STDERR, "\n");
 }
@@ -378,17 +413,20 @@ if ($window > 0 && $promptTokens > 0 && $promptTokens > (int) ($window * 0.9)) {
         ."початок payload міг бути викинутий мовчки; зменш пачку або підніми вікно в застосунку Ollama");
 }
 
+$content = trim((string) ($answer['message']['content'] ?? ''));
+$thinking = trim((string) ($answer['message']['thinking'] ?? ''));
+if ($content === '' && $thinking !== '') {
+    $fail('empty_content', 'модель не дійшла до відповіді · усе пішло в thinking');
+}
 $done = (string) ($answer['done_reason'] ?? '');
 if ($done !== 'stop') {
     // `length` тут означає, що відповідь обрізало вікном або стелею. Мовчазний
     // повтор дав би той самий обрив і сховав причину · саме так пачка тричі
     // ходила колами 2026-08-28 (D29).
-    $fail('truncated', "done_reason=$done, вихід ".(string) ($stats['out'] ?? '?')." токенів; підніми num_ctx або зменш пачку");
+    $fail('truncated', "досягнуто num_predict=$numPredict; done_reason=$done, вихід ".(string) ($stats['out'] ?? '?')." токенів; зменш пачку або підніми стелю");
 }
-$content = trim((string) ($answer['message']['content'] ?? ''));
 if ($content === '') {
-    $thinking = trim((string) ($answer['message']['thinking'] ?? ''));
-    $fail('empty_content', $thinking !== '' ? 'усе пішло в thinking · перевір think=false' : 'модель повернула порожній content');
+    $fail('empty_content', 'модель повернула порожній content');
 }
 
 $decoded = json_decode($content, true);

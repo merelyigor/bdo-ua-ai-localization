@@ -170,8 +170,8 @@
       var disabled = model.reason ? ' disabled' : '';
       return '<tr><td>' + B.esc(model.runtime) + '</td><td class="mono">' + B.esc(model.model) + '</td>'
         + '<td>' + B.esc(model.size) + '</td><td>' + (String(model.loaded) === 'так' ? '✅ ' : '⚪️ ') + B.esc(model.loaded) + '</td><td>' + unavailable + '</td><td>'
-        + '<button type="button" data-action="models.select" data-runtime="' + B.esc(model.runtime) + '" data-model="' + B.esc(model.model) + '"' + disabled + '>обрати загально</button> '
-        + '<button type="button" data-action="models.load" data-runtime="' + B.esc(model.runtime) + '" data-model="' + B.esc(model.model) + '"' + disabled + '>завантажити</button></td></tr>';
+        + '<button type="button" data-action="models.select" data-runtime="' + B.esc(model.runtime) + '" data-model="' + B.esc(model.model) + '"' + disabled + '>⭐ обрати загально</button> '
+        + '<button type="button" data-action="models.load" data-runtime="' + B.esc(model.runtime) + '" data-model="' + B.esc(model.model) + '"' + disabled + '>⬇️ завантажити</button></td></tr>';
     }).join('');
     B.el('models').innerHTML = '<table><thead><tr><th>рантайм</th><th>модель</th><th>розмір</th><th>завантажена</th><th>стан</th><th>дії</th></tr></thead><tbody>' + rows + '</tbody></table>';
     var options = models.filter(function (m) { return !m.reason; }).map(function (m, index) {

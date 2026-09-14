@@ -151,53 +151,55 @@ final class OpenAi implements Transport
         // інакше віддає події SSE злиплими пачками, і живий друк іде блоками
         // замість символів (D85).
         stream_set_chunk_size($handle, 1);
-        while (($line = fgets($handle)) !== false) {
-            $line = trim($line);
-            if ($line === '' || str_starts_with($line, ':')) {
-                continue;   // порожній рядок · межа події, `:` · комментар-heartbeat
-            }
-            if (! str_starts_with($line, 'data:')) {
-                $plain .= $line;
-                continue;
-            }
-            $data = trim(substr($line, 5));
-            if ($data === '[DONE]') {
-                $sawDone = true;
-                break;
-            }
-            $chunk = json_decode($data, true);
-            if (! is_array($chunk)) {
-                continue;
-            }
-            if (isset($chunk['error'])) {
-                fclose($handle);
-                throw new TransportError('model_error', $this->errorText($chunk['error']));
-            }
-            $chunks++;
-            $delta = $chunk['choices'][0]['delta'] ?? [];
-            $piece = (string) ($delta['content'] ?? '');
-            $reason = (string) ($delta['reasoning_content'] ?? $delta['reasoning'] ?? '');
-            $content .= $piece;
-            $thinking .= $reason;
-            if ($onChunk !== null) {
-                if ($piece !== '') {
-                    $onChunk($piece, false);
+        try {
+            while (($line = fgets($handle)) !== false) {
+                $line = trim($line);
+                if ($line === '' || str_starts_with($line, ':')) {
+                    continue;   // порожній рядок · межа події, `:` · комментар-heartbeat
                 }
-                if ($reason !== '') {
-                    $onChunk($reason, true);
+                if (! str_starts_with($line, 'data:')) {
+                    $plain .= $line;
+                    continue;
+                }
+                $data = trim(substr($line, 5));
+                if ($data === '[DONE]') {
+                    $sawDone = true;
+                    break;
+                }
+                $chunk = json_decode($data, true);
+                if (! is_array($chunk)) {
+                    continue;
+                }
+                if (isset($chunk['error'])) {
+                    throw new TransportError('model_error', $this->errorText($chunk['error']));
+                }
+                $chunks++;
+                $delta = $chunk['choices'][0]['delta'] ?? [];
+                $piece = (string) ($delta['content'] ?? '');
+                $reason = (string) ($delta['reasoning_content'] ?? $delta['reasoning'] ?? '');
+                $content .= $piece;
+                $thinking .= $reason;
+                if ($onChunk !== null) {
+                    if ($piece !== '') {
+                        $onChunk($piece, false);
+                    }
+                    if ($reason !== '') {
+                        $onChunk($reason, true);
+                    }
+                }
+                if (isset($chunk['choices'][0]['finish_reason']) && $chunk['choices'][0]['finish_reason'] !== null) {
+                    $finish = (string) $chunk['choices'][0]['finish_reason'];
+                }
+                if (isset($chunk['usage']['prompt_tokens'])) {
+                    $in = (int) $chunk['usage']['prompt_tokens'];
+                }
+                if (isset($chunk['usage']['completion_tokens'])) {
+                    $out = (int) $chunk['usage']['completion_tokens'];
                 }
             }
-            if (isset($chunk['choices'][0]['finish_reason']) && $chunk['choices'][0]['finish_reason'] !== null) {
-                $finish = (string) $chunk['choices'][0]['finish_reason'];
-            }
-            if (isset($chunk['usage']['prompt_tokens'])) {
-                $in = (int) $chunk['usage']['prompt_tokens'];
-            }
-            if (isset($chunk['usage']['completion_tokens'])) {
-                $out = (int) $chunk['usage']['completion_tokens'];
-            }
+        } finally {
+            fclose($handle);
         }
-        fclose($handle);
         // Помилка замість потоку · називаємо ЇЇ, а не обрив.
         if ($chunks === 0 && $plain !== '') {
             $decoded = json_decode($plain, true);
