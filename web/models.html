@@ -81,6 +81,49 @@
     return text.slice(0, keepHead) + '…' + text.slice(text.length - keepTail);
   }
 
+  // ВИВІД КОМАНДИ НЕ Є ПОВІДОМЛЕННЯМ. `models list --json` друкує весь каталог,
+  // і показ `steps[0].output` вивалював на екран сирий JSON замість таблиці
+  // (власник 2026-09-14). Успіх називаємо словами й перемальовуємо каталог зі
+  // стану; відмову показуємо ОСТАННІМ змістовним рядком виводу, бо саме там
+  // наші команди друкують причину, і ріжемо його до читабельної довжини.
+  function actionMessage(action, body) {
+    if (body.ok) {
+      return ({
+        'models.refresh': 'перелік оновлено',
+        'models.select': 'модель обрано для всіх ролей',
+        'models.select.role': 'модель обрано для ролі',
+        'models.clear': 'загальний вибір скинуто',
+        'models.clear.role': 'вибір ролі скинуто',
+        'models.load': 'завантаження почато · модель зʼявиться як завантажена'
+      })[action] || 'готово';
+    }
+    var steps = body.steps || [];
+    for (var i = steps.length - 1; i >= 0; i--) {
+      var out = (steps[i] && steps[i].output ? String(steps[i].output) : '').trim();
+      if (!out) { continue; }
+      var lines = out.split('\n').filter(function (line) { return line.trim() !== ''; });
+      var last = lines[lines.length - 1];
+      return last.length > 160 ? last.slice(0, 157) + '…' : last;
+    }
+    return body.hint ? String(body.hint) : 'дія не виконана';
+  }
+
+  // Емодзі тут НЕ прикраса: блок ролей читався як суцільний сірий стовпчик, і
+  // око не чіплялось ні за що (власник 2026-09-14). Значок дає рядку впізнаване
+  // обличчя, а назва ролі лишається текстом · пошук і копіювання не ламаються.
+  function roleIcon(role) {
+    return ({
+      'translation-terminology': '📖',
+      'translation-worker': '✍️',
+      'translation-qa': '🔍',
+      'translation-repair': '🔧',
+      'translation-names': '🏷️',
+      'translation-judge': '⚖️',
+      'translation-glossary': '📚',
+      'translation-smoke': '🧪'
+    })[role] || '🔹';
+  }
+
   function sourceLabel(source) {
     return ({role_selection:'перевизначення ролі', global_selection:'загальний вибір', role_config:'модель ролі', provider_default:'default_model провайдера', config_default:'default_model набору', missing:'модель не названа'})[source] || source;
   }
@@ -99,7 +142,7 @@
     if (!roles.length) { html += '<div class="empty">ролей у конфігурації немає</div>'; }
     roles.forEach(function (role) {
       html += '<div class="row" data-role-row="' + B.esc(role.role) + '">'
-        + '<span style="min-width:210px"><span class="mono">' + B.esc(role.role) + '</span><br><span class="empty">'
+        + '<span style="min-width:210px">' + roleIcon(role.role) + ' <span class="mono">' + B.esc(role.role) + '</span><br><span class="empty">'
         + B.esc(sourceLabel(role.source)) + '</span></span>'
         + '<span class="mono" style="min-width:200px;font-size:12px;overflow-wrap:anywhere" title="'
         + B.esc(role.runtime + ' / ' + (role.model || '—')) + '">'
@@ -126,7 +169,7 @@
       var unavailable = model.reason ? '<div class="empty" style="color:var(--dn-tx)">недоступний: ' + B.esc(model.reason) + '</div>' : '';
       var disabled = model.reason ? ' disabled' : '';
       return '<tr><td>' + B.esc(model.runtime) + '</td><td class="mono">' + B.esc(model.model) + '</td>'
-        + '<td>' + B.esc(model.size) + '</td><td>' + B.esc(model.loaded) + '</td><td>' + unavailable + '</td><td>'
+        + '<td>' + B.esc(model.size) + '</td><td>' + (String(model.loaded) === 'так' ? '✅ ' : '⚪️ ') + B.esc(model.loaded) + '</td><td>' + unavailable + '</td><td>'
         + '<button type="button" data-action="models.select" data-runtime="' + B.esc(model.runtime) + '" data-model="' + B.esc(model.model) + '"' + disabled + '>обрати загально</button> '
         + '<button type="button" data-action="models.load" data-runtime="' + B.esc(model.runtime) + '" data-model="' + B.esc(model.model) + '"' + disabled + '>завантажити</button></td></tr>';
     }).join('');
@@ -184,13 +227,22 @@
         B.post('/api/action', {action: action, payload: payload, confirm: true}).then(function (res) {
           button.disabled = false;
           var body = res.body || {};
-          B.el('actionMsg').textContent = body.hint || (body.steps && body.steps[0] && body.steps[0].output) || (body.ok ? 'готово' : 'дія не виконана');
+          B.el('actionMsg').textContent = actionMessage(action, body);
           if (body.ok && action === 'models.refresh') { load(); }
           else if (body.ok && action === 'models.load') { load(); }
           else if (body.ok) { load(); }
         }).catch(function () { button.disabled = false; B.el('actionMsg').textContent = 'сервер не відповів'; });
       };
     });
+  }
+
+  // Екран моделей НЕ тримає живого потоку: дані приходять із файла стану, який
+  // оновлює кнопка. Тому індикатор угорі не має вічно писати «зʼєднання…» ·
+  // це виглядало як зламаний звʼязок, хоча ламатись тут нічому.
+  function markStaticLink() {
+    if (B.setLink) { B.setLink('poll', 'перелік оновлюється кнопкою'); }
+    var link = document.getElementById('link');
+    if (link) { link.textContent = 'оновлюється кнопкою'; }
   }
 
   function load() {
@@ -215,6 +267,7 @@
   }
 
   bindActions();
+  markStaticLink();
   load();
 })();
 </script>
