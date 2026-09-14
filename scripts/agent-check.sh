@@ -90,6 +90,15 @@ changed_files() {
 # шляхів; окремі тести названі там, де вони стережуть конкретний шар.
 touched_map() {
     local path="$1"
+    # Змінений сценарій · спершу ЛІНТЕР, і лише потім те, що він стереже.
+    # Виміряно 2026-09-14: `gate touched` обрав правильні тести для нового
+    # `tests/command-help.sh`, тести пройшли, а CI упав на `shellcheck`
+    # (SC2034, мертве присвоєння). Карта обирала, ЩО запустити, і не обирала,
+    # ЧИМ перевірити сам сценарій.
+    case "$path" in
+        *.sh|.githooks/*)
+            printf 'lint|%s|синтаксис і shellcheck зміненого сценарію\n' "$path" ;;
+    esac
     case "$path" in
         scripts/agent-check.sh|.githooks/*|.github/*)
             printf 'profile|full|сам механізм перевірки може бути зламаний і не перевіряє сам себе\n' ;;
@@ -243,6 +252,17 @@ touched_changed_files() {
     changed_files
 }
 
+touched_lint() {
+    local file="$1"
+    test -e "$file" || return 0
+    run bash -n "$file"
+    if have shellcheck; then
+        run shellcheck -x -S warning "$file"
+    else
+        note "shellcheck недоступний · синтаксис перевірено, стиль ні: $file"
+    fi
+}
+
 touched_run_test() {
     local file="$1"
     case "$file" in
@@ -311,6 +331,7 @@ check_touched() {
         test -n "$kind" || continue
         case "$kind" in
             profile) run_gate_profile "$target" ;;
+            lint) touched_lint "$target" ;;
             test) touched_run_test "$target" ;;
             *) fail "карта повернула невідомий тип: $kind" ;;
         esac

@@ -29,11 +29,11 @@ done <<< "$names"
 
 expected='run-loop watch session web fetch-rows subset-rows normalize-candidate build-items check-russianisms validate heal-plan qa-fixes merge-items commit write moderation glossary-concepts batch-clean capabilities run-start run-drive run-stop run-spec run-mode batch-new batch-dir batch-assert memory-lookup memory-apply memory-expand glossary-gaps glossary-resolve build-schema worker-payload qa-payload terminology-payload judge-payload term-notes-describe term-notes-submit term-notes-queue'
 for name in $expected; do
-    if text="$(php -r 'require "lib/autoload.php"; $text=(new Bdo\Translate\Cli\Kernel())->helpText($argv[1]); if ($text === null || $text === "") exit(1); echo $text;' "$name")"; then
-        :
-    else
-        fail "вбудована довідка порожня або відсутня для $name"
-    fi
+    # Значення не потрібне · важливий лише код виходу: сам PHP і вирішує, чи
+    # довідка є. Присвоєння в змінну тут було б мертвим, і ShellCheck правильно
+    # називав це SC2034.
+    php -r 'require "lib/autoload.php"; $text=(new Bdo\Translate\Cli\Kernel())->helpText($argv[1]); if ($text === null || $text === "") exit(1); echo $text;' "$name" >/dev/null \
+        || fail "вбудована довідка порожня або відсутня для $name"
 done
 
 # Falsification: PHP help must survive removal of the legacy shell file.
