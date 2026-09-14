@@ -316,6 +316,28 @@ for gone in run-target run-started-at run-batches.json run-seen.json run-goal.js
         || fail "--end лишив «${gone}» · ціль прогону переживе власний прогін"
 done
 
+# --- `run end` без сесій прибирає й теки пачок ------------------------------
+#
+# Після видалення всіх сесій у власника лишалось 14 тек пачок, до яких немає
+# шляху ні зі сторінки, ні з реєстру (2026-09-14). ПОТОЧНУ пачку не чіпаємо
+# навіть тут, а слід записів в API не чіпаємо ніколи.
+ORPHAN_STATE="$TMP/orphan-state"
+mkdir -p "$ORPHAN_STATE/sessions" "$ORPHAN_STATE/batches/20260101_010101_aaaa" "$ORPHAN_STATE/batches/20260202_020202_bbbb"
+printf '%s\n' '{"id":"20260101_010101_aaaa"}' > "$ORPHAN_STATE/batches/20260101_010101_aaaa/manifest.json"
+printf '%s\n' '{"id":"20260202_020202_bbbb"}' > "$ORPHAN_STATE/batches/20260202_020202_bbbb/manifest.json"
+printf '20260202_020202_bbbb\n' > "$ORPHAN_STATE/current-batch"
+printf '%s\n' '{"written":1}' > "$ORPHAN_STATE/write-log.jsonl"
+BDO_STATE_DIR="$ORPHAN_STATE" "$REAL_PHP" "$ROOT/cli/bdo.php" run-start --end >"$TMP/orphan.out" 2>&1 \
+    || fail "run end з осиротілими теками впав: $(cat "$TMP/orphan.out")"
+test ! -d "$ORPHAN_STATE/batches/20260101_010101_aaaa" \
+    || fail 'тека пачки без сесії пережила run end · сміття лишається назавжди'
+test -d "$ORPHAN_STATE/batches/20260202_020202_bbbb" \
+    || fail 'ПОТОЧНУ пачку прибрано · це втрата живої роботи'
+test -f "$ORPHAN_STATE/write-log.jsonl" \
+    || fail 'слід записів в API знищено'
+grep -Fq 'Прибрано тек пачок без сесії' "$TMP/orphan.out" \
+    || fail 'прибирання зроблено мовчки'
+
 for target_env in "$DEV_ENV" "$PROD_ENV" "$HUB_DEV_ENV" "$HUB_PROD_ENV"; do
     compare_start "fresh-$(basename "$target_env" .env)" "$target_env"
 done

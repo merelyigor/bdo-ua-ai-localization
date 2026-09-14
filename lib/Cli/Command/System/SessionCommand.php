@@ -9,6 +9,7 @@ use Bdo\Translate\Cli\LocalTime;
 use Bdo\Translate\Cli\Output;
 use Bdo\Translate\Cli\Command\Batch\BatchCleanCommand;
 use Bdo\Translate\Session\Ledger;
+use Bdo\Translate\Session\RunReset;
 use Bdo\Translate\Ui\Text;
 use FilesystemIterator;
 use RecursiveDirectoryIterator;
@@ -306,36 +307,14 @@ final class SessionCommand implements Command, \Bdo\Translate\Cli\CommandHelp
     }
 
     /**
-     * Сесій не лишилось · прогін закінчився разом із ними.
+     * Сесій не лишилось · прогін забуто разом із ними.
      *
-     * Власник видалив УСІ сесії разом із даними, а сторінка прогону далі писала
-     * «патч 8»: ціль (`run-goal.json`), фіксація середовища (`run-target`) і
-     * лічильники пачок переживали власний прогін (2026-09-14). Стан, якого вже
-     * нікому читати, є сміттям, що виглядає як робота.
-     *
-     * Чужого тут не чіпаємо: журнал записів в API, карантин і лічильник спроб
-     * лишаються назавжди · вони описують те, що вже поїхало на прод.
+     * Сама логіка живе в `Session\RunReset`: те саме прибирання потрібне й
+     * при `run end`, і копія в двох місцях розійшлася б при першій же зміні.
      */
     private function forgetRunWhenEmpty(string $stateDir, Output $output): void
     {
-        $sessions = glob($stateDir.'/sessions/*', GLOB_ONLYDIR);
-        if ($sessions !== false && $sessions !== []) {
-            return;
-        }
-        $forgotten = [];
-        foreach (['run-target', 'run-started-at', 'run-batches.json', 'run-seen.json', 'run-goal.json', 'run-excluded.json'] as $file) {
-            $path = $stateDir.'/'.$file;
-            if (! file_exists($path)) {
-                continue;
-            }
-            if (@unlink($path)) {
-                $forgotten[] = $file;
-            }
-        }
-        if ($forgotten === []) {
-            return;
-        }
-        $output->stdout('Сесій не лишилось · прогін забуто разом із ними: '.implode(', ', $forgotten)."\n");
+        $output->stdout(RunReset::describe(RunReset::forgetIfNoSessions($stateDir)));
     }
 
     /** @param list<string> $arguments */

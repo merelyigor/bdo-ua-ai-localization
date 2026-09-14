@@ -8,6 +8,7 @@ use Bdo\Translate\Batch\Workspace;
 use Bdo\Translate\Cli\Command;
 use Bdo\Translate\Cli\Command\Api\ApiEnvironment;
 use Bdo\Translate\Cli\Output;
+use Bdo\Translate\Session\RunReset;
 use RuntimeException;
 
 /** Фіксує target прогону без мережі й без зовнішніх Unix-процесів. */
@@ -53,6 +54,10 @@ final class RunStartCommand implements Command, \Bdo\Translate\Cli\CommandHelp
         if ($first === '--end') {
             $this->removeResetFiles($stateDir);
             $output->stdout("Прогін завершено, фіксацію знято.\n");
+            // Сесій немає · отже й теки пачок уже нікому не належать. Те саме
+            // прибирання робить видалення останньої сесії; спільна логіка живе
+            // в `Session\RunReset`, щоб два місця не розійшлися.
+            $output->stdout(RunReset::describe(RunReset::forgetIfNoSessions($stateDir)));
 
             return 0;
         }
