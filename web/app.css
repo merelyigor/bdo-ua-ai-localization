@@ -50,6 +50,18 @@ button:hover{background:var(--s2)}
 .card .v{font-size:22px;font-weight:500}
 .msg{border:.5px solid var(--bd);border-radius:12px;background:var(--s2);padding:10px 13px;margin-bottom:8px}
 .msg.active{border-color:var(--bda)}
+.role-card{border-width:1px}
+.role-card.is-active{border-color:var(--bda)}
+.role-card.is-ok{border-color:var(--ok-tx)}
+.role-card.is-review{border-color:var(--wr-tx)}
+.role-card.is-failed{border-color:var(--dn-tx)}
+.role-state{display:inline-flex;align-items:center;gap:4px;cursor:default}
+.role-state.running{background:var(--acc-bg);color:var(--acc-tx);border-color:var(--bda)}
+.role-state.ok{background:var(--ok-bg);color:var(--ok-tx);border-color:var(--ok-tx)}
+.role-state.review{background:var(--wr-bg);color:var(--wr-tx);border-color:var(--wr-tx)}
+.role-state.failed{background:var(--dn-bg);color:var(--dn-tx);border-color:var(--dn-tx)}
+.verdict-icon{font-size:13px;font-weight:500}
+.work-link{color:var(--acc-tx);text-decoration:underline;text-decoration-color:var(--bda)}
 .mh{display:flex;align-items:center;gap:8px;font-size:13px}
 .mh .meta{font-size:12px;color:var(--tm)}
 .box{background:var(--s1);border-radius:8px;padding:8px 10px;margin-top:8px;white-space:pre-wrap;word-break:break-word;max-height:220px;overflow:auto}

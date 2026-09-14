@@ -52,16 +52,27 @@ final class StepReportCommand implements Command
 
             return mb_strlen($text) > $max ? mb_substr($text, 0, $max - 1).'…' : $text;
         };
-        // Шлях до артефакту віддаємо ГОТОВОЮ командою: `./bdo show` приймає лише
-        // відносний шлях у `state/` або `output/`, тому абсолютний рядок власникові
-        // довелось би правити руками.
-        $showCommand = function (string $path): string {
-            $root = $this->root().'/';
-            $relative = str_starts_with($path, $root) ? substr($path, strlen($root)) : $path;
+        // Повний state-файл відкривається посиланням. Працюючий web-сервер
+        // залишає порт і токен у state/web.json; без нього лишаємо читабельний
+        // шлях, щоб термінал не втрачав пояснення й не вигадував мертву адресу.
+        $workLink = function (string $path): string {
+            $stateDir = getenv('BDO_STATE_DIR') ?: $this->root().'/state';
+            $base = realpath($stateDir);
+            $full = realpath($path);
+            if ($base === false || $full === false || ! str_starts_with($full, rtrim($base, '/').'/')) {
+                return $path;
+            }
+            $relative = ltrim(substr($full, strlen(rtrim($base, '/'))), '/');
+            $display = 'state/'.$relative;
+            $info = json_decode((string) @file_get_contents(rtrim($stateDir, '/').'/web.json'), true);
+            $port = is_array($info) ? (int) ($info['port'] ?? 0) : 0;
+            $token = is_array($info) ? (string) ($info['token'] ?? '') : '';
+            if ($port <= 0 || $token === '') {
+                return $display;
+            }
 
-            return str_starts_with($relative, 'state/') || str_starts_with($relative, 'output/')
-                ? './bdo show '.$relative
-                : $relative;
+            return $display.' · http://127.0.0.1:'.$port.'/api/work?path='
+                .rawurlencode($relative).'&t='.rawurlencode($token);
         };
         $items = static function (mixed $data): array {
             if (! is_array($data)) {
@@ -121,7 +132,7 @@ final class StepReportCommand implements Command
                 $shown++;
             }
             if (count($rows) > $shown) {
-                $output->stdout(sprintf("  │  … і ще %d рядків (повністю · %s)\n", count($rows) - $shown, $showCommand($payloadPath)));
+                $output->stdout(sprintf("  │  … і ще %d рядків (повністю · %s)\n", count($rows) - $shown, $workLink($payloadPath)));
             }
 
             return 0;
@@ -193,7 +204,7 @@ final class StepReportCommand implements Command
             $output->stdout(sprintf("  │  розкладка: %s\n", implode(' | ', $parts)));
         }
         if (count($answers) > $limit) {
-            $output->stdout(sprintf("  └─ показано %d із %d (повністю · %s)\n", min($limit, $shown), count($answers), $showCommand($responsePath)));
+            $output->stdout(sprintf("  └─ показано %d із %d (повністю · %s)\n", min($limit, $shown), count($answers), $workLink($responsePath)));
         } else {
             $output->stdout("  └─\n");
         }

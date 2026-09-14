@@ -276,8 +276,10 @@
         // не бачить ні редактор, ні інспекція · вони мають рацію, бо таку
         // назву неможливо перевірити.
         var kind = r.kind || 'none';
+        var icon = { pass: '✓', review: '!', reject: '×', none: '·' }[kind] || '·';
         return '<div class="vrow" data-v="' + B.esc(kind) + '">'
-          + '<span class="pill v-' + B.esc(kind) + '">' + B.esc(r.label) + '</span>'
+          + '<span class="pill v-' + B.esc(kind) + '"><span class="verdict-icon" aria-hidden="true">'
+          + icon + '</span> ' + B.esc(r.label) + '</span>'
           + '<div style="flex:1;min-width:0">'
           // ПІДПИСАНО Й ОЧИЩЕНО. Без підпису два монотипні рядки поспіль
           // читались як один текст, а PA-розмітка робила з них стіну на пів
@@ -326,6 +328,16 @@
     // Порожню категорію ховаємо: кнопка «відхилено 0» пропонує подивитись на
     // те, чого немає.
     btn.style.display = (name === 'all' || count) ? '' : 'none';
+  }
+
+  function callStatus(c) {
+    if (c.verdict === 'ok') {
+      return { kind: 'ok', icon: '✓', label: 'готово', card: 'is-ok' };
+    }
+    if (c.verdict === 'truncated') {
+      return { kind: 'failed', icon: '!', label: 'відповідь обрізано', card: 'is-failed' };
+    }
+    return { kind: 'review', icon: '!', label: c.verdict || 'перевірити', card: 'is-review' };
   }
 
   function applyVerdictFilter() {
@@ -505,7 +517,7 @@
     if (key !== lastCallsKey || (live && !B.el('streambox'))) {
       lastCallsKey = key;
       var html = calls.length ? calls.map(function (c) {
-        var okColor = c.verdict === 'ok' ? 'var(--ok-tx)' : 'var(--dn-tx)';
+        var status = callStatus(c);
         var bits = [];
         // Скільки рядків пішло в модель · без цього «53 с» не має знаменника:
         // незрозуміло, це один важкий рядок чи десять легких.
@@ -523,10 +535,12 @@
         // її після закінчення ролі, а не тільки поки друкується (2026-09-06).
         // Ключ виклику · час і роль, той самий, що приймає `/api/call`.
         var key2 = 'at=' + encodeURIComponent(c.at) + '&role=' + encodeURIComponent(c.role);
-        return '<div class="msg" data-call="' + B.esc(key2) + '"><div class="mh">'
+        return '<div class="msg role-card ' + status.card + '" data-call="' + B.esc(key2) + '"><div class="mh">'
           + '<span style="font-weight:500">' + B.esc(c.role_label) + '</span>'
           + '<span class="meta">' + B.esc(bits.join(' · ')) + '</span>'
-          + '<span style="margin-left:auto;font-size:12px;color:' + okColor + '">' + B.esc(c.verdict || '—') + '</span>'
+          + '<span class="chip role-state ' + status.kind + '" style="margin-left:auto">'
+          + '<span class="verdict-icon" aria-hidden="true">' + status.icon + '</span> '
+          + B.esc(status.label) + '</span>'
           + '<span class="meta" style="margin-left:8px">' + B.esc(c.hms) + '</span></div>'
           + '<div class="bar" style="margin-top:6px">'
           + '<button class="openCall" type="button">розгорнути роботу</button>'
@@ -544,11 +558,12 @@
         // це дало 960 секунд повного мовчання · виглядало як «зависло».
         var waiting = (s.stream && s.stream.waiting) || 0;
         var loading = waiting >= 12;
-        html += '<div class="msg active"><div class="mh">'
+        html += '<div class="msg active role-card is-active"><div class="mh">'
           + '<span style="font-weight:500;color:var(--acc-tx)">' + B.esc(live) + '</span>'
           + '<span class="meta" id="liveNote">' + (loading
               ? 'модель вантажиться, ' + waiting + ' с · перший виклик після паузи тягне вагу з диска'
               : 'друкує…') + '</span>'
+          + '<span class="chip role-state running" style="margin-left:auto"><span class="verdict-icon" aria-hidden="true">●</span> друкує</span>'
 
           // ЩО ПІШЛО В МОДЕЛЬ · доступне поки роль ще друкує, а не лише після.
           // Шлях дає сервер (`stream.payload`), сторінка його не вгадує.
@@ -575,7 +590,7 @@
               ? '<div class="empty" style="margin-top:6px">Це не зависання: Ollama вивантажує модель за своїм '
                 + 'налаштуванням, і наступні виклики підуть без цієї паузи.</div>'
               : '')
-          + '<div class="box mono" id="streambox"></div></div>';
+          + '<div class="box mono live-print" id="streambox" aria-live="polite"></div></div>';
       }
       B.el('calls').innerHTML = html;
       bindOpenCall();

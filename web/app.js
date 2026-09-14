@@ -107,6 +107,18 @@
       .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   }
 
+  // ЄДИНЕ посилання в журналі: серверний URL до файла state. Решта журналу
+  // лишається текстом, тому сторінка не перемальовує кроки й не вгадує їхню
+  // структуру. Токен уже є в URL, який надрукував StepReportCommand.
+  function fileLinks(text) {
+    var safe = esc(text);
+    var pattern = /http:\/\/127\.0\.0\.1:[0-9]+\/api\/work\?path=[A-Za-z0-9._~%\-]+&amp;t=[0-9a-fA-F]+/g;
+    return safe.replace(pattern, function (href) {
+      return '<a class="work-link" href="' + href + '" target="_blank" rel="noopener noreferrer">'
+        + href + '</a>';
+    });
+  }
+
   function num(n) { return (Number(n) || 0).toLocaleString('uk-UA'); }
 
   // ІГРОВА РОЗМІТКА · НЕ ДЛЯ ОКА. Рядки BDO несуть PA-теги
@@ -781,7 +793,8 @@
     return {
       write: function (text) {
         if (node.textContent === text) { return; }
-        node.textContent = text;
+        var linked = fileLinks(text);
+        node.innerHTML = linked;
         if (stick) { node.scrollTop = node.scrollHeight; }
       },
       html: function (markup) {
@@ -802,6 +815,7 @@
     num: num,
     secs: secs,
     plain: plain,
+    fileLinks: fileLinks,
     when: when,
     ensureToken: ensureToken,
     tokenRejected: tokenRejected,

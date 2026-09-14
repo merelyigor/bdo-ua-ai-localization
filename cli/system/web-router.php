@@ -10,11 +10,10 @@ declare(strict_types=1);
  *
  * Межі стоять у КОДІ, а не в проханні до браузера, і кожна з них має причину.
  *
- * 1. ФАЙЛІВ НЕ ВІДДАЄМО ВЗАГАЛІ. Немає жодного відображення «шлях запиту ->
- *    файл на диску», тому `/.env`, `/state/write-log.jsonl` і `/../../.env`
- *    неможливі не тому, що заборонені, а тому що такого коду немає. Функція
- *    ніколи не повертає `false`, отже вбудований сервер PHP не отримує шансу
- *    віддати щось із теки самотужки.
+ * 1. ФАЙЛИ СТАНУ · лише названий GET `/api/work`, лише з теки `state/` і
+ *    лише після `realpath`. Немає загального відображення URL на диск, тому
+ *    `/.env`, `/state/write-log.jsonl` та символьне посилання назовні дають
+ *    названу відмову, а вбудований сервер PHP не отримує шансу віддати файл сам.
  * 2. ЧИТАННЯ · GET, ДІЇ · ТІЛЬКИ POST на два названі шляхи. Будь-який інший
  *    метод або POST на інший шлях є або помилкою, або спробою. Дія ніколи не
  *    буває GET: посилання можна відкрити з чужої сторінки, картинки, історії.
@@ -66,6 +65,32 @@ $json = static function (array $data): void {
     header('X-Content-Type-Options: nosniff');
     header('Referrer-Policy: no-referrer');
     echo json_encode($data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+};
+
+/** Віддати один текстовий файл лише з розвʼязаної теки state. */
+$stateFile = static function (string $requested, string $stateDir): array {
+    if ($requested === '' || str_contains($requested, "\0")) {
+        return [400, 'bad_state_file_path', 'потрібен відносний шлях до файла стану'];
+    }
+    if (str_starts_with($requested, '/') || preg_match('~(^|/)\.\.(/|$)~', $requested) === 1) {
+        return [403, 'state_path_forbidden', 'шлях мусить лишатися всередині state/**'];
+    }
+    // Посилання з журналу можуть містити префікс state/; назовні він не
+    // впливає на межу, бо базою все одно лишається реальна тека стану.
+    $relative = str_starts_with($requested, 'state/') ? substr($requested, 6) : $requested;
+    if ($relative === '' || str_starts_with($relative, '/')) {
+        return [403, 'state_path_forbidden', 'шлях мусить називати файл усередині state/**'];
+    }
+    $base = realpath($stateDir);
+    $full = $base === false ? false : realpath($base.'/'.$relative);
+    if ($base === false || $full === false || ! str_starts_with($full, rtrim($base, '/').'/')) {
+        return [403, 'state_path_forbidden', 'шлях або символьне посилання виходить за межу state/**'];
+    }
+    if (! is_file($full)) {
+        return [404, 'state_file_missing', 'файла стану немає'];
+    }
+
+    return [200, $full, $relative];
 };
 
 $method = strtoupper((string) ($_SERVER['REQUEST_METHOD'] ?? 'GET'));
@@ -241,6 +266,33 @@ switch ($path) {
         // Опитування · запасний шлях, і саме тоді сторінці потрібен ПОВНИЙ
         // текст ролі: живого потоку немає, а зшивати хвіст здогадом заборонено.
         $json($snapshot->toArray(true));
+
+        return;
+
+    case '/api/work':
+        // Шлях є єдиним параметром цього GET, але межа перевіряється ПІСЛЯ
+        // realpath: символьне посилання назовні не може стати обхідним шляхом.
+        [$status, $fileOrReason, $hint] = $stateFile((string) ($_GET['path'] ?? ''), $stateDir);
+        if ($status !== 200) {
+            $fail($status, (string) $fileOrReason, (string) $hint);
+
+            return;
+        }
+        header('Content-Type: text/plain; charset=utf-8');
+        header('Content-Disposition: inline');
+        header('Cache-Control: no-store');
+        header('X-Content-Type-Options: nosniff');
+        header('Referrer-Policy: no-referrer');
+        if ($method === 'HEAD') {
+            return;
+        }
+        $content = @file_get_contents((string) $fileOrReason);
+        if ($content === false) {
+            $fail(500, 'state_file_unreadable', 'файл стану існує, але його не вдалося прочитати');
+
+            return;
+        }
+        echo $content;
 
         return;
 
@@ -500,7 +552,7 @@ switch ($path) {
         return;
 
     default:
-        $fail(404, 'unknown_path', 'сервер віддає лише екрани /, /queue, /sessions, /start, /models, /call, статику /app.css і /app.js, а з даних · /api/ping, /api/health, /api/state, /api/sessions, /api/stream, /api/call, /api/models, /api/actions, /api/plan, а дії · POST на /api/action і /api/client-error');
+        $fail(404, 'unknown_path', 'сервер віддає лише екрани /, /queue, /sessions, /start, /models, /call, статику /app.css і /app.js, а з даних · /api/ping, /api/health, /api/state, /api/work, /api/sessions, /api/stream, /api/call, /api/models, /api/actions, /api/plan, а дії · POST на /api/action і /api/client-error');
 
         return;
 }
