@@ -1240,10 +1240,15 @@ check_shell() {
     local root_shells
     root_shells="$(find . -maxdepth 1 -type f -name '*.sh' -print)"
     test -z "$root_shells" || fail "Bash-скрипти лишилися в корені: $root_shells"
-    for dir in api batch prepare quality heal write run runtime audit system; do
+    # Перелік звузився разом зі зняттям шляху відкату (7.0.8): теки `batch`,
+    # `prepare`, `quality`, `heal` і `write` тримали ЛИШЕ диспетчери, тому
+    # зникли цілком. Локально вони лишались порожніми й перевірка проходила, а
+    # на чистому клоні CI їх немає · git порожніх тек не зберігає. Тому тут
+    # названі саме ті категорії, у яких лежить живий код оснастки.
+    for dir in api audit model run runtime system; do
         test -d "cli/$dir" || fail "немає cli/$dir"
     done
-    note 'root *.sh: 0; cli/** категорії: 10'
+    note 'root *.sh: 0; cli/** категорії: 6'
 
     # КЛІКОВІ ВХОДИ · Windows має `bdo.bat`, macOS `BDO.app`. Бандл лишається
     # тонким містком: уся логіка живе в `cli/system/mac-app.sh`, бо всередині
