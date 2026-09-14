@@ -14,7 +14,13 @@ BDO_API_BASE=https://dev.example/api
 EOF
 env_exports="$(TRANSLATE_ENV_FILE="$TMP/prod.env" "$ROOT/bdo" env --shell 2>/dev/null)" \
     || { echo 'env --shell не розвʼязав PROD' >&2; exit 1; }
+# `env --shell` друкує присвоєння без `export` (так само, як сорснутий
+# `select-env.sh` лишав їх у поточній оболонці), а цьому тесту потрібно, щоб
+# ціль побачив саме дочірній `php`. Тому експортуємо тут, а не міняємо формат
+# команди: інакше чужа ціль перетікала б між випадками `api-target-switch`.
+set -a
 eval "$env_exports"
+set +a
 resolved="$BDO_ENV|$BDO_API_BASE"
 test "$resolved" = 'PROD|https://prod.example/api' || {
     printf 'BDO_ENV=PROD перебито чужим URL: %s\n' "$resolved" >&2

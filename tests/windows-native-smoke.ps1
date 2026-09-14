@@ -316,9 +316,25 @@ if ($batStdout -notmatch 'http://127\.0\.0\.1:[0-9]+/\?t=[0-9a-fA-F]+') {
 # `bash=absent` ловить доступність bash, а наступний ловить несправний --stop.
 Write-Output "bdo.bat native web: status=0; second-same-url=1; stop=$($batStop.Code); port-free=1; printed-url=1"
 
-$envResult = Invoke-Cli @($entry, 'env') 'env-negative'
-if ($envResult.Code -eq 0) {
-    Fail 'env unexpectedly succeeded while bash was absent.'
+# `env` БІЛЬШЕ НЕ Є негативним контролем · і це саме те, заради чого робився
+# підетап 9.3. Раніше вибір цілі жив у `cli/system/select-env.sh`, тому на
+# Windows без bash команда падала, і смок цим користувався. Тепер ціль
+# розвʼязує PHP (`ApiEnvironment`), тому `env` мусить ПРАЦЮВАТИ.
+$envResult = Invoke-Cli @($entry, 'env') 'env-positive'
+if ($envResult.Code -ne 0) {
+    Fail "env must work natively without bash; code $($envResult.Code): $($envResult.Stderr)"
+}
+if ($envResult.Stderr -notmatch [regex]::Escape('Ціль: DEV')) {
+    Fail 'env did not announce the synthetic DEV target.'
 }
 
-Write-Output "Windows native smoke: PHP_OS_FAMILY=Windows; help=$($help.Code); run-spec-status=$($status.Code); run-loop-no-batch=$($runLoop.Code); env-negative=$($envResult.Code); bash=absent"
+# Негативний контроль лишається, але тепер на команді, яка bash СПРАВДІ
+# потребує: `gate` виконує `scripts/agent-check.sh`. Якщо вона раптом почне
+# проходити без bash · значить PATH більше не очищений, і решта доказів цього
+# смоку нічого не варта.
+$gateResult = Invoke-Cli @($entry, 'gate', 'docs') 'gate-negative'
+if ($gateResult.Code -eq 0) {
+    Fail 'gate unexpectedly succeeded while bash was absent · PATH is not sanitized.'
+}
+
+Write-Output "Windows native smoke: PHP_OS_FAMILY=Windows; help=$($help.Code); run-spec-status=$($status.Code); run-loop-no-batch=$($runLoop.Code); env-works=$($envResult.Code); gate-negative=$($gateResult.Code); bash=absent"
