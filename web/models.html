@@ -34,6 +34,26 @@
     </div>
 
     <div class="panel">
+      <div class="bar" style="margin-bottom:8px">
+        <span style="font-weight:500">роздуми моделі</span>
+        <span class="empty">застосовуються з наступного виклику ролі</span>
+      </div>
+      <div class="row" style="align-items:center;flex-wrap:wrap">
+        <label class="sw" for="thinkToggle">
+          <input id="thinkToggle" type="checkbox">
+          <span class="track"></span>
+          <span>вмикати роздуми</span>
+        </label>
+        <label for="thinkLimit">стеля thinking, байт
+          <input id="thinkLimit" type="number" min="1" max="4194304" step="1" inputmode="numeric">
+        </label>
+        <button id="saveThinking" class="btn-primary" type="button" data-action="models.settings">зберегти</button>
+        <span id="thinkState" class="empty"></span>
+      </div>
+      <div class="empty">Стеля обмежує роздуми моделі; після її досягнення виклик завершується з причиною <span class="mono">empty_content</span>.</div>
+    </div>
+
+    <div class="panel">
       <div class="bar" style="margin-bottom:8px"><span style="font-weight:500">каталог моделей</span><span id="loadState" class="empty" style="margin-left:auto"></span></div>
       <div id="models"><div class="load"><span class="spin"></span>беру перелік моделей…</div></div>
     </div>
@@ -94,7 +114,9 @@
         'models.select.role': 'модель обрано для ролі',
         'models.clear': 'загальний вибір скинуто',
         'models.clear.role': 'вибір ролі скинуто',
-        'models.load': 'завантаження почато · модель зʼявиться як завантажена'
+        'models.load': 'завантаження почато · модель зʼявиться як завантажена',
+        'models.unload': 'модель вивантажено з памʼяті',
+        'models.settings': 'налаштування роздумів збережено'
       })[action] || 'готово';
     }
     var steps = body.steps || [];
@@ -154,6 +176,16 @@
     B.el('selection').innerHTML = html;
   }
 
+  function renderSettings(data) {
+    var settings = data.settings || {};
+    var toggle = B.el('thinkToggle');
+    var limit = B.el('thinkLimit');
+    if (!toggle || !limit) { return; }
+    toggle.checked = settings.think === true;
+    limit.value = settings.think_limit_bytes || '';
+    B.el('thinkState').textContent = toggle.checked ? 'увімкнено' : 'вимкнено';
+  }
+
   function renderModels(data) {
     var catalog = data.catalog;
     if (!catalog) {
@@ -171,7 +203,8 @@
       return '<tr><td>' + B.esc(model.runtime) + '</td><td class="mono">' + B.esc(model.model) + '</td>'
         + '<td>' + B.esc(model.size) + '</td><td>' + (String(model.loaded) === 'так' ? '✅ ' : '⚪️ ') + B.esc(model.loaded) + '</td><td>' + unavailable + '</td><td>'
         + '<button type="button" data-action="models.select" data-runtime="' + B.esc(model.runtime) + '" data-model="' + B.esc(model.model) + '"' + disabled + '>⭐ обрати загально</button> '
-        + '<button type="button" data-action="models.load" data-runtime="' + B.esc(model.runtime) + '" data-model="' + B.esc(model.model) + '"' + disabled + '>⬇️ завантажити</button></td></tr>';
+        + '<button type="button" data-action="models.load" data-runtime="' + B.esc(model.runtime) + '" data-model="' + B.esc(model.model) + '"' + disabled + '>⬇️ завантажити</button> '
+        + '<button type="button" data-action="models.unload" data-runtime="' + B.esc(model.runtime) + '" data-model="' + B.esc(model.model) + '"' + disabled + '>⏏️ вивантажити</button></td></tr>';
     }).join('');
     B.el('models').innerHTML = '<table><thead><tr><th>рантайм</th><th>модель</th><th>розмір</th><th>завантажена</th><th>стан</th><th>дії</th></tr></thead><tbody>' + rows + '</tbody></table>';
     var options = models.filter(function (m) { return !m.reason; }).map(function (m, index) {
@@ -213,6 +246,10 @@
         if (button.dataset.runtime) { payload.runtime = button.dataset.runtime; }
         if (button.dataset.model) { payload.model = button.dataset.model; }
         if (button.dataset.role) { payload.role = button.dataset.role; }
+        if (action === 'models.settings') {
+          payload.think = B.el('thinkToggle').checked;
+          payload.think_limit_bytes = Number(B.el('thinkLimit').value);
+        }
         if (action === 'models.select.role') {
           var select = document.querySelector('.roleModel[data-role="' + CSS.escape(button.dataset.role) + '"]');
           var option = select ? select.options[select.selectedIndex] : null;
@@ -254,6 +291,7 @@
       var state = data.load || {};
       B.el('loadState').textContent = state.status === 'loading' ? 'модель вантажиться…' : (state.status === 'failed' ? 'останнє завантаження не вдалося' : '');
       renderSelection(data);
+      renderSettings(data);
       renderModels(data);
       bindActions();
       if (state.status === 'loading') {

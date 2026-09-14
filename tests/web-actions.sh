@@ -50,6 +50,8 @@ $cases = [
     ["models.clear", []],
     ["models.clear.role", ["role" => "translation-worker"]],
     ["models.load", ["runtime" => "omlx", "model" => "model-a"]],
+    ["models.unload", ["runtime" => "omlx", "model" => "model-a"]],
+    ["models.settings", ["think" => true, "think_limit_bytes" => 8192]],
 ];
 $checked = 0;
 foreach ($cases as [$action, $payload]) {
@@ -78,6 +80,8 @@ foreach (Actions::names() as $name) {
         "models.select.role" => ["runtime" => "ollama", "model" => "model-a", "role" => "translation-worker"],
         "models.clear.role" => ["role" => "translation-worker"],
         "models.load" => ["runtime" => "omlx", "model" => "model-a"],
+        "models.unload" => ["runtime" => "omlx", "model" => "model-a"],
+        "models.settings" => ["think" => false, "think_limit_bytes" => 8192],
         default => [],
     };
     Actions::plan($name, $payload);

@@ -56,7 +56,7 @@ final class Actions
         return ['run.start', 'run.stop', 'session.new', 'session.close', 'session.journals.drop',
             'session.delete', 'moderation.approve', 'moderation.reject',
             'models.refresh', 'models.select', 'models.select.role', 'models.clear',
-            'models.clear.role', 'models.load'];
+            'models.clear.role', 'models.load', 'models.unload', 'models.settings'];
     }
 
     /**
@@ -329,6 +329,23 @@ final class Actions
                 $plan['steps'][0][2] = 'load';
                 $plan['detached'] = true;
                 return $plan;
+
+            case 'models.unload':
+                return self::modelAction($payload, false, 'вивантажити модель з памʼяті');
+
+            case 'models.settings':
+                if (! is_bool($payload['think'] ?? null)) {
+                    throw new RuntimeException('think: потрібно true або false');
+                }
+                $limit = self::count('think_limit_bytes', $payload['think_limit_bytes'] ?? '', 4 * 1024 * 1024);
+
+                return [
+                    'steps' => [['./bdo', 'models', 'settings', '--think', $payload['think'] ? '1' : '0', '--think-limit-bytes', (string) $limit]],
+                    'env' => [],
+                    'detached' => false,
+                    'needs_confirm' => false,
+                    'label' => 'зберегти налаштування роздумів',
+                ];
 
             default:
                 throw new RuntimeException('невідома дія: '.$action.' · дозволено лише '.implode(', ', self::names()));

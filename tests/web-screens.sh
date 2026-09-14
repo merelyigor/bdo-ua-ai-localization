@@ -69,7 +69,7 @@ grep -Fq 'вік переліку' "$MODELS" || fail 'екран моделей 
 grep -Fq 'age(catalog.captured_at)' "$MODELS" || fail 'екран моделей не обчислює вік каталогу'
 grep -Fq 'data-action="models.refresh"' "$MODELS" || fail 'кнопка оновлення каталогу не є дією models.refresh'
 grep -Fq 'models.select.role' "$MODELS" || fail 'екран моделей не має дії вибору моделі для ролі'
-for action in models.refresh models.select models.select.role models.clear models.clear.role models.load; do
+for action in models.refresh models.select models.select.role models.clear models.clear.role models.load models.unload models.settings; do
     grep -Fq "$action" "$MODELS" || fail "екран моделей не називає дію $action"
 done
 php -r '
@@ -83,7 +83,7 @@ foreach ($matches[1] as $action) {
         fwrite(STDERR, "кнопка models має дію поза Actions: $action\\n"); exit(1);
     }
 }
-foreach (["models.refresh", "models.select", "models.select.role", "models.clear", "models.clear.role", "models.load"] as $action) {
+foreach (["models.refresh", "models.select", "models.select.role", "models.clear", "models.clear.role", "models.load", "models.unload", "models.settings"] as $action) {
     if (! in_array($action, $allowed, true)) { fwrite(STDERR, "немає плану для $action\\n"); exit(1); }
 }
 ' "$ROOT/lib/autoload.php" "$MODELS" || fail 'кнопка екрана моделей не має команди з Actions/реєстру'
@@ -263,7 +263,6 @@ for page in "$RUN" "$QUEUE" "$SESSIONS" "$START" "$MODELS"; do
         && fail "у ${page#"$ROOT/"} є кнопка паузи, а команди паузи в наборі немає"
 done
 # Перемикач роздумів спирається на СПРАВЖНЮ змінну й доходить до прогону.
-grep -Fq "id=\"think\"" "$START" || fail 'на екрані старту немає перемикача роздумів (макет 01)'
 grep -Fq 'BDO_MODEL_THINK' "$ROOT/lib/Run/Actions.php" \
     || fail 'перемикач роздумів не переходить у план'
 grep -Fq 'BDO_MODEL_THINK' "$ROOT/cli/model/client.php" \
@@ -289,6 +288,16 @@ foreach ($on as $line) {
     }
 }
 ' "$ROOT/lib/autoload.php" || fail 'перемикач роздумів показує в плані не те, що виконається'
+grep -Fq 'id="thinkToggle"' "$MODELS" \
+    || fail 'на екрані моделей немає persistent перемикача роздумів'
+grep -Fq 'id="thinkLimit"' "$MODELS" \
+    || fail 'на екрані моделей немає стелі роздумів'
+grep -Fq 'data-action="models.settings"' "$MODELS" \
+    || fail 'збереження стелі не проходить через models.settings'
+grep -Fq 'models.unload' "$MODELS" \
+    || fail 'у каталозі моделей немає кнопки вивантаження'
+grep -Fq 'unload_unsupported' "$ROOT/lib/Model/RuntimeModels.php" \
+    || fail 'відмова Ollama від вивантаження не має названої причини'
 
 # --- 10. Мертвого коду в стилях не лишилось ---------------------------------
 grep -Fq '.tab[aria-selected' "$ROOT/web/app.css" \

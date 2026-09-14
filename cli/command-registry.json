@@ -250,8 +250,8 @@
           "що вміє поточна ціль API (перевіряється запитом)"
         ],
         [
-          "models list|select|clear|load",
-          "перелік моделей Ollama/oMLX, операційний вибір і завантаження"
+          "models list|select|clear|load|unload|settings",
+          "перелік моделей Ollama/oMLX, операційний вибір, памʼять і стеля роздумів"
         ]
       ]
     }
@@ -273,7 +273,7 @@
     "^\\.\\/bdo$",
     "^\\.\\/bdo help( [a-z-]+)?$",
     "^\\.\\/bdo (paths|platform|api|runtime)$",
-    "^\\.\\/bdo models( list( --json)?| (clear|reset)( --role( [a-zA-Z0-9_-]+|=[a-zA-Z0-9_-]+)?)?| select [^[:space:]]+( [^[:space:]]+)?( --role( [a-zA-Z0-9_-]+|=[a-zA-Z0-9_-]+)?)?| load [^[:space:]]+ [^[:space:]]+)?$",
+    "^\\.\\/bdo models( list( --json)?| (clear|reset)( --role( [a-zA-Z0-9_-]+|=[a-zA-Z0-9_-]+)?)?| select [^[:space:]]+( [^[:space:]]+)?( --role( [a-zA-Z0-9_-]+|=[a-zA-Z0-9_-]+)?)?| (load|unload) [^[:space:]]+ [^[:space:]]+| settings --think [01] --think-limit-bytes [1-9][0-9]*)?$",
     "^\\.\\/bdo capabilities( --refresh)?$",
     "^\\.\\/bdo platform --fix$",
     "^\\.\\/bdo patch( (active|[0-9]{1,6}))?$",

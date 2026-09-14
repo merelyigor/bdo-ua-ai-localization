@@ -40,6 +40,7 @@ require __DIR__.'/../../lib/autoload.php';
 use Bdo\Translate\Session\Ledger;
 use Bdo\Translate\Ui\Labels;
 use Bdo\Translate\Run\Actions;
+use Bdo\Translate\Model\ModelSettings;
 use Bdo\Translate\Web\Runner;
 use Bdo\Translate\Web\Snapshot;
 
@@ -433,16 +434,20 @@ switch ($path) {
         $catalogPath = rtrim($stateDir, '/').'/model-catalog.json';
         $selectionPath = rtrim($stateDir, '/').'/model-selection.json';
         $loadPath = rtrim($stateDir, '/').'/model-load.json';
+        $configPath = getenv('BDO_ROLES_CONFIG') ?: dirname(__DIR__, 2).'/config/roles.json';
+        $config = json_decode((string) @file_get_contents($configPath), true);
+        $config = is_array($config) ? $config : [];
+        $settings = ModelSettings::resolve($stateDir, $config, [], (int) ($config['num_predict'] ?? 8192));
         $catalog = is_file($catalogPath) ? json_decode((string) file_get_contents($catalogPath), true) : null;
         $selection = is_file($selectionPath) ? json_decode((string) file_get_contents($selectionPath), true) : [];
         $load = is_file($loadPath) ? json_decode((string) file_get_contents($loadPath), true) : [];
         if (! is_array($catalog)) {
-            $json(['catalog' => null, 'selection' => is_array($selection) ? $selection : [], 'load' => is_array($load) ? $load : [], 'error' => 'catalog_missing', 'hint' => 'перелік ще не знято · натисни «оновити перелік»']);
+            $json(['catalog' => null, 'selection' => is_array($selection) ? $selection : [], 'settings' => $settings, 'load' => is_array($load) ? $load : [], 'error' => 'catalog_missing', 'hint' => 'перелік ще не знято · натисни «оновити перелік»']);
 
             return;
         }
         $catalog['selection'] = is_array($selection) ? $selection : ($catalog['selection'] ?? []);
-        $json(['catalog' => $catalog, 'selection' => $catalog['selection'], 'load' => is_array($load) ? $load : []]);
+        $json(['catalog' => $catalog, 'selection' => $catalog['selection'], 'settings' => $settings, 'load' => is_array($load) ? $load : []]);
 
         return;
 

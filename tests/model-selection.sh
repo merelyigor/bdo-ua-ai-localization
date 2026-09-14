@@ -41,6 +41,12 @@ if ($path === '/admin/api/models/omlx-model/load') {
     echo json_encode(['loaded' => true]);
     return true;
 }
+if ($path === '/admin/api/models/omlx-model/unload') {
+    file_put_contents($state.'.omlx-unloaded', '1');
+    header('Content-Type: application/json');
+    echo json_encode(['loaded' => false]);
+    return true;
+}
 if ($path === '/v1/chat/completions') {
     file_put_contents($state.'.omlx-request', $body);
     header('Content-Type: text/event-stream');
@@ -96,6 +102,11 @@ json_output="$(run_bdo models list --json)"
 php -r '$d=json_decode($argv[1],true); $models=$d["models"]??[]; if (!is_string($d["captured_at"]??null) || count($models)!==2 || !is_array($d["roles"]??null)) { fwrite(STDERR,"catalog JSON не містить мітку, два runtime і ролі\n"); exit(1); } foreach ($models as $m) { if (!isset($m["runtime"],$m["model"],$m["size"],$m["loaded"])) { fwrite(STDERR,"catalog entry неповний\n"); exit(1); } }' "$json_output" \
     || fail 'models list --json не повернув повний каталог'
 test -s "$WORK/state/model-catalog.json" || fail 'models list --json не записав state/model-catalog.json'
+php -r '$d=json_decode($argv[1],true); $s=$d["settings"]??[]; if (($s["think"]??null)!==false || ($s["think_limit_bytes"]??0)!==8192) { fwrite(STDERR,"default model settings не зберегли чинну стелю\n"); exit(1); }' "$json_output" \
+    || fail 'catalog не повернув default think settings'
+run_bdo models settings --think 1 --think-limit-bytes 33 | grep -Fq 'з наступного виклику ролі' || fail 'settings не підтвердили збереження'
+php -r '$s=json_decode(file_get_contents($argv[1]),true); exit(($s["think"]??false)===true && ($s["think_limit_bytes"]??0)===33 ? 0 : 1);' "$WORK/state/model-settings.json" \
+    || fail 'settings не збережені в state/model-settings.json'
 
 select_output="$(run_bdo models select omlx omlx-model --role translation-worker)"
 grep -Fq 'Вибір збережено: роль translation-worker = omlx / omlx-model' <<<"$select_output" || fail "select: $select_output"
@@ -108,6 +119,15 @@ php -r '$d=json_decode(file_get_contents($argv[1]),true); foreach ($d["roles"]??
 run_bdo models load omlx omlx-model | grep -Fq 'завантажена в памʼять' || fail 'oMLX load не дочекався loaded=true'
 run_bdo models load ollama ollama-model | grep -Fq 'прогріта порожнім викликом POST /api/chat' || fail 'Ollama load не назвав порожній warmup'
 grep -Fq 'keep_alive' "$STATE_FILE.ollama-request" && fail 'Ollama warmup перекрив keep_alive'
+run_bdo models unload omlx omlx-model | grep -Fq 'вивантажена з памʼяті' || fail 'oMLX unload не викликав admin API'
+test -s "$STATE_FILE.omlx-unloaded" || fail 'oMLX unload не дійшов до admin API'
+set +e
+ollama_unload="$(run_bdo models unload ollama ollama-model 2>&1)"
+unload_code=$?
+set -e
+test "$unload_code" -eq 1 || fail 'Ollama unload мусить бути названою відмовою'
+grep -Fq 'unload_unsupported' <<<"$ollama_unload" || fail "Ollama unload без причини: $ollama_unload"
+grep -Fq 'керування памʼяттю належить власнику' <<<"$ollama_unload" || fail 'Ollama unload не пояснив межу відповідальності'
 
 BDO_MODEL_SHOW=0 BDO_ROLES_CONFIG="$WORK/roles.json" BDO_STATE_DIR="$WORK/state" \
     php "$ROOT/cli/model/client.php" translation-worker "$WORK/payload.json" "$WORK/response.json" --schema "$WORK/schema.json" \

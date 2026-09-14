@@ -43,6 +43,16 @@
         <span id="modelNote" class="empty">чинний вибір застосовується з наступного виклику ролі</span>
       </div>
 
+      <!-- РОЗДУМИ · тут лише ПІДПИС стану, керування живе на екрані моделей.
+           Другий комплект перемикачів означав би другу правду про той самий
+           стан: власник міняв би його у двох місцях і не знав, яке з них
+           чинне. Той самий підхід уже вжито для вибору моделі вище. -->
+      <div class="bar" style="margin:0 0 12px">
+        <span class="lbl">роздуми</span>
+        <span id="think" class="empty">стан читається з налаштувань моделей</span>
+        <a href="/models" class="as-button">змінити →</a>
+      </div>
+
       <div class="bar" style="margin-bottom:4px"><span class="lbl">режим</span></div>
       <div class="bar" id="modes" style="align-items:stretch"></div>
 
@@ -62,13 +72,6 @@
         <input id="batches" type="number" min="1" max="200" value="1" style="width:80px">
       </div>
       <div class="empty" id="patchHint" style="margin-top:6px"></div>
-
-      <div class="bar" style="margin:12px 0 4px"><span class="lbl">роздуми</span></div>
-      <label class="sw">
-        <input type="checkbox" id="think"><span class="track"></span>
-        <span>Дозволити моделі думати вголос перед відповіддю
-          <span class="empty">· якість інколи вища, час приблизно вшестеро довший (7.6 с проти 44.8 с на тому самому запиті)</span></span>
-      </label>
 
       <div class="bar" style="margin:12px 0 4px"><span class="lbl">що запуститься</span></div>
       <div class="box mono" id="preview" style="margin-top:0">—</div>
@@ -194,7 +197,6 @@
     if (domain) { p.domain = domain; }
     var batches = B.el('batches').value;
     if (batches) { p.batches = batches; }
-    if (B.el('think').checked) { p.think = true; }
     return p;
   }
 
@@ -239,19 +241,19 @@
 
   // Відновлюємо збережене ДО першого показу команди, інакше перший рендер
   // покаже одне, а памʼять · інше.
-  ['domain', 'batches', 'think'].forEach(function (id) {
+  ['domain', 'batches'].forEach(function (id) {
     var node = B.el(id);
     var saved = P.get(id, null);
     if (saved === null) { return; }
     if (node.type === 'checkbox') { node.checked = !!saved; } else { node.value = saved; }
   });
-  ['domain', 'batches', 'think'].forEach(function (id) {
+  ['domain', 'batches'].forEach(function (id) {
     var node = B.el(id);
     node.addEventListener('change', function () {
       P.set(id, node.type === 'checkbox' ? node.checked : node.value);
     });
   });
-  ['domain', 'batches', 'think'].forEach(function (id) {
+  ['domain', 'batches'].forEach(function (id) {
     B.el(id).onchange = refresh;
     B.el(id).oninput = refresh;
   });
@@ -261,7 +263,17 @@
       + (d.domains || []).map(function (x) { return '<option>' + B.esc(x) + '</option>'; }).join('');
   }).catch(function () {});
 
-  B.get('/api/models').then(renderModelPicker).catch(function () {
+  function renderThinkState(data) {
+    var node = B.el('think');
+    if (!node) { return; }
+    var s = (data && data.settings) || {};
+    if (s.think === undefined) { node.textContent = 'стан невідомий · відкрий екран моделей'; return; }
+    node.textContent = s.think
+      ? ('увімкнені · стеля ' + (s.think_limit || '—'))
+      : 'вимкнені';
+  }
+
+  B.get('/api/models').then(function (data) { renderModelPicker(data); renderThinkState(data); }).catch(function () {
     B.el('modelNote').textContent = 'каталог моделей не прочитано · відкрий повний екран';
   });
 

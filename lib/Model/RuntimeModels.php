@@ -82,6 +82,23 @@ final class RuntimeModels
         throw new ModelRuntimeError('load_timeout', 'oMLX не підтвердив завантаження моделі «'.$model.'» за '.$timeout.' с');
     }
 
+    public function unload(string $runtime, string $model): string
+    {
+        if ($runtime === 'ollama') {
+            throw new ModelRuntimeError(
+                'unload_unsupported',
+                'Ollama не має штатного API вивантаження · керування памʼяттю належить власнику; keep_alive не використовується набором'
+            );
+        }
+
+        $this->assertModel($runtime, $model);
+        $settings = $this->settings($runtime);
+        $admin = $this->adminEndpoint($settings);
+        $this->requestJson('POST', $admin.'/admin/api/models/'.rawurlencode($model).'/unload', [], 'unload');
+
+        return 'omlx: модель «'.$model.'» вивантажена з памʼяті';
+    }
+
     /** @return list<array{runtime:string,model:string,size:string,loaded:string}> */
     private function runtimeModels(string $runtime): array
     {
@@ -181,7 +198,10 @@ final class RuntimeModels
             throw new ModelRuntimeError('runtime_unreachable', $url.' не відповідає');
         }
         if ($status >= 400) {
-            throw new ModelRuntimeError($operation === 'catalog' || $operation === 'loaded' ? 'runtime_unavailable' : 'load_failed', $url.' повернув HTTP '.$status);
+            $reason = $operation === 'catalog' || $operation === 'loaded'
+                ? 'runtime_unavailable'
+                : ($operation === 'unload' ? 'unload_failed' : 'load_failed');
+            throw new ModelRuntimeError($reason, $url.' повернув HTTP '.$status);
         }
         if (($operation === 'load') && trim((string) $raw) === '') {
             return [];
@@ -195,7 +215,10 @@ final class RuntimeModels
             throw new ModelRuntimeError('bad_runtime_response', $url.' повернув не обʼєкт');
         }
         if (isset($decoded['error'])) {
-            throw new ModelRuntimeError($operation === 'catalog' || $operation === 'loaded' ? 'runtime_unavailable' : 'load_failed', (string) $decoded['error']);
+            $reason = $operation === 'catalog' || $operation === 'loaded'
+                ? 'runtime_unavailable'
+                : ($operation === 'unload' ? 'unload_failed' : 'load_failed');
+            throw new ModelRuntimeError($reason, (string) $decoded['error']);
         }
         return $decoded;
     }

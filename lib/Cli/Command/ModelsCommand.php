@@ -9,6 +9,7 @@ use Bdo\Translate\Cli\CommandHelp;
 use Bdo\Translate\Cli\Output;
 use Bdo\Translate\Model\ModelRuntimeError;
 use Bdo\Translate\Model\ModelSelection;
+use Bdo\Translate\Model\ModelSettings;
 use Bdo\Translate\Model\RuntimeModels;
 
 /** Lists, selects and loads models from the configured local runtimes. */
@@ -32,7 +33,9 @@ final class ModelsCommand implements Command, CommandHelp
                 'select', 'set' => $this->select($catalog, $config, $stateDir, $rest, $output),
                 'clear', 'reset' => $this->clear($config, $stateDir, $rest, $output),
                 'load' => $this->load($catalog, $config, $stateDir, $rest, $output),
-                default => $this->failure('models: потрібно list, select, clear або load', $output, 2),
+                'unload' => $this->unload($catalog, $config, $stateDir, $rest, $output),
+                'settings' => $this->settings($config, $stateDir, $rest, $output),
+                default => $this->failure('models: потрібно list, select, clear, load, unload або settings', $output, 2),
             };
         } catch (ModelRuntimeError $exception) {
             return $this->failure($exception->reason.': '.$exception->getMessage(), $output);
@@ -71,6 +74,7 @@ final class ModelsCommand implements Command, CommandHelp
             'captured_at' => gmdate('c'),
             'models' => $catalog->list(),
             'selection' => $selection,
+            'settings' => ModelSettings::resolve($stateDir, $config, [], (int) ($config['num_predict'] ?? 8192)),
             'roles' => $roles,
         ];
     }
@@ -223,6 +227,36 @@ final class ModelsCommand implements Command, CommandHelp
         return 0;
     }
 
+    private function unload(RuntimeModels $catalog, array $config, string $stateDir, array $arguments, Output $output): int
+    {
+        if (count($arguments) !== 2) {
+            return $this->failure('models unload: використання `models unload <runtime> <model>`', $output, 2);
+        }
+        $message = $catalog->unload($arguments[0], $arguments[1]);
+        $this->writeCatalog($stateDir, $this->catalogData($catalog, $config, $stateDir));
+        $output->stdout($message."\n");
+
+        return 0;
+    }
+
+    private function settings(array $config, string $stateDir, array $arguments, Output $output): int
+    {
+        if (count($arguments) !== 4 || $arguments[0] !== '--think' || $arguments[2] !== '--think-limit-bytes') {
+            return $this->failure('models settings: використання `models settings --think <0|1> --think-limit-bytes <байти>`', $output, 2);
+        }
+        if (! in_array($arguments[1], ['0', '1'], true) || preg_match('/^[1-9][0-9]*$/', $arguments[3]) !== 1) {
+            return $this->failure('models settings: think є 0 або 1, стеля · додатне число байтів', $output, 2);
+        }
+        try {
+            ModelSettings::save($stateDir, $arguments[1] === '1', (int) $arguments[3]);
+        } catch (ModelRuntimeError $exception) {
+            return $this->failure($exception->reason.': '.$exception->getMessage(), $output);
+        }
+        $output->stdout('Налаштування збережено: think='.$arguments[1].', стеля='.$arguments[3].' байт з наступного виклику ролі'."\n");
+
+        return 0;
+    }
+
     private function inferRuntime(RuntimeModels $catalog, string $model): string
     {
         $matches = [];
@@ -259,12 +293,15 @@ final class ModelsCommand implements Command, CommandHelp
   ./bdo models select <runtime> <model> [--role <роль>]
   ./bdo models clear [--role <роль>]
   ./bdo models load <runtime> <model>
+  ./bdo models unload <runtime> <model>
+  ./bdo models settings --think <0|1> --think-limit-bytes <байти>
 
 `list --json` оновлює state/model-catalog.json. Вибір зберігається в
 state/model-selection.json. Порожній стан повертає
 порядок config/roles.json: model ролі, default_model провайдера, default_model
 набору. Ollama завантажується порожнім POST /api/chat без keep_alive; oMLX
-завантажується через POST /admin/api/models/{id}/load.
+завантажується через POST /admin/api/models/{id}/load і вивантажується через
+POST /admin/api/models/{id}/unload. Ollama не має штатного вивантаження.
 BDO_HELP_TEXT;
     }
 }

@@ -98,6 +98,12 @@ if (trim($model) === '') {
 $numCtx = (int) ($roleConfig['num_ctx'] ?? $config['num_ctx']);
 $numPredict = max(1, (int) ($roleConfig['num_predict'] ?? $config['num_predict'] ?? 8192));
 $timeout = (int) ($config['timeout_seconds'] ?? 900);
+try {
+    $settings = \Bdo\Translate\Model\ModelSettings::resolve($stateDir, $config, $roleConfig, $numPredict);
+} catch (\Bdo\Translate\Model\ModelRuntimeError $e) {
+    fwrite(STDERR, $e->reason.': '.$e->getMessage()."\n");
+    exit(1);
+}
 
 $promptPath = $root.'/roles/'.$role.'.md';
 if (! is_file($promptPath)) {
@@ -174,7 +180,8 @@ $started = microtime(true);
 $callsFile = $stateDir.'/model-calls.jsonl';
 $stats = ['in' => null, 'out' => null];
 $stream = getenv('BDO_MODEL_STREAM') !== '0';
-$think = getenv('BDO_MODEL_THINK') === '1';
+$think = $settings['think'];
+$thinkLimitBytes = $settings['think_limit_bytes'];
 $thinkObserved = false;
 $thinkMismatch = false;
 
@@ -234,7 +241,7 @@ $relative = static function (string $path) use ($stateDir): ?string {
     return substr($full, strlen($base) + 1);
 };
 
-$journal = static function (string $verdict) use ($callsFile, $role, $model, $provider, $started, $currentBatch, $runState, $rows, $payloadBytes, $relative, $payloadPath, $responsePath, &$stats, $numPredict, $think, &$thinkObserved, &$thinkMismatch): void {
+$journal = static function (string $verdict) use ($callsFile, $role, $model, $provider, $started, $currentBatch, $runState, $rows, $payloadBytes, $relative, $payloadPath, $responsePath, &$stats, $numPredict, $think, $thinkLimitBytes, &$thinkObserved, &$thinkMismatch): void {
     $dir = dirname($callsFile);
     if (! is_dir($dir) && ! mkdir($dir, 0777, true) && ! is_dir($dir)) {
         return;
@@ -261,6 +268,7 @@ $journal = static function (string $verdict) use ($callsFile, $role, $model, $pr
         'think_mismatch' => $thinkMismatch,
         'think_note' => $thinkMismatch ? 'requested_false_received_thinking' : '',
         'num_predict' => $numPredict,
+        'think_limit_bytes' => $thinkLimitBytes,
         'stream' => getenv('BDO_MODEL_STREAM') !== '0',
     ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)."\n", FILE_APPEND);
 };
@@ -331,7 +339,7 @@ $off = $dim !== '' ? "\033[0m" : '';
 $chunkSeen = 0;
 $thinkingOnlyBytes = 0;
 $contentSeen = false;
-$thinkingOnlyLimit = min($numPredict, 2048) * 4;
+$thinkingOnlyLimit = $thinkLimitBytes;
 $onChunk = function (string $text, bool $isThinking) use (
     $show, $dim, $off, $streamLog, $stream, &$chunkSeen, &$thinkingOnlyBytes,
     &$contentSeen, $thinkingOnlyLimit, &$thinkObserved, &$thinkMismatch, $think
@@ -344,19 +352,17 @@ $onChunk = function (string $text, bool $isThinking) use (
         if (! $think) {
             $thinkMismatch = true;
         }
-        if (! $contentSeen) {
-            $thinkingOnlyBytes += strlen($text);
-            if ($thinkingOnlyBytes > $thinkingOnlyLimit) {
-                // Код причини · САМЕ `empty_content`, бо його вже знають шість
-                // місць набору: звіт інцидентів, драйвер і три тести. А
-                // `no_answer` у наборі означає ІНШЕ · «терміну немає в
-                // каталозі» (`TerminologyPayloadCommand`), і перевантажувати
-                // його другим змістом означало б плутати два різні стани.
-                throw new \Bdo\Translate\Model\Transport\TransportError(
-                    'empty_content',
-                    'модель не дійшла до відповіді після '.$thinkingOnlyLimit.' байт thinking'
-                );
-            }
+        $thinkingOnlyBytes += strlen($text);
+        if ($thinkingOnlyBytes > $thinkingOnlyLimit) {
+            // Код причини · САМЕ `empty_content`, бо його вже знають шість
+            // місць набору: звіт інцидентів, драйвер і три тести. А
+            // `no_answer` у наборі означає ІНШЕ · «терміну немає в
+            // каталозі» (`TerminologyPayloadCommand`), і перевантажувати
+            // його другим змістом означало б плутати два різні стани.
+            throw new \Bdo\Translate\Model\Transport\TransportError(
+                'empty_content',
+                'модель не дійшла до відповіді після '.$thinkingOnlyLimit.' байт thinking'
+            );
         }
     } else {
         $contentSeen = true;
@@ -415,6 +421,9 @@ if ($window > 0 && $promptTokens > 0 && $promptTokens > (int) ($window * 0.9)) {
 
 $content = trim((string) ($answer['message']['content'] ?? ''));
 $thinking = trim((string) ($answer['message']['thinking'] ?? ''));
+if (strlen($thinking) > $thinkLimitBytes) {
+    $fail('empty_content', 'модель перевищила стелю після '.$thinkLimitBytes.' байт thinking');
+}
 if ($content === '' && $thinking !== '') {
     $fail('empty_content', 'модель не дійшла до відповіді · усе пішло в thinking');
 }
