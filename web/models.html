@@ -198,15 +198,17 @@
       return;
     }
     var rows = models.map(function (model) {
-      var unavailable = model.reason ? '<div class="empty" style="color:var(--dn-tx)">недоступний: ' + B.esc(model.reason) + '</div>' : '';
+      var availability = model.reason
+        ? '<span class="model-status model-status-unavailable">недоступна</span><div class="model-status-detail">' + B.esc(model.reason) + '</div>'
+        : '<span class="model-status model-status-available">доступна</span>';
       var disabled = model.reason ? ' disabled' : '';
-      return '<tr><td>' + B.esc(model.runtime) + '</td><td class="mono">' + B.esc(model.model) + '</td>'
-        + '<td>' + B.esc(model.size) + '</td><td>' + (String(model.loaded) === 'так' ? '✅ ' : '⚪️ ') + B.esc(model.loaded) + '</td><td>' + unavailable + '</td><td>'
-        + '<button type="button" data-action="models.select" data-runtime="' + B.esc(model.runtime) + '" data-model="' + B.esc(model.model) + '"' + disabled + '>⭐ обрати загально</button> '
-        + '<button type="button" data-action="models.load" data-runtime="' + B.esc(model.runtime) + '" data-model="' + B.esc(model.model) + '"' + disabled + '>⬇️ завантажити</button> '
-        + '<button type="button" data-action="models.unload" data-runtime="' + B.esc(model.runtime) + '" data-model="' + B.esc(model.model) + '"' + disabled + '>⏏️ вивантажити</button></td></tr>';
+      return '<tr class="model-row"><td class="model-runtime">' + B.esc(model.runtime) + '</td><td class="model-name mono" title="' + B.esc(model.model) + '">' + B.esc(model.model) + '</td>'
+        + '<td class="model-size">' + B.esc(model.size) + '</td><td class="model-loaded">' + (String(model.loaded) === 'так' ? '✅ ' : '⚪️ ') + B.esc(model.loaded) + '</td><td class="model-state">' + availability + '</td><td class="model-actions-cell"><div class="model-actions">'
+        + '<button class="model-action-primary" type="button" data-action="models.select" data-runtime="' + B.esc(model.runtime) + '" data-model="' + B.esc(model.model) + '"' + disabled + '>⭐ обрати загально</button>'
+        + '<button class="model-action" type="button" data-action="models.load" data-runtime="' + B.esc(model.runtime) + '" data-model="' + B.esc(model.model) + '"' + disabled + '>⬇️ завантажити</button>'
+        + '<button class="model-action" type="button" data-action="models.unload" data-runtime="' + B.esc(model.runtime) + '" data-model="' + B.esc(model.model) + '"' + disabled + '>⏏️ вивантажити</button></div></td></tr>';
     }).join('');
-    B.el('models').innerHTML = '<table><thead><tr><th>рантайм</th><th>модель</th><th>розмір</th><th>завантажена</th><th>стан</th><th>дії</th></tr></thead><tbody>' + rows + '</tbody></table>';
+    B.el('models').innerHTML = '<div class="model-table-wrap"><table class="model-table"><thead><tr><th>рантайм</th><th>модель</th><th>розмір</th><th>завантажена</th><th>стан</th><th>дії</th></tr></thead><tbody>' + rows + '</tbody></table></div>';
     var options = models.filter(function (m) { return !m.reason; }).map(function (m, index) {
       var full = m.runtime + ' / ' + m.model;
       return '<option value="model-' + index + '" data-runtime="' + B.esc(m.runtime) + '" data-model="' + B.esc(m.model) + '"'
