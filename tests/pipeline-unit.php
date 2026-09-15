@@ -8,10 +8,16 @@ use Bdo\Translate\Api\ErrorCodes;
 use Bdo\Translate\Api\IdempotencyKey;
 use Bdo\Translate\Pipeline\ChannelRouter;
 use Bdo\Translate\Batch\Memory;
+use Bdo\Translate\Batch\NewlineToken;
 use Bdo\Translate\Batch\RowSet;
 use Bdo\Translate\Batch\Workspace;
+use Bdo\Translate\Cli\Command\Heal\HealPlanCommand;
+use Bdo\Translate\Cli\Command\Prepare\WorkerPayloadCommand;
+use Bdo\Translate\Cli\Command\Run\RunDriveCommand;
+use Bdo\Translate\Cli\Output;
 use Bdo\Translate\Pipeline\RunSpec;
 use Bdo\Translate\Pipeline\StateMachine;
+use Bdo\Translate\Quality\Defects;
 use Bdo\Translate\Quality\VerdictSet;
 
 function expect(bool $condition, string $message): void
@@ -231,6 +237,157 @@ file_put_contents($rejectFile, json_encode(['data' => ['results' => [
 ]]], JSON_UNESCAPED_UNICODE));
 $plain = Bdo\Translate\Api\Response::fromFile($rejectFile)->rejections();
 expect(($plain['ddd'] ?? '') === 'API: unchanged Без змін.', 'відмова без details зіпсована: '.($plain['ddd'] ?? ''));
+
+    // Видимий токен переносів проходить через обидва payload-builder-и, а
+    // відповідь декодується драйвером до mechanical quality.
+    $multiline = "Alpha\nBeta\nGamma";
+    $multilineHash = str_repeat('c', 64);
+    $newlineToken = NewlineToken::TOKEN;
+    $multilineRowsFile = $root.'/multiline-rows.json';
+    file_put_contents($multilineRowsFile, json_encode(['data' => ['rows' => [[
+        'identity_hash' => $multilineHash,
+        'source_hash' => hash('sha256', $multiline),
+        'source_text' => $multiline,
+        'layers' => ['machine' => ['text' => "Old\nText\nLine"]],
+    ]]]], JSON_THROW_ON_ERROR));
+
+    $capture = static function (object $command, array $arguments): array {
+        $stdout = tmpfile();
+        $stderr = tmpfile();
+        if ($stdout === false || $stderr === false) {
+            throw new RuntimeException('не вдалося відкрити потоки тестового виводу');
+        }
+        try {
+            $code = $command->execute($arguments, new Output($stdout, $stderr));
+            rewind($stdout);
+            rewind($stderr);
+
+            return [
+                'code' => $code,
+                'stdout' => stream_get_contents($stdout) ?: '',
+                'stderr' => stream_get_contents($stderr) ?: '',
+            ];
+        } finally {
+            fclose($stdout);
+            fclose($stderr);
+        }
+    };
+
+    $workerResult = $capture(new WorkerPayloadCommand(), [$multilineRowsFile, '--no-context', '--with-current']);
+    expect($workerResult['code'] === 0, 'worker newline payload command failed');
+    $workerPayload = json_decode($workerResult['stdout'], true, 512, JSON_THROW_ON_ERROR);
+    $workerItem = $workerPayload['items'][0] ?? [];
+    expect($workerItem['source_text'] === 'Alpha'.$newlineToken.'Beta'.$newlineToken.'Gamma', 'worker source newlines were not encoded');
+    expect($workerItem['current'] === 'Old'.$newlineToken.'Text'.$newlineToken.'Line', 'worker current newlines were not encoded');
+    expect(! str_contains($workerItem['source_text'], "\n") && ! str_contains($workerItem['current'], "\n"), 'worker payload retained a raw newline');
+    expect(substr_count((string) $workerItem['source_text'], NewlineToken::TOKEN) === 2, 'worker lost a newline token');
+    expect(in_array(NewlineToken::TOKEN, $workerItem['keep'] ?? [], true), 'worker newline token is absent from keep');
+
+    $repairState = $root.'/repair-state';
+    mkdir($repairState, 0o755, true);
+    $multilineRows = RowSet::fromFile($multilineRowsFile);
+    $repairWorkspace = Workspace::create($repairState, $multilineRows, '20260916_120000');
+    copy($multilineRowsFile, $repairWorkspace->path('rows.json'));
+    $repairCandidateFile = $root.'/repair-candidate.json';
+    file_put_contents($repairCandidateFile, json_encode([[
+        'identity_hash' => $multilineHash,
+        'text' => 'DeltaThetaOmega',
+    ]], JSON_THROW_ON_ERROR));
+    $repairVerdictFile = $root.'/repair-verdicts.json';
+    file_put_contents($repairVerdictFile, json_encode([[
+        'identity_hash' => $multilineHash,
+        'status' => 'REJECT',
+        'severity' => 'critical',
+        'issue' => 'переносів рядка 0 замість 2',
+        'fix' => '',
+    ]], JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR));
+    $previousStateDir = getenv('BDO_STATE_DIR');
+    putenv('BDO_STATE_DIR='.$repairState);
+    $repairResult = $capture(new HealPlanCommand(), [$multilineRowsFile, $repairCandidateFile, $repairVerdictFile]);
+    expect($repairResult['code'] === 0, 'repair payload command failed');
+    $repairPayload = json_decode((string) file_get_contents($repairWorkspace->path('heal-repair-payload.json')), true, 512, JSON_THROW_ON_ERROR);
+    $repairItem = $repairPayload['items'][0] ?? $repairPayload[0] ?? [];
+    expect($repairItem['source_text'] === 'Alpha'.$newlineToken.'Beta'.$newlineToken.'Gamma', 'repair source newlines were not encoded');
+    expect($repairItem['current'] === 'DeltaThetaOmega', 'repair current changed unexpectedly');
+    expect(! str_contains($repairItem['source_text'], "\n") && ! str_contains($repairItem['current'], "\n"), 'repair payload retained a raw newline');
+    expect(in_array(NewlineToken::TOKEN, $repairItem['keep'] ?? [], true), 'repair newline token is absent from keep');
+
+    $newlineOffsets = static function (string $text): array {
+        $offsets = [];
+        $offset = 0;
+        while (($found = strpos($text, "\n", $offset)) !== false) {
+            $offsets[] = $found;
+            $offset = $found + 1;
+        }
+
+        return $offsets;
+    };
+    $runWorkspace = static function (string $stateDir, RowSet $rows, string $stamp) use ($multilineRowsFile): Workspace {
+        mkdir($stateDir, 0o755, true);
+        $workspace = Workspace::create($stateDir, $rows, $stamp);
+        copy($multilineRowsFile, $workspace->path('rows.json'));
+        foreach (['prepared', 'awaiting_worker', 'candidate_valid'] as $state) {
+            $workspace->transition($state);
+        }
+
+        return $workspace;
+    };
+
+    $workerRunState = $root.'/worker-run-state';
+    $workerRunWorkspace = $runWorkspace($workerRunState, $multilineRows, '20260916_120001');
+    file_put_contents($workerRunWorkspace->path('candidate.json'), json_encode([[
+        'identity_hash' => $multilineHash,
+        'text' => 'Delta'.$newlineToken.'Iota'.$newlineToken.'Omega',
+    ]], JSON_THROW_ON_ERROR));
+    putenv('BDO_STATE_DIR='.$workerRunState);
+    putenv('BDO_PIPELINE_OFFLINE=1');
+    putenv('BDO_JUDGE=off');
+    $runResult = $capture(new RunDriveCommand(), []);
+    expect($runResult['code'] === 0, 'worker run did not reach quality pipeline');
+    $cleanItems = json_decode((string) file_get_contents($workerRunWorkspace->path('clean.json')), true, 512, JSON_THROW_ON_ERROR);
+    $cleanText = (string) ($cleanItems[0]['text'] ?? '');
+    expect($cleanText === "Delta\nIota\nOmega", 'worker response was not decoded before quality');
+    expect(! str_contains($cleanText, NewlineToken::TOKEN), 'worker token reached clean.json');
+    expect(Defects::inTranslation($multilineRows->getOrEmpty($multilineHash), $cleanText) === [], 'decoded worker response still has mechanical defects');
+
+    $lostRunState = $root.'/lost-run-state';
+    $lostRunWorkspace = $runWorkspace($lostRunState, $multilineRows, '20260916_120002');
+    file_put_contents($lostRunWorkspace->path('candidate.json'), json_encode([[
+        'identity_hash' => $multilineHash,
+        'text' => 'DeltaThetaOmega',
+    ]], JSON_THROW_ON_ERROR));
+    putenv('BDO_STATE_DIR='.$lostRunState);
+    $lostResult = $capture(new RunDriveCommand(), []);
+    expect($lostResult['code'] === 0, 'lost-token run did not reach mechanical quality');
+    $lostVerdicts = (string) file_get_contents($lostRunWorkspace->path('pre-verdicts.json'));
+    expect(str_contains($lostVerdicts, 'переносів рядка 0 замість 2'), 'lost newline token bypassed the named defect');
+
+    $repairRunState = $root.'/repair-run-state';
+    $repairRunWorkspace = $runWorkspace($repairRunState, $multilineRows, '20260916_120003');
+    foreach (['deterministic_valid', 'awaiting_qa', 'qa_valid', 'healing'] as $state) {
+        $repairRunWorkspace->transition($state);
+    }
+    file_put_contents($repairRunWorkspace->path('heal-merged.json'), json_encode([[
+        'identity_hash' => $multilineHash,
+        'text' => 'DeltaThetaOmega',
+    ]], JSON_THROW_ON_ERROR));
+    file_put_contents($repairRunWorkspace->path('fixes.json'), json_encode([[
+        'identity_hash' => $multilineHash,
+        'text' => 'Delta'.$newlineToken.'Iota'.$newlineToken.'Omega',
+    ]], JSON_THROW_ON_ERROR));
+    file_put_contents($repairRunWorkspace->path('verdicts.json'), "[]\n");
+    putenv('BDO_STATE_DIR='.$repairRunState);
+    $mergeResult = $capture(new RunDriveCommand(), []);
+    expect($mergeResult['code'] === 0, 'repair run did not merge fixes');
+    $healedItems = json_decode((string) file_get_contents($repairRunWorkspace->path('healed.json')), true, 512, JSON_THROW_ON_ERROR);
+    $healedText = (string) ($healedItems[0]['text'] ?? '');
+    expect($healedText === "Delta\nIota\nOmega", 'repair response was not decoded before merge');
+    expect($newlineOffsets($healedText) === $newlineOffsets($multiline), 'merged newline positions differ from source');
+    expect(substr_count($healedText, "\n") === substr_count($multiline, "\n"), 'merged newline count differs from source');
+
+    if ($previousStateDir === false) putenv('BDO_STATE_DIR'); else putenv('BDO_STATE_DIR='.$previousStateDir);
+    putenv('BDO_PIPELINE_OFFLINE');
+    putenv('BDO_JUDGE');
 
     echo "pipeline unit: OK\n";
 } finally {

@@ -6,6 +6,7 @@ namespace Bdo\Translate\Cli\Command\Run;
 
 use Bdo\Translate\Api\IdempotencyKey;
 use Bdo\Translate\Batch\RowSet;
+use Bdo\Translate\Batch\NewlineToken;
 use Bdo\Translate\Batch\Workspace;
 use Bdo\Translate\Cli\Command;
 use Bdo\Translate\Cli\Command\Api\ApiEnvironment;
@@ -342,6 +343,7 @@ final class RunDriveCommand implements Command, \Bdo\Translate\Cli\CommandHelp
         } else {
             copy($this->workspace->path('candidate.json'), $this->workspace->path('full.json'));
         }
+        $this->decodeTextItems($this->workspace->path('full.json'));
         $normalized = $this->capture(new NormalizeCandidateCommand(), [$this->workspace->path('full.json'), $this->workspace->path('rows.json')]);
         $this->write($this->workspace->path('clean.json'), $this->lastJson($normalized['stdout'])."\n");
         $this->call(new BuildItemsCommand(), [$this->workspace->path('rows.json'), $this->workspace->path('clean.json'), $this->workspace->path('items.json'), '', '--require-all']);
@@ -441,7 +443,10 @@ final class RunDriveCommand implements Command, \Bdo\Translate\Cli\CommandHelp
             if ($retry === 'exhausted') return $this->giveUp($output, 'healing');
             return $this->child($output, 'healing', 'translation-repair', $this->workspace->path('heal-repair-payload.json'), $fixes);
         }
-        try { $this->call(new MergeItemsCommand(), [$this->workspace->path('heal-merged.json'), $fixes, $this->workspace->path('healed.json')]); }
+        try {
+            $this->decodeTextItems($fixes);
+            $this->call(new MergeItemsCommand(), [$this->workspace->path('heal-merged.json'), $fixes, $this->workspace->path('healed.json')]);
+        }
         catch (\Throwable) {
             @rename($fixes, $this->workspace->path('fixes.invalid.'.time().'.json'));
             $retry = $this->retryExceeded('healing', $output);
@@ -895,6 +900,20 @@ final class RunDriveCommand implements Command, \Bdo\Translate\Cli\CommandHelp
     private function write(string $path, string $content): void
     {
         if (file_put_contents($path, $content, LOCK_EX) === false) throw new RuntimeException('Не вдалося записати файл: '.$path);
+    }
+
+    private function decodeTextItems(string $path): void
+    {
+        $items = json_decode((string) file_get_contents($path), true, 512, JSON_THROW_ON_ERROR);
+        if (! is_array($items)) {
+            throw new RuntimeException('Відповідь ролі не є масивом: '.$path);
+        }
+        foreach ($items as $index => $item) {
+            if (is_array($item) && is_string($item['text'] ?? null)) {
+                $items[$index]['text'] = NewlineToken::decode($item['text']);
+            }
+        }
+        $this->write($path, json_encode($items, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR)."\n");
     }
 
     private function writeJsonAtomic(string $path, array $data): bool

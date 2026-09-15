@@ -6,6 +6,7 @@ namespace Bdo\Translate\Cli\Command\Prepare;
 
 use Bdo\Translate\Api\Response as ApiResponse;
 use Bdo\Translate\Api\Term;
+use Bdo\Translate\Batch\NewlineToken;
 use Bdo\Translate\Batch\RowSet;
 use Bdo\Translate\Batch\Workspace;
 use Bdo\Translate\Cli\Command;
@@ -126,13 +127,15 @@ final class WorkerPayloadCommand implements Command, \Bdo\Translate\Cli\CommandH
             foreach ($rows as $row) {
                 $hash = $row->identityHash();
                 if ($row->sourceText() === '') throw new RuntimeException("Порожній source_text у rows.json: $hash");
-                $item = ['identity_hash' => $hash, 'source_text' => $row->sourceText()];
+                $sourceText = NewlineToken::encode($row->sourceText());
+                $item = ['identity_hash' => $hash, 'source_text' => $sourceText];
                 if ($row->semanticType() !== null) $item['semantic_type'] = $row->semanticType();
                 if ($row->domain() !== null) $item['domain'] = $row->domain();
                 $glossary = $row->glossaryByLayer();
                 if ($glossary['human'] !== []) { $item['glossary'] = $glossary['human']; $stats['glossary']++; }
                 if ($glossary['machine'] !== []) $item['glossary_hint'] = $glossary['machine'];
                 $keep = $row->keepTokens();
+                if (str_contains($sourceText, NewlineToken::TOKEN)) $keep[] = NewlineToken::TOKEN;
                 if ($keep !== []) $item['keep'] = $keep;
                 $pending = $row->pendingTerms();
                 if ($pending !== []) { $item['canonical_pending'] = $pending; $stats['pending']++; }
@@ -142,8 +145,11 @@ final class WorkerPayloadCommand implements Command, \Bdo\Translate\Cli\CommandH
                 if ($limits !== null) { $item['limits'] = $limits; $stats['limits']++; }
                 if ($row->isNonTranslatable()) $item['non_translatable'] = true;
                 if ($withCurrent) {
-                    $current = $row->raw()['layers']['machine']['text'] ?? '';
+                    $current = NewlineToken::encode((string) ($row->raw()['layers']['machine']['text'] ?? ''));
                     if ($current !== '') $item['current'] = $current;
+                    if (str_contains($current, NewlineToken::TOKEN)) {
+                        $item['keep'] = array_values(array_unique(array_merge($item['keep'] ?? [], [NewlineToken::TOKEN])));
+                    }
                 }
                 if ($withReference) {
                     $reference = $row->raw()['reference']['ru']['text'] ?? '';

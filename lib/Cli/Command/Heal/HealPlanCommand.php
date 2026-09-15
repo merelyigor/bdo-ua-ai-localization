@@ -7,6 +7,7 @@ namespace Bdo\Translate\Cli\Command\Heal;
 use Bdo\Translate\Api\ErrorCodes;
 use Bdo\Translate\Api\Response;
 use Bdo\Translate\Batch\Candidate;
+use Bdo\Translate\Batch\NewlineToken;
 use Bdo\Translate\Batch\RowSet;
 use Bdo\Translate\Batch\Workspace;
 use Bdo\Translate\Cli\Command;
@@ -154,8 +155,8 @@ final class HealPlanCommand implements Command, \Bdo\Translate\Cli\CommandHelp
             });
             $item = [
                 'identity_hash' => $hash,
-                'source_text' => $row->sourceText(),
-                'current' => $candidate->text($hash),
+                'source_text' => NewlineToken::encode($row->sourceText()),
+                'current' => NewlineToken::encode($candidate->text($hash)),
                 'defects' => $why,
             ];
             if ($row->semanticType() !== null) {
@@ -165,8 +166,12 @@ final class HealPlanCommand implements Command, \Bdo\Translate\Cli\CommandHelp
                 $item['domain'] = $row->domain();
             }
             $keep = $row->keepTokens();
+            if (str_contains($item['source_text'], NewlineToken::TOKEN)
+                || str_contains($item['current'], NewlineToken::TOKEN)) {
+                $keep[] = NewlineToken::TOKEN;
+            }
             if ($keep !== []) {
-                $item['keep'] = $keep;
+                $item['keep'] = array_values(array_unique($keep));
             }
             $terms = $row->glossary();
             if ($terms !== []) {
