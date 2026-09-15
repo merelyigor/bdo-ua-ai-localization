@@ -155,7 +155,7 @@ if ($isAction && $origin === '') {
 // Порожні оболонки екранів і спільна статика · без токена (див. пункт 3):
 // у них немає жодного рядка даних, а без цього оновлення вкладки давало б
 // голий JSON замість сторінки.
-$publicPaths = ['/', '/index.html', '/queue', '/sessions', '/start', '/models', '/call', '/app.css', '/app.js', '/favicon.ico', '/api/ping'];
+$publicPaths = ['/', '/index.html', '/queue', '/sessions', '/start', '/models', '/call', '/app.css', '/app.js', '/assets/bdo-background.webp', '/favicon.ico', '/api/ping'];
 $given = (string) ($_GET['t'] ?? ($_SERVER['HTTP_X_BDO_TOKEN'] ?? ''));
 if ($token === '') {
     $fail(500, 'token_missing_on_server', 'сервер запущено без BDO_WEB_TOKEN · запускай через ./bdo web');
@@ -206,6 +206,7 @@ switch ($path) {
     case '/call':
     case '/app.css':
     case '/app.js':
+    case '/assets/bdo-background.webp':
     case '/favicon.ico':
         // Екрани окремі (рішення власника 2026-09-05), тому файлів кілька.
         // Але відображення «шлях -> файл» лишається ЗАКРИТИМ переліком: імена
@@ -221,6 +222,7 @@ switch ($path) {
             '/call' => ['web/call.html', 'text/html; charset=utf-8'],
             '/app.css' => ['web/app.css', 'text/css; charset=utf-8'],
             '/app.js' => ['web/app.js', 'application/javascript; charset=utf-8'],
+            '/assets/bdo-background.webp' => ['web/assets/bdo-background.webp', 'image/webp'],
             // ЗНАЧОК СТОРІНКИ. Без нього браузер щоразу просив
             // `/favicon.ico`, а сервер віддавав 403 · у консолі власника
             // висіла помилка, яка маскувала б справжні (D102).
@@ -546,7 +548,7 @@ switch ($path) {
         return;
 
     default:
-        $fail(404, 'unknown_path', 'сервер віддає лише екрани /, /queue, /sessions, /start, /models, /call, статику /app.css і /app.js, а з даних · /api/ping, /api/health, /api/state, /api/work, /api/sessions, /api/stream, /api/call, /api/models, /api/actions, /api/plan, а дії · POST на /api/action і /api/client-error');
+        $fail(404, 'unknown_path', 'сервер віддає лише екрани /, /queue, /sessions, /start, /models, /call, статику /app.css, /app.js і /assets/bdo-background.webp, а з даних · /api/ping, /api/health, /api/state, /api/work, /api/sessions, /api/stream, /api/call, /api/models, /api/actions, /api/plan, а дії · POST на /api/action і /api/client-error');
 
         return;
 }
