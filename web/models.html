@@ -192,6 +192,8 @@
 
   function renderModels(data) {
     var catalog = data.catalog;
+    var selection = data.selection || {};
+    var globalChoice = selection.global && selection.global.runtime && selection.global.model ? selection.global : null;
     if (!catalog) {
       B.el('models').innerHTML = '<div class="empty">' + B.esc(data.hint || 'перелік недоступний') + '</div>';
       return;

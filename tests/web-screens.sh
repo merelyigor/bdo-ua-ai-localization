@@ -69,6 +69,9 @@ grep -Fq 'вік переліку' "$MODELS" || fail 'екран моделей 
 grep -Fq 'age(catalog.captured_at)' "$MODELS" || fail 'екран моделей не обчислює вік каталогу'
 grep -Fq 'data-action="models.refresh"' "$MODELS" || fail 'кнопка оновлення каталогу не є дією models.refresh'
 grep -Fq 'models.select.role' "$MODELS" || fail 'екран моделей не має дії вибору моделі для ролі'
+sed -n '/function renderModels(data)/,/function bindActions()/p' "$MODELS" \
+    | grep -Fq 'var globalChoice = selection.global' \
+    || fail 'renderModels не готує чинний globalChoice для підсвічування рядка'
 for action in models.refresh models.select models.select.role models.clear models.clear.role models.load models.unload models.settings; do
     grep -Fq "$action" "$MODELS" || fail "екран моделей не називає дію $action"
 done
