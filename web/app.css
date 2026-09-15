@@ -19,6 +19,115 @@
   --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
   --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
 }
+
+/* BDO DESIGN SYSTEM · semantic CSS primitives for the existing vanilla UI.
+   The project intentionally stays on HTML/CSS/JS: these names provide the
+   same composable Button/Card/Table/Badge/Alert/Select vocabulary without a
+   framework migration or a second source of behavior. Existing selectors are
+   compatibility aliases; event wiring and payloads remain untouched. */
+:root{
+  /* Semantic aliases keep both light and dark themes on the same contract. */
+  --ds-background:var(--s0); --ds-foreground:var(--tp);
+  --ds-card:var(--s1); --ds-card-foreground:var(--tp);
+  --ds-popover:var(--s1); --ds-popover-foreground:var(--tp);
+  --ds-primary:var(--acc-bg); --ds-primary-foreground:var(--acc-tx);
+  --ds-secondary:var(--s2); --ds-secondary-foreground:var(--tp);
+  --ds-muted:var(--s3); --ds-muted-foreground:var(--ts);
+  --ds-accent:var(--gold-bg); --ds-accent-foreground:var(--gold-soft);
+  --ds-destructive:var(--dn-bg); --ds-destructive-foreground:var(--dn-tx);
+  --ds-success:var(--ok-bg); --ds-success-foreground:var(--ok-tx);
+  --ds-warning:var(--wr-bg); --ds-warning-foreground:var(--wr-tx);
+  --ds-border:var(--bd); --ds-input:var(--bd); --ds-ring:var(--bda);
+  --ds-space-1:4px; --ds-space-2:8px; --ds-space-3:12px;
+  --ds-space-4:16px; --ds-space-5:20px; --ds-space-6:24px;
+  --ds-radius-sm:8px; --ds-radius-md:10px; --ds-radius-lg:14px; --ds-radius-pill:999px;
+  --ds-text-xs:11px; --ds-text-sm:12px; --ds-text-md:13px; --ds-text-lg:15px;
+  --ds-shadow:var(--shadow);
+}
+
+/* Button · explicit variants and compatibility aliases for current markup. */
+.bdo-button,button,a.as-button{
+  display:inline-flex;align-items:center;justify-content:center;gap:var(--ds-space-2);
+  min-height:32px;font-family:inherit;font-size:var(--ds-text-md);line-height:1.25;
+  padding:var(--ds-space-2) var(--ds-space-3);border:1px solid var(--ds-border);
+  border-radius:var(--ds-radius-sm);background:var(--ds-secondary);color:var(--ds-foreground);
+  cursor:pointer;transition:background-color .15s ease,border-color .15s ease,color .15s ease,box-shadow .15s ease,transform .15s ease
+}
+.bdo-button:hover,button:hover,a.as-button:hover{background:var(--surface-hover);border-color:var(--ds-ring)}
+.bdo-button:active,button:active,a.as-button:active{transform:translateY(1px)}
+.bdo-button:focus-visible,button:focus-visible,a.as-button:focus-visible,
+.bdo-select:focus-visible,select:focus-visible,input:focus-visible,textarea:focus-visible{
+  outline:2px solid var(--ds-ring);outline-offset:2px
+}
+.bdo-button:disabled,button:disabled,.bdo-button[aria-disabled="true"],a.as-button[aria-disabled="true"]{
+  opacity:.45;cursor:not-allowed;transform:none
+}
+.bdo-button--primary,.btn-primary{background:var(--ds-primary);color:var(--ds-primary-foreground);border-color:var(--ds-ring)}
+.bdo-button--primary:hover,.btn-primary:hover{background:var(--ds-primary);box-shadow:0 0 0 3px var(--focus-ring)}
+.bdo-button--secondary{background:var(--ds-secondary);color:var(--ds-secondary-foreground)}
+.bdo-button--ghost,.btn-quiet{background:transparent;color:var(--ds-muted-foreground)}
+.bdo-button--ghost:hover,.btn-quiet:hover{background:var(--ds-accent);color:var(--ds-accent-foreground);border-color:var(--gold)}
+.bdo-button--danger,.btn-danger{background:transparent;color:var(--ds-destructive-foreground);border-color:var(--ds-destructive-foreground)}
+.bdo-button--danger:hover,.btn-danger:hover{background:var(--ds-destructive);color:var(--ds-destructive-foreground)}
+.bdo-button--sm{min-height:28px;padding:var(--ds-space-1) var(--ds-space-2);font-size:var(--ds-text-sm)}
+.bdo-button--lg{min-height:40px;padding:var(--ds-space-2) var(--ds-space-4);font-size:var(--ds-text-lg)}
+.bdo-button--icon{width:32px;padding:var(--ds-space-2)}
+.bdo-button--icon.bdo-button--sm{width:28px}
+
+/* Card · composition hooks are ready for later page-by-page adoption. */
+.bdo-card,.panel{background:var(--ds-card);color:var(--ds-card-foreground);border:1px solid var(--ds-border);border-radius:var(--ds-radius-lg);box-shadow:var(--ds-shadow)}
+.bdo-card{padding:var(--ds-space-5)}
+.bdo-card__header{display:flex;align-items:flex-start;justify-content:space-between;gap:var(--ds-space-3);margin-bottom:var(--ds-space-4)}
+.bdo-card__title{font-size:var(--ds-text-lg);font-weight:600;line-height:1.35}
+.bdo-card__description{font-size:var(--ds-text-sm);color:var(--ds-muted-foreground);margin-top:var(--ds-space-1)}
+.bdo-card__content{min-width:0}
+.bdo-card__footer{display:flex;align-items:center;gap:var(--ds-space-2);margin-top:var(--ds-space-4)}
+.bdo-card--interactive{transition:border-color .15s ease,box-shadow .15s ease}
+.bdo-card--interactive:hover,.bdo-card--interactive:focus-within{border-color:var(--ds-ring);box-shadow:0 0 0 3px var(--focus-ring),var(--ds-shadow)}
+
+/* Table · responsive wrapper and explicit selected state. */
+.bdo-table-wrap{width:100%;overflow-x:auto;border:1px solid var(--ds-border);border-radius:var(--ds-radius-md);background:var(--surface-alpha)}
+.bdo-table{width:100%;border-collapse:collapse;font-size:var(--ds-text-md)}
+.bdo-table th,.bdo-table td{padding:var(--ds-space-3);text-align:left;border-top:1px solid var(--line-soft);vertical-align:middle}
+.bdo-table thead th{border-top:0;background:var(--table-head-bg);color:var(--ds-muted-foreground);font-size:var(--ds-text-xs);font-weight:500;letter-spacing:.04em;text-transform:uppercase}
+.bdo-table tbody tr:hover{background:var(--surface-hover)}
+.bdo-table tbody tr[aria-selected="true"],.bdo-table tbody tr.is-selected{background:var(--ds-accent);box-shadow:inset 3px 0 var(--gold)}
+.bdo-table--compact th,.bdo-table--compact td{padding:var(--ds-space-2)}
+
+/* Badge · status text remains present; colour is only supporting information. */
+.bdo-badge,.pill,.chip{display:inline-flex;align-items:center;justify-content:center;gap:var(--ds-space-1);min-height:24px;padding:var(--ds-space-1) var(--ds-space-2);border:1px solid var(--ds-border);border-radius:var(--ds-radius-pill);background:transparent;color:var(--ds-muted-foreground);font-size:var(--ds-text-xs);line-height:1.2}
+.bdo-badge--primary{background:var(--ds-primary);color:var(--ds-primary-foreground);border-color:var(--ds-ring)}
+.bdo-badge--success{background:var(--ds-success);color:var(--ds-success-foreground);border-color:var(--ds-success-foreground)}
+.bdo-badge--warning{background:var(--ds-warning);color:var(--ds-warning-foreground);border-color:var(--ds-warning-foreground)}
+.bdo-badge--danger{background:var(--ds-destructive);color:var(--ds-destructive-foreground);border-color:var(--ds-destructive-foreground)}
+.bdo-badge--muted{background:var(--ds-muted);color:var(--ds-muted-foreground)}
+.bdo-badge[data-state="selected"],.chip[aria-pressed="true"]{background:var(--ds-primary);color:var(--ds-primary-foreground);border-color:var(--ds-ring)}
+
+/* Alert · feedback has a semantic tone and remains readable without colour. */
+.bdo-alert,.msg,.info-note{display:flex;align-items:flex-start;gap:var(--ds-space-2);padding:var(--ds-space-3);border:1px solid var(--ds-border);border-radius:var(--ds-radius-md);background:var(--ds-muted);color:var(--ds-muted-foreground);font-size:var(--ds-text-sm)}
+.bdo-alert--info{background:var(--ds-primary);color:var(--ds-primary-foreground);border-color:var(--ds-ring)}
+.bdo-alert--success{background:var(--ds-success);color:var(--ds-success-foreground);border-color:var(--ds-success-foreground)}
+.bdo-alert--warning{background:var(--ds-warning);color:var(--ds-warning-foreground);border-color:var(--ds-warning-foreground)}
+.bdo-alert--danger{background:var(--ds-destructive);color:var(--ds-destructive-foreground);border-color:var(--ds-destructive-foreground)}
+.bdo-alert__title{font-weight:600;color:inherit}
+.bdo-alert__description{margin-top:var(--ds-space-1);color:inherit;opacity:.9}
+
+/* Select · native control preserves keyboard and browser semantics. */
+.bdo-select,select{min-height:32px;width:100%;font:inherit;font-size:var(--ds-text-md);padding:var(--ds-space-2) var(--ds-space-3);border:1px solid var(--ds-input);border-radius:var(--ds-radius-sm);background:var(--ds-secondary);color:var(--ds-foreground)}
+.bdo-select:hover,select:hover{border-color:var(--ds-ring)}
+.bdo-select:disabled,select:disabled{opacity:.55;cursor:not-allowed}
+
+/* Layout rhythm · shared hooks for future page migrations. */
+.bdo-stack{display:flex;flex-direction:column;gap:var(--ds-space-4)}
+.bdo-stack--tight{gap:var(--ds-space-2)}
+.bdo-stack--loose{gap:var(--ds-space-6)}
+.bdo-row{display:flex;align-items:center;gap:var(--ds-space-3);flex-wrap:wrap}
+.bdo-divider{height:1px;background:var(--line-soft);border:0;margin:var(--ds-space-4) 0}
+
+@media (prefers-reduced-motion:reduce){
+  .bdo-button,.bdo-card--interactive{transition:none}
+  .bdo-button:active,button:active,a.as-button:active{transform:none}
+}
 @media (prefers-color-scheme:light){
   :root{
     --s0:#f4f7fa; --s1:#ffffff; --s2:#f8fafc; --s3:#edf2f6;
