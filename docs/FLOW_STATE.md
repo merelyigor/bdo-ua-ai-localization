@@ -119,7 +119,8 @@ selected → awaiting_terminology → prepared → awaiting_worker
   `run-stream.log`, `model-calls.jsonl`) у теку сесії. Усі похідні файли
   `state/batches/<id>/` також зберігаються для кожної пачки цієї сесії:
   `batch-clean` їх пропускає, а `session delete --apply` прибирає разом із
-  журналами та підсумком. `BDO_KEEP_DAYS` не чистить сесійні дані.
+  журналами та підсумком. `BDO_KEEP_DAYS` чистить лише журнали сесій; batch-файли
+  лишаються до видалення сесії, а `close --drop-journals` прибирає журнали одразу.
   `write-log.jsonl`, карантин і журнал спроб закриття не чіпає ніколи, а під
   живим `drive.lock` відмовляє з причиною.
 

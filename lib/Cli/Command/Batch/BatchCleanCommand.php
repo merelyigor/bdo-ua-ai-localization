@@ -136,9 +136,14 @@ final class BatchCleanCommand implements Command, \Bdo\Translate\Cli\CommandHelp
             $freed += $sizeKb;
         }
 
-        // Журнали сесії не мають TTL: вони є доказом усіх її прогонів і
-        // видаляються лише разом із закритою сесією.
         $sessions = 0;
+        if (is_dir($stateDir.'/sessions')) {
+            $sessionIds = (new Ledger($stateDir))->prune($days, $apply);
+            $sessions = count($sessionIds);
+            foreach ($sessionIds as $sessionId) {
+                $say($output, $quiet, "  журнали сесії старші за {$days} дн.: {$sessionId}");
+            }
+        }
 
         if (is_dir($outputDir) && ! is_link($outputDir)) {
             foreach ($this->oldOutputFiles($outputDir, $days) as $file) {

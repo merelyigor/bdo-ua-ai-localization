@@ -14,8 +14,9 @@ use Bdo\Translate\Ui\Clock;
  * читати теки руками, а живі журнали (`run-transcript.log`, `run-stream.log`,
  * `model-calls.jsonl`) росли назавжди й змішували сьогоднішній прогін із
  * тижневим. Власник попросив рівно це: бачити всю історію по кожній пачці,
- * закривати сесію й починати нову, і щоб дані жили разом із сесією до її
- * явного видалення (рішення 2026-09-15).
+ * закривати сесію й починати нову, і щоб дані пачок жили разом із сесією до її
+ * явного видалення, а журнали можна було залишити на строк або прибрати одразу
+ * (рішення 2026-09-15).
  *
  * Ключове рішення розкладки: `state/` лишається живою робочою текою, а сесія
  * матеріалізується при ЗАКРИТТІ. Інакше довелось би переписати шляхи в сорока
@@ -27,7 +28,7 @@ use Bdo\Translate\Ui\Clock;
  *     batches.jsonl              по рядку на пачку, пишеться В МОМЕНТ створення
  *     summary.json               закрита: підсумок; лишається НАЗАВЖДИ
  *     transcript.log             журнали, перенесені при закритті;
- *     run-stream.log             живуть до видалення сесії
+ *     run-stream.log             зберігаються або прибираються за вибором
  *     model-calls.jsonl
  *
  * Пачки записуються в `batches.jsonl` при створенні, а не збираються при
@@ -170,9 +171,10 @@ final class Ledger
     /**
      * Закрити сесію: зібрати підсумок, перенести журнали, звільнити живі файли.
      *
+     * @param  bool  $dropJournals  видалити журнали замість перенесення
      * @return array{id:string,batches:int,rows:int,to_layer:int,to_human:int,quarantine:int,model_calls:int,journals:string,moved:list<string>,missing:list<string>,pruned:list<string>}
      */
-    public function close(?int $keepDays = null): array
+    public function close(bool $dropJournals = false, ?int $keepDays = null): array
     {
         $id = $this->currentId();
         if ($id === null) {
@@ -226,7 +228,7 @@ final class Ledger
             'model_calls' => $modelCalls,
             'modes' => array_keys($modes),
             'patches' => array_keys($patches),
-            'journals' => 'kept',
+            'journals' => $dropJournals ? 'dropped' : 'kept',
             'keep_days' => $keepDays ?? self::keepDays(),
             'receipts_gone' => $missing,
         ]);
@@ -236,6 +238,10 @@ final class Ledger
         foreach (self::JOURNALS as $live => $stored) {
             $from = rtrim($this->stateDir, '/').'/'.$live;
             if (! is_file($from)) {
+                continue;
+            }
+            if ($dropJournals) {
+                unlink($from);
                 continue;
             }
             // rename, а не copy+unlink: живий файл може важити десятки МБ, а
@@ -251,10 +257,7 @@ final class Ledger
         }
 
         unlink($this->pointerPath());
-        // Журнали й похідні файли є даними сесії. Строк BDO_KEEP_DAYS більше
-        // не має права видаляти їх автоматично; єдина штатна точка очищення
-        // закритої сесії — `session delete --apply`.
-        $pruned = [];
+        $pruned = $this->prune($keepDays);
 
         return [
             'id' => $id,
@@ -264,7 +267,7 @@ final class Ledger
             'to_human' => $totals['to_human'],
             'quarantine' => $totals['quarantine'],
             'model_calls' => $modelCalls,
-            'journals' => 'kept',
+            'journals' => $dropJournals ? 'dropped' : 'kept',
             'moved' => $moved,
             'missing' => $missing,
             'pruned' => $pruned,

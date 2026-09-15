@@ -170,7 +170,7 @@ base="$TMP/apply"
     test -s "$state/game-concepts.json" || fail 'PHP прибрав fresh cache'
     test ! -e "$state/quarantine.jsonl.archived" || fail 'PHP лишив stale archived quarantine'
     test ! -e "$state/run-transcript.log" || fail 'PHP лишив stale transcript'
-    test -s "$state/sessions/old-session/run-stream.log" || fail 'PHP прибрав old session journal автоматично'
+    test ! -e "$state/sessions/old-session/run-stream.log" || fail 'PHP не прибрав old session journal за TTL'
     test -s "$state/sessions/old-session/summary.json" || fail 'PHP прибрав session summary'
     test -s "$state/quarantine.jsonl" && test -s "$state/write-log.jsonl" && test -s "$state/row-attempts.jsonl" \
         || fail 'PHP зачепив protected state'

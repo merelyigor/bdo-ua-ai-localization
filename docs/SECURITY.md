@@ -36,7 +36,9 @@ payload, API response, state directory або session dump.
 - Ротація не чіпає ПОТОЧНУ пачку (`state/current-batch`) і жодну пачку,
   записану в `state/sessions/<id>/batches.jsonl`: усі їхні похідні файли
   лишаються до видалення відповідної сесії. `BDO_AUTO_CLEAN=0` як і раніше
-  вимикає cleanup для orphan batch/output, але не змінює lifecycle сесій.
+  вимикає cleanup для orphan batch/output, але не змінює lifecycle сесій. Журнали
+  сесії видаляються за вибором під час close або після `BDO_KEEP_DAYS`; це не
+  торкається batch-файлів.
   `quarantine.jsonl` і `write-log.jsonl` залишаються append-only.
 - журнал викликів моделі `state/model-calls.jsonl` і будь-які логи рантайму.
 

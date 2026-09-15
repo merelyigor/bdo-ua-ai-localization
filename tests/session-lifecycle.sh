@@ -158,7 +158,7 @@ grep -q '20260904_110133_aaa' <<<"$show_out" || fail 'show не показує �
 grep -q 'квитанцію прибрано' <<<"$show_out" \
     || fail 'show мусить позначити пачку, чиї числа втрачені'
 
-# 5. Строк BDO_KEEP_DAYS більше не чистить журнали сесій автоматично.
+# 5. Журнал старої сесії зникає за BDO_KEEP_DAYS, але історія сесії лишається.
 OLD="20260801_000000"
 mkdir -p "$BDO_STATE_DIR/sessions/$OLD"
 old_epoch=$(( $(date +%s) - 30 * 86400 ))
@@ -168,14 +168,36 @@ JSON
 printf 'старий крок\n' >"$BDO_STATE_DIR/sessions/$OLD/transcript.log"
 printf '{"id":"x"}\n' >"$BDO_STATE_DIR/sessions/$OLD/batches.jsonl"
 
-test -s "$BDO_STATE_DIR/sessions/$OLD/transcript.log" \
-    || fail 'журнал старої сесії прибрано автоматично'
+php -r '
+require $argv[1];
+$pruned = (new Bdo\Translate\Session\Ledger($argv[2]))->prune(7);
+if ($pruned !== [$argv[3]]) { fwrite(STDERR, "очікувалось прибирання старої сесії\n"); exit(1); }
+' "$ROOT/lib/autoload.php" "$BDO_STATE_DIR" "$OLD" \
+    || fail 'старий журнал не прибрано за BDO_KEEP_DAYS'
+test ! -e "$BDO_STATE_DIR/sessions/$OLD/transcript.log" \
+    || fail 'журнал старої сесії лишився після TTL'
 test -s "$BDO_STATE_DIR/sessions/$OLD/summary.json" \
     || fail 'прибирання знищило підсумок сесії · він мусить лишатись НАЗАВЖДИ'
 test -s "$BDO_STATE_DIR/sessions/$OLD/batches.jsonl" \
     || fail 'прибирання знищило перелік пачок сесії'
 test -s "$SDIR/transcript.log" \
     || fail 'прибирання зачепило журнал свіжої сесії'
+
+# Явне «видалити зараз» прибирає лише журнали, а сесія, підсумок і batch-дані
+# залишаються для історії.
+session ensure >/dev/null
+DROP_SID="$(cat "$BDO_STATE_DIR/current-session")"
+make_batch 20260904_160000_ddd 1 1 0 0
+printf 'видалити зараз\n' >"$BDO_STATE_DIR/run-transcript.log"
+drop_out="$(session close --drop-journals --keep-files)"
+grep -q "журнали видалено на вимогу" <<<"$drop_out" \
+    || fail "close --drop-journals не підтвердив очищення: $drop_out"
+test -s "$BDO_STATE_DIR/sessions/$DROP_SID/summary.json" \
+    || fail 'close --drop-journals знищив історію сесії'
+test ! -e "$BDO_STATE_DIR/sessions/$DROP_SID/transcript.log" \
+    || fail 'close --drop-journals залишив журнал'
+test -s "$BDO_STATE_DIR/batches/20260904_160000_ddd/model-payload.json" \
+    || fail 'close --drop-journals знищив payload пачки'
 
 # Межа підкоманд у КОДІ: `session` не є щілиною в allowlist guard.
 if session bogus >/dev/null 2>"$TMP/bogus.txt"; then

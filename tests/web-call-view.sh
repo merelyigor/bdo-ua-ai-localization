@@ -134,10 +134,12 @@ got="$(code "http://127.0.0.1:$PORT/api/call?t=$TOKEN&session=20260101_020202")"
 test "$got" = 404 || fail "сесія без журналів мусить дати 404 з причиною, дала $got"
 
 # --- 7. Кнопки закритої сесії стоять за СПРАВЖНІМИ командами ------------------
-# Єдина очистка через сторінку — незворотне видалення закритої сесії.
-if grep -Fq 'class="dropJ"' "$ROOT/web/sessions.html"; then
-    fail 'сторінка не повинна мати окремої кнопки видалення журналів'
-fi
+grep -Fq 'class="dropJ"' "$ROOT/web/sessions.html" \
+    || fail 'закрита сесія не має окремої кнопки видалення журналів'
+grep -Fq 'session.journals.drop' "$ROOT/lib/Run/Actions.php" \
+    || fail 'дії «видалити журнали» немає в планувальнику'
+grep -Fq "'journals', \$id, '--drop'" "$ROOT/lib/Run/Actions.php" \
+    || fail 'видалення журналів не має CLI-команди'
 grep -Fq "session.delete" "$ROOT/lib/Run/Actions.php" \
     || fail 'дії «видалити сесію» немає в планувальнику'
 grep -Fq '/call?session=' "$ROOT/web/sessions.html" \
