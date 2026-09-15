@@ -301,8 +301,15 @@ grep -Fq "action: 'models.settings'" "$MODELS" \
     || fail 'автозбереження стелі не проходить через models.settings'
 grep -Fq 'onchange = saveThinkingSettings' "$MODELS" \
     || fail 'перемикач і селектор роздумів не мають автозбереження'
-grep -Fq '🧠 Роздуми' "$MODELS" \
-    || fail 'на екрані моделей немає мозку біля роздумів'
+grep -Fq 'data-icon="thinking"' "$MODELS" \
+    || fail 'на екрані моделей немає іконки роздумів'
+grep -Fq '<span>🧠 Роздуми</span>' "$MODELS" \
+    || fail 'біля перемикача роздумів немає emoji мозку'
+grep -Fq '⚙️ Ліміт thinking, байт' "$MODELS" \
+    || fail 'біля селектора немає окремого підпису ліміту'
+if grep -Fq 'section-title">🧠' "$MODELS" || grep -Fq 'Стеля thinking, байт' "$MODELS"; then
+    fail 'старий підпис стелі або emoji мозку лишився біля селектора'
+fi
 grep -Fq 'models.unload' "$MODELS" \
     || fail 'у каталозі моделей немає кнопки вивантаження'
 grep -Fq 'unload_unsupported' "$ROOT/lib/Model/RuntimeModels.php" \
