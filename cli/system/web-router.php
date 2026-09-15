@@ -406,13 +406,7 @@ switch ($path) {
 
             return;
         }
-        $record = null;
-        foreach (array_reverse($snapshot->callRecords()) as $entry) {
-            if ((string) ($entry['at'] ?? '') === $wantAt && (string) ($entry['role'] ?? '') === $wantRole) {
-                $record = $entry;
-                break;
-            }
-        }
+        $record = $snapshot->findCallRecord($wantAt, $wantRole);
         if ($record === null) {
             $fail(404, 'call_unknown', 'такого виклику немає в журналі · він міг переїхати в теку закритої сесії');
 

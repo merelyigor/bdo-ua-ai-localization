@@ -33,11 +33,11 @@ payload, API response, state directory або session dump.
 - `.env` · credentials і environment-specific values.
 - `output/` · API responses, benchmarks та діагностичні результати.
 - `state/` · batches, cursors, receipts, quarantine й audit trail.
-- Ротація не чіпає лише ПОТОЧНУ пачку (`state/current-batch`): будь-яка інша
-  тека недосяжна для флоу, тож її похідні файли прибираються, а квитанція
-  лишається. Прибирання увімкнене за замовчуванням; `BDO_AUTO_CLEAN=0` ·
-  аварійний вимикач. `quarantine.jsonl` і `write-log.jsonl` залишаються
-  append-only.
+- Ротація не чіпає ПОТОЧНУ пачку (`state/current-batch`) і жодну пачку,
+  записану в `state/sessions/<id>/batches.jsonl`: усі їхні похідні файли
+  лишаються до видалення відповідної сесії. `BDO_AUTO_CLEAN=0` як і раніше
+  вимикає cleanup для orphan batch/output, але не змінює lifecycle сесій.
+  `quarantine.jsonl` і `write-log.jsonl` залишаються append-only.
 - журнал викликів моделі `state/model-calls.jsonl` і будь-які логи рантайму.
 
 Ці дані не комітити, не додавати до issue/PR, не передавати remote/free моделям і

@@ -116,8 +116,10 @@ selected → awaiting_terminology → prepared → awaiting_worker
   того, чи вціліла квитанція пачки: прибрану квитанцію названо
   `receipt_gone`, а не викинуто молча. `./bdo session close` збирає
   `summary.json`, переносить живі журнали (`run-transcript.log`,
-  `run-stream.log`, `model-calls.jsonl`) у теку сесії й звільняє їх; журнали
-  живуть `BDO_KEEP_DAYS` (7), підсумок і перелік пачок · назавжди.
+  `run-stream.log`, `model-calls.jsonl`) у теку сесії. Усі похідні файли
+  `state/batches/<id>/` також зберігаються для кожної пачки цієї сесії:
+  `batch-clean` їх пропускає, а `session delete --apply` прибирає разом із
+  журналами та підсумком. `BDO_KEEP_DAYS` не чистить сесійні дані.
   `write-log.jsonl`, карантин і журнал спроб закриття не чіпає ніколи, а під
   живим `drive.lock` відмовляє з причиною.
 

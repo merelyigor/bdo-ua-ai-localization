@@ -24,7 +24,7 @@
   <div id="app" style="display:none">
     <div class="screen-title">
       <h1>Сесії роботи</h1>
-      <span class="hint">період роботи з N пачок · історія лишається назавжди</span>
+      <span class="hint">період роботи з N пачок · дані лишаються до видалення сесії</span>
     </div>
 
     <div class="panel hero">
@@ -51,17 +51,7 @@
       <div id="msg" class="empty" style="margin-top:6px"></div>
       <div id="closeDialog" style="display:none;margin:6px 0 12px;border:.5px solid var(--bda);border-radius:10px;padding:12px;background:var(--s2)">
         <div style="font-weight:500;margin-bottom:4px" id="closeTitle">Закрити сесію?</div>
-        <div class="empty" style="margin-bottom:6px">Підсумок і перелік пачок лишаються назавжди. Питання лише про журнали: хронологію кроків і потік токенів.</div>
-        <!-- Два взаємовиключні варіанти · сегментами: обидва видно одночасно,
-             і вибраний позначено кольором, а не крапкою в 12 пікселів. -->
-        <div class="seg" id="keepSeg">
-          <label class="on"><input type="radio" name="keep" value="keep" checked>
-            <span class="h">Тримати журнали 7 днів</span>
-            <span class="d">можна повернутись до прогону; зникнуть самі</span></label>
-          <label><input type="radio" name="keep" value="drop">
-            <span class="h">Видалити журнали зараз</span>
-            <span class="d">чисто одразу; повернутись до кроків буде нізвідки</span></label>
-        </div>
+        <div class="empty" style="margin-bottom:6px">Підсумок, журнали й повні файли всіх пачок лишаються до видалення закритої сесії.</div>
         <div class="bar" style="margin-top:6px">
           <button id="closeOk">закрити сесію</button>
           <button id="closeCancel">скасувати</button>
@@ -105,11 +95,6 @@
     return '<div class="card"><div class="l">' + B.esc(label) + '</div>'
       + '<div class="v"' + (color ? ' style="color:' + color + '"' : '') + '>'
       + B.num(value) + '</div></div>';
-  }
-
-  // Скільки журналів ще лежить на диску · від цього залежить, чи є що видаляти.
-  function journals(s) {
-    return (s.journals_on_disk || []).length;
   }
 
   function patchesOf(rows) {
@@ -219,15 +204,10 @@
           // «яку сесію я закриваю» не виникає взагалі.
           ? '<button class="closeS btn-primary" type="button" data-id="' + B.esc(s.id) + '">'
             + 'закрити сесію</button>'
-            + '<span class="empty">підсумок і пачки лишаться назавжди</span>'
+            + '<span class="empty">дані й пачки лишаться до видалення сесії</span>'
           : '<a href="/call?session=' + encodeURIComponent(s.id) + '" target="_blank" rel="noopener"'
             + ' style="font-size:12px;color:var(--acc-tx)">відкрити прогін ↗</a>'
-            + (journals(s)
-                ? '<button class="dropJ" type="button" data-id="' + B.esc(s.id) + '">'
-                  + 'видалити журнали (' + journals(s) + ')</button>'
-                : '<span class="empty">журнали вже прибрані</span>')
-            // ВИДАЛИТИ СЕСІЮ ЦІЛКОМ · окремо від «видалити журнали», бо це
-            // інша за наслідками дія: гине історія пачок, а не лише хронологія.
+            // ВИДАЛИТИ СЕСІЮ ЦІЛКОМ · єдина дія, яка очищає її дані.
             + '<button class="delS btn-danger" type="button" data-id="' + B.esc(s.id) + '"'
             + ' style="margin-left:auto">видалити сесію</button>'
             + '<span class="empty">запис у API не чіпається ніколи</span>')
@@ -281,17 +261,6 @@
             + 'Лишиться: незнищенний слід записів у API · переклади вже на проді.\n\n'
             + 'Це незворотно.')) { return; }
         act('session.delete', { id: id });
-      };
-    });
-
-    Array.prototype.forEach.call(B.el('list').querySelectorAll('.dropJ'), function (btn) {
-      btn.onclick = function (ev) {
-        ev.stopPropagation();   // клік по кнопці не має згортати сесію
-        // Питання називає СЕСІЮ: власник уже плутався, що саме закрив.
-        if (!window.confirm('Видалити журнали сесії ' + btn.dataset.id + '?\n\n'
-            + 'Підсумок і перелік пачок лишаться. Зникне хронологія кроків, '
-            + 'потік токенів і виклики моделі.')) { return; }
-        act('session.journals.drop', { id: btn.dataset.id });
       };
     });
 
@@ -394,20 +363,10 @@
     // за межами екрана, коли сесія розгорнута далеко внизу.
     B.el('closeDialog').scrollIntoView({ block: 'center' });
   }
-  // Підсвітка вибраного сегмента · сам вибір лишається за радіокнопкою, тому
-  // клавіатура й читалка екрана працюють як раніше.
-  Array.prototype.forEach.call(B.el('keepSeg').querySelectorAll('label'), function (l) {
-    l.onclick = function () {
-      Array.prototype.forEach.call(B.el('keepSeg').querySelectorAll('label'), function (o) {
-        o.classList.toggle('on', o === l);
-      });
-    };
-  });
   B.el('closeCancel').onclick = function () { B.el('closeDialog').style.display = 'none'; };
   B.el('closeOk').onclick = function () {
-    var drop = document.querySelector('input[name="keep"]:checked').value === 'drop';
     B.el('closeDialog').style.display = 'none';
-    act('session.close', { drop_journals: drop });
+    act('session.close');
   };
 
   load();

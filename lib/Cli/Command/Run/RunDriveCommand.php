@@ -712,10 +712,9 @@ final class RunDriveCommand implements Command, \Bdo\Translate\Cli\CommandHelp
 
     private function prune(): void
     {
-        foreach (glob($this->workspace->dir().'/*') ?: [] as $path) {
-            if (in_array(basename($path), ['manifest.json','journal.jsonl','batch-summary.json','drive.lock'], true)) continue;
-            $this->removeTree($path);
-        }
+        // Похідні файли належать сесії, яка записала batch у batches.jsonl.
+        // Їх не можна прибирати в кінці прогону: /call має відкривати повну
+        // роботу після close. Очищення робить лише session delete.
         $outputDir = getenv('BDO_STATE_DIR') ? dirname($this->stateDir).'/output' : $this->root.'/output';
         $manifest = $this->workspace->path('manifest.json');
         $manifestTime = is_file($manifest) ? (int) filemtime($manifest) : PHP_INT_MAX;

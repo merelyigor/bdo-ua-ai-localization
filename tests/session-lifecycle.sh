@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Сесія роботи: історія переживає прибирання, живі файли після закриття чисті,
-# а те, що прибирати НЕ можна, лишається на місці.
+# Сесія роботи: історія й похідні файли переживають прибирання до видалення
+# закритої сесії, а те, що прибирати НЕ можна, лишається на місці.
 #
 # Перевіряється рівно те, чим сесія може збрехати:
 #
@@ -10,8 +10,7 @@
 #    тихо викинута з підсумку · саме цей клас дав D53, D56 і D58.
 # 4. Після закриття живі журнали чисті, а `write-log.jsonl`, карантин і журнал
 #    спроб недоторкані.
-# 5. Журнал старший за `BDO_KEEP_DAYS` зникає, молодший лишається (рішення
-#    власника: 7 днів).
+# 5. Журнал старої сесії не зникає автоматично за `BDO_KEEP_DAYS`.
 # 6. Повторний `close` безпечний і не падає.
 # 7. Закриття під ЖИВИМ драйвером заборонене: перенести журнал, у який зараз
 #    пише прогін, означає втратити частину викликів.
@@ -41,6 +40,7 @@ JSON
     cat >"$BDO_STATE_DIR/batches/$id/manifest.json" <<JSON
 {"id": "$id", "rows": $rows, "state": "verified", "mode": "patch", "patch": "1"}
 JSON
+    printf 'повний payload %s\n' "$id" >"$BDO_STATE_DIR/batches/$id/model-payload.json"
     php -r '
     require $argv[1];
     (new Bdo\Translate\Session\Ledger($argv[2]))->recordBatch($argv[3]);
@@ -132,6 +132,12 @@ for live in run-transcript.log run-stream.log model-calls.jsonl; do
     test ! -e "$BDO_STATE_DIR/$live" || fail "живий $live лишився після закриття"
 done
 test ! -e "$BDO_STATE_DIR/current-session" || fail 'вказівник current-session лишився після закриття'
+test -s "$BDO_STATE_DIR/batches/20260904_110133_aaa/model-payload.json" \
+    || fail 'похідний файл привʼязаної пачки зник після close'
+# Навіть явний batch-clean не має права зачепити пачку, записану в сесію.
+php "$ROOT/cli/bdo.php" batch-clean --apply --keep 0 --quiet
+test -s "$BDO_STATE_DIR/batches/20260904_110133_aaa/model-payload.json" \
+    || fail 'batch-clean прибрав дані привʼязаної сесії'
 for keep in write-log.jsonl quarantine.jsonl row-attempts.jsonl; do
     test -s "$BDO_STATE_DIR/$keep" || fail "закриття зачепило $keep · його не можна чіпати НІКОЛИ"
 done
@@ -152,8 +158,7 @@ grep -q '20260904_110133_aaa' <<<"$show_out" || fail 'show не показує �
 grep -q 'квитанцію прибрано' <<<"$show_out" \
     || fail 'show мусить позначити пачку, чиї числа втрачені'
 
-# 5. Строк журналів. Стара сесія (закрита 30 днів тому) втрачає журнали,
-#    свіжа · ні, а підсумок і перелік пачок лишаються в обох.
+# 5. Строк BDO_KEEP_DAYS більше не чистить журнали сесій автоматично.
 OLD="20260801_000000"
 mkdir -p "$BDO_STATE_DIR/sessions/$OLD"
 old_epoch=$(( $(date +%s) - 30 * 86400 ))
@@ -163,17 +168,8 @@ JSON
 printf 'старий крок\n' >"$BDO_STATE_DIR/sessions/$OLD/transcript.log"
 printf '{"id":"x"}\n' >"$BDO_STATE_DIR/sessions/$OLD/batches.jsonl"
 
-php -r '
-require $argv[1];
-$pruned = (new Bdo\Translate\Session\Ledger($argv[2]))->prune(7);
-if ($pruned !== [$argv[3]]) {
-    fwrite(STDERR, "прибрати мусило рівно стару сесію, отримано: " . json_encode($pruned) . "\n");
-    exit(1);
-}
-' "$ROOT/lib/autoload.php" "$BDO_STATE_DIR" "$OLD" || fail 'строк журналів не працює'
-
-test ! -e "$BDO_STATE_DIR/sessions/$OLD/transcript.log" \
-    || fail 'журнал сесії старший за BDO_KEEP_DAYS лишився'
+test -s "$BDO_STATE_DIR/sessions/$OLD/transcript.log" \
+    || fail 'журнал старої сесії прибрано автоматично'
 test -s "$BDO_STATE_DIR/sessions/$OLD/summary.json" \
     || fail 'прибирання знищило підсумок сесії · він мусить лишатись НАЗАВЖДИ'
 test -s "$BDO_STATE_DIR/sessions/$OLD/batches.jsonl" \
@@ -226,10 +222,8 @@ test -s "$BDO_STATE_DIR/sessions/$SECOND/summary.json" \
 
 # --- ВИДАЛЕННЯ СЕСІЇ · разом із даними, але не зі слідом записів -------------
 #
-# Власник попросив третю дію поруч із `close` (лишає в історії) і
-# `journals --drop` (прибирає лише журнали): прибрати сесію повністю, коли вона
-# більше не потрібна (2026-09-06). Дія незворотна, тому межі перевіряються
-# окремо й на живих файлах.
+# Видалення закритої сесії — єдина дія, яка прибирає її журнали, пачки й
+# підсумок. Дія незворотна, тому межі перевіряються окремо й на живих файлах.
 DEL_STATE="$TMP/del-state"
 rm -rf "$DEL_STATE"
 mkdir -p "$DEL_STATE/sessions/20260101_010101" "$DEL_STATE/batches/20260101_010101_aaaa"
@@ -338,4 +332,4 @@ grep -Fq 'прогін забуто разом із ними' "$FORGET_OUT" \
 test -f "$EMPTY_STATE/write-log.jsonl" \
     || fail 'слід записів у API знищено · він описує те, що вже поїхало на прод'
 
-echo 'session lifecycle: OK · пачки потрапляють у сесію самі, підсумок сходиться, втрата квитанції названа, живі журнали чисті, строк 7 днів працює.'
+echo 'session lifecycle: OK · пачки привʼязані до сесії, повні дані переживають clean, delete session очищає їх, втрата квитанції названа.'

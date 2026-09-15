@@ -783,6 +783,42 @@ final class Snapshot
     }
 
     /**
+     * Знайти виклик у живому або перенесеному журналі сесії.
+     *
+     * Після close `model-calls.jsonl` більше не лежить у корені state, тому
+     * lookup повної сторінки не може обмежуватись останніми живими записами.
+     * Читаємо журнали потоково й звіряємо обидва ключі буквально.
+     *
+     * @return array<string,mixed>|null
+     */
+    public function findCallRecord(string $at, string $role): ?array
+    {
+        $paths = [$this->path('model-calls.jsonl')];
+        foreach (glob($this->path('sessions/*/model-calls.jsonl')) ?: [] as $path) {
+            $paths[] = $path;
+        }
+        foreach ($paths as $path) {
+            $handle = @fopen($path, 'rb');
+            if ($handle === false) {
+                continue;
+            }
+            while (($line = fgets($handle)) !== false) {
+                $entry = json_decode($line, true);
+                if (is_array($entry)
+                    && (string) ($entry['at'] ?? '') === $at
+                    && (string) ($entry['role'] ?? '') === $role) {
+                    fclose($handle);
+
+                    return $entry;
+                }
+            }
+            fclose($handle);
+        }
+
+        return null;
+    }
+
+    /**
      * Прочитати файл роботи виклику за шляхом ІЗ ЖУРНАЛУ.
      *
      * Шлях приходить не з запиту, а з нашого ж журналу, і все одно звіряється з

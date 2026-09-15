@@ -109,6 +109,23 @@ grep -Fq 'translation-worker' <<<"$body" \
 grep -Fq 'прогін сесії 20260101_010101' <<<"$body" \
     || fail "вікно не називає, чий це прогін: $body"
 
+# ПОВНИЙ ВИКЛИК ЗАКРИТОЇ СЕСІЇ: модельні файли лежать у batch dir, але ключ
+# виклику є лише в перенесеному session/model-calls.jsonl.
+mkdir -p "$BDO_STATE_DIR/sessions/20260101_010101" "$BDO_STATE_DIR/batches/20260101_010101_xyz"
+printf '{"items":[{"id":"closed","text":"закритий payload"}]}\n' \
+    > "$BDO_STATE_DIR/batches/20260101_010101_xyz/closed-payload.json"
+printf '{"items":[{"id":"closed","text":"закрита відповідь"}]}\n' \
+    > "$BDO_STATE_DIR/batches/20260101_010101_xyz/closed-answer.json"
+printf '{"id":"20260101_010101_xyz"}\n' \
+    > "$BDO_STATE_DIR/sessions/20260101_010101/batches.jsonl"
+CLOSED_AT='2026-01-01T03:52:00+00:00'
+cat > "$BDO_STATE_DIR/sessions/20260101_010101/model-calls.jsonl" <<JSONL
+{"at":"$CLOSED_AT","role":"translation-worker","state":"awaiting_worker","rows":1,"payload":"batches/20260101_010101_xyz/closed-payload.json","answer":"batches/20260101_010101_xyz/closed-answer.json","batch":"20260101_010101_xyz","model":"m","verdict":"ok","ms":1200}
+JSONL
+body="$(curl -s -m 5 "http://127.0.0.1:$PORT/api/call?t=$TOKEN&at=$(php -r 'echo rawurlencode($argv[1]);' "$CLOSED_AT")&role=translation-worker")"
+grep -Fq 'закритий payload' <<<"$body" || fail "per-call закритої сесії не віддав payload: $body"
+grep -Fq 'закрита відповідь' <<<"$body" || fail "per-call закритої сесії не віддав answer: $body"
+
 # Кривий ідентифікатор і сесія без журналів дають ПРИЧИНУ, а не порожнечу.
 got="$(code "http://127.0.0.1:$PORT/api/call?t=$TOKEN&session=../../etc")"
 test "$got" = 400 || fail "кривий ідентифікатор сесії мусить дати 400, дав $got"
@@ -117,16 +134,12 @@ got="$(code "http://127.0.0.1:$PORT/api/call?t=$TOKEN&session=20260101_020202")"
 test "$got" = 404 || fail "сесія без журналів мусить дати 404 з причиною, дала $got"
 
 # --- 7. Кнопки закритої сесії стоять за СПРАВЖНІМИ командами ------------------
-# Намальована кнопка без команди означала б другу систему поруч із наявною
-# (правило 4 теки прототипів).
-grep -Fq "session.journals.drop" "$ROOT/lib/Run/Actions.php" \
-    || fail 'дії «видалити журнали» немає в планувальнику'
-grep -Fq "'journals', \$id, '--drop'" "$ROOT/lib/Run/Actions.php" \
-    || fail 'дія не веде до справжньої команди ./bdo session journals'
-grep -Fq 'journals [0-9_]' "$ROOT/cli/command-registry.json" \
-    || fail 'команда session journals не оголошена в реєстрі · guard її не пустить'
-grep -Fq 'class="dropJ"' "$ROOT/web/sessions.html" \
-    || fail 'на закритій сесії немає кнопки видалення журналів'
+# Єдина очистка через сторінку — незворотне видалення закритої сесії.
+if grep -Fq 'class="dropJ"' "$ROOT/web/sessions.html"; then
+    fail 'сторінка не повинна мати окремої кнопки видалення журналів'
+fi
+grep -Fq "session.delete" "$ROOT/lib/Run/Actions.php" \
+    || fail 'дії «видалити сесію» немає в планувальнику'
 grep -Fq '/call?session=' "$ROOT/web/sessions.html" \
     || fail 'на закритій сесії немає посилання «відкрити прогін»'
 

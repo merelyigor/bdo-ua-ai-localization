@@ -49,6 +49,8 @@ make_fixture() {
     ln -s "$base/lock-target" "$state/batches/20260101_000003_retained/drive.lock"
     printf 'outside-target\n' >"$base/safe-target"
     ln -s "$base/safe-target" "$state/batches/20260101_000003_retained/safe-link"
+    mkdir -p "$state/sessions/kept-session"
+    printf '{"id":"20260101_000003_retained"}\n' >"$state/sessions/kept-session/batches.jsonl"
 
     mkdir -p "$state/batches/20260101_000002_over/derived-dir"
     printf '{"id":"over"}\n' >"$state/batches/20260101_000002_over/manifest.json"
@@ -150,8 +152,8 @@ run_php apply "$TMP/apply" --days 0 --keep 1 --apply
 test "$(cat "$TMP/apply-run.code")" -eq 0 || fail "PHP apply завершився з помилкою: $(cat "$TMP/apply-run.err")"
 snapshot "$TMP/apply" >"$TMP/apply.snapshot"
 
-# ПРАВИЛО: current batch, receipts, drive.lock і dotfile retained лишаються;
-# over-limit batch зникає, safe symlink зникає разом із link, але target живий.
+# ПРАВИЛО: current batch і session-attached batch лишаються повністю;
+# over-limit orphan batch зникає, safe symlink зникає разом із link, але target живий.
 # САБОТАЖ: зняття current skip, receipt preservation або safe delete має впасти.
 base="$TMP/apply"
     state="$base/state"
@@ -159,16 +161,16 @@ base="$TMP/apply"
     test -s "$state/batches/20260101_000003_retained/manifest.json" || fail 'PHP втратив receipt'
     test -s "$state/batches/20260101_000003_retained/.dotfile" || fail 'PHP втратив retained dotfile'
     test -L "$state/batches/20260101_000003_retained/drive.lock" || fail 'PHP втратив drive.lock'
-    test ! -e "$state/batches/20260101_000003_retained/rows.json" || fail 'PHP лишив derived file'
-    test ! -e "$state/batches/20260101_000003_retained/derived-dir" || fail 'PHP лишив derived directory'
-    test ! -e "$state/batches/20260101_000003_retained/safe-link" || fail 'PHP лишив safe symlink'
+    test -s "$state/batches/20260101_000003_retained/rows.json" || fail 'PHP прибрав session-attached derived file'
+    test -s "$state/batches/20260101_000003_retained/derived-dir/payload.json" || fail 'PHP прибрав session-attached derived directory'
+    test -L "$state/batches/20260101_000003_retained/safe-link" || fail 'PHP прибрав session-attached safe symlink'
     test -s "$base/safe-target" || fail 'PHP зачепив symlink target'
     test ! -e "$state/batches/20260101_000002_over" || fail 'PHP лишив over-limit batch'
     test ! -e "$state/glossary-full.json" || fail 'PHP лишив stale cache'
     test -s "$state/game-concepts.json" || fail 'PHP прибрав fresh cache'
     test ! -e "$state/quarantine.jsonl.archived" || fail 'PHP лишив stale archived quarantine'
     test ! -e "$state/run-transcript.log" || fail 'PHP лишив stale transcript'
-    test ! -e "$state/sessions/old-session/run-stream.log" || fail 'PHP лишив old session journal'
+    test -s "$state/sessions/old-session/run-stream.log" || fail 'PHP прибрав old session journal автоматично'
     test -s "$state/sessions/old-session/summary.json" || fail 'PHP прибрав session summary'
     test -s "$state/quarantine.jsonl" && test -s "$state/write-log.jsonl" && test -s "$state/row-attempts.jsonl" \
         || fail 'PHP зачепив protected state'

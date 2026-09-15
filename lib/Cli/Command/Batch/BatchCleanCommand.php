@@ -46,6 +46,7 @@ final class BatchCleanCommand implements Command, \Bdo\Translate\Cli\CommandHelp
         };
 
         $currentId = $this->currentId($stateDir);
+        $attached = (new Ledger($stateDir))->attachedBatchIds();
         $say($output, $quiet, 'Поточна пачка (недоторкана): '.($currentId ?? 'немає'));
         $say($output, $quiet, "Квитанцій лишаємо: {$keep} | дампи output старші за {$days} дн.");
         $say($output, $quiet, '');
@@ -63,8 +64,12 @@ final class BatchCleanCommand implements Command, \Bdo\Translate\Cli\CommandHelp
                     $say($output, $quiet, "  ПОТОЧНА, пропуск: {$name}");
                     continue;
                 }
-
                 $index++;
+                if (isset($attached[$name])) {
+                    $say($output, $quiet, "  СЕСІЯ, пропуск до видалення сесії: {$name}");
+                    continue;
+                }
+
                 $sizeKb = $this->sizeKb($dir);
                 if ($index > $keep) {
                     if ($apply) {
@@ -131,14 +136,9 @@ final class BatchCleanCommand implements Command, \Bdo\Translate\Cli\CommandHelp
             $freed += $sizeKb;
         }
 
+        // Журнали сесії не мають TTL: вони є доказом усіх її прогонів і
+        // видаляються лише разом із закритою сесією.
         $sessions = 0;
-        if (is_dir($stateDir.'/sessions')) {
-            $sessionIds = (new Ledger($stateDir))->prune($days, $apply);
-            $sessions = count($sessionIds);
-            foreach ($sessionIds as $sessionId) {
-                $say($output, $quiet, "  журнали сесії старші за {$days} дн.: {$sessionId}");
-            }
-        }
 
         if (is_dir($outputDir) && ! is_link($outputDir)) {
             foreach ($this->oldOutputFiles($outputDir, $days) as $file) {

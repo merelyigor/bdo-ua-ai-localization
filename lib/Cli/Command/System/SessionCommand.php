@@ -62,7 +62,7 @@ final class SessionCommand implements Command, \Bdo\Translate\Cli\CommandHelp
         }
         $ledger = new Ledger($stateDir);
         if ($ledger->currentId() !== null) {
-            $report = $ledger->close(false);
+            $report = $ledger->close();
             $output->stdout(sprintf(
                 "Попередню сесію %s закрито: пачок %d, у шар %d, до людини %d, карантин %d.\n",
                 $report['id'], $report['batches'], $report['to_layer'], $report['to_human'], $report['quarantine'],
@@ -77,15 +77,12 @@ final class SessionCommand implements Command, \Bdo\Translate\Cli\CommandHelp
     /** @param list<string> $arguments */
     private function close(array $arguments, string $stateDir, Output $output): int
     {
-        $drop = false;
         $keepFiles = false;
         foreach ($arguments as $argument) {
-            if ($argument === '--drop-journals') {
-                $drop = true;
-            } elseif ($argument === '--keep-files') {
+            if ($argument === '--keep-files') {
                 $keepFiles = true;
             } else {
-                return $this->die($output, "для close дозволено лише --drop-journals і --keep-files, отримано «{$argument}»");
+                return $this->die($output, "для close дозволено лише --keep-files, отримано «{$argument}»");
             }
         }
         $busy = $this->liveDriver($stateDir);
@@ -98,16 +95,14 @@ final class SessionCommand implements Command, \Bdo\Translate\Cli\CommandHelp
 
             return 0;
         }
-        $report = $ledger->close($drop);
+        $report = $ledger->close();
         $output->stdout("Сесію {$report['id']} закрито.\n");
         $output->stdout(sprintf(
             "  пачок: %d | рядків: %d | у шар: %d | до людини: %d | карантин: %d | викликів моделі: %d\n",
             $report['batches'], $report['rows'], $report['to_layer'], $report['to_human'], $report['quarantine'], $report['model_calls'],
         ));
-        if ($report['journals'] === 'dropped') {
-            $output->stdout("  журнали видалено на вимогу (--drop-journals)\n");
-        } elseif ($report['moved'] !== []) {
-            $output->stdout(sprintf("  журнали перенесено (%s), житимуть %d дн.\n", implode(', ', $report['moved']), Ledger::keepDays()));
+        if ($report['moved'] !== []) {
+            $output->stdout(sprintf("  журнали перенесено (%s), житимуть до видалення сесії\n", implode(', ', $report['moved'])));
         } else {
             $output->stdout("  журналів не було · переносити нічого\n");
         }
@@ -126,7 +121,7 @@ final class SessionCommand implements Command, \Bdo\Translate\Cli\CommandHelp
             if ($cleanCode !== 0) {
                 return $cleanCode;
             }
-            $output->stdout("  похідні файли завершених пачок прибрано (./bdo clean)\n");
+            $output->stdout("  дані пачок цієї сесії збережено до її видалення\n");
         }
 
         return 0;
@@ -322,6 +317,9 @@ final class SessionCommand implements Command, \Bdo\Translate\Cli\CommandHelp
     {
         $id = (string) ($arguments[0] ?? '');
         $drop = (($arguments[1] ?? '') === '--drop');
+        if ($drop) {
+            return $this->error($output, 'session journals: журнали очищаються лише разом із видаленням закритої сесії');
+        }
         $ledger = new Ledger($stateDir);
         $id = $id !== '' ? $id : (string) $ledger->currentId();
         if ($id === '') {
@@ -430,10 +428,10 @@ final class SessionCommand implements Command, \Bdo\Translate\Cli\CommandHelp
 Сесія роботи: період, у якому власник провів N пачок.
 
   ./session.sh new                    # почати нову (поточну закриє сама)
-  ./session.sh close                  # закрити: підсумок, журнали, прибирання
-  ./session.sh close --drop-journals   # закрити й видалити журнали одразу
+  ./session.sh close                  # закрити: підсумок і журнали сесії
   ./session.sh list [N]               # історія сесій, найновіші зверху
   ./session.sh show [id]              # пачки однієї сесії (типово · поточної)
+  ./session.sh journals [id]          # переглянути журнали закритої сесії
   ./session.sh ensure                 # внутрішнє: відкрити, якщо немає
 
 Навіщо. Квитанція є в кожної пачки, а між пачками не було нічого: питання
@@ -453,9 +451,10 @@ PROD), `quarantine.jsonl` і його архів, `row-attempts.jsonl`,
 частина викликів прогону просто зникне з живого журналу. Тому наявність
 живого `drive.lock` дає відмову з причиною, а не тихе перенесення.
 
-Журнали закритої сесії живуть `BDO_KEEP_DAYS` днів (типово 7 · рішення
-власника). Підсумок і перелік пачок лишаються НАЗАВЖДИ: вони дрібні, і саме
-вони є історією.
+Усі журнали й похідні файли пачок закритої сесії живуть до її явного
+видалення зі сторінки сесій. `BDO_KEEP_DAYS` стосується лише кешів, output і
+інших не-сесійних артефактів. Видалення сесії прибирає її підсумок, перелік
+пачок, журнали та теки пачок разом.
 
 BDO_HELP_TEXT;
     }
