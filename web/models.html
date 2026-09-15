@@ -9,7 +9,7 @@
 <link rel="stylesheet" href="/app.css">
 </head>
 <body>
-<div class="wrap">
+<div class="wrap models-screen">
   <div class="nav" id="nav"></div>
   <div id="gate" class="panel" style="display:none"></div>
   <div id="app" style="display:none">
@@ -29,13 +29,27 @@
     </div>
 
     <div class="panel">
-      <div class="bar" style="margin-bottom:8px"><span style="font-weight:500">що діє зараз</span></div>
+      <div class="bar section-bar"><span class="section-title">каталог моделей</span><span id="loadState" class="empty" style="margin-left:auto"></span></div>
+      <div id="models"><div class="load"><span class="spin"></span>беру перелік моделей…</div></div>
+    </div>
+
+    <div class="panel">
+      <div class="bar section-bar"><span class="section-title">що діє зараз</span><span class="empty">глобальний вибір для всіх ролей</span></div>
       <div id="selection"><div class="load"><span class="spin"></span>беру чинний вибір…</div></div>
     </div>
 
     <div class="panel">
-      <div class="bar" style="margin-bottom:8px">
-        <span style="font-weight:500">роздуми моделі</span>
+      <div class="bar section-bar">
+        <span class="section-title">моделі ролей</span>
+        <span class="empty">окремий вибір має перевагу над глобальним</span>
+      </div>
+      <div class="section-note">Якщо для ролі нічого не обрано, вона використовує загальну модель.</div>
+      <div id="selection-roles"><div class="load"><span class="spin"></span>беру вибір ролей…</div></div>
+    </div>
+
+    <div class="panel">
+      <div class="bar section-bar">
+        <span class="section-title">роздуми моделі</span>
         <span class="empty">застосовуються з наступного виклику ролі</span>
       </div>
       <div class="row" style="align-items:center;flex-wrap:wrap">
@@ -51,11 +65,6 @@
         <span id="thinkState" class="empty"></span>
       </div>
       <div class="empty">Стеля обмежує роздуми моделі; після її досягнення виклик завершується з причиною <span class="mono">empty_content</span>.</div>
-    </div>
-
-    <div class="panel">
-      <div class="bar" style="margin-bottom:8px"><span style="font-weight:500">каталог моделей</span><span id="loadState" class="empty" style="margin-left:auto"></span></div>
-      <div id="models"><div class="load"><span class="spin"></span>беру перелік моделей…</div></div>
     </div>
   </div>
 </div>
@@ -154,20 +163,22 @@
     var catalog = data.catalog;
     if (!catalog) {
       B.el('selection').innerHTML = '<div class="empty">чинний вибір буде видно після першого оновлення каталогу</div>';
+      B.el('selection-roles').innerHTML = '<div class="empty">вибір ролей буде видно після першого оновлення каталогу</div>';
       return;
     }
     var selection = data.selection || {};
     var globalChoice = selection.global && selection.global.runtime && selection.global.model ? selection.global : null;
-    var html = '<div class="global-selection' + (globalChoice ? ' is-active' : '') + '">'
+    var globalHtml = '<div class="global-selection' + (globalChoice ? ' is-active' : '') + '">'
       + '<span class="global-selection-label"><span class="global-selection-title">загальний вибір</span>'
       + '<span class="global-selection-hint">для всіх ролей</span></span>'
       + '<span class="global-selection-model mono">' + B.esc(choiceLabel(globalChoice)) + '</span>'
       + (globalChoice ? ' <button class="global-selection-clear" type="button" data-action="models.clear">скинути загальний</button>' : '')
       + '</div>';
+    var html = '';
     var roles = catalog.roles || [];
     if (!roles.length) { html += '<div class="empty">ролей у конфігурації немає</div>'; }
     roles.forEach(function (role) {
-      html += '<div class="row" data-role-row="' + B.esc(role.role) + '">'
+      html += '<div class="row model-role-row" data-role-row="' + B.esc(role.role) + '">'
         + '<span style="min-width:210px">' + roleIcon(role.role) + ' <span class="mono">' + B.esc(role.role) + '</span><br><span class="empty">'
         + B.esc(sourceLabel(role.source)) + '</span></span>'
         + '<span class="mono" style="min-width:200px;font-size:12px;overflow-wrap:anywhere" title="'
@@ -177,7 +188,8 @@
         + (role.source === 'role_selection' ? ' <button type="button" data-action="models.clear.role" data-role="' + B.esc(role.role) + '">скинути для ролі</button>' : '')
         + '</div>';
     });
-    B.el('selection').innerHTML = html;
+    B.el('selection').innerHTML = globalHtml;
+    B.el('selection-roles').innerHTML = html;
   }
 
   function renderSettings(data) {
@@ -221,7 +233,7 @@
       return '<option value="model-' + index + '" data-runtime="' + B.esc(m.runtime) + '" data-model="' + B.esc(m.model) + '"'
         + ' title="' + B.esc(full) + '">' + B.esc(shortModel(full, 46)) + '</option>';
     }).join('');
-    Array.prototype.forEach.call(B.el('selection').querySelectorAll('[data-role-row]'), function (row) {
+    Array.prototype.forEach.call(B.el('selection-roles').querySelectorAll('[data-role-row]'), function (row) {
       var role = row.getAttribute('data-role-row');
       var select = document.createElement('select');
       select.className = 'roleModel';
