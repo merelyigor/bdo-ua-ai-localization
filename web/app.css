@@ -595,6 +595,51 @@ a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,te
   .model-active-panel .global-selection-model{white-space:normal}
 }
 
+/* ROLE CALLS · actions belong to the right edge of each submodel card, while
+   the expanded transcript gets a quiet inset surface. This keeps the status
+   header scannable and makes the technical payload feel like a detail view,
+   without changing the existing buttons, links, IDs, or loading behavior. */
+.role-card{display:block}
+.role-card > .bar{
+  justify-content:flex-end;
+  align-items:center;
+  gap:10px;
+  margin-top:10px!important;
+  padding-top:10px;
+  border-top:1px solid var(--line-soft)
+}
+.role-card > .bar .openCall{margin-left:auto}
+.role-card > .bar a{white-space:nowrap}
+.role-card .callWork{
+  margin-top:12px;
+  padding:14px;
+  border:1px solid var(--line-soft);
+  border-radius:10px;
+  background:var(--surface-alpha)
+}
+.role-card .callWork > .empty{
+  display:block;
+  margin:0 0 6px!important;
+  color:var(--ts);
+  font-size:12px;
+  line-height:1.45
+}
+.role-card .callWork > pre.log.work{
+  margin-bottom:14px;
+  max-height:260px;
+  border:1px solid var(--line-soft);
+  background:var(--s1);
+  font-size:12px;
+  line-height:1.55
+}
+.role-card .callWork > pre.log.work:last-child{margin-bottom:0}
+@media (max-width:640px){
+  .role-card > .bar{justify-content:stretch;flex-wrap:wrap}
+  .role-card > .bar .openCall{margin-left:0;flex:1 1 100%}
+  .role-card > .bar a{margin-left:auto}
+  .role-card .callWork{padding:10px}
+}
+
 /* START SCREEN · reference 04 / 2026-09-15.
    The page keeps its existing command controls and state ids, but presents the
    setup as a three-column decision surface: destination, model, and thinking.
