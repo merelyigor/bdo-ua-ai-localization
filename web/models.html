@@ -28,29 +28,53 @@
       <div class="empty" style="margin-top:6px">Перемикання посеред пачки дозволене: нова модель застосовується з наступного виклику ролі, поточний виклик доживає на старій.</div>
     </div>
 
-    <div class="panel">
-      <div class="bar section-bar"><span class="section-title">що діє зараз</span><span class="empty">глобальний вибір для всіх ролей</span></div>
-      <div id="selection"><div class="load"><span class="spin"></span>беру чинний вибір…</div></div>
+    <div class="models-overview">
+      <div class="panel model-active-panel">
+        <div class="panel-heading">
+          <span class="panel-icon" aria-hidden="true">✦</span>
+          <div><span class="section-title">активна модель <span class="muted-in-title">(загальна)</span></span>
+            <span class="panel-subtitle">застосовується для всіх ролей без окремого вибору</span></div>
+        </div>
+        <div id="selection"><div class="load"><span class="spin"></span>беру чинний вибір…</div></div>
+      </div>
+      <div class="panel catalog-summary-panel">
+        <div class="panel-heading">
+          <span class="panel-icon" aria-hidden="true">⬡</span>
+          <div><span class="section-title">каталог</span>
+            <span class="panel-subtitle" id="catalogSummaryMeta">моделі з доступних рантаймів</span></div>
+          <button id="refreshModelsTop" class="btn-quiet" type="button" data-action="models.refresh">оновити</button>
+        </div>
+        <div id="catalogSummary" class="catalog-summary-grid">
+          <div class="catalog-stat"><span class="catalog-stat-name">усі моделі</span><strong>—</strong></div>
+          <div class="catalog-stat"><span class="catalog-stat-name">рантайми</span><strong>—</strong></div>
+        </div>
+      </div>
     </div>
 
-    <div class="panel">
-      <div class="bar section-bar">
-        <span class="section-title">роздуми моделі</span>
-        <span class="empty">застосовуються з наступного виклику ролі</span>
+    <div class="panel thinking-panel">
+      <div class="panel-heading">
+        <span class="panel-icon" aria-hidden="true">◉</span>
+        <div><span class="section-title">роздуми моделі <span class="muted-in-title">(thinking)</span></span>
+          <span class="panel-subtitle">застосовуються з наступного виклику ролі</span></div>
       </div>
-      <div class="row" style="align-items:center;flex-wrap:wrap">
-        <label class="sw" for="thinkToggle">
-          <input id="thinkToggle" type="checkbox">
-          <span class="track"></span>
-          <span>вмикати роздуми</span>
-        </label>
-        <label for="thinkLimit">стеля thinking, байт
-          <input id="thinkLimit" type="number" min="1" max="4194304" step="1" inputmode="numeric">
-        </label>
-        <button id="saveThinking" class="btn-primary" type="button" data-action="models.settings">зберегти</button>
-        <span id="thinkState" class="empty"></span>
+      <div class="thinking-layout">
+        <div class="thinking-controls">
+          <label class="sw" for="thinkToggle">
+            <input id="thinkToggle" type="checkbox">
+            <span class="track"></span>
+            <span>вмикати роздуми</span>
+          </label>
+          <label for="thinkLimit">стеля thinking, байт
+            <input id="thinkLimit" type="number" min="1" max="4194304" step="1" inputmode="numeric">
+          </label>
+          <button id="saveThinking" class="btn-primary" type="button" data-action="models.settings">зберегти</button>
+          <span id="thinkState" class="empty"></span>
+        </div>
+        <div class="info-note"><span class="info-note-icon" aria-hidden="true">i</span>
+          <span>Більше роздумів — краща якість, але довший час відповіді.</span>
+        </div>
       </div>
-      <div class="empty">Стеля обмежує роздуми моделі; після її досягнення виклик завершується з причиною <span class="mono">empty_content</span>.</div>
+      <div class="empty thinking-note">Стеля обмежує роздуми моделі; після її досягнення виклик завершується з причиною <span class="mono">empty_content</span>.</div>
     </div>
 
     <div class="panel">
@@ -58,8 +82,9 @@
       <div id="models"><div class="load"><span class="spin"></span>беру перелік моделей…</div></div>
     </div>
 
-    <div class="panel">
+    <div class="panel role-models-panel">
       <div class="bar section-bar">
+        <span class="panel-icon" aria-hidden="true">♟</span>
         <span class="section-title">моделі ролей</span>
         <span class="empty">окремий вибір має перевагу над глобальним</span>
       </div>
@@ -179,12 +204,12 @@
     if (!roles.length) { html += '<div class="empty">ролей у конфігурації немає</div>'; }
     roles.forEach(function (role) {
       html += '<div class="row model-role-row" data-role-row="' + B.esc(role.role) + '">'
-        + '<span style="min-width:210px">' + roleIcon(role.role) + ' <span class="mono">' + B.esc(role.role) + '</span><br><span class="empty">'
+        + '<span class="role-model-name">' + roleIcon(role.role) + ' <span class="mono">' + B.esc(role.role) + '</span><br><span class="empty">'
         + B.esc(sourceLabel(role.source)) + '</span></span>'
-        + '<span class="mono" style="min-width:200px;font-size:12px;overflow-wrap:anywhere" title="'
+        + '<span class="mono role-model-current" title="'
         + B.esc(role.runtime + ' / ' + (role.model || '—')) + '">'
         + B.esc(role.runtime + ' / ' + (role.model || '—')) + '</span>'
-        + '<span class="empty" style="white-space:nowrap">з наступного виклику</span>'
+        + '<span class="empty role-model-next">з наступного виклику</span>'
         + (role.source === 'role_selection' ? ' <button type="button" data-action="models.clear.role" data-role="' + B.esc(role.role) + '">скинути для ролі</button>' : '')
         + '</div>';
     });
@@ -202,10 +227,36 @@
     B.el('thinkState').textContent = toggle.checked ? 'увімкнено' : 'вимкнено';
   }
 
+  function renderCatalogSummary(catalog) {
+    var host = B.el('catalogSummary');
+    var meta = B.el('catalogSummaryMeta');
+    if (!host || !meta) { return; }
+    if (!catalog) {
+      meta.textContent = 'каталог ще не знято';
+      host.innerHTML = '<div class="empty">онови перелік, щоб побачити доступні моделі</div>';
+      return;
+    }
+    var models = catalog.models || [];
+    var counts = {};
+    models.forEach(function (model) {
+      counts[model.runtime] = (counts[model.runtime] || 0) + 1;
+    });
+    var runtimes = Object.keys(counts);
+    meta.textContent = when(catalog.captured_at) + ' · ' + runtimes.length + ' рантайми';
+    host.innerHTML = '<div class="catalog-stat catalog-stat-total"><span class="catalog-stat-name">усі моделі</span><strong>'
+      + B.num(models.length) + '</strong><span class="catalog-stat-unit">у каталозі</span></div>'
+      + runtimes.map(function (runtime) {
+        return '<div class="catalog-stat"><span class="catalog-runtime-dot ' + B.esc(runtime) + '"></span>'
+          + '<span class="catalog-stat-name">' + B.esc(runtime) + '</span><strong>' + B.num(counts[runtime])
+          + '</strong><span class="catalog-stat-unit">моделей</span></div>';
+      }).join('');
+  }
+
   function renderModels(data) {
     var catalog = data.catalog;
     var selection = data.selection || {};
     var globalChoice = selection.global && selection.global.runtime && selection.global.model ? selection.global : null;
+    renderCatalogSummary(catalog);
     if (!catalog) {
       B.el('models').innerHTML = '<div class="empty">' + B.esc(data.hint || 'перелік недоступний') + '</div>';
       return;
@@ -242,7 +293,6 @@
       // `flex:1` БЕЗ мінімуму дав селектам схлопнутись до «об»: сусідні комірки
       // рядка забирали всю ширину. Тому основа 260 px і право рости, а не
       // стискатись у ніщо.
-      select.style.fontSize = '12px';
       select.style.flex = '1 1 260px';
       select.style.minWidth = '260px';
       select.setAttribute('data-role', role);

@@ -218,11 +218,16 @@
   function renderNav(current) {
     var host = el('nav');
     if (!host) { return; }
-    host.innerHTML = SCREENS.map(function (s) {
+    var links = SCREENS.map(function (s) {
       var badge = s.path === '/queue' ? '<span class="badge" id="queueBadge"></span>' : '';
       return '<a href="' + s.path + '"' + (s.path === current ? ' aria-current="page"' : '')
         + ' title="' + esc(s.hint) + '">' + esc(s.name) + badge + '</a>';
-    }).join('') + '<span class="sp"><span class="dot" id="dot"></span><span id="link">зʼєднання…</span></span>';
+    }).join('');
+    host.innerHTML = '<a class="brand" href="/" title="BDO · AI Localization">'
+      + '<span class="brand-mark" aria-hidden="true">◇</span>'
+      + '<span class="brand-copy"><strong>BDO · AI Localization</strong><small>Українська локалізація. Разом.</small></span>'
+      + '</a><div class="nav-links">' + links + '</div>'
+      + '<span class="sp"><span class="dot" id="dot"></span><span id="link">зʼєднання…</span></span>';
   }
 
   // --- стан звʼязку людською мовою ----------------------------------------

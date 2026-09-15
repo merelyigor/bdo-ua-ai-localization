@@ -1,36 +1,75 @@
 :root{
-  --s0:#faf9f7; --s1:#f1efe8; --s2:#ffffff;
-  --tp:#2c2c2a; --ts:#5f5e5a; --tm:#888780;
-  --bd:rgba(0,0,0,.12); --bda:#185fa5;
-  --acc-bg:#e6f1fb; --acc-tx:#0c447c;
-  --ok-bg:#eaf3de; --ok-tx:#3b6d11;
-  --wr-bg:#faeeda; --wr-tx:#854f0b;
-  --dn-bg:#fcebeb; --dn-tx:#a32d2d;
+  --s0:#07111b; --s1:#0d1823; --s2:#142230; --s3:#1b2b39;
+  --tp:#f2f5f8; --ts:#a6b2bd; --tm:#71808d;
+  --bd:rgba(165,188,207,.18); --bda:#6aa8df;
+  --acc-bg:#123f6d; --acc-tx:#d9ecff;
+  --gold:#d7aa57; --gold-soft:#f0cc7a; --gold-bg:rgba(215,170,87,.14);
+  --ok-bg:rgba(74,183,107,.16); --ok-tx:#72d98f;
+  --wr-bg:rgba(215,164,72,.16); --wr-tx:#f3c86f;
+  --dn-bg:rgba(215,74,74,.16); --dn-tx:#ff9f9f;
+  --body-glow:rgba(34,79,113,.26); --panel-fill:linear-gradient(145deg,rgba(20,34,48,.94),rgba(11,22,34,.96));
+  --surface-alpha:rgba(255,255,255,.025); --surface-hover:rgba(255,255,255,.045);
+  --line-soft:rgba(165,188,207,.12); --gold-border:rgba(215,170,87,.5);
+  --summary-bg:rgba(27,91,145,.16); --on-gold:#17212b;
+  --control-bg:rgba(255,255,255,.02); --table-head-bg:rgba(255,255,255,.025);
+  --focus-ring:rgba(106,168,223,.12);
+  --runtime-ollama:#5ba4e5; --runtime-omlx:#a77cff;
+  --shadow:0 16px 40px rgba(0,0,0,.18);
+  --panel-radius:13px; --control-radius:8px;
   --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
   --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
 }
+@media (prefers-color-scheme:light){
+  :root{
+    --s0:#f4f7fa; --s1:#ffffff; --s2:#f8fafc; --s3:#edf2f6;
+    --tp:#17212b; --ts:#526270; --tm:#7a8996;
+    --bd:rgba(32,55,73,.16); --bda:#2b76b4;
+    --acc-bg:#dceeff; --acc-tx:#154d7d;
+    --gold:#a87518; --gold-soft:#8c5e0c; --gold-bg:rgba(168,117,24,.12);
+    --ok-bg:#e5f5e9; --ok-tx:#277341;
+    --wr-bg:#fff2d8; --wr-tx:#946100;
+    --dn-bg:#ffe7e7; --dn-tx:#a32d2d;
+    --body-glow:rgba(92,143,187,.14); --panel-fill:linear-gradient(145deg,rgba(255,255,255,.98),rgba(244,248,251,.98));
+    --surface-alpha:rgba(23,33,43,.025); --surface-hover:rgba(23,33,43,.045);
+    --line-soft:rgba(32,55,73,.12); --gold-border:rgba(168,117,24,.5);
+    --summary-bg:rgba(43,118,180,.1); --on-gold:#ffffff;
+    --control-bg:rgba(23,33,43,.025); --table-head-bg:rgba(23,33,43,.025);
+    --focus-ring:rgba(43,118,180,.14);
+    --runtime-ollama:#2b76b4; --runtime-omlx:#7655c7;
+    --shadow:0 12px 28px rgba(29,55,75,.12);
+  }
+}
 @media (prefers-color-scheme:dark){
   :root{
-    --s0:#1a1a19; --s1:#232322; --s2:#2b2b29;
-    --tp:#eceae4; --ts:#b4b2a9; --tm:#888780;
-    --bd:rgba(255,255,255,.14); --bda:#85b7eb;
-    --acc-bg:#0c447c; --acc-tx:#b5d4f4;
-    --ok-bg:#27500a; --ok-tx:#c0dd97;
-    --wr-bg:#633806; --wr-tx:#fac775;
-    --dn-bg:#791f1f; --dn-tx:#f7c1c1;
+    --s0:#07111b; --s1:#0d1823; --s2:#142230; --s3:#1b2b39;
+    --tp:#f2f5f8; --ts:#a6b2bd; --tm:#71808d;
+    --bd:rgba(165,188,207,.18); --bda:#6aa8df;
+    --acc-bg:#123f6d; --acc-tx:#d9ecff;
+    --gold:#d7aa57; --gold-soft:#f0cc7a; --gold-bg:rgba(215,170,87,.14);
+    --ok-bg:rgba(74,183,107,.16); --ok-tx:#72d98f;
+    --wr-bg:rgba(215,164,72,.16); --wr-tx:#f3c86f;
+    --dn-bg:rgba(215,74,74,.16); --dn-tx:#ff9f9f;
+    --body-glow:rgba(34,79,113,.26); --panel-fill:linear-gradient(145deg,rgba(20,34,48,.94),rgba(11,22,34,.96));
+    --surface-alpha:rgba(255,255,255,.025); --surface-hover:rgba(255,255,255,.045);
+    --line-soft:rgba(165,188,207,.12); --gold-border:rgba(215,170,87,.5);
+    --summary-bg:rgba(27,91,145,.16); --on-gold:#17212b;
+    --control-bg:rgba(255,255,255,.02); --table-head-bg:rgba(255,255,255,.025);
+    --focus-ring:rgba(106,168,223,.12);
+    --runtime-ollama:#5ba4e5; --runtime-omlx:#a77cff;
+    --shadow:0 16px 40px rgba(0,0,0,.18);
   }
 }
 *{box-sizing:border-box}
-body{margin:0;padding:24px;background:var(--s0);color:var(--tp);font-family:var(--sans);font-size:15px;line-height:1.6}
-.wrap{max-width:980px;margin:0 auto}
-.models-screen{max-width:1080px}
-h1{font-size:20px;font-weight:500;margin:0 0 4px}
+body{margin:0;padding:22px 28px 36px;background:radial-gradient(circle at 50% -20%,var(--body-glow),transparent 42%),var(--s0);color:var(--tp);font-family:var(--sans);font-size:15px;line-height:1.6}
+.wrap{max-width:1180px;margin:0 auto}
+.models-screen{max-width:1180px}
+h1{font-size:26px;font-weight:600;letter-spacing:-.02em;margin:0 0 4px}
 .sub{font-size:13px;color:var(--tp);opacity:.82;margin:0 0 16px}
-.panel{background:var(--s1);border-radius:12px;padding:16px;margin-bottom:14px}
+.panel{background:var(--panel-fill);border:1px solid var(--bd);border-radius:var(--panel-radius);padding:18px;margin-bottom:14px;box-shadow:var(--shadow)}
 .bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px}
 .pill{font-size:12px;padding:3px 9px;border-radius:6px}
 .mono{font-family:var(--mono);font-size:12.5px;line-height:1.55}
-button{font-family:inherit;font-size:13px;padding:4px 10px;border-radius:8px;border:.5px solid var(--bd);background:transparent;color:var(--tp);cursor:pointer}
+button{font-family:inherit;font-size:13px;padding:6px 11px;border-radius:var(--control-radius);border:1px solid var(--bd);background:var(--control-bg);color:var(--tp);cursor:pointer;transition:background-color .15s ease,border-color .15s ease,transform .15s ease}
 button:hover{background:var(--s2)}
 /* СТРІЧКА КРОКІВ · хлібним слідом, як у прототипі 01.
    Коробки з підписом «зроблено» під кожним кроком з'їдали чверть екрана й
@@ -139,7 +178,14 @@ td.num,th.num{text-align:right;font-family:var(--mono)}
    Екрани окремі (рішення власника 2026-09-05: «краще окремі екрани, а не по
    вкладкам»), тому це справжні посилання, а не показ/приховування секцій.
    Поточний екран підсвічений, решта · спокійні. */
-.nav{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:16px}
+.nav{display:flex;gap:18px;flex-wrap:wrap;align-items:center;margin-bottom:24px;padding:10px 0;border-bottom:1px solid var(--line-soft)}
+.brand{display:inline-flex;align-items:center;gap:9px;margin-right:12px;color:var(--tp);text-decoration:none;min-width:220px}
+.brand-mark{display:grid;place-items:center;width:31px;height:31px;border:1px solid var(--gold);border-radius:9px;color:var(--gold-soft);font-size:23px;line-height:1;transform:rotate(45deg)}
+.brand-mark::first-letter{transform:rotate(-45deg)}
+.brand-copy{display:flex;flex-direction:column;line-height:1.15}
+.brand-copy strong{font-size:14px;letter-spacing:.01em}
+.brand-copy small{font-size:11px;color:var(--tm);margin-top:4px}
+.nav-links{display:flex;gap:4px;flex-wrap:wrap;align-items:center}
 .nav a{font-size:13.5px;padding:6px 14px;border-radius:9px;border:.5px solid transparent;
   color:var(--ts);text-decoration:none}
 .nav a:hover{background:var(--s1)}
@@ -148,7 +194,7 @@ td.num,th.num{text-align:right;font-family:var(--mono)}
 .nav .badge{margin-left:6px;font-size:11px;opacity:.85}
 
 /* Заголовок екрана: назва зліва, підказка поруч · щоб було видно, де ти. */
-.screen-title{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin:0 0 14px}
+.screen-title{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;margin:0 0 18px}
 .screen-title h1{margin:0}
 .screen-title .hint{font-size:13px;color:var(--ts)}
 
@@ -340,4 +386,95 @@ a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,te
   .global-selection-clear{justify-self:start}
   table{display:block;overflow-x:auto}
   .screen-title .hint{flex-basis:100%}
+}
+
+/* BDO GUI system · shared hierarchy for every screen. The reference design
+   uses one calm shell, one accent, and grouped actions; these primitives keep
+   the same reading rhythm on run, queue, sessions, start, call, and models. */
+.panel-heading{display:flex;align-items:center;gap:11px;min-width:0;margin-bottom:14px}
+.panel-heading > div{display:flex;flex-direction:column;min-width:0}
+.panel-icon{display:grid;place-items:center;flex:none;width:29px;height:29px;border:1px solid var(--gold);border-radius:8px;color:var(--gold-soft);font-size:16px}
+.panel-subtitle{font-size:11px;color:var(--tm);margin-top:2px}
+.muted-in-title{font-weight:400;color:var(--ts)}
+.btn-quiet{margin-left:auto;color:var(--ts);background:transparent}
+.btn-quiet:hover{color:var(--tp);border-color:var(--gold)}
+.models-overview{display:grid;grid-template-columns:minmax(0,1.05fr) minmax(360px,.95fr);gap:14px;margin-bottom:14px}
+.models-overview .panel{margin-bottom:0}
+.model-active-panel .global-selection{grid-template-columns:1fr;gap:8px;padding:15px;background:var(--surface-alpha);border-color:var(--gold-border)}
+.model-active-panel .global-selection.is-active{background:var(--gold-bg);border-color:var(--gold);color:var(--tp)}
+.model-active-panel .global-selection-label{align-items:center;gap:8px}
+.model-active-panel .global-selection-title{font-size:13px;color:var(--tp)}
+.model-active-panel .global-selection-hint{color:var(--ts)}
+.model-active-panel .global-selection-model{font-size:13px;color:var(--tp);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.model-active-panel .global-selection-clear{justify-self:stretch;color:var(--gold-soft);border-color:var(--gold-border);background:transparent}
+.model-active-panel .global-selection-clear:hover{background:var(--gold-bg)}
+.catalog-summary-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.catalog-stat{display:grid;grid-template-columns:auto 1fr;align-items:end;column-gap:8px;row-gap:1px;min-width:0;padding:14px 12px;border:1px solid var(--bd);border-radius:10px;background:var(--surface-alpha)}
+.catalog-stat strong{grid-column:1;font-size:28px;line-height:1.05;letter-spacing:-.03em}
+.catalog-stat-name{grid-column:2;align-self:center;color:var(--ts);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.catalog-stat-unit{grid-column:2;color:var(--tm);font-size:11px}
+.catalog-stat-total{border-color:var(--bda);background:var(--summary-bg)}
+.catalog-runtime-dot{grid-column:1;grid-row:1 / span 2;align-self:center;width:9px;height:9px;border-radius:50%;background:var(--gold)}
+.catalog-runtime-dot.omlx{background:var(--runtime-omlx)}
+.catalog-runtime-dot.ollama{background:var(--runtime-ollama)}
+.thinking-panel .panel-heading{margin-bottom:12px}
+.thinking-layout{display:grid;grid-template-columns:minmax(0,1fr) minmax(240px,.55fr);gap:16px;align-items:center}
+.thinking-controls{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding-top:2px}
+.thinking-controls label:not(.sw){display:flex;align-items:center;gap:8px;color:var(--ts);font-size:12px}
+.thinking-controls input[type=number]{width:104px}
+.info-note{display:flex;align-items:center;gap:9px;padding:12px;border:1px solid var(--bd);border-radius:9px;color:var(--ts);font-size:11px;line-height:1.35}
+.info-note-icon{display:grid;place-items:center;flex:none;width:19px;height:19px;border:1px solid var(--gold);border-radius:50%;color:var(--gold-soft);font-weight:600}
+.thinking-note{margin-top:10px}
+.role-models-panel .section-bar{gap:10px}
+.role-models-panel .section-bar .panel-icon{width:25px;height:25px;font-size:13px}
+.model-role-row{display:grid;grid-template-columns:minmax(180px,1.05fr) minmax(210px,1.25fr) minmax(110px,.7fr) minmax(230px,1.2fr) auto;gap:12px;align-items:center;padding:12px 0}
+.model-role-row > span:first-child,.model-role-row > span:nth-child(2){min-width:0;flex:none}
+.role-model-name,.role-model-current{overflow-wrap:anywhere;min-width:0}
+.role-model-next{white-space:nowrap}
+.model-role-row select{flex:1 1 auto!important;min-width:0!important;width:100%;font-size:12px}
+.model-role-row button{white-space:nowrap}
+.model-table-wrap{border:1px solid var(--bd);border-radius:10px;background:var(--surface-alpha);padding:0;overflow-x:auto}
+.model-table{font-size:12px}
+.model-table th{background:var(--table-head-bg);color:var(--ts);font-size:11px;text-transform:uppercase;letter-spacing:.04em;padding:10px}
+.model-table td{padding:11px 10px;border-top:1px solid var(--line-soft)}
+.model-table tbody tr:hover{background:var(--surface-hover)}
+.model-row.is-global-selected{background:var(--gold-bg);box-shadow:inset 3px 0 var(--gold)}
+.model-row.is-global-selected:hover{background:var(--gold-bg)}
+.model-selected-badge{background:var(--gold);color:var(--on-gold);font-weight:600}
+.model-actions{grid-template-columns:auto 38px 38px;gap:6px}
+.model-actions button{min-height:32px;padding:5px 8px;font-size:12px}
+.model-actions button:nth-child(1){grid-column:1;grid-row:1 / span 2;background:transparent;color:var(--gold-soft);border-color:var(--gold-border)}
+.model-actions button:nth-child(2){grid-column:2;grid-row:1;font-size:0}
+.model-actions button:nth-child(2)::after{content:"↓";font-size:15px}
+.model-actions button:nth-child(3){grid-column:3;grid-row:1;font-size:0}
+.model-actions button:nth-child(3)::after{content:"↥";font-size:15px}
+.model-actions button:nth-child(2),.model-actions button:nth-child(3){grid-row:1 / span 2;align-self:center}
+.model-action-primary{background:var(--gold);color:var(--on-gold);border-color:var(--gold);font-weight:600}
+.model-action-primary:hover{filter:brightness(1.05)}
+.model-action-primary:disabled{color:var(--on-gold)}
+.nav a[aria-current="page"]{background:var(--gold-bg);color:var(--gold-soft);border-color:var(--gold)}
+.pill{border:1px solid var(--bd);background:var(--s3)}
+.btn-primary{background:var(--acc-bg);color:var(--acc-tx);border-color:var(--bda)}
+.btn-primary:hover{box-shadow:0 0 0 3px var(--focus-ring)}
+
+@media (max-width:900px){
+  body{padding:18px}
+  .models-overview{grid-template-columns:1fr}
+  .thinking-layout{grid-template-columns:1fr}
+  .model-role-row{grid-template-columns:minmax(180px,1fr) minmax(180px,1fr) auto}
+  .model-role-row select{grid-column:1 / span 2}
+  .model-role-row button{grid-column:3;grid-row:2}
+}
+@media (max-width:640px){
+  body{padding:12px}
+  .nav{gap:10px;margin-bottom:18px}
+  .brand{flex-basis:100%;margin-right:0}
+  .nav-links{width:100%;overflow-x:auto;flex-wrap:nowrap;padding-bottom:3px}
+  .nav-links a{white-space:nowrap;padding:6px 10px;font-size:12px}
+  .nav .sp{margin-left:0}
+  .panel{padding:14px;border-radius:11px}
+  .catalog-summary-grid{grid-template-columns:1fr 1fr}
+  .model-role-row{grid-template-columns:1fr;gap:8px}
+  .model-role-row select,.model-role-row button{grid-column:auto;grid-row:auto;width:100%}
+  .model-active-panel .global-selection-model{white-space:normal}
 }
