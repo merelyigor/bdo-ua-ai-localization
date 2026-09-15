@@ -671,3 +671,42 @@ a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,te
   .start-action-note{flex-basis:100%}
   .start-log-toggle{margin-left:0}
 }
+
+/* GLOBAL BACKDROP + HEADER · reference 2026-09-16.
+   The artwork is a low-contrast ambient layer; the header uses the same
+   surface language as the page instead of a detached solid bar. New values
+   are tokens so every screen shares one readable, responsive treatment. */
+:root{
+  --page-art:url('/assets/bdo-background.webp');
+  --page-art-overlay:linear-gradient(180deg,rgba(7,17,27,.30),rgba(7,17,27,.82) 62%,var(--s0) 100%);
+  --nav-fill:rgba(7,17,27,.58);
+  --nav-border:rgba(165,188,207,.14);
+  --nav-shadow:0 12px 32px rgba(0,0,0,.20)
+}
+@media (prefers-color-scheme:light){
+  :root{
+    --page-art-overlay:linear-gradient(180deg,rgba(244,247,250,.76),rgba(244,247,250,.94) 62%,var(--s0) 100%);
+    --nav-fill:rgba(255,255,255,.72);
+    --nav-border:rgba(32,55,73,.12);
+    --nav-shadow:0 10px 28px rgba(29,55,75,.10)
+  }
+}
+body{
+  background-color:var(--s0);
+  background-image:var(--page-art-overlay),var(--page-art);
+  background-position:center top;
+  background-size:cover;
+  background-attachment:fixed
+}
+.nav{
+  margin:0 0 28px;
+  padding:10px 14px;
+  border:1px solid var(--nav-border);
+  border-radius:var(--panel-radius);
+  background:var(--nav-fill);
+  box-shadow:var(--nav-shadow);
+  backdrop-filter:blur(10px)
+}
+@media (max-width:640px){
+  .nav{margin-bottom:20px;padding:10px 12px}
+}
