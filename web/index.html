@@ -477,7 +477,19 @@
     // пачка чи що». Причин зупинки дві й обидві законні: людина натиснула
     // «зупинити» або цикл вийшов сам · і в обох випадках вихід той самий.
     var idle = B.el('actionMsg');
-    if (!s.running && b.id && (b.state || '') !== 'closed') {
+    var batchState = b.state || '';
+    // `verified` є канонічним завершеним станом пачки. `closed` — це стан
+    // сесії, а не пачки, тому перевірка його тут пропускала завершені пачки
+    // в гілку «можна продовжити» (саме так зʼявлявся суперечливий екран).
+    var completed = !s.running && !!b.id && batchState === 'verified';
+    var resume = !s.running && !!b.id && !completed && batchState !== 'failed_terminal';
+    if (completed) {
+      idle.textContent = 'Пачку завершено автоматично · стоїть на кроці «'
+        + (b.state_label || batchState) + '». Це не зависання і не ручна зупинка. '
+        + 'Продовження цієї пачки недоступне.';
+      idle.style.color = 'var(--ok-tx)';
+      idle.dataset.batchMessage = 'completed';
+    } else if (resume) {
       // ХТО ЗУПИНИВ · тепер це ФАКТ із журналу пачки, а не здогад. Раніше
       // тут стояло «кнопкою „зупинити“ або сам», бо відрізнити було
       // неможливо: `watch --stop` не писав нічого (D98).
@@ -493,22 +505,27 @@
         + ' Щоб ПРОДОВЖИТИ саму цю пачку з цього кроку · кнопка «продовжити пачку» вгорі праворуч: '
         + 'нова пачка не братиметься, поки ця не закрита.';
       idle.style.color = 'var(--wr-tx)';
-    } else if (idle.style.color === 'var(--wr-tx)') {
+      idle.dataset.batchMessage = 'resume';
+    } else if (idle.dataset.batchMessage) {
       idle.textContent = '';
       idle.style.color = '';
+      delete idle.dataset.batchMessage;
     }
     // ПРОДОВЖИТИ · КНОПКА, ЯКА ПРОДОВЖУЄ. Поки пачка стоїть, вона головна й
     // видима, а «новий прогін» ховається: два схожі виходи поруч і дали
     // плутанину, через яку власник опинився на формі замість прогону (D101).
     var contBtn = B.el('continueBtn');
     var startLink = B.el('startLink');
-    var resume = !s.running && !!b.id && (b.state || '') !== 'closed';
     if (contBtn) {
-      contBtn.style.display = resume ? '' : 'none';
+      // Завершену пачку залишаємо видимою, але явно вимкненою: власник бачить,
+      // що продовження існує для перерваних пачок, але тут воно недоступне.
+      contBtn.style.display = (resume || completed) ? '' : 'none';
+      contBtn.disabled = !resume;
+      contBtn.setAttribute('aria-disabled', String(!resume));
       contBtn.title = resume
         ? 'веде пачку ' + b.id + ' далі з кроку «' + (b.state_label || b.state || '?')
           + '» · нова пачка не братиметься'
-        : '';
+        : completed ? 'пачку завершено автоматично · продовження недоступне' : '';
     }
     if (startLink) { startLink.style.display = resume ? 'none' : ''; }
 
@@ -673,6 +690,7 @@
   B.live(render, function (d) { feed.delta(d); });
 
   B.el('continueBtn').onclick = function () {
+    if (this.disabled) { return; }
     var msg = B.el('actionMsg');
     // Підтвердження питає КОД (`needs_confirm` у плані), але людині теж треба
     // сказати, що це доведе пачку до запису в PROD · так само, як новий прогін.
