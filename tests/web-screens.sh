@@ -293,10 +293,16 @@ foreach ($on as $line) {
 ' "$ROOT/lib/autoload.php" || fail 'перемикач роздумів показує в плані не те, що виконається'
 grep -Fq 'id="thinkToggle"' "$MODELS" \
     || fail 'на екрані моделей немає persistent перемикача роздумів'
-grep -Fq 'id="thinkLimit"' "$MODELS" \
-    || fail 'на екрані моделей немає стелі роздумів'
-grep -Fq 'data-action="models.settings"' "$MODELS" \
-    || fail 'збереження стелі не проходить через models.settings'
+grep -Fq '<select id="thinkLimit"' "$MODELS" \
+    || fail 'на екрані моделей немає селектора стелі роздумів'
+if grep -Fq 'id="saveThinking"' "$MODELS"; then fail 'на екрані моделей залишилася кнопка ручного збереження'; fi
+if grep -Fq '<input id="thinkLimit"' "$MODELS"; then fail 'стеля роздумів лишилася ручним полем'; fi
+grep -Fq "action: 'models.settings'" "$MODELS" \
+    || fail 'автозбереження стелі не проходить через models.settings'
+grep -Fq 'onchange = saveThinkingSettings' "$MODELS" \
+    || fail 'перемикач і селектор роздумів не мають автозбереження'
+grep -Fq '🧠 Роздуми' "$MODELS" \
+    || fail 'на екрані моделей немає мозку біля роздумів'
 grep -Fq 'models.unload' "$MODELS" \
     || fail 'у каталозі моделей немає кнопки вивантаження'
 grep -Fq 'unload_unsupported' "$ROOT/lib/Model/RuntimeModels.php" \

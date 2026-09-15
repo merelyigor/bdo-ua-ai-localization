@@ -54,7 +54,7 @@
     <div class="panel thinking-panel">
       <div class="panel-heading">
         <span class="panel-icon" data-icon="thinking" aria-hidden="true"></span>
-        <div><span class="section-title">роздуми моделі <span class="muted-in-title">(thinking)</span></span>
+        <div><span class="section-title">🧠 Роздуми <span class="muted-in-title">(thinking)</span></span>
           <span class="panel-subtitle">застосовуються з наступного виклику ролі</span></div>
       </div>
       <div class="thinking-layout">
@@ -62,12 +62,18 @@
           <label class="sw" for="thinkToggle">
             <input id="thinkToggle" type="checkbox">
             <span class="track"></span>
-            <span>вмикати роздуми</span>
+            <span>🧠 Роздуми</span>
           </label>
-          <label for="thinkLimit">стеля thinking, байт
-            <input id="thinkLimit" type="number" min="1" max="4194304" step="1" inputmode="numeric">
+          <label class="thinking-limit" for="thinkLimit">
+            <span>🧠 Стеля thinking, байт</span>
+            <select id="thinkLimit" aria-label="🧠 Стеля thinking, байт">
+              <option value="2048">2 048 байт · коротко</option>
+              <option value="4096">4 096 байт</option>
+              <option value="8192">8 192 байт · стандарт</option>
+              <option value="16384">16 384 байт</option>
+              <option value="32768">32 768 байт · довго</option>
+            </select>
           </label>
-          <button id="saveThinking" class="btn-primary" type="button" data-action="models.settings">зберегти</button>
           <span id="thinkState" class="empty"></span>
         </div>
         <div class="info-note"><span class="info-note-icon" aria-hidden="true">i</span>
@@ -219,14 +225,71 @@
     B.el('selection-roles').innerHTML = html;
   }
 
+  var thinkingSaveSeq = 0;
+  var thinkingLimitOptions = ['2048', '4096', '8192', '16384', '32768'];
+
+  function saveThinkingSettings() {
+    var toggle = B.el('thinkToggle');
+    var limit = B.el('thinkLimit');
+    var state = B.el('thinkState');
+    if (!toggle || !limit || !state) { return; }
+    var seq = ++thinkingSaveSeq;
+    var think = toggle.checked;
+    var limitBytes = Number(limit.value);
+    state.textContent = 'зберігаю…';
+    toggle.disabled = true;
+    limit.disabled = true;
+    B.post('/api/action', {
+      action: 'models.settings',
+      payload: {think: think, think_limit_bytes: limitBytes},
+      confirm: true
+    }).then(function(res) {
+      if (seq !== thinkingSaveSeq) { return; }
+      var body = res.body || {};
+      toggle.disabled = false;
+      limit.disabled = false;
+      if (body.ok) {
+        state.textContent = (think ? 'увімкнено' : 'вимкнено') + ' · збережено';
+        load();
+      } else {
+        state.textContent = actionMessage('models.settings', body);
+      }
+    }).catch(function() {
+      if (seq !== thinkingSaveSeq) { return; }
+      toggle.disabled = false;
+      limit.disabled = false;
+      state.textContent = 'не збережено · сервер не відповів';
+    });
+  }
+
+  function bindThinkingSettings() {
+    var toggle = B.el('thinkToggle');
+    var limit = B.el('thinkLimit');
+    if (!toggle || !limit) { return; }
+    toggle.onchange = saveThinkingSettings;
+    limit.onchange = saveThinkingSettings;
+  }
+
   function renderSettings(data) {
     var settings = data.settings || {};
     var toggle = B.el('thinkToggle');
     var limit = B.el('thinkLimit');
     if (!toggle || !limit) { return; }
     toggle.checked = settings.think === true;
-    limit.value = settings.think_limit_bytes || '';
+    var value = String(Number(settings.think_limit_bytes) || 8192);
+    Array.prototype.forEach.call(limit.querySelectorAll('option[data-current]'), function(option) {
+      option.remove();
+    });
+    if (thinkingLimitOptions.indexOf(value) === -1) {
+      var current = document.createElement('option');
+      current.value = value;
+      current.textContent = Number(value).toLocaleString('uk-UA') + ' байт · поточне';
+      current.dataset.current = '1';
+      limit.appendChild(current);
+    }
+    limit.value = value;
     B.el('thinkState').textContent = toggle.checked ? 'увімкнено' : 'вимкнено';
+    bindThinkingSettings();
   }
 
   function renderCatalogSummary(catalog) {
