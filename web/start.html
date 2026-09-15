@@ -16,73 +16,86 @@
   сервера · щоб він не міг розійтися з тим, що виконається.
 -->
 </head>
-<body>
-<div class="wrap">
+<body class="start-page">
+<div class="wrap start-wrap">
   <div class="nav" id="nav"></div>
   <div id="gate" class="panel" style="display:none"></div>
 
-  <div id="app" style="display:none">
-    <div class="screen-title">
+  <div id="app" class="start-app" style="display:none">
+    <div class="screen-title start-title">
       <h1>Почати прогін</h1>
       <span class="hint">кнопка виконує ті самі команди, що й термінал</span>
     </div>
 
-    <div class="panel">
-      <div class="head">
-        <div class="row">
+    <div class="panel start-panel">
+      <div class="start-setup-grid">
+        <section class="start-field start-env-field">
           <span class="lbl">куди пишемо</span>
-          <span class="pill" id="env">—</span>
-          <span class="empty" id="running"></span>
+          <div class="start-env-value">
+            <span class="pill" id="env">—</span>
+            <span class="empty" id="running"></span>
+          </div>
+          <span class="start-field-note">ціль із поточного середовища</span>
+        </section>
+
+        <section class="start-field start-model-field">
+          <span class="lbl">модель</span>
+          <div class="start-model-controls">
+            <select id="modelSelect"><option value="">каталог ще не знято</option></select>
+            <a href="/models" class="as-button">повний екран моделей →</a>
+          </div>
+          <span id="modelNote" class="empty">чинний вибір застосовується з наступного виклику ролі</span>
+        </section>
+
+        <section class="start-field start-thinking-field">
+          <span class="lbl">роздуми (thinking)</span>
+          <div class="start-thinking-value">
+            <span id="think" class="empty">стан читається з налаштувань моделей</span>
+            <a href="/models" class="as-button">змінити →</a>
+          </div>
+          <span class="start-field-note">застосовується з наступного виклику ролі</span>
+        </section>
+      </div>
+
+      <section class="start-section start-mode-section">
+        <div class="start-section-heading"><span class="lbl">режим</span></div>
+        <div class="bar" id="modes"></div>
+      </section>
+
+      <section class="start-section start-patch-section">
+        <div class="start-section-heading"><span class="lbl">патч</span></div>
+        <!-- ТАБЛИЦЯ, А НЕ ВИПАДАЙКА (прототип 04). У випадайці не видно, ДЕ
+             взагалі є робота: власник читає «без ШІ-шару» по всіх патчах одразу
+             й вибирає за числом, а не наосліп. Вибір лишається одним кліком. -->
+        <table class="tbl pick" id="patchTable">
+          <thead><tr><th>патч</th><th>№ у грі</th><th>опубліковано</th>
+            <th class="num">рядків</th><th class="num">без ШІ-шару</th><th></th></tr></thead>
+          <tbody id="patchRows"></tbody>
+        </table>
+        <div class="start-patch-filters">
+          <label class="empty" for="domain">категорія</label>
+          <select id="domain"><option value="">усі</option></select>
+          <label class="empty" for="batches">пачок</label>
+          <input id="batches" type="number" min="1" max="200" value="1">
         </div>
+        <div class="empty start-patch-hint" id="patchHint"></div>
+      </section>
+
+      <div class="start-run-grid">
+        <section class="start-preview-section">
+          <div class="start-section-heading"><span class="lbl">що запуститься</span></div>
+          <div class="box mono" id="preview">—</div>
+        </section>
+
+        <!-- Підтвердження PROD · перемикач із іншим кольором: це не налаштування,
+             а згода на незворотний запис, і вона мусить виглядати інакше. -->
+        <label class="sw danger start-confirm">
+          <input type="checkbox" id="confirm"><span class="track"></span>
+          <span>Запис піде в <b id="confirmEnv">PROD</b>, і це незворотно. Розумію.</span>
+        </label>
       </div>
 
-      <div class="bar" style="margin:4px 0 12px">
-        <label class="lbl" for="modelSelect">модель</label>
-        <select id="modelSelect"><option value="">каталог ще не знято</option></select>
-        <a href="/models" class="as-button">повний екран моделей →</a>
-        <span id="modelNote" class="empty">чинний вибір застосовується з наступного виклику ролі</span>
-      </div>
-
-      <!-- РОЗДУМИ · тут лише ПІДПИС стану, керування живе на екрані моделей.
-           Другий комплект перемикачів означав би другу правду про той самий
-           стан: власник міняв би його у двох місцях і не знав, яке з них
-           чинне. Той самий підхід уже вжито для вибору моделі вище. -->
-      <div class="bar" style="margin:0 0 12px">
-        <span class="lbl">роздуми</span>
-        <span id="think" class="empty">стан читається з налаштувань моделей</span>
-        <a href="/models" class="as-button">змінити →</a>
-      </div>
-
-      <div class="bar" style="margin-bottom:4px"><span class="lbl">режим</span></div>
-      <div class="bar" id="modes" style="align-items:stretch"></div>
-
-      <div class="bar" style="margin:12px 0 4px"><span class="lbl">патч</span></div>
-      <!-- ТАБЛИЦЯ, А НЕ ВИПАДАЙКА (прототип 04). У випадайці не видно, ДЕ
-           взагалі є робота: власник читає «без ШІ-шару» по всіх патчах одразу
-           й вибирає за числом, а не наосліп. Вибір лишається одним кліком. -->
-      <table class="tbl pick" id="patchTable">
-        <thead><tr><th>патч</th><th>№ у грі</th><th>опубліковано</th>
-          <th class="num">рядків</th><th class="num">без ШІ-шару</th><th></th></tr></thead>
-        <tbody id="patchRows"></tbody>
-      </table>
-      <div class="bar" style="margin-top:10px">
-        <label class="empty" for="domain">категорія</label>
-        <select id="domain"><option value="">усі</option></select>
-        <label class="empty" for="batches">пачок</label>
-        <input id="batches" type="number" min="1" max="200" value="1" style="width:80px">
-      </div>
-      <div class="empty" id="patchHint" style="margin-top:6px"></div>
-
-      <div class="bar" style="margin:12px 0 4px"><span class="lbl">що запуститься</span></div>
-      <div class="box mono" id="preview" style="margin-top:0">—</div>
-
-      <!-- Підтвердження PROD · перемикач із іншим кольором: це не налаштування,
-           а згода на незворотний запис, і вона мусить виглядати інакше. -->
-      <label class="sw danger" style="margin:12px 0 8px">
-        <input type="checkbox" id="confirm"><span class="track"></span>
-        <span>Запис піде в <b id="confirmEnv" style="font-weight:500">PROD</b>, і це незворотно. Розумію.</span>
-      </label>
-      <div class="bar">
+      <div class="bar start-actions">
         <button id="startBtn">почати прогін</button>
         <!-- ТЕСТОВИЙ ПРОГІН · усі етапи як у бойовому, без запису в API
              (вимога власника 2026-09-07). Окрема кнопка, а не галочка:
@@ -90,11 +103,11 @@
              думаючи, що це тест. Підтвердження PROD їй не потрібне · вона
              нічого не надсилає, тому й незворотності немає. -->
         <button id="dryBtn">тестовий прогін · без запису</button>
-        <span class="empty" style="font-size:11px">знімає лише <code>--write</code> на кроці запису · решта кроків та сама</span>
+        <span class="empty start-action-note">знімає лише <code>--write</code> на кроці запису · решта кроків та сама</span>
         <span id="actionMsg" class="empty"></span>
-        <button id="logToggle" style="display:none;margin-left:auto">показати вивід</button>
+        <button id="logToggle" class="start-log-toggle" style="display:none">показати вивід</button>
       </div>
-      <pre class="log" id="actionLog" style="display:none;max-height:240px;margin-top:8px"></pre>
+      <pre class="log start-log" id="actionLog" style="display:none"></pre>
     </div>
   </div>
 </div>

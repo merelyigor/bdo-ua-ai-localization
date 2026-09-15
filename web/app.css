@@ -593,3 +593,80 @@ a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,te
   .model-role-row select,.model-role-row button{grid-column:auto;grid-row:auto;width:100%}
   .model-active-panel .global-selection-model{white-space:normal}
 }
+
+/* START SCREEN · reference 04 / 2026-09-15.
+   The page keeps its existing command controls and state ids, but presents the
+   setup as a three-column decision surface: destination, model, and thinking.
+   This is intentionally scoped to `.start-page` so the other screens keep
+   their current layout while they migrate one by one. */
+.start-page{background:radial-gradient(circle at 78% 0%,var(--body-glow),transparent 34%),var(--s0)}
+.start-wrap{max-width:1240px}
+.start-title{margin:28px 0 18px}
+.start-title h1{font-size:30px;letter-spacing:-.03em}
+.start-title .hint{font-size:13px;color:var(--ts)}
+.start-panel{padding:18px 20px 20px;background:var(--panel-fill)}
+.start-setup-grid{display:grid;grid-template-columns:minmax(180px,.72fr) minmax(380px,1.55fr) minmax(260px,1fr);margin:-2px 0 18px;border-bottom:1px solid var(--line-soft)}
+.start-field{display:flex;flex-direction:column;gap:8px;min-width:0;padding:2px 18px 18px}
+.start-field:first-child{padding-left:0}
+.start-field:last-child{padding-right:0}
+.start-field + .start-field{border-left:1px solid var(--line-soft)}
+.start-field .lbl{font-size:12px;color:var(--tp);font-weight:500;text-transform:none;letter-spacing:0}
+.start-env-value,.start-model-controls,.start-thinking-value{display:flex;align-items:center;gap:8px;min-width:0;flex-wrap:wrap}
+.start-env-value .pill{font-size:13px;min-height:36px;padding:8px 18px;border-radius:8px;font-weight:600;letter-spacing:.04em}
+.start-env-field .start-field-note,.start-thinking-field .start-field-note{margin-top:auto}
+.start-field-note{font-size:11px;color:var(--tm);line-height:1.35}
+.start-model-controls select{flex:1 1 260px;min-width:0}
+.start-model-controls .as-button{white-space:nowrap}
+.start-model-field #modelNote{font-size:11px;line-height:1.35}
+.start-thinking-value #think{flex:1 1 150px;min-width:0}
+.start-thinking-value .as-button{white-space:nowrap}
+.start-section{min-width:0}
+.start-section-heading{display:flex;align-items:center;margin:0 0 8px}
+.start-section-heading .lbl{font-size:12px;color:var(--tp);font-weight:500;text-transform:none;letter-spacing:0}
+.start-mode-section{padding-bottom:18px;border-bottom:1px solid var(--line-soft)}
+.start-mode-section #modes{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin:0;align-items:stretch}
+.start-mode-section .mode{min-height:76px;text-align:left;padding:12px 14px;border-radius:9px}
+.start-mode-section .mode .n{font-size:14px;margin-bottom:4px}
+.start-mode-section .mode .d{font-size:11px;line-height:1.35}
+.start-patch-section{padding-top:18px}
+.start-patch-section .tbl{margin-top:0;background:var(--surface-alpha);border:1px solid var(--line-soft);border-radius:9px;overflow:hidden}
+.start-patch-section .tbl th{padding:9px 12px;background:var(--table-head-bg);font-size:11px;text-transform:uppercase;letter-spacing:.04em}
+.start-patch-section .tbl td{padding:10px 12px}
+.start-patch-section .tbl.pick tbody tr.on{box-shadow:inset 3px 0 var(--bda)}
+.start-patch-filters{display:flex;align-items:center;gap:9px;flex-wrap:wrap;margin-top:12px}
+.start-patch-filters select{width:auto;min-width:170px}
+.start-patch-filters input{width:78px!important}
+.start-patch-hint{margin-top:8px;font-size:11px;line-height:1.4}
+.start-run-grid{display:grid;grid-template-columns:minmax(0,1.6fr) minmax(260px,.8fr);gap:14px;align-items:stretch;margin-top:20px}
+.start-preview-section,.start-confirm{min-width:0}
+.start-preview-section .box{margin-top:0;min-height:88px;padding:12px 14px;border:1px solid var(--line-soft);background:var(--s1)}
+.start-confirm{display:flex;align-items:center;margin:24px 0 0;padding:14px;border:1px solid var(--gold-border);border-radius:9px;background:var(--gold-bg);color:var(--tp);line-height:1.4}
+.start-confirm b{font-weight:600;color:var(--dn-tx)}
+.start-actions{gap:9px;margin:18px 0 0;padding-top:16px;border-top:1px solid var(--line-soft)}
+.start-actions #startBtn{min-height:40px;padding:9px 18px;background:var(--gold);color:var(--on-gold);border-color:var(--gold);font-weight:600}
+.start-actions #startBtn:hover{filter:brightness(1.05);box-shadow:0 0 0 3px var(--gold-bg)}
+.start-actions #dryBtn{min-height:40px;padding:9px 16px}
+.start-action-note{font-size:11px;line-height:1.35}
+.start-log-toggle{margin-left:auto}
+.start-log{max-height:240px;margin-top:10px}
+@media (max-width:900px){
+  .start-setup-grid{grid-template-columns:1fr 1fr}
+  .start-thinking-field{grid-column:1 / -1;border-left:0;border-top:1px solid var(--line-soft);padding:16px 0 0}
+  .start-field:nth-child(2){padding-right:0}
+  .start-mode-section #modes{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+@media (max-width:640px){
+  .start-title{margin-top:20px}
+  .start-title h1{font-size:24px}
+  .start-panel{padding:14px}
+  .start-setup-grid{display:flex;flex-direction:column}
+  .start-field,.start-field:first-child,.start-field:last-child{padding:0 0 14px}
+  .start-field + .start-field{border-left:0;border-top:1px solid var(--line-soft);padding-top:14px}
+  .start-mode-section #modes{grid-template-columns:1fr}
+  .start-patch-section .tbl{display:block;overflow-x:auto}
+  .start-patch-section .tbl{min-width:620px}
+  .start-run-grid{grid-template-columns:1fr}
+  .start-confirm{margin-top:0}
+  .start-action-note{flex-basis:100%}
+  .start-log-toggle{margin-left:0}
+}
