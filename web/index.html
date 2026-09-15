@@ -276,10 +276,10 @@
         // не бачить ні редактор, ні інспекція · вони мають рацію, бо таку
         // назву неможливо перевірити.
         var kind = r.kind || 'none';
-        var icon = { pass: '✓', review: '!', reject: '×', none: '·' }[kind] || '·';
+        var icon = { pass: 'pass', review: 'review', reject: 'reject', none: 'dot' }[kind] || 'dot';
         return '<div class="vrow" data-v="' + B.esc(kind) + '">'
           + '<span class="pill v-' + B.esc(kind) + '"><span class="verdict-icon" aria-hidden="true">'
-          + icon + '</span> ' + B.esc(r.label) + '</span>'
+          + B.icon(icon) + '</span> ' + B.esc(r.label) + '</span>'
           + '<div style="flex:1;min-width:0">'
           // ПІДПИСАНО Й ОЧИЩЕНО. Без підпису два монотипні рядки поспіль
           // читались як один текст, а PA-розмітка робила з них стіну на пів
@@ -332,12 +332,12 @@
 
   function callStatus(c) {
     if (c.verdict === 'ok') {
-      return { kind: 'ok', icon: '✓', label: 'готово', card: 'is-ok' };
+      return { kind: 'ok', icon: 'pass', label: 'готово', card: 'is-ok' };
     }
     if (c.verdict === 'truncated') {
-      return { kind: 'failed', icon: '!', label: 'відповідь обрізано', card: 'is-failed' };
+      return { kind: 'failed', icon: 'review', label: 'відповідь обрізано', card: 'is-failed' };
     }
-    return { kind: 'review', icon: '!', label: c.verdict || 'перевірити', card: 'is-review' };
+    return { kind: 'review', icon: 'review', label: c.verdict || 'перевірити', card: 'is-review' };
   }
 
   function applyVerdictFilter() {
@@ -539,7 +539,7 @@
           + '<span style="font-weight:500">' + B.esc(c.role_label) + '</span>'
           + '<span class="meta">' + B.esc(bits.join(' · ')) + '</span>'
           + '<span class="chip role-state ' + status.kind + '" style="margin-left:auto">'
-          + '<span class="verdict-icon" aria-hidden="true">' + status.icon + '</span> '
+          + '<span class="verdict-icon" aria-hidden="true">' + B.icon(status.icon) + '</span> '
           + B.esc(status.label) + '</span>'
           + '<span class="meta" style="margin-left:8px">' + B.esc(c.hms) + '</span></div>'
           + '<div class="bar" style="margin-top:6px">'

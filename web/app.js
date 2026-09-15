@@ -121,6 +121,50 @@
 
   function num(n) { return (Number(n) || 0).toLocaleString('uk-UA'); }
 
+  // ЛОКАЛЬНІ ІКОНКИ · один SVG-набір для всіх екранів без CDN, font glyphs або
+  // emoji. Назви є presentation data: вони не потрапляють у payload і не
+  // впливають на жодну API-дію.
+  var ICON_PATHS = {
+    brand: '<path d="m12 2 9 7-9 13L3 9l9-7Z"/><path d="m12 6 4.5 3.5L12 16l-4.5-6.5L12 6Z"/>',
+    sparkles: '<path d="m12 3 1.5 5.5L19 10l-5.5 1.5L12 17l-1.5-5.5L5 10l5.5-1.5L12 3Z"/><path d="m19 16 .7 2.3L22 19l-2.3.7L19 22l-.7-2.3L16 19l2.3-.7L19 16Z"/>',
+    catalog: '<path d="M12 3 20 7.5v9L12 21l-8-4.5v-9L12 3Z"/><path d="m4 7.5 8 4.5 8-4.5M12 12v9"/>',
+    thinking: '<circle cx="12" cy="12" r="8.5"/><path d="M9.5 9.5c.2-1.4 1.3-2.5 2.8-2.5 1.7 0 2.8 1.1 2.8 2.6 0 1.2-.7 1.9-1.8 2.7-.9.6-1.3 1.2-1.3 2.2M12 17.5h.01"/>',
+    roles: '<circle cx="12" cy="8" r="3"/><path d="M5.5 20c.5-3.2 2.5-5 6.5-5s6 1.8 6.5 5"/><path d="M5 10a3 3 0 0 1-2 2.8M19 10a3 3 0 0 1 2 2.8"/>',
+    book: '<path d="M5 4.5A2.5 2.5 0 0 1 7.5 2H19v17H7.5A2.5 2.5 0 0 0 5 21.5v-17Z"/><path d="M5 19.5A2.5 2.5 0 0 1 7.5 17H19"/>',
+    pen: '<path d="m4 20 4.2-1 9.9-9.9a2.1 2.1 0 0 0-3-3L5.2 16 4 20Z"/><path d="m13.5 7.5 3 3M4 20h4"/>',
+    search: '<circle cx="10.8" cy="10.8" r="6.8"/><path d="m16 16 5 5"/>',
+    wrench: '<path d="M14.5 6.5a4.5 4.5 0 0 0-5.8 5.8L3 18l3 3 5.7-5.7a4.5 4.5 0 0 0 5.8-5.8L14 12l-2-2 2.5-3.5Z"/>',
+    tag: '<path d="M4 5v6l9 9 7-7-9-9H4Z"/><circle cx="8" cy="8" r="1"/>',
+    scale: '<path d="M12 4v16M7 20h10M5 7h14M5 7l-3 6a3 3 0 0 0 6 0L5 7ZM19 7l-3 6a3 3 0 0 0 6 0l-3-6Z"/>',
+    library: '<path d="M4 5h16v15H4zM8 5V3h8v2M8 9h8M8 13h5"/>',
+    flask: '<path d="M9 3h6M10 3v6l-5.5 9.5A1 1 0 0 0 5.4 20h13.2a1 1 0 0 0 .9-1.5L14 9V3M7.5 16h9"/>',
+    star: '<path d="m12 3 2.8 5.7 6.2.9-4.5 4.4 1.1 6.2-5.6-2.9-5.6 2.9 1.1-6.2L3 9.6l6.2-.9L12 3Z"/>',
+    download: '<path d="M12 3v12M7 10l5 5 5-5M5 21h14"/>',
+    upload: '<path d="M12 21V9M7 14l5-5 5 5M5 3h14"/>',
+    check: '<path d="m5 12 4.2 4.2L19 6.5"/>',
+    circle: '<circle cx="12" cy="12" r="7.5"/>',
+    info: '<circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/>',
+    dot: '<circle cx="12" cy="12" r="4"/>',
+    pass: '<path d="m5 12 4.2 4.2L19 6.5"/>',
+    review: '<path d="M12 7v6M12 17h.01"/>',
+    reject: '<path d="m7 7 10 10M17 7 7 17"/>'
+  };
+
+  function icon(name, extraClass) {
+    var path = ICON_PATHS[name] || ICON_PATHS.dot;
+    return '<svg class="icon icon-' + name + (extraClass ? ' ' + extraClass : '')
+      + '" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"'
+      + ' stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + path + '</svg>';
+  }
+
+  function hydrateIcons(root) {
+    var scope = root || document;
+    Array.prototype.forEach.call(scope.querySelectorAll('[data-icon]'), function (node) {
+      node.innerHTML = icon(node.getAttribute('data-icon'));
+      node.removeAttribute('data-icon');
+    });
+  }
+
   // ІГРОВА РОЗМІТКА · НЕ ДЛЯ ОКА. Рядки BDO несуть PA-теги
   // (`<PAColor0xffe9bd23>`, `<PAOldColor>`, `<TextBind:…>`) і `\n`, і в
   // блоці вердиктів вони перетворювали переклад у стіну сміття на пів
@@ -224,7 +268,7 @@
         + ' title="' + esc(s.hint) + '">' + esc(s.name) + badge + '</a>';
     }).join('');
     host.innerHTML = '<a class="brand" href="/" title="BDO · AI Localization">'
-      + '<span class="brand-mark" aria-hidden="true">◇</span>'
+      + '<span class="brand-mark" aria-hidden="true">' + icon('brand') + '</span>'
       + '<span class="brand-copy"><strong>BDO · AI Localization</strong><small>Українська локалізація. Разом.</small></span>'
       + '</a><div class="nav-links">' + links + '</div>'
       + '<span class="sp"><span class="dot" id="dot"></span><span id="link">зʼєднання…</span></span>';
@@ -817,6 +861,8 @@
     post: post,
     el: el,
     esc: esc,
+    icon: icon,
+    hydrateIcons: hydrateIcons,
     num: num,
     secs: secs,
     plain: plain,
