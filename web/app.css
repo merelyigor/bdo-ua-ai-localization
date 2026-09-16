@@ -849,3 +849,17 @@ body{
   .nav-run-steps{flex-basis:100%;overflow-x:auto;padding-bottom:2px}
   .nav-run-actions{width:100%;justify-content:flex-start}
 }
+
+/* MODEL CATALOG · eight columns need an explicit width budget. The older
+   six-column budget made the new levels/actions columns collapse to zero,
+   which forced their text into a vertical strip and overlapped the buttons. */
+.model-table{min-width:1200px;table-layout:fixed}
+.model-table th:nth-child(1),.model-table td:nth-child(1){width:8%}
+.model-table th:nth-child(2),.model-table td:nth-child(2){width:26%}
+.model-table th:nth-child(3),.model-table td:nth-child(3){width:8%}
+.model-table th:nth-child(4),.model-table td:nth-child(4){width:9%}
+.model-table th:nth-child(5),.model-table td:nth-child(5){width:10%}
+.model-table th:nth-child(6),.model-table td:nth-child(6){width:13%}
+.model-table th:nth-child(7),.model-table td:nth-child(7){width:11%}
+.model-table th:nth-child(8),.model-table td:nth-child(8){width:15%}
+.model-table td.model-actions-cell{width:15%;min-width:0}
