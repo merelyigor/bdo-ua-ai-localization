@@ -159,6 +159,10 @@
     pending: 'попереду'
   };
 
+  function stepStatusIcon(state) {
+    return B.icon(state === 'done' ? 'pass' : (state === 'skipped' ? 'dot' : 'circle'), 'step-status-icon');
+  }
+
   // Малюємо ТЕКСТОМ, а не розміткою: `innerHTML` на кожен кадр змушував браузер
   // щоразу заново розбирати рядок, і саме це додавало ривків.
   //
@@ -464,7 +468,7 @@
       var state = st.state || 'pending';
       return (i ? '<span class="arrow">›</span>' : '')
         + '<span class="step ' + state + '" title="' + B.esc(STEP_WORDS[state] || state) + '">'
-        + '<span class="n">' + B.esc(st.label) + '</span></span>';
+        + stepStatusIcon(state) + '<span class="n">' + B.esc(st.label) + '</span></span>';
       }).join('');
     }
 
