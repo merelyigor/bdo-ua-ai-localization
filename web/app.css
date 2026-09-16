@@ -220,6 +220,10 @@ button:hover{background:var(--s2)}
 .role-state.review{background:var(--wr-bg);color:var(--wr-tx);border-color:var(--wr-tx)}
 .role-state.failed{background:var(--dn-bg);color:var(--dn-tx);border-color:var(--dn-tx)}
 .verdict-icon{font-size:13px;font-weight:500}
+.thinking-indicator{display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;color:var(--ts);opacity:.62;transition:color .2s ease,opacity .2s ease,filter .2s ease}
+.thinking-indicator .icon{width:16px;height:16px}
+.thinking-indicator.has-thinking{color:var(--wr-tx);opacity:1;filter:drop-shadow(0 0 5px var(--wr-tx))}
+.thinking-indicator.no-thinking{color:var(--tm)}
 .work-link{color:var(--acc-tx);text-decoration:underline;text-decoration-color:var(--bda)}
 .mh{display:flex;align-items:center;gap:8px;font-size:13px}
 .mh .meta{font-size:12px;color:var(--tm)}
