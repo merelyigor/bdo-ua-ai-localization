@@ -93,6 +93,10 @@ ln -s 999999 "$BDO_STATE_DIR/batches/20260904_150000_lock/drive.lock"
 
 # 4. Закриття. `--keep-files` тримає прибирання пачок осторонь: тут перевіряємо
 #    саму сесію, а квитанції потрібні наступним крокам тесту.
+# Покажчик поточної пачки МУСИТЬ стояти до закриття · інакше перевірка нижче
+# («пачка закритої сесії не є поточною») проходила б на порожньому місці й не
+# могла б упасти ніколи. Саме так вона й виглядала в першій редакції.
+printf '%s\n' "${SID}_aaa" > "$BDO_STATE_DIR/current-batch"
 close_out="$(session close --keep-files)"
 grep -q "Сесію $SID закрито" <<<"$close_out" \
     || fail "close не назвав сесію: $close_out"
@@ -132,6 +136,18 @@ for live in run-transcript.log run-stream.log model-calls.jsonl; do
     test ! -e "$BDO_STATE_DIR/$live" || fail "живий $live лишився після закриття"
 done
 test ! -e "$BDO_STATE_DIR/current-session" || fail 'вказівник current-session лишився після закриття'
+# ПАЧКА ЗАКРИТОЇ СЕСІЇ НЕ Є ПОТОЧНОЮ. Закриття знімало лише покажчик сесії, а
+# `current-batch` лишався · сторінка й далі пропонувала «продовжити пачку», і
+# новий прогін підхоплював пачку закритої сесії замість почати спочатку
+# (власник 2026-09-16: «всі сесії закриті, а прогін продовжує закриту»).
+test ! -e "$BDO_STATE_DIR/current-batch" \
+    || fail "пачка закритої сесії лишилась поточною: $(cat "$BDO_STATE_DIR/current-batch")"
+# Чужа пачка не страждає: закриття однієї сесії не знімає покажчик іншої.
+printf '20260101_010101_bbbb\n' > "$BDO_STATE_DIR/current-batch"
+BDO_STATE_DIR="$BDO_STATE_DIR" php "$ROOT/cli/bdo.php" session close >/dev/null 2>&1 || true
+test -e "$BDO_STATE_DIR/current-batch" \
+    || fail 'закриття сесії зняло покажчик ЧУЖОЇ пачки'
+rm -f "$BDO_STATE_DIR/current-batch"
 test -s "$BDO_STATE_DIR/batches/20260904_110133_aaa/model-payload.json" \
     || fail 'похідний файл привʼязаної пачки зник після close'
 # Навіть явний batch-clean не має права зачепити пачку, записану в сесію.

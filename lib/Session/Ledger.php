@@ -257,6 +257,19 @@ final class Ledger
         }
 
         unlink($this->pointerPath());
+        // ПАЧКА ЗАКРИТОЇ СЕСІЇ БІЛЬШЕ НЕ Є ПОТОЧНОЮ. Закриття знімало лише
+        // покажчик СЕСІЇ, а `current-batch` лишався · тому сторінка й далі
+        // пропонувала «продовжити пачку», і новий прогін підхоплював пачку
+        // закритої сесії замість почати спочатку (власник 2026-09-16).
+        // Ідентифікатор пачки несе сесію в собі (`<сесія>_<хеш>`), тому чужу
+        // пачку цей крок не чіпає.
+        $batchPointer = rtrim($this->stateDir, '/').'/current-batch';
+        $currentBatch = is_file($batchPointer)
+            ? trim((string) @file_get_contents($batchPointer))
+            : '';
+        if ($currentBatch !== '' && str_starts_with($currentBatch, $id.'_')) {
+            \Bdo\Translate\Batch\Workspace::closeCurrent($this->stateDir);
+        }
         $pruned = $this->prune($keepDays);
 
         return [
