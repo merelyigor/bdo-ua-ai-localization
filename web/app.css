@@ -887,7 +887,8 @@ body{
 /* MODEL ACTION HOVER · keep one stable hit area for the button and its icon.
    Filter-based hover on the gold control can create a composited edge under
    the pointer; explicit colors keep the cursor and layout stable. */
-.model-actions button{position:relative;cursor:pointer;transition:background-color .15s ease,border-color .15s ease,color .15s ease,box-shadow .15s ease}
+.model-actions button{position:relative;display:inline-flex;align-items:center;justify-content:center;gap:6px;cursor:pointer;line-height:1;transition:background-color .15s ease,border-color .15s ease,color .15s ease,box-shadow .15s ease}
+.model-actions button:nth-child(1) .icon{margin-right:0}
 .model-actions button .icon,.model-actions button span{pointer-events:none}
 .model-actions button:hover{transform:none;filter:none}
 .model-actions button:disabled{cursor:not-allowed}
