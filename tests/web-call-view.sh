@@ -56,6 +56,20 @@ grep -Fq 'target="_blank"' "$ROOT/web/index.html" \
     || fail 'з прогону не можна відкрити роботу окремою вкладкою'
 grep -Fq 'B.streamFeed(stream, thinkStream)' "$ROOT/web/call.html" \
     || fail 'повний екран не показує живий текст і thinking через спільний feed'
+for screen in "$ROOT/web/index.html" "$ROOT/web/call.html"; do
+    sed -n '/function paintThinking/,/function /p' "$screen" | grep -Fq 'if (atBottom) { box.scrollTop = box.scrollHeight; }' \
+        || fail "${screen#"$ROOT/"} примусово не тримає scroll thinking лише внизу"
+done
+grep -Fq 'if (atBottom) { box.scrollTop = box.scrollHeight; }' "$ROOT/web/call.html" \
+    || fail 'окремий екран виклику не має умовного автоскролу live-відповіді'
+grep -Fq 'class="empty live-answer-title">Відповідь' "$ROOT/web/index.html" \
+    || fail 'live-картка прогону не має заголовка «Відповідь»'
+grep -Fq 'class="empty live-section-title">Відповідь' "$ROOT/web/call.html" \
+    || fail 'окремий екран виклику не має заголовка «Відповідь»'
+grep -Fq 'id="livePayload"' "$ROOT/web/call.html" \
+    || fail 'live-екран виклику не показує постійно відкритий запит'
+grep -Fq 'id="completedThinking"' "$ROOT/web/call.html" \
+    || fail 'завершений виклик не має окремого блока роздумів'
 
 # --- 2. Робота завершеного виклику видна ЦІЛКОМ ------------------------------
 body="$(curl -s -m 5 "http://127.0.0.1:$PORT/api/call?t=$TOKEN&at=$(php -r 'echo rawurlencode($argv[1]);' "$AT")&role=translation-worker")"

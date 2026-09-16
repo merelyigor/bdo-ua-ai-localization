@@ -242,21 +242,26 @@
     var wrap = B.el('thinkwrap');
     var box = B.el('thinkbox');
     if (!wrap || !box) { return; }
-    if (!text) { wrap.style.display = 'none'; return; }
+    var wasEmpty = !box.textContent;
     wrap.style.display = 'block';
+    var answer = B.el('streambox');
+    if (text && wasEmpty && (!answer || !answer.textContent)) { wrap.open = true; }
+    if (!text) { wrap.open = false; box.textContent = ''; return; }
     // Хвіст тримаємо, ПОКИ читач унизу · те саме правило, що в журналі кроків.
     // Інакше прокрутка вгору воювала б із потоком і читати було б неможливо.
     var atBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 24;
     box.textContent = text;
     if (atBottom) { box.scrollTop = box.scrollHeight; }
-    box.scrollTop = box.scrollHeight;
   }
 
   function paintStream(text) {
     var box = B.el('streambox');
     if (!box) { return; }
-    if (!text) { box.style.display = 'none'; return; }
+    if (!text) { box.style.display = 'block'; box.textContent = ''; return; }
     box.style.display = 'block';
+    var thinking = B.el('thinkwrap');
+    if (thinking) { thinking.open = false; }
+    var atBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 24;
     var body = box.firstChild;
     if (!body || body.nodeType !== 3) {
       box.textContent = '';
@@ -267,7 +272,7 @@
       box.appendChild(caret);
     }
     body.nodeValue = text;
-    box.scrollTop = box.scrollHeight;
+    if (atBottom) { box.scrollTop = box.scrollHeight; }
   }
 
   // Розгортання роботи виклику ПРЯМО в списку. Тягнемо лише на вимогу: відповідь
@@ -703,11 +708,15 @@
           // ЩО ПІШЛО В МОДЕЛЬ · доступне поки роль ще друкує, а не лише після.
           // Шлях дає сервер (`stream.payload`), сторінка його не вгадує.
           + ((s.stream && s.stream.payload)
-              ? '<button class="chip" id="reqChip" type="button">запит ▾</button>'
+              ? '<span class="chip live-source" aria-label="джерело запиту">запит</span>'
               : '')
           + '</div>'
-          + '<div class="active-work">'
-          + '<div class="box mono" id="reqbox" style="display:none"></div>'
+          + '<div class="active-work live-work-grid">'
+          + '<section class="live-request live-work-section">'
+          + '<div class="empty live-section-title">Запит</div>'
+          + '<div class="box mono" id="reqbox"></div>'
+          + '</section>'
+          + '<section class="live-answer live-work-section">'
           // РОЗДУМИ ПІДПИСАНІ Й ВИДНО ЗАВЖДИ, коли вони є.
           //
           // Чип тут БУВ і виявився марним: він живе лише в картці ЖИВОГО
@@ -715,8 +724,8 @@
           // і «нічого не відбувалось» (D103). Ховати чернетку теж не треба:
           // вона потрібна саме тоді, коли роль думає. Лишається одне ·
           // ВІДРІЗНИТИ її від відповіді, і це робить підпис, а не кнопка.
-          + '<details id="thinkwrap" class="call-thinking" style="display:none">'
-          + '<summary>Роздуми <span class="meta">чернетка, не переклад</span></summary>'
+          + '<details id="thinkwrap" class="call-thinking">'
+          + '<summary>Роздуми <span class="meta">' + (s.stream.thinking ? 'очікує тексту' : 'міркування вимкнено') + '</span></summary>'
           // Роздуми МОЖНА перечитати: без межі висоти й прокрутки блок ріс
           // нескінченно, показував лише хвіст, і повернутись до початку думки
           // було нікуди (власник 2026-09-14, жива пачка на 42 КБ роздумів).
@@ -725,25 +734,22 @@
               ? '<div class="empty" style="margin-top:6px">Це не зависання: Ollama вивантажує модель за своїм '
                 + 'налаштуванням, і наступні виклики підуть без цієї паузи.</div>'
               : '')
-          + '<div class="box mono live-print" id="streambox" aria-live="polite"></div></div></div>';
+          + '<div class="empty live-answer-title">Відповідь</div>'
+          + '<div class="box mono live-print" id="streambox" aria-live="polite"></div>'
+          + '</section></div></div>';
       }
       B.el('calls').innerHTML = html;
       bindOpenCall();
-      var req = B.el('reqChip');
-      if (req) {
-        req.onclick = function () {
-          var box = B.el('reqbox');
-          if (box.style.display === 'block') { box.style.display = 'none'; return; }
-          box.style.display = 'block';
-          B.busy(box, 'беру запит ролі…');
-          // Шлях НЕ передаємо: його називає сервер. Інакше цей самий виклик
-          // читав би будь-що під `state/`, зокрема токен.
-          B.get('/api/call?live=1').then(function (d) {
-            box.textContent = (d && d.payload && d.payload.text) || 'запиту ще немає на диску';
-          }).catch(function (e) {
-            box.textContent = 'не вдалося взяти запит: ' + e;
-          });
-        };
+      var req = B.el('reqbox');
+      if (req && s.stream && s.stream.payload) {
+        B.busy(req, 'беру запит ролі…');
+        // Шлях НЕ передаємо: його називає сервер. Інакше цей самий виклик
+        // читав би будь-що під `state/`, зокрема токен.
+        B.get('/api/call?live=1').then(function (d) {
+          req.textContent = (d && d.payload && d.payload.text) || 'запиту ще немає на диску';
+        }).catch(function (e) {
+          req.textContent = 'не вдалося взяти запит: ' + e;
+        });
       }
       B.el('callsMeta').textContent = !calls.length ? ''
         : (callsView.scope === 'batch'

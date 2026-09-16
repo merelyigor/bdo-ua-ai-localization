@@ -54,29 +54,43 @@
         <span style="font-weight:500;color:var(--acc-tx)" id="liveRole">роль друкує</span>
         <span class="empty" id="liveNote">друкує…</span>
       </div>
-      <div id="callThinkWrap" style="display:none">
-        <div class="empty" style="margin:8px 0 6px;color:var(--wr-tx)">роздуми моделі · чернетка, не переклад</div>
-        <div class="box mono" id="callThinkBox" style="color:var(--tm)"></div>
+      <div class="call-work-grid live-call-grid">
+        <div class="call-work-item">
+          <div class="empty live-section-title">Запит</div>
+          <div class="box mono" id="livePayload">беру запит ролі…</div>
+        </div>
+        <div class="call-work-item answer-work">
+          <div class="empty live-section-title">Відповідь</div>
+          <details id="callThinkWrap" class="call-thinking">
+            <summary>Роздуми <span class="meta">очікує тексту</span></summary>
+            <div class="box mono" id="callThinkBox" style="color:var(--tm)"></div>
+          </details>
+          <div class="box mono big" id="livebox"></div>
+        </div>
       </div>
-      <div class="box mono big" id="livebox"></div>
     </div>
 
-    <div class="call-work-grid">
-      <div class="panel">
+    <div class="call-work-grid" id="completedWork">
+      <div class="panel call-work-item">
         <div class="bar" style="margin-bottom:8px">
-          <span style="font-size:13px;font-weight:500">що пішло в модель</span>
+          <span style="font-size:13px;font-weight:500">Запит</span>
           <span class="empty" id="payloadMeta"></span>
         </div>
         <div id="payloadLoad"></div>
         <pre class="log big" id="payload"></pre>
       </div>
 
-      <div class="panel">
+      <div class="panel call-work-item answer-work">
         <div class="bar" style="margin-bottom:8px">
-          <span style="font-size:13px;font-weight:500">що модель відповіла</span>
+          <span style="font-size:13px;font-weight:500">Відповідь</span>
           <span class="empty" id="answerMeta"></span>
         </div>
         <div id="answerLoad"></div>
+        <details id="completedThinkWrap" class="call-thinking">
+          <summary>Роздуми</summary>
+          <pre class="log big" id="completedThinking"></pre>
+          <div class="empty thinking-unavailable" id="completedThinkingEmpty">Міркування вимкнено або не збережені</div>
+        </details>
         <pre class="log big" id="answer"></pre>
       </div>
     </div>
@@ -104,9 +118,13 @@
   var stream = B.typer(null, { onPaint: paintLive });
   var thinkStream = B.typer(null, { onPaint: paintThinking });
   var feed = B.streamFeed(stream, thinkStream);
+  var livePayloadLoaded = false;
 
   function paintLive(text) {
     var box = B.el('livebox');
+    var thinking = B.el('callThinkWrap');
+    if (text && thinking) { thinking.style.display = 'block'; thinking.open = false; }
+    var atBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 24;
     var body = box.firstChild;
     if (!body || body.nodeType !== 3) {
       box.textContent = '';
@@ -117,16 +135,21 @@
       box.appendChild(caret);
     }
     body.nodeValue = text;
-    box.scrollTop = box.scrollHeight;
+    if (atBottom) { box.scrollTop = box.scrollHeight; }
   }
 
   function paintThinking(text) {
     var box = B.el('callThinkBox');
     var wrap = B.el('callThinkWrap');
     if (!box || !wrap) { return; }
-    wrap.style.display = text ? 'block' : 'none';
+    var atBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 24;
+    var wasEmpty = !box.textContent;
+    wrap.style.display = 'block';
+    var answer = B.el('livebox');
+    if (text && wasEmpty && (!answer || !answer.textContent)) { wrap.open = true; }
+    if (!text) { wrap.open = false; box.textContent = ''; return; }
     box.textContent = text;
-    box.scrollTop = box.scrollHeight;
+    if (atBottom) { box.scrollTop = box.scrollHeight; }
   }
 
   function size(bytes) {
@@ -145,6 +168,21 @@
     node.textContent = B.prettyWorkText(work.text);
     B.el(metaId).textContent = work.path + ' · ' + size(work.size)
       + (work.truncated ? ' · показано перші 2 МБ' : '');
+  }
+
+  function showThinking(work) {
+    var wrap = B.el('completedThinkWrap');
+    var box = B.el('completedThinking');
+    var empty = B.el('completedThinkingEmpty');
+    if (!wrap || !box || !empty) { return; }
+    if (work && work.text) {
+      box.textContent = B.prettyWorkText(work.text);
+      empty.style.display = 'none';
+    } else {
+      box.textContent = '';
+      empty.style.display = 'block';
+    }
+    wrap.open = false;
   }
 
   function callCard(c) {
@@ -210,6 +248,7 @@
         B.el('payloadLoad').innerHTML = '';
         B.el('answerLoad').innerHTML = '';
         show('payload', 'payloadMeta', d.payload);
+        showThinking(d.thinking);
         show('answer', 'answerMeta', d.answer);
         renderSessionCalls(d.calls);
         if (session) {
@@ -233,15 +272,26 @@
     var live = (s.stream && s.stream.role_label && s.stream.fresh) ? s.stream : null;
     var showLive = !!live && s.running && (!at || (live.role === role));
     B.el('livePanel').style.display = showLive ? 'block' : 'none';
+    B.el('completedWork').style.display = showLive ? 'none' : 'grid';
     if (!showLive) { return; }
     B.el('liveRole').textContent = live.role_label;
     var waiting = live.waiting || 0;
     B.el('liveNote').textContent = waiting >= 12
       ? 'модель вантажиться, ' + waiting + ' с · перший виклик після паузи тягне вагу з диска'
       : 'друкує…';
+    var thinkingMeta = B.el('callThinkWrap').querySelector('.meta');
+    if (thinkingMeta) { thinkingMeta.textContent = live.thinking ? 'очікує тексту' : 'міркування вимкнено'; }
     if (!at) {
       B.el('title').textContent = live.role_label;
       B.el('subtitle').textContent = 'друкує зараз · оновиться саме';
+    }
+    if (!livePayloadLoaded && live.payload) {
+      livePayloadLoaded = true;
+      B.get('/api/call?live=1').then(function (d) {
+        B.el('livePayload').textContent = (d && d.payload && d.payload.text) || 'запиту ще немає на диску';
+      }).catch(function () {
+        B.el('livePayload').textContent = 'не вдалося взяти запит';
+      });
     }
     feed.snapshot(s.stream);
   }, function (d) { feed.delta(d); });
