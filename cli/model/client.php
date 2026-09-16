@@ -384,10 +384,16 @@ $dim = ($show && getenv('NO_COLOR') === false) ? "\033[2m" : '';
 $off = $dim !== '' ? "\033[0m" : '';
 $chunkSeen = 0;
 $contentSeen = false;
-$observeThinking = function (string $text) use (&$thinkingBytes, &$thinkingChunks, &$thinkingTokens, &$thinkingCarry, &$thinkingRepeatFragment, &$thinkingRepeatCount, &$thinkingLoopDetected, &$thinkObserved, &$thinkMismatch, $think): void {
+$observeThinking = function (string $text) use (&$thinkingBytes, &$thinkingChunks, &$thinkingTokens, &$thinkingCarry, &$thinkingRepeatFragment, &$thinkingRepeatCount, &$thinkingLoopDetected, &$thinkObserved, &$thinkMismatch, $think, $responsePath): void {
     if ($text === '') {
         return;
     }
+    // РОЗДУМИ ЛЯГАЮТЬ НА ДИСК ОДРАЗУ, А НЕ В КІНЦІ. Запис після збирання
+    // відповіді не давав НІЧОГО саме в найважливішому випадку: зациклений або
+    // обірваний виклик до кінця не доходить, тому доказ того, що робила модель,
+    // зникав разом із процесом · власник 2026-09-16, і саме через це доказ
+    // зациклення довелось діставати руками з `state/run-stream.log`.
+    @file_put_contents($responsePath.'.thinking.txt', $text, FILE_APPEND);
     $thinkObserved = true;
     if (! $think) {
         $thinkMismatch = true;
@@ -471,6 +477,10 @@ $onChunk = function (string $text, bool $isThinking) use (
     }
 };
 
+// Залишок від попереднього виклику тієї ж ролі не має права видавати себе за
+// роздуми цього: файл дописується потоково, тому починати треба з порожнього.
+@unlink($responsePath.'.thinking.txt');
+
 try {
     while (true) {
         try {
@@ -489,6 +499,10 @@ try {
             $request = $makeRequest($think);
             $chunkSeen = 0;
             $contentSeen = false;
+            // Нова спроба пише роздуми З ЧИСТОГО АРКУША: без цього повтор
+            // дописувався б до роздумів попередньої спроби, і в файлі лежали б
+            // дві різні думки поспіль без межі між ними.
+            @unlink($responsePath.'.thinking.txt');
             $thinkObserved = false;
             $thinkMismatch = false;
             $thinkingBytes = 0;
