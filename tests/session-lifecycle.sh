@@ -370,10 +370,18 @@ printf 'prod\n' > "$EMPTY_STATE/run-target"
 printf '%s\n' '{"mode":"patch","patch":"8"}' > "$EMPTY_STATE/run-goal.json"
 printf '%s\n' '{"query":"patch=8"}' > "$EMPTY_STATE/run-excluded.json"
 printf '%s\n' '{"written":1}' > "$EMPTY_STATE/write-log.jsonl"
+# Живі журнали обірваного прогону: закриття переносить їх у теку сесії, але
+# перерваний прогін створює їх наново. Після видалення ВСІХ сесій вони лишались
+# на диску, і сторінка показувала «журнал кроків» прогону, якого вже немає
+# (власник 2026-09-16: сесій нуль, а логи на екрані є).
+printf '[19:48:12] awaiting_worker\n' > "$EMPTY_STATE/run-transcript.log"
+printf '{"thinking":"x"}\n' > "$EMPTY_STATE/run-stream.log"
+printf '%s\n' '{"rows":50}' > "$EMPTY_STATE/run-summary.json"
 FORGET_OUT="$TMP/forget-run.out"
 BDO_STATE_DIR="$EMPTY_STATE" php "$ROOT/cli/bdo.php" session delete 20260303_030303 --apply >"$FORGET_OUT" 2>&1 \
     || fail "видалення останньої сесії впало: $(cat "$FORGET_OUT")"
-for gone in run-target run-goal.json run-excluded.json; do
+for gone in run-target run-goal.json run-excluded.json \
+            run-transcript.log run-stream.log run-summary.json; do
     test ! -e "$EMPTY_STATE/$gone" \
         || fail "після видалення ОСТАННЬОЇ сесії лишився «${gone}» · сторінка показуватиме мертвий прогін"
 done
