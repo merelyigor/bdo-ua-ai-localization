@@ -866,11 +866,16 @@ body{
 
 /* MODEL ACTIONS · four controls share one cell: probe and global selection
    stay on the first row, while load/unload remain a vertical pair. */
-.model-table th:nth-child(2),.model-table td:nth-child(2){width:23%}
-.model-table th:nth-child(6),.model-table td:nth-child(6){width:12%}
-.model-table th:nth-child(7),.model-table td:nth-child(7){width:10%}
-.model-table th:nth-child(8),.model-table td:nth-child(8){width:22%}
-.model-table td.model-actions-cell{width:22%}
+.model-table th:nth-child(1),.model-table td:nth-child(1){width:8%}
+.model-table th:nth-child(2),.model-table td:nth-child(2){width:20%}
+.model-table th:nth-child(3),.model-table td:nth-child(3){width:7%}
+.model-table th:nth-child(4),.model-table td:nth-child(4){width:8%}
+.model-table th:nth-child(5),.model-table td:nth-child(5){width:9%}
+.model-table th:nth-child(6),.model-table td:nth-child(6){width:11%}
+.model-table th:nth-child(7),.model-table td:nth-child(7){width:16%}
+.model-table th:nth-child(8),.model-table td:nth-child(8){width:21%}
+.model-table td.model-actions-cell{width:21%}
+.model-table td:nth-child(7) .model-status{white-space:normal}
 .model-actions{grid-template-columns:minmax(0,1fr) 38px 38px;grid-template-rows:auto auto;gap:6px}
 .model-actions button:nth-child(1){grid-column:1;grid-row:1;white-space:nowrap}
 .model-actions button:nth-child(2){grid-column:2;grid-row:1 / span 2}
