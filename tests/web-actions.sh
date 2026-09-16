@@ -51,6 +51,7 @@ $cases = [
     ["models.clear.role", ["role" => "translation-worker"]],
     ["models.load", ["runtime" => "omlx", "model" => "model-a"]],
     ["models.unload", ["runtime" => "omlx", "model" => "model-a"]],
+    ["models.probe", ["runtime" => "ollama", "model" => "model-a"]],
     ["models.settings", ["think" => true, "think_limit_bytes" => 8192]],
 ];
 $checked = 0;
@@ -81,6 +82,7 @@ foreach (Actions::names() as $name) {
         "models.clear.role" => ["role" => "translation-worker"],
         "models.load" => ["runtime" => "omlx", "model" => "model-a"],
         "models.unload" => ["runtime" => "omlx", "model" => "model-a"],
+        "models.probe" => ["runtime" => "ollama", "model" => "model-a"],
         "models.settings" => ["think" => false, "think_limit_bytes" => 8192],
         default => [],
     };

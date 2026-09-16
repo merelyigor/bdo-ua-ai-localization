@@ -24,7 +24,7 @@ final class Request
         public readonly string $payload,
         public readonly ?array $schema,
         public readonly bool $stream,
-        public readonly bool $think,
+        public readonly bool|string $think,
         public readonly float $temperature,
         public readonly int $numCtx,
         public readonly int $numPredict,

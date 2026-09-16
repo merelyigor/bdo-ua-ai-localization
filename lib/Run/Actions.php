@@ -56,7 +56,7 @@ final class Actions
         return ['run.start', 'run.stop', 'session.new', 'session.close', 'session.journals.drop',
             'session.delete', 'moderation.approve', 'moderation.reject',
             'models.refresh', 'models.select', 'models.select.role', 'models.clear',
-            'models.clear.role', 'models.load', 'models.unload', 'models.settings'];
+            'models.clear.role', 'models.load', 'models.unload', 'models.probe', 'models.settings'];
     }
 
     /**
@@ -329,14 +329,24 @@ final class Actions
             case 'models.unload':
                 return self::modelAction($payload, false, 'вивантажити модель з памʼяті');
 
+            case 'models.probe':
+                return [
+                    'steps' => [['./bdo', 'models', 'probe', self::modelPart('runtime', $payload['runtime'] ?? ''), self::modelName($payload['model'] ?? '')]],
+                    'env' => [],
+                    'detached' => false,
+                    'needs_confirm' => false,
+                    'label' => 'перевірити рівні роздумів моделі',
+                ];
+
             case 'models.settings':
                 if (! is_bool($payload['think'] ?? null)) {
                     throw new RuntimeException('think: потрібно true або false');
                 }
                 $limit = self::count('think_limit_bytes', $payload['think_limit_bytes'] ?? '', 4 * 1024 * 1024);
+                $level = self::enum('think_level', $payload['think_level'] ?? 'low', ['low', 'medium', 'high']);
 
                 return [
-                    'steps' => [['./bdo', 'models', 'settings', '--think', $payload['think'] ? '1' : '0', '--think-limit-bytes', (string) $limit]],
+                    'steps' => [['./bdo', 'models', 'settings', '--think', $payload['think'] ? '1' : '0', '--think-level', $level, '--think-limit-bytes', (string) $limit]],
                     'env' => [],
                     'detached' => false,
                     'needs_confirm' => false,
@@ -452,10 +462,7 @@ final class Actions
     private static function modelAction(array $payload, bool $withRole, string $label): array
     {
         $runtime = self::modelPart('runtime', $payload['runtime'] ?? '');
-        $model = trim((string) ($payload['model'] ?? ''));
-        if ($model === '' || preg_match('/\s/', $model) === 1) {
-            throw new RuntimeException('model: потрібна непорожня назва одним рядком');
-        }
+        $model = self::modelName($payload['model'] ?? '');
         $argv = ['./bdo', 'models', 'select', $runtime, $model];
         if ($withRole) {
             $argv[] = '--role';
@@ -469,6 +476,16 @@ final class Actions
             'needs_confirm' => false,
             'label' => $label,
         ];
+    }
+
+    private static function modelName(mixed $value): string
+    {
+        $model = trim((string) $value);
+        if ($model === '' || preg_match('/\s/', $model) === 1) {
+            throw new RuntimeException('model: потрібна непорожня назва одним рядком');
+        }
+
+        return $model;
     }
 
     private static function modelPart(string $field, mixed $value): string

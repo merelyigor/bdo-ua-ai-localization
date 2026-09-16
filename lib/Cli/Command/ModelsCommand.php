@@ -30,12 +30,13 @@ final class ModelsCommand implements Command, CommandHelp
             $rest = array_slice($arguments, 1);
             return match ($subcommand) {
                 'list' => $this->list($catalog, $config, $stateDir, $output, $rest),
+                'probe' => $this->probe($catalog, $config, $stateDir, $rest, $output),
                 'select', 'set' => $this->select($catalog, $config, $stateDir, $rest, $output),
                 'clear', 'reset' => $this->clear($config, $stateDir, $rest, $output),
                 'load' => $this->load($catalog, $config, $stateDir, $rest, $output),
                 'unload' => $this->unload($catalog, $config, $stateDir, $rest, $output),
                 'settings' => $this->settings($config, $stateDir, $rest, $output),
-                default => $this->failure('models: потрібно list, select, clear, load, unload або settings', $output, 2),
+                default => $this->failure('models: потрібно list, select, clear, load, unload, probe або settings', $output, 2),
             };
         } catch (ModelRuntimeError $exception) {
             return $this->failure($exception->reason.': '.$exception->getMessage(), $output);
@@ -67,16 +68,90 @@ final class ModelsCommand implements Command, CommandHelp
     /** @return array<string,mixed> */
     private function catalogData(RuntimeModels $catalog, array $config, string $stateDir): array
     {
+        $previous = $this->readCatalog($stateDir);
+        $previousModels = [];
+        foreach ($previous['models'] ?? [] as $model) {
+            if (is_array($model) && isset($model['runtime'], $model['model'])) {
+                $previousModels[(string) $model['runtime'].'/'.(string) $model['model']] = $model;
+            }
+        }
+        $models = [];
+        foreach ($catalog->list() as $model) {
+            $key = (string) $model['runtime'].'/'.(string) $model['model'];
+            $old = $previousModels[$key] ?? [];
+            if (($model['thinking'] ?? false) === true && isset($old['thinking_probe']) && is_array($old['thinking_probe'])) {
+                $model['thinking_probe'] = $old['thinking_probe'];
+                $model['thinking_levels'] = (string) ($old['thinking_probe']['status'] ?? $model['thinking_levels']);
+            }
+            $models[] = $model;
+        }
         $selection = ModelSelection::read($stateDir);
         $roles = $this->roleResolutions($config, $selection);
         return [
             'version' => 1,
             'captured_at' => gmdate('c'),
-            'models' => $catalog->list(),
+            'models' => $models,
             'selection' => $selection,
             'settings' => ModelSettings::resolve($stateDir, $config, [], (int) ($config['num_predict'] ?? 8192)),
             'roles' => $roles,
         ];
+    }
+
+    /** @return array<string,mixed> */
+    private function readCatalog(string $stateDir): array
+    {
+        $path = rtrim($stateDir, '/').'/model-catalog.json';
+        $data = is_file($path) ? json_decode((string) file_get_contents($path), true) : [];
+
+        return is_array($data) ? $data : [];
+    }
+
+    private function probe(RuntimeModels $catalog, array $config, string $stateDir, array $arguments, Output $output): int
+    {
+        if (count($arguments) !== 2) {
+            return $this->failure('models probe: використання `models probe <runtime> <model>`', $output, 2);
+        }
+        [$runtime, $model] = $arguments;
+        $result = $catalog->probeThinking($runtime, $model);
+        $data = $this->readCatalog($stateDir);
+        if ($data === []) {
+            $data = $this->catalogData($catalog, $config, $stateDir);
+        }
+        $found = false;
+        foreach ($data['models'] ?? [] as $index => $entry) {
+            if (is_array($entry) && ($entry['runtime'] ?? '') === $runtime && ($entry['model'] ?? '') === $model) {
+                $data['models'][$index]['thinking_probe'] = $result;
+                $data['models'][$index]['thinking_levels'] = $result['status'];
+                $found = true;
+                break;
+            }
+        }
+        if (! $found) {
+            return $this->failure('catalog_write_failed: модель відсутня у state/model-catalog.json · спершу онови перелік', $output);
+        }
+        $data['captured_at'] = gmdate('c');
+        $this->writeCatalog($stateDir, $data);
+        $statusLabel = match ($result['status']) {
+            'supported' => 'є',
+            'unsupported' => 'немає',
+            'not_tested' => 'не перевірено',
+            'not_deterministic' => 'не піддаються перевірці',
+            default => $result['status'],
+        };
+        $output->stdout(sprintf(
+            "Проба %s / %s: рівні %s (low=%d/%d, high=%d/%d, probed_at=%s)%s\n",
+            $runtime,
+            $model,
+            $statusLabel,
+            $result['low_length'],
+            $result['low_repeat_length'],
+            $result['high_length'],
+            $result['high_repeat_length'],
+            $result['probed_at'],
+            isset($result['reason']) ? ' · '.$result['reason'] : '',
+        ));
+
+        return 0;
     }
 
     /** @param array<string,mixed> $config @param array<string,mixed> $selection @return list<array{role:string,runtime:string,model:string,source:string}> */
@@ -241,18 +316,30 @@ final class ModelsCommand implements Command, CommandHelp
 
     private function settings(array $config, string $stateDir, array $arguments, Output $output): int
     {
-        if (count($arguments) !== 4 || $arguments[0] !== '--think' || $arguments[2] !== '--think-limit-bytes') {
-            return $this->failure('models settings: використання `models settings --think <0|1> --think-limit-bytes <байти>`', $output, 2);
+        if (! in_array(count($arguments), [4, 6], true) || $arguments[0] !== '--think') {
+            return $this->failure('models settings: використання `models settings --think <0|1> [--think-level <low|medium|high>] --think-limit-bytes <байти>`', $output, 2);
         }
-        if (! in_array($arguments[1], ['0', '1'], true) || preg_match('/^[1-9][0-9]*$/', $arguments[3]) !== 1) {
+        $level = 'low';
+        $limitIndex = 2;
+        if (count($arguments) === 4 && $arguments[2] !== '--think-limit-bytes') {
+            return $this->failure('models settings: некоректний порядок аргументів', $output, 2);
+        }
+        if (count($arguments) === 6) {
+            if ($arguments[2] !== '--think-level' || ! in_array($arguments[3], ['low', 'medium', 'high'], true) || $arguments[4] !== '--think-limit-bytes') {
+                return $this->failure('models settings: некоректний think-level або порядок аргументів', $output, 2);
+            }
+            $level = $arguments[3];
+            $limitIndex = 4;
+        }
+        if (! in_array($arguments[1], ['0', '1'], true) || preg_match('/^[1-9][0-9]*$/', $arguments[$limitIndex + 1]) !== 1) {
             return $this->failure('models settings: think є 0 або 1, стеля · додатне число байтів', $output, 2);
         }
         try {
-            ModelSettings::save($stateDir, $arguments[1] === '1', (int) $arguments[3]);
+            ModelSettings::save($stateDir, $arguments[1] === '1', (int) $arguments[$limitIndex + 1], $level);
         } catch (ModelRuntimeError $exception) {
             return $this->failure($exception->reason.': '.$exception->getMessage(), $output);
         }
-        $output->stdout('Налаштування збережено: think='.$arguments[1].', стеля='.$arguments[3].' байт з наступного виклику ролі'."\n");
+        $output->stdout('Налаштування збережено: think='.$arguments[1].', think_level='.$level.', стеля='.$arguments[$limitIndex + 1].' байт з наступного виклику ролі'."\n");
 
         return 0;
     }
@@ -294,7 +381,8 @@ final class ModelsCommand implements Command, CommandHelp
   ./bdo models clear [--role <роль>]
   ./bdo models load <runtime> <model>
   ./bdo models unload <runtime> <model>
-  ./bdo models settings --think <0|1> --think-limit-bytes <байти>
+  ./bdo models probe <runtime> <model>
+  ./bdo models settings --think <0|1> [--think-level <low|medium|high>] --think-limit-bytes <байти>
 
 `list --json` оновлює state/model-catalog.json. Вибір зберігається в
 state/model-selection.json. Порожній стан повертає

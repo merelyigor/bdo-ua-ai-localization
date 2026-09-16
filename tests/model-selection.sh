@@ -4,6 +4,35 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 fail() { printf 'FAIL: %s\n' "$1" >&2; exit 1; }
+
+# 0. Thinking capabilities are data, not a model allowlist. These checks run
+# before the optional local mock, so a blocked bind cannot hide a UI regression.
+grep -Fq "'/api/show'" "$ROOT/lib/Model/RuntimeModels.php" \
+    || fail 'Ollama catalog не читає capabilities через /api/show'
+grep -Fq "'thinking_default'" "$ROOT/lib/Model/RuntimeModels.php" \
+    || fail 'oMLX catalog не читає thinking_default'
+grep -Fq 'toggle.disabled = !canThink' "$ROOT/web/models.html" \
+    || fail 'перемикач thinking не блокується за capability моделі'
+grep -Fq "activeModel.thinking_levels === 'supported'" "$ROOT/web/models.html" \
+    || fail 'рівні стали доступними без доведеної probe'
+grep -Fq "foreach (['low', 'high'] as \$level)" "$ROOT/lib/Model/RuntimeModels.php" \
+    || fail 'probe не порівнює рівні low і high'
+grep -Fq 'temperature: 0.0' "$ROOT/lib/Model/RuntimeModels.php" \
+    || fail 'probe не фіксує temperature 0'
+grep -Fq 'for ($attempt = 0; $attempt < 2; $attempt++)' "$ROOT/lib/Model/RuntimeModels.php" \
+    || fail 'probe не має контрольного повтору кожного рівня'
+grep -Fq "'not_deterministic'" "$ROOT/lib/Model/RuntimeModels.php" \
+    || fail 'probe не має стану недетермінованого рантайму'
+grep -Fq "? 'not_deterministic'" "$ROOT/lib/Model/RuntimeModels.php" \
+    || fail 'недетермінований результат probe не блокує висновок про рівні'
+probe_capture_count="$(grep -cE '^[[:space:]]*probe_code=\$\?' "$ROOT/tests/model-selection.sh" || true)"
+test "$probe_capture_count" -eq 2 \
+    || fail 'кожна probe у тесті мусить зберігати ненульовий код окремо від виводу'
+if grep -Eq 'gpt-oss|huihui_ai/Qwen3\.6' "$ROOT/lib/Model/RuntimeModels.php" "$ROOT/lib/Cli/Command/ModelsCommand.php" "$ROOT/web/models.html"; then
+    fail 'у коді зʼявився вшитий список моделей'
+fi
+grep -Fq "'models.probe'" "$ROOT/lib/Run/Actions.php" \
+    || fail 'probe не зареєстрована як дія сторінки'
 WORK="$(mktemp -d)"
 PORT=$((23000 + RANDOM % 1000))
 trap 'kill "${SERVER:-}" 2>/dev/null || true; rm -rf "$WORK"' EXIT
@@ -23,16 +52,31 @@ if ($path === '/api/ps') {
     echo json_encode(['models' => [['name' => 'ollama-model']]]);
     return true;
 }
+if ($path === '/api/show') {
+    header('Content-Type: application/json');
+    echo json_encode(['capabilities' => ['completion', 'vision', 'tools', 'thinking']]);
+    return true;
+}
 if ($path === '/api/chat') {
     file_put_contents($state.'.ollama-request', $body);
     header('Content-Type: application/json');
-    echo json_encode(['done' => true, 'done_reason' => 'stop', 'message' => ['content' => '']]);
+    $request = json_decode($body, true);
+    $think = is_array($request) ? ($request['think'] ?? false) : false;
+    $model = is_array($request) ? ($request['model'] ?? '') : '';
+    $thinking = $model === 'ollama-model'
+        ? ($think === 'low' ? str_repeat('l', 14) : ($think === 'high' ? str_repeat('h', 473) : ''))
+        : '';
+    echo json_encode(['done' => true, 'done_reason' => 'stop', 'message' => ['content' => '', 'thinking' => $thinking]]);
     return true;
 }
 if ($path === '/admin/api/models') {
     header('Content-Type: application/json');
     $loaded = is_file($state.'.omlx-loaded');
-    echo json_encode(['models' => [['id' => 'omlx-model', 'loaded' => $loaded, 'estimated_size_formatted' => '3.2 GB']]]);
+    echo json_encode(['models' => [
+        ['id' => 'omlx-model', 'loaded' => $loaded, 'thinking_default' => true, 'estimated_size_formatted' => '3.2 GB'],
+        ['id' => 'omlx-not-tested', 'loaded' => false, 'thinking_default' => true, 'estimated_size_formatted' => '2.1 GB'],
+        ['id' => 'omlx-no-thinking', 'loaded' => false, 'estimated_size_formatted' => '1.1 GB'],
+    ]]);
     return true;
 }
 if ($path === '/admin/api/models/omlx-model/load') {
@@ -48,6 +92,17 @@ if ($path === '/admin/api/models/omlx-model/unload') {
     return true;
 }
 if ($path === '/v1/chat/completions') {
+    $request = json_decode($body, true);
+    $model = is_array($request) ? ($request['model'] ?? '') : '';
+    if (is_array($request) && ($request['stream'] ?? true) === false) {
+        $count = (int) (is_file($state.'.omlx-probe-count') ? file_get_contents($state.'.omlx-probe-count') : 0);
+        file_put_contents($state.'.omlx-probe-count', (string) ($count + 1));
+        $lengths = [1120, 899, 2057, 899];
+        $thinking = $model === 'omlx-model' ? str_repeat('x', $lengths[$count % count($lengths)]) : '';
+        header('Content-Type: application/json');
+        echo json_encode(['choices' => [['message' => ['content' => '', 'reasoning_content' => $thinking], 'finish_reason' => 'stop']]]);
+        return true;
+    }
     file_put_contents($state.'.omlx-request', $body);
     header('Content-Type: text/event-stream');
     echo "data: {\"choices\":[{\"delta\":{\"content\":\"{\\\"items\\\":[]}\"},\"finish_reason\":null}]}\n\n";
@@ -97,16 +152,40 @@ run_bdo() {
 list_output="$(run_bdo models list)"
 grep -Fq $'ollama\tollama-model\t2 GB\tтак' <<<"$list_output" || fail "Ollama list: $list_output"
 grep -Fq $'omlx\tomlx-model\t3.2 GB\tні' <<<"$list_output" || fail "oMLX list: $list_output"
+grep -Fq $'omlx\tomlx-not-tested\t2.1 GB\tні' <<<"$list_output" || fail "oMLX not-tested list: $list_output"
+grep -Fq $'omlx\tomlx-no-thinking\t1.1 GB\tні' <<<"$list_output" || fail "oMLX no-thinking list: $list_output"
 
 json_output="$(run_bdo models list --json)"
-php -r '$d=json_decode($argv[1],true); $models=$d["models"]??[]; if (!is_string($d["captured_at"]??null) || count($models)!==2 || !is_array($d["roles"]??null)) { fwrite(STDERR,"catalog JSON не містить мітку, два runtime і ролі\n"); exit(1); } foreach ($models as $m) { if (!isset($m["runtime"],$m["model"],$m["size"],$m["loaded"])) { fwrite(STDERR,"catalog entry неповний\n"); exit(1); } }' "$json_output" \
+php -r '$d=json_decode($argv[1],true); $models=$d["models"]??[]; if (!is_string($d["captured_at"]??null) || count($models)!==4 || !is_array($d["roles"]??null)) { fwrite(STDERR,"catalog JSON не містить мітку, чотири моделі і ролі\n"); exit(1); } foreach ($models as $m) { if (!isset($m["runtime"],$m["model"],$m["size"],$m["loaded"])) { fwrite(STDERR,"catalog entry неповний\n"); exit(1); } }' "$json_output" \
     || fail 'models list --json не повернув повний каталог'
+php -r '$d=json_decode($argv[1],true); foreach ($d["models"] as $m) { if (!array_key_exists("thinking",$m) || !isset($m["thinking_reason"],$m["thinking_levels"])) { fwrite(STDERR,"catalog entry не має capability thinking\n"); exit(1); } }' "$json_output" \
+    || fail 'catalog не матеріалізував здатність thinking'
+php -r '$d=json_decode($argv[1],true); $want=["ollama/ollama-model"=>"not_tested","omlx/omlx-model"=>"not_tested","omlx/omlx-not-tested"=>"not_tested","omlx/omlx-no-thinking"=>"unsupported"]; foreach ($d["models"] as $m) { $key=($m["runtime"]??"")."/".($m["model"]??""); if (isset($want[$key]) && ($m["thinking_levels"]??"")!==$want[$key]) { fwrite(STDERR,"початковий стан {$key} неочікуваний\n"); exit(1); } unset($want[$key]); } if ($want) { fwrite(STDERR,"початкові стани відсутні\n"); exit(1); }' "$json_output" \
+    || fail 'catalog не розрізняє supported, unsupported і not_tested до probe'
 test -s "$WORK/state/model-catalog.json" || fail 'models list --json не записав state/model-catalog.json'
 php -r '$d=json_decode($argv[1],true); $s=$d["settings"]??[]; if (($s["think"]??null)!==false || ($s["think_limit_bytes"]??0)!==8192) { fwrite(STDERR,"default model settings не зберегли чинну стелю\n"); exit(1); }' "$json_output" \
     || fail 'catalog не повернув default think settings'
 run_bdo models settings --think 1 --think-limit-bytes 33 | grep -Fq 'з наступного виклику ролі' || fail 'settings не підтвердили збереження'
 php -r '$s=json_decode(file_get_contents($argv[1]),true); exit(($s["think"]??false)===true && ($s["think_limit_bytes"]??0)===33 ? 0 : 1);' "$WORK/state/model-settings.json" \
     || fail 'settings не збережені в state/model-settings.json'
+run_bdo models settings --think 1 --think-level high --think-limit-bytes 33 >/dev/null
+php -r '$s=json_decode(file_get_contents($argv[1]),true); exit(($s["think_level"]??"")==="high" ? 0 : 1);' "$WORK/state/model-settings.json" \
+    || fail 'think_level не збережено'
+set +e
+probe_output="$(run_bdo models probe ollama ollama-model 2>&1)"
+probe_code=$?
+set -e
+test "$probe_code" -eq 0 || fail "probe Ollama завершилась з кодом $probe_code: $probe_output"
+grep -Fq 'рівні є' <<<"$probe_output" || fail "probe не довела рівні: $probe_output"
+set +e
+probe_output_omlx="$(run_bdo models probe omlx omlx-model 2>&1)"
+probe_code=$?
+set -e
+test "$probe_code" -eq 0 || fail "probe oMLX завершилась з кодом $probe_code: $probe_output_omlx"
+grep -Fq 'рівні не піддаються перевірці' <<<"$probe_output_omlx" || fail "probe не зафіксувала недетермінованість: $probe_output_omlx"
+grep -Fq 'рантайм дає різні відповіді на однакові запити' <<<"$probe_output_omlx" || fail "probe не назвала причину: $probe_output_omlx"
+php -r '$d=json_decode(file_get_contents($argv[1]),true); $m=$d["models"]??[]; $found=[]; foreach($m as $x) { $found[($x["runtime"]??"")."/".($x["model"]??"")]=$x; } $want=["ollama/ollama-model"=>"supported","omlx/omlx-model"=>"not_deterministic","omlx/omlx-not-tested"=>"not_tested","omlx/omlx-no-thinking"=>"unsupported"]; foreach($want as $key=>$status) { if (($found[$key]["thinking_levels"]??"")!==$status) { fwrite(STDERR,"{$key} не має стану {$status}\n"); exit(1); } } if (($found["omlx/omlx-model"]["thinking_probe"]["reason"]??"")==="" || !isset($found["ollama/ollama-model"]["thinking_probe"]["probed_at"])) exit(1);' "$WORK/state/model-catalog.json" \
+    || fail 'результат probe не записаний поруч із моделлю або стани змішані'
 
 select_output="$(run_bdo models select omlx omlx-model --role translation-worker)"
 grep -Fq 'Вибір збережено: роль translation-worker = omlx / omlx-model' <<<"$select_output" || fail "select: $select_output"

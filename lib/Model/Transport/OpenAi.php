@@ -87,8 +87,8 @@ final class OpenAi implements Transport
                 ],
             ];
         }
-        if ($request->think) {
-            $body['reasoning_effort'] = $this->reasoningEffort;
+        if ($request->think !== false) {
+            $body['reasoning_effort'] = is_string($request->think) ? $request->think : $this->reasoningEffort;
         }
 
         $headers = "Content-Type: application/json\r\n";

@@ -181,6 +181,23 @@ $callsFile = $stateDir.'/model-calls.jsonl';
 $stats = ['in' => null, 'out' => null];
 $stream = getenv('BDO_MODEL_STREAM') !== '0';
 $think = $settings['think'];
+$catalogPath = rtrim($stateDir, '/').'/model-catalog.json';
+$catalogData = is_file($catalogPath) ? json_decode((string) file_get_contents($catalogPath), true) : null;
+if ($think === true && is_array($catalogData)) {
+    foreach ($catalogData['models'] ?? [] as $catalogModel) {
+        if (! is_array($catalogModel)
+            || ($catalogModel['runtime'] ?? '') !== $provider
+            || ($catalogModel['model'] ?? '') !== $model) {
+            continue;
+        }
+        if (($catalogModel['thinking'] ?? false) !== true) {
+            $think = false;
+        } elseif (($catalogModel['thinking_levels'] ?? 'not_tested') === 'supported') {
+            $think = $settings['think_level'];
+        }
+        break;
+    }
+}
 $thinkLimitBytes = $settings['think_limit_bytes'];
 $thinkObserved = false;
 $thinkMismatch = false;

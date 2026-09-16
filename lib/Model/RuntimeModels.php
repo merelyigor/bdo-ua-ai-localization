@@ -12,7 +12,7 @@ final class RuntimeModels
     {
     }
 
-    /** @return list<array{runtime:string,model:string,size:string,loaded:string,reason?:string}> */
+    /** @return list<array<string,mixed>> */
     public function list(): array
     {
         $rows = [];
@@ -35,10 +35,10 @@ final class RuntimeModels
         return $rows;
     }
 
-    /** @return array{runtime:string,model:string,size:string,loaded:string} */
+    /** @return array<string,mixed> */
     public function assertModel(string $runtime, string $model): array
     {
-        $models = $this->runtimeModels($runtime);
+        $models = $this->runtimeModels($runtime, false);
         foreach ($models as $entry) {
             if ($entry['model'] === $model) {
                 return $entry;
@@ -49,7 +49,7 @@ final class RuntimeModels
 
     public function load(string $runtime, string $model): string
     {
-        $entry = $this->assertModel($runtime, $model);
+        $this->assertModel($runtime, $model);
         $settings = $this->settings($runtime);
         if ($runtime === 'ollama') {
             $this->requestJson('POST', $this->endpoint($settings).'/api/chat', [
@@ -99,8 +99,83 @@ final class RuntimeModels
         return 'omlx: модель «'.$model.'» вивантажена з памʼяті';
     }
 
-    /** @return list<array{runtime:string,model:string,size:string,loaded:string}> */
-    private function runtimeModels(string $runtime): array
+    /**
+     * Два однакові короткі виклики кожного рівня доводять, чи має модель
+     * рівні роздумів і чи достатньо стабільний цей доказ.
+     * Порівнюємо поле thinking, а не content: відповідь може бути однакова,
+     * навіть коли тривалість внутрішнього міркування різна.
+     *
+     * @return array{status:string,low_length:int,high_length:int,low_repeat_length:int,high_repeat_length:int,reason?:string,probed_at:string}
+     */
+    public function probeThinking(string $runtime, string $model): array
+    {
+        $entry = null;
+        foreach ($this->runtimeModels($runtime, true) as $candidate) {
+            if (($candidate['model'] ?? '') === $model) {
+                $entry = $candidate;
+                break;
+            }
+        }
+        if (! is_array($entry)) {
+            throw new ModelRuntimeError('model_not_found', 'у runtime '.$runtime.' немає моделі «'.$model.'»');
+        }
+        if (($entry['thinking'] ?? false) !== true) {
+            throw new ModelRuntimeError('thinking_unsupported', 'модель «'.$model.'» не декларує здатність thinking');
+        }
+        $settings = $this->settings($runtime);
+        $transport = \Bdo\Translate\Model\Transport\Factory::forRole(
+            $this->config,
+            ['provider' => $runtime, 'model' => $model],
+        );
+        $lengths = ['low' => [], 'high' => []];
+        foreach (['low', 'high'] as $level) {
+            for ($attempt = 0; $attempt < 2; $attempt++) {
+                $reply = $transport->send(new \Bdo\Translate\Model\Transport\Request(
+                    role: 'thinking-probe',
+                    model: $model,
+                    prompt: 'Перевірка рівня thinking. Відповідай коротко.',
+                    payload: '{"probe":"thinking"}',
+                    schema: null,
+                    stream: false,
+                    think: $level,
+                    temperature: 0.0,
+                    numCtx: (int) ($settings['num_ctx'] ?? $this->config['num_ctx'] ?? 4096),
+                    numPredict: 512,
+                    timeout: (int) ($this->config['timeout_seconds'] ?? 900),
+                ));
+                $lengths[$level][] = mb_strlen($reply->thinking, 'UTF-8');
+            }
+        }
+
+        $lowDelta = abs($lengths['low'][0] - $lengths['low'][1]);
+        $highDelta = abs($lengths['high'][0] - $lengths['high'][1]);
+        $repeatDelta = max($lowDelta, $highDelta);
+        $lowMean = intdiv($lengths['low'][0] + $lengths['low'][1], 2);
+        $highMean = intdiv($lengths['high'][0] + $lengths['high'][1], 2);
+        $levelDelta = abs($highMean - $lowMean);
+        // Поріг 50%: шум, що сягає половини міжрівневої різниці, уже може пояснити висновок.
+        $notDeterministic = $repeatDelta > 0 && ($levelDelta === 0 || $repeatDelta * 2 >= $levelDelta);
+        $status = $notDeterministic
+            ? 'not_deterministic'
+            : ($levelDelta === 0 ? 'unsupported' : 'supported');
+
+        $result = [
+            'status' => $status,
+            'low_length' => $lengths['low'][0],
+            'high_length' => $lengths['high'][0],
+            'low_repeat_length' => $lengths['low'][1],
+            'high_repeat_length' => $lengths['high'][1],
+            'probed_at' => gmdate('c'),
+        ];
+        if ($notDeterministic) {
+            $result['reason'] = 'рантайм дає різні відповіді на однакові запити, тому перевірити рівні неможливо';
+        }
+
+        return $result;
+    }
+
+    /** @return list<array<string,mixed>> */
+    private function runtimeModels(string $runtime, bool $includeCapabilities = true): array
     {
         $settings = $this->settings($runtime);
         if ($runtime === 'ollama') {
@@ -118,11 +193,22 @@ final class RuntimeModels
                     continue;
                 }
                 $name = (string) $entry['name'];
+                $thinking = false;
+                if ($includeCapabilities) {
+                    $show = $this->requestJson('POST', $this->endpoint($settings).'/api/show', ['model' => $name], 'capabilities');
+                    $capabilities = is_array($show['capabilities'] ?? null) ? $show['capabilities'] : [];
+                    $thinking = in_array('thinking', $capabilities, true);
+                }
                 $models[] = [
                     'runtime' => $runtime,
                     'model' => $name,
                     'size' => $this->formatBytes((int) ($entry['size'] ?? 0)),
                     'loaded' => isset($loaded[$name]) ? 'так' : 'ні',
+                    ...($includeCapabilities ? [
+                        'thinking' => $thinking,
+                        'thinking_reason' => $thinking ? 'Ollama capabilities' : 'Ollama не декларує thinking',
+                        'thinking_levels' => $thinking ? 'not_tested' : 'unsupported',
+                    ] : []),
                 ];
             }
             return $models;
@@ -134,11 +220,17 @@ final class RuntimeModels
             if (! is_array($entry) || ! isset($entry['id'])) {
                 continue;
             }
+            $thinking = $includeCapabilities && array_key_exists('thinking_default', $entry);
             $models[] = [
                 'runtime' => $runtime,
                 'model' => (string) $entry['id'],
                 'size' => (string) ($entry['estimated_size_formatted'] ?? 'невідомо'),
                 'loaded' => ! empty($entry['loaded']) ? 'так' : 'ні',
+                ...($includeCapabilities ? [
+                    'thinking' => $thinking,
+                    'thinking_reason' => $thinking ? 'oMLX thinking_default' : 'oMLX не має thinking_default',
+                    'thinking_levels' => $thinking ? 'not_tested' : 'unsupported',
+                ] : []),
             ];
         }
         return $models;

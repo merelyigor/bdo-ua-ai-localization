@@ -65,13 +65,21 @@
             <span>🧠 Роздуми</span>
           </label>
           <label class="thinking-limit" for="thinkLimit">
-            <span>⚙️ Ліміт thinking, байт</span>
-            <select id="thinkLimit" aria-label="⚙️ Ліміт thinking, байт">
+            <span>⚙️ Ліміт thinking, байт · АВАРІЙНИЙ ОБРИВ виклику (не бюджет мислення)</span>
+            <select id="thinkLimit" aria-label="⚙️ Ліміт thinking, байт · аварійний обрив виклику">
               <option value="2048">2 048 байт · коротко</option>
               <option value="4096">4 096 байт</option>
               <option value="8192">8 192 байт · стандарт</option>
               <option value="16384">16 384 байт</option>
               <option value="32768">32 768 байт · довго</option>
+            </select>
+          </label>
+          <label class="thinking-limit" for="thinkLevel">
+            <span>🎚️ Рівень роздумів</span>
+            <select id="thinkLevel" aria-label="🎚️ Рівень роздумів">
+              <option value="low">Low</option>
+              <option value="medium">Medium</option>
+              <option value="high">High</option>
             </select>
           </label>
           <span id="thinkState" class="empty"></span>
@@ -80,7 +88,7 @@
           <span>Більше роздумів — краща якість, але довший час відповіді.</span>
         </div>
       </div>
-      <div class="empty thinking-note">Стеля обмежує роздуми моделі; після її досягнення виклик завершується з причиною <span class="mono">empty_content</span>.</div>
+      <div class="empty thinking-note">Це аварійний обрив виклику після заданої кількості байт thinking; він не змушує модель думати коротше й завершує виклик із причиною <span class="mono">empty_content</span>.</div>
     </div>
 
     <div class="panel">
@@ -157,6 +165,7 @@
         'models.clear.role': 'вибір ролі скинуто',
         'models.load': 'завантаження почато · модель зʼявиться як завантажена',
         'models.unload': 'модель вивантажено з памʼяті',
+        'models.probe': 'пробу рівнів завершено · каталог оновлено',
         'models.settings': 'налаштування роздумів збережено'
       })[action] || 'готово';
     }
@@ -231,23 +240,27 @@
   function saveThinkingSettings() {
     var toggle = B.el('thinkToggle');
     var limit = B.el('thinkLimit');
+    var level = B.el('thinkLevel');
     var state = B.el('thinkState');
-    if (!toggle || !limit || !state) { return; }
+    if (!toggle || !limit || !level || !state || toggle.disabled) { return; }
     var seq = ++thinkingSaveSeq;
     var think = toggle.checked;
     var limitBytes = Number(limit.value);
+    var thinkLevel = level.value;
     state.textContent = 'зберігаю…';
     toggle.disabled = true;
     limit.disabled = true;
+    level.disabled = true;
     B.post('/api/action', {
       action: 'models.settings',
-      payload: {think: think, think_limit_bytes: limitBytes},
+      payload: {think: think, think_level: thinkLevel, think_limit_bytes: limitBytes},
       confirm: true
     }).then(function(res) {
       if (seq !== thinkingSaveSeq) { return; }
       var body = res.body || {};
       toggle.disabled = false;
       limit.disabled = false;
+      level.disabled = false;
       if (body.ok) {
         state.textContent = (think ? 'увімкнено' : 'вимкнено') + ' · збережено';
         load();
@@ -258,6 +271,7 @@
       if (seq !== thinkingSaveSeq) { return; }
       toggle.disabled = false;
       limit.disabled = false;
+      level.disabled = false;
       state.textContent = 'не збережено · сервер не відповів';
     });
   }
@@ -265,18 +279,49 @@
   function bindThinkingSettings() {
     var toggle = B.el('thinkToggle');
     var limit = B.el('thinkLimit');
-    if (!toggle || !limit) { return; }
+    var level = B.el('thinkLevel');
+    if (!toggle || !limit || !level) { return; }
     toggle.onchange = saveThinkingSettings;
     limit.onchange = saveThinkingSettings;
+    level.onchange = saveThinkingSettings;
   }
 
   function renderSettings(data) {
     var settings = data.settings || {};
     var toggle = B.el('thinkToggle');
     var limit = B.el('thinkLimit');
-    if (!toggle || !limit) { return; }
+    var level = B.el('thinkLevel');
+    if (!toggle || !limit || !level) { return; }
+    var catalog = data.catalog || {};
+    var selection = data.selection || {};
+    var active = selection.global && selection.global.runtime && selection.global.model ? selection.global : null;
+    if (!active && catalog.roles && catalog.roles.length) {
+      active = catalog.roles[0];
+    }
+    var activeModel = (catalog.models || []).filter(function (model) {
+      return active && model.runtime === active.runtime && model.model === active.model;
+    })[0] || null;
+    var canThink = activeModel && activeModel.thinking === true;
+    var hasLevels = canThink && activeModel.thinking_levels === 'supported';
     toggle.checked = settings.think === true;
+    toggle.disabled = !canThink;
+    limit.disabled = !canThink;
+    level.disabled = !hasLevels;
+    toggle.title = canThink ? 'рантайм декларує thinking' : 'недоступно: активна модель не декларує thinking';
+    var levelReason = activeModel && activeModel.thinking_probe && activeModel.thinking_probe.reason
+      ? activeModel.thinking_probe.reason : 'рівні ще не доведені поведінковою пробою';
+    level.title = hasLevels ? 'рівні доведені поведінковою пробою' : 'недоступно: ' + levelReason;
+    if (!canThink) {
+      B.el('thinkState').textContent = activeModel ? 'недоступно · модель не декларує thinking' : 'недоступно · спершу обери модель';
+    } else if (activeModel.thinking_levels === 'not_deterministic') {
+      B.el('thinkState').textContent = 'рівні недоступні · ' + levelReason;
+    } else if (!hasLevels) {
+      B.el('thinkState').textContent = 'увімкнено/вимкнено · рівні не перевірено';
+    } else {
+      B.el('thinkState').textContent = toggle.checked ? 'увімкнено · рівні підтримує' : 'вимкнено · рівні підтримує';
+    }
     var value = String(Number(settings.think_limit_bytes) || 8192);
+    level.value = ['low', 'medium', 'high'].indexOf(settings.think_level) === -1 ? 'low' : settings.think_level;
     Array.prototype.forEach.call(limit.querySelectorAll('option[data-current]'), function(option) {
       option.remove();
     });
@@ -288,7 +333,6 @@
       limit.appendChild(current);
     }
     limit.value = value;
-    B.el('thinkState').textContent = toggle.checked ? 'увімкнено' : 'вимкнено';
     bindThinkingSettings();
   }
 
@@ -337,14 +381,26 @@
         ? '<span class="model-status model-status-unavailable">недоступна</span><div class="model-status-detail">' + B.esc(model.reason) + '</div>'
         : '<span class="model-status model-status-available">доступна</span>';
       var disabled = model.reason ? ' disabled' : '';
+      var disabledTitle = model.reason ? ' title="' + B.esc(model.reason) + '"' : '';
+      var thinking = model.reason ? 'не перевірено' : (model.thinking === true ? 'підтримує' : 'не підтримує');
+      var thinkingReason = model.reason || model.thinking_reason || 'здатність не підтверджена каталогом';
+      var levelLabels = {supported:'підтримує', unsupported:'не підтримує', not_tested:'не перевірено', not_deterministic:'не піддається перевірці'};
+      var levelStatus = levelLabels[model.thinking_levels] || 'не перевірено';
+      var levelReason = model.thinking_probe && model.thinking_probe.reason ? model.thinking_probe.reason : '';
+      var probeDisabled = model.reason || model.thinking !== true ? ' disabled' : '';
+      var probeTitle = model.reason ? model.reason : (model.thinking === true ? 'два виклики low/high з temperature 0' : thinkingReason);
       var loadedIcon = String(model.loaded) === 'так' ? B.icon('check', 'model-loaded-icon') : B.icon('circle', 'model-loaded-icon');
       return '<tr class="model-row' + (isGlobal ? ' is-global-selected' : '') + '"><td class="model-runtime">' + B.esc(model.runtime) + '</td><td class="model-name mono" title="' + B.esc(model.model) + '">' + B.esc(model.model) + (isGlobal ? '<span class="model-selected-badge">загальна</span>' : '') + '</td>'
-        + '<td class="model-size">' + B.esc(model.size) + '</td><td class="model-loaded">' + loadedIcon + B.esc(model.loaded) + '</td><td class="model-state">' + availability + '</td><td class="model-actions-cell"><div class="model-actions">'
-        + '<button class="model-action-primary" type="button" data-action="models.select" data-runtime="' + B.esc(model.runtime) + '" data-model="' + B.esc(model.model) + '"' + disabled + '>' + B.icon('star') + '<span>обрати загально</span></button>'
-        + '<button class="model-action" aria-label="завантажити" title="завантажити" type="button" data-action="models.load" data-runtime="' + B.esc(model.runtime) + '" data-model="' + B.esc(model.model) + '"' + disabled + '>' + B.icon('download') + '<span>завантажити</span></button>'
-        + '<button class="model-action" aria-label="вивантажити" title="вивантажити" type="button" data-action="models.unload" data-runtime="' + B.esc(model.runtime) + '" data-model="' + B.esc(model.model) + '"' + disabled + '>' + B.icon('upload') + '<span>вивантажити</span></button></div></td></tr>';
+        + '<td class="model-size">' + B.esc(model.size) + '</td><td class="model-loaded">' + loadedIcon + B.esc(model.loaded) + '</td><td class="model-state">' + availability + '</td>'
+        + '<td class="model-state"><span class="model-status">роздуми: ' + thinking + '</span><div class="model-status-detail">' + B.esc(thinkingReason) + '</div></td>'
+        + '<td class="model-state"><span class="model-status">рівні: ' + levelStatus + '</span>' + (model.thinking_probe ? '<div class="model-status-detail">low ' + B.num(model.thinking_probe.low_length) + '/' + B.num(model.thinking_probe.low_repeat_length) + ' · high ' + B.num(model.thinking_probe.high_length) + '/' + B.num(model.thinking_probe.high_repeat_length) + ' · ' + B.esc(when(model.thinking_probe.probed_at)) + '</div>' + (levelReason ? '<div class="model-status-detail">' + B.esc(levelReason) + '</div>' : '') : '') + '</td>'
+        + '<td class="model-actions-cell"><div class="model-actions">'
+        + '<button class="model-action" type="button" data-action="models.probe" data-runtime="' + B.esc(model.runtime) + '" data-model="' + B.esc(model.model) + '" title="' + B.esc(probeTitle) + '"' + probeDisabled + '>' + B.icon('search') + '<span>перевірити рівні</span></button>'
+        + '<button class="model-action-primary" type="button" data-action="models.select" data-runtime="' + B.esc(model.runtime) + '" data-model="' + B.esc(model.model) + '"' + disabled + disabledTitle + '>' + B.icon('star') + '<span>обрати загально</span></button>'
+        + '<button class="model-action" aria-label="завантажити" title="' + B.esc(model.reason || 'завантажити') + '" type="button" data-action="models.load" data-runtime="' + B.esc(model.runtime) + '" data-model="' + B.esc(model.model) + '"' + disabled + '>' + B.icon('download') + '<span>завантажити</span></button>'
+        + '<button class="model-action" aria-label="вивантажити" title="' + B.esc(model.reason || 'вивантажити') + '" type="button" data-action="models.unload" data-runtime="' + B.esc(model.runtime) + '" data-model="' + B.esc(model.model) + '"' + disabled + '>' + B.icon('upload') + '<span>вивантажити</span></button></div></td></tr>';
     }).join('');
-    B.el('models').innerHTML = '<div class="model-table-wrap"><table class="model-table"><thead><tr><th>рантайм</th><th>модель</th><th>розмір</th><th>завантажена</th><th>стан</th><th>дії</th></tr></thead><tbody>' + rows + '</tbody></table></div>';
+    B.el('models').innerHTML = '<div class="model-table-wrap"><table class="model-table"><thead><tr><th>рантайм</th><th>модель</th><th>розмір</th><th>завантажена</th><th>стан</th><th>роздуми</th><th>рівні</th><th>дії</th></tr></thead><tbody>' + rows + '</tbody></table></div>';
     var options = models.filter(function (m) { return !m.reason; }).map(function (m, index) {
       var full = m.runtime + ' / ' + m.model;
       return '<option value="model-' + index + '" data-runtime="' + B.esc(m.runtime) + '" data-model="' + B.esc(m.model) + '"'
@@ -385,6 +441,7 @@
         if (button.dataset.role) { payload.role = button.dataset.role; }
         if (action === 'models.settings') {
           payload.think = B.el('thinkToggle').checked;
+          payload.think_level = B.el('thinkLevel').value;
           payload.think_limit_bytes = Number(B.el('thinkLimit').value);
         }
         if (action === 'models.select.role') {

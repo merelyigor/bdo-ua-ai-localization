@@ -15,7 +15,7 @@ final class ModelSettings
         return rtrim($stateDir, '/').'/model-settings.json';
     }
 
-    /** @return array{think?:bool,think_limit_bytes?:int} */
+    /** @return array{think?:bool,think_level?:string,think_limit_bytes?:int} */
     public static function read(string $stateDir): array
     {
         $path = self::path($stateDir);
@@ -37,6 +37,12 @@ final class ModelSettings
             }
             $out['think'] = $data['think'];
         }
+        if (array_key_exists('think_level', $data)) {
+            if (! is_string($data['think_level']) || ! in_array($data['think_level'], ['low', 'medium', 'high'], true)) {
+                throw new ModelRuntimeError('invalid_model_settings', $path.' має некоректний think_level');
+            }
+            $out['think_level'] = $data['think_level'];
+        }
         if (array_key_exists('think_limit_bytes', $data)) {
             $limit = self::positiveLimit($data['think_limit_bytes']);
             if ($limit === null) {
@@ -48,7 +54,7 @@ final class ModelSettings
         return $out;
     }
 
-    /** @return array{think:bool,think_limit_bytes:int} */
+    /** @return array{think:bool,think_level:string,think_limit_bytes:int} */
     public static function resolve(string $stateDir, array $config, array $roleConfig, int $numPredict): array
     {
         $stored = self::read($stateDir);
@@ -61,6 +67,7 @@ final class ModelSettings
         }
 
         $default = max(1, min(max(1, $numPredict), 2048) * 4);
+        $level = $stored['think_level'] ?? 'low';
         $limit = $stored['think_limit_bytes'] ?? null;
         if ($limit === null) {
             $limit = self::positiveLimit(getenv('BDO_MODEL_THINK_LIMIT_BYTES'));
@@ -71,13 +78,16 @@ final class ModelSettings
                 ?? $default;
         }
 
-        return ['think' => $think, 'think_limit_bytes' => $limit];
+        return ['think' => $think, 'think_level' => $level, 'think_limit_bytes' => $limit];
     }
 
-    public static function save(string $stateDir, bool $think, int $limit): void
+    public static function save(string $stateDir, bool $think, int $limit, string $level = 'low'): void
     {
         if (self::positiveLimit($limit) === null) {
             throw new ModelRuntimeError('invalid_model_settings', 'стеля think_limit_bytes має бути від 1 до '.self::MAX_THINK_LIMIT_BYTES);
+        }
+        if (! in_array($level, ['low', 'medium', 'high'], true)) {
+            throw new ModelRuntimeError('invalid_model_settings', 'think_level має бути low, medium або high');
         }
         if (! is_dir($stateDir) && ! mkdir($stateDir, 0777, true) && ! is_dir($stateDir)) {
             throw new ModelRuntimeError('settings_write_failed', 'не вдалося створити '.$stateDir);
@@ -87,6 +97,7 @@ final class ModelSettings
         $payload = json_encode([
             'version' => 1,
             'think' => $think,
+            'think_level' => $level,
             'think_limit_bytes' => $limit,
         ], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR)."\n";
         if (file_put_contents($temporary, $payload, LOCK_EX) === false || ! rename($temporary, $path)) {
