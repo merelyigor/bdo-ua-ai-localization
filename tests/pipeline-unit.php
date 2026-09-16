@@ -441,6 +441,47 @@ expect(($plain['ddd'] ?? '') === 'API: unchanged Без змін.', 'відмо�
     $keepItem = $keepPayload['items'][0] ?? [];
     expect(in_array($keepToken, $keepItem['keep'] ?? [], true), 'payload воркера не назвав справжній keep-токен');
 
+    // КОСМЕТИКА ЙДЕ МОДЕЛІ, АЛЕ НЕ СТАЄ БЛОКУЮЧИМ ДЕФЕКТОМ.
+    //
+    // `tokens.cosmetic` сервер тримає мʼякше за `must_preserve`: при
+    // `strictness=standard` втрата лише попереджає. Тому модель мусить бачити
+    // ці токени, а `tokenViolations()` · ні, інакше клієнт став би суворішим
+    // за API і гнав би здорові рядки в модерацію.
+    $cosColor = '<PAColor0xffe9bd23>';
+    $cosClose = '<PAOldColor>';
+    $cosMust = '{TextBind:USING_CLICK_RMB}';
+    $cosSource = 'Press '.$cosMust.' to open '.$cosColor.'the box'.$cosClose;
+    $cosHash = str_repeat('d', 64);
+    $cosRowsFile = $root.'/cosmetic-rows.json';
+    file_put_contents($cosRowsFile, json_encode(['data' => ['rows' => [[
+        'identity_hash' => $cosHash,
+        'source_hash' => hash('sha256', $cosSource),
+        'source_text' => $cosSource,
+        'tokens' => ['must_preserve' => [$cosMust => 1], 'cosmetic' => [$cosColor => 1, $cosClose => 1]],
+    ]]]], JSON_THROW_ON_ERROR));
+    $cosRow = RowSet::fromFile($cosRowsFile)->getOrEmpty($cosHash);
+
+    expect($cosRow->keepTokens() === [$cosMust], 'косметика просочилась у механічний keep');
+    expect($cosRow->cosmeticTokens() === [$cosColor, $cosClose], 'косметичні токени прочитані неправильно');
+    expect($cosRow->promptKeepTokens() === [$cosMust, $cosColor, $cosClose], 'модель не бачить обидва набори');
+
+    // Косметику втрачено · механічного дефекту НЕ має бути.
+    $withoutCosmetic = 'Натисніть '.$cosMust.' щоб відкрити скриню';
+    expect($cosRow->tokenViolations($withoutCosmetic) === [], 'втрата косметики стала блокуючим дефектом');
+    expect(Defects::inTranslation($cosRow, $withoutCosmetic) === [], 'втрата косметики дала дефект у зведеній перевірці');
+
+    // Обовʼязковий токен втрачено · дефект лишається.
+    expect($cosRow->tokenViolations('Натисніть щоб відкрити '.$cosColor.'скриню'.$cosClose) !== [],
+        'втрата must_preserve перестала бути дефектом');
+
+    // Payload воркера мусить НАЗВАТИ косметичні токени.
+    $cosPayloadResult = $capture(new WorkerPayloadCommand(), [$cosRowsFile, '--no-context']);
+    expect($cosPayloadResult['code'] === 0, 'payload воркера для косметичного рядка не побудувався');
+    $cosItem = json_decode($cosPayloadResult['stdout'], true, 512, JSON_THROW_ON_ERROR)['items'][0] ?? [];
+    foreach ([$cosMust, $cosColor, $cosClose] as $token) {
+        expect(in_array($token, $cosItem['keep'] ?? [], true), 'payload воркера не назвав токен '.$token);
+    }
+
     echo "pipeline unit: OK\n";
 } finally {
     $entries = new RecursiveIteratorIterator(

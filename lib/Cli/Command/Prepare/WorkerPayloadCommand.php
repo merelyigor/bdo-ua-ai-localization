@@ -134,7 +134,7 @@ final class WorkerPayloadCommand implements Command, \Bdo\Translate\Cli\CommandH
                 $glossary = $row->glossaryByLayer();
                 if ($glossary['human'] !== []) { $item['glossary'] = $glossary['human']; $stats['glossary']++; }
                 if ($glossary['machine'] !== []) $item['glossary_hint'] = $glossary['machine'];
-                $keep = $row->keepTokens();
+                $keep = $row->promptKeepTokens();
                 if (str_contains($sourceText, NewlineToken::TOKEN)) $keep[] = NewlineToken::TOKEN;
                 if ($keep !== []) $item['keep'] = $keep;
                 $pending = $row->pendingTerms();

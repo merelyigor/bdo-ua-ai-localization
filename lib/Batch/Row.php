@@ -282,14 +282,65 @@ final class Row
      */
     public function keepTokens(): array
     {
-        $tokens = $this->data['tokens']['must_preserve'] ?? [];
+        return self::tokenList($this->data['tokens']['must_preserve'] ?? []);
+    }
+
+    /**
+     * Спільний розбір блоку токенів: `must_preserve` і `cosmetic` мають ОДНУ
+     * форму, тому й читаються одним кодом · два розбори розійшлись би.
+     *
+     * @return list<string>
+     */
+    private static function tokenList(mixed $tokens): array
+    {
         if (! is_array($tokens) || $tokens === []) {
             return [];
         }
-        $keep = [];
+        $list = [];
         foreach (array_is_list($tokens) ? $tokens : array_keys($tokens) as $token) {
             $token = (string) $token;
-            if ($token !== '' && ! in_array($token, $keep, true)) {
+            if ($token !== '' && ! in_array($token, $list, true)) {
+                $list[] = $token;
+            }
+        }
+
+        return $list;
+    }
+
+    /**
+     * Теги оформлення: колір і перенос (`<PAColor0x…>`, `<PAOldColor>`).
+     *
+     * Окремий блок `tokens.cosmetic` того самого вигляду «токен => кількість».
+     * Сервер тримає їх МʼЯКШЕ за `must_preserve`: при `strictness=standard`
+     * (наш дефолт) втрата не блокує запис, а повертається попередженням у
+     * `data.results[].warning_codes`. У 100 живих рядках косметика є в 68.
+     *
+     * @return list<string>
+     */
+    public function cosmeticTokens(): array
+    {
+        return self::tokenList($this->data['tokens']['cosmetic'] ?? []);
+    }
+
+    /**
+     * Токени, які МОДЕЛЬ мусить скопіювати дослівно: обовʼязкові плюс косметичні.
+     *
+     * Навіщо окремо від {@see keepTokens()}. `keepTokens()` годує ДВІ речі
+     * одразу · payload і механічну перевірку `tokenViolations()`. Якби
+     * косметика потрапила туди, кожна її втрата стала б блокуючим дефектом і
+     * рядок поїхав би до людини · тобто клієнт був би суворішим за сервер,
+     * який цю саму втрату лише зазначає попередженням. Вигадувати власне
+     * правило суворіше за API вже коштувало прогонів, тому межа проведена
+     * тут: модель бачить обидва набори, гейт лишається на `must_preserve`, а
+     * невиконання ловить попередження сервера у звіті запису.
+     *
+     * @return list<string>
+     */
+    public function promptKeepTokens(): array
+    {
+        $keep = $this->keepTokens();
+        foreach ($this->cosmeticTokens() as $token) {
+            if (! in_array($token, $keep, true)) {
                 $keep[] = $token;
             }
         }

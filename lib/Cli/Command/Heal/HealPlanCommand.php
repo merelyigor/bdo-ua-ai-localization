@@ -165,7 +165,7 @@ final class HealPlanCommand implements Command, \Bdo\Translate\Cli\CommandHelp
             if ($row->domain() !== null) {
                 $item['domain'] = $row->domain();
             }
-            $keep = $row->keepTokens();
+            $keep = $row->promptKeepTokens();
             if (str_contains($item['source_text'], NewlineToken::TOKEN)
                 || str_contains($item['current'], NewlineToken::TOKEN)) {
                 $keep[] = NewlineToken::TOKEN;

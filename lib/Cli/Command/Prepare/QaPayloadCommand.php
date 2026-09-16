@@ -75,7 +75,7 @@ final class QaPayloadCommand implements Command, \Bdo\Translate\Cli\CommandHelp
             $glossary = $row->glossaryByLayer();
             if ($glossary['human'] !== []) { $item['glossary'] = $glossary['human']; $stats['glossary']++; }
             if ($glossary['machine'] !== []) $item['glossary_hint'] = $glossary['machine'];
-            $keep = $row->keepTokens(); if ($keep !== []) $item['keep'] = $keep;
+            $keep = $row->promptKeepTokens(); if ($keep !== []) $item['keep'] = $keep;
             $pending = $row->pendingTerms(); if ($pending !== []) { $item['canonical_pending'] = $pending; $stats['pending']++; }
             $unresolved = $row->unresolvedEntities(); if ($unresolved !== []) { $item['unresolved'] = $unresolved; $stats['unresolved']++; }
             $limits = $row->limits(); if ($limits !== null) { $item['limits'] = $limits; $stats['limits']++; }

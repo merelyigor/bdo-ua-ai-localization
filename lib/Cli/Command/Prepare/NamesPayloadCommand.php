@@ -44,7 +44,7 @@ final class NamesPayloadCommand implements Command
             $item = ['identity_hash' => $hash, 'current' => $candidate->text($hash), 'orders' => array_values(array_unique($orders))];
             if ($row->semanticType() !== null) $item['semantic_type'] = $row->semanticType();
             if ($row->domain() !== null) $item['domain'] = $row->domain();
-            $keep = $row->keepTokens(); if ($keep !== []) $item['keep'] = $keep;
+            $keep = $row->promptKeepTokens(); if ($keep !== []) $item['keep'] = $keep;
             $limits = $row->limits(); if ($limits !== null) $item['limits'] = $limits;
             $payload[] = $item;
         }
