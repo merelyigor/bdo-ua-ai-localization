@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Bdo\Translate\Cli\Command\Write;
 
+use Bdo\Translate\Api\Response as ApiResponse;
 use Bdo\Translate\Api\TranslationWriter;
 use Bdo\Translate\Cli\Command;
 use Bdo\Translate\Cli\Command\Api\ApiEnvironment;
@@ -141,6 +142,9 @@ final class WriteTranslationsCommand implements Command, \Bdo\Translate\Cli\Comm
             $result['rejected'],
         ));
         $output->stdout(sprintf("Лишилось у квоті: %s\n", $meta['rows_remaining_today'] ?? '?'));
+        foreach (ApiResponse::warningLines($result['results']) as $line) {
+            $output->stdout($line);
+        }
         foreach ($result['results'] as $row) {
             $status = (string) ($row['status'] ?? '');
             if (in_array($status, ['ok', 'repaired', 'unchanged'], true)) {

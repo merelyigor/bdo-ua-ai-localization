@@ -394,6 +394,11 @@ final class BatchCommitCommand implements Command, \Bdo\Translate\Cli\CommandHel
         if ($result['rejected'] > 0) {
             $output->stdout("У КАРАНТИН: {$result['rejected']} рядків, які API відхилив.\n");
         }
+        // Попередження стосуються ЗАПИСАНИХ рядків, тому стоять поруч із «Записано»,
+        // а не серед відмов: інакше їх читали б як другий різновид карантину.
+        foreach (ApiResponse::warningLines($result['results']) as $line) {
+            $output->stdout($line);
+        }
     }
 
     private function report(Output $output, RowSet $rows, array $pass, array $moderation, array $held, array $counts, int $sameAsSource, int $unresolvedCount, int $mechanicalHeld, array $mechanicalLog, array $judgeCounts, int $minConfidence, int $remaining, ?string $blocked): void

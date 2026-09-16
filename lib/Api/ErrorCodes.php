@@ -19,6 +19,10 @@ final class ErrorCodes
         return [
             'stale_source' => 'джерело змінилось - перечитати рядок і перекласти заново',
             'markup_functional_breakage' => 'скопіювати всі токени must_preserve дослівно',
+            // `cosmetic` (теги кольору й переносу) при `strictness=standard` лише
+            // попереджає, а при `strict` відхиляє рядок. Код той самий в обох
+            // режимах, тому підказка потрібна ще до того, як хтось увімкне strict.
+            'markup_cosmetic_breakage' => 'зберегти теги cosmetic дослівно, у тій самій кількості й порядку',
             'source_equivalent' => 'це англійський оригінал, а не переклад',
             'length_too_short' => 'вкластися у вікно constraints.length',
             'length_too_long' => 'вкластися у вікно constraints.length',

@@ -129,6 +129,79 @@ final class Response
     }
 
     /**
+     * Попередження сервера по ЗАПИСАНИХ рядках: код => скільки рядків.
+     *
+     * Рядок при цьому має `status: ok` і входить у `meta.written`: у режимі
+     * `strictness=standard` сервер не відхиляє розбіжність косметичних тегів
+     * чи завелику довжину, а лише каже про неї. Обидва поля зʼявляються ЛИШЕ
+     * коли попередження виникло, тому їхня відсутність не є помилкою.
+     *
+     * Читаємо `warning_codes`, а не `warnings`: речення призначене людині й
+     * може змінитись, код є контрактом. Якщо кодів ще немає (сервер старший за
+     * 5.2.5), попередження рахується під ключем `без коду` · мовчки втрачати
+     * його не можна, бо саме через це воно рік нікуди не доходило.
+     *
+     * Статичний, а не звичайний метод: обидва місця запису тримають у руках
+     * `results` від `TranslationWriter`, а не сам `Response`, і другий спосіб
+     * порахувати те саме означав би два різні числа в одному звіті.
+     *
+     * @param  list<array<string,mixed>>  $results
+     * @return array<string,int>
+     */
+    public static function warningCounts(array $results): array
+    {
+        $counts = [];
+        foreach ($results as $result) {
+            if (! is_array($result)) {
+                continue;
+            }
+            $codes = $result['warning_codes'] ?? null;
+            if (is_array($codes) && $codes !== []) {
+                foreach ($codes as $code) {
+                    $code = (string) $code;
+                    if ($code !== '') {
+                        $counts[$code] = ($counts[$code] ?? 0) + 1;
+                    }
+                }
+
+                continue;
+            }
+            $texts = $result['warnings'] ?? null;
+            if (is_array($texts) && $texts !== []) {
+                $counts['без коду'] = ($counts['без коду'] ?? 0) + 1;
+            }
+        }
+
+        return $counts;
+    }
+
+    /**
+     * Готові рядки звіту про попередження · по одному на код.
+     *
+     * Формулювання живе тут, а не в командах: `write` і `batch commit` пишуть
+     * про одне й те саме, і два різні тексти для однієї події читались би як
+     * дві різні події.
+     *
+     * @param  list<array<string,mixed>>  $results
+     * @return list<string>
+     */
+    public static function warningLines(array $results): array
+    {
+        $lines = [];
+        foreach (self::warningCounts($results) as $code => $count) {
+            $hint = ErrorCodes::hint($code);
+            $lines[] = sprintf(
+                "Попередження сервера (рядки записано): %s · %d%s\n",
+                $code,
+                $count,
+                $hint === '' ? '' : ' · '.$hint,
+            );
+        }
+
+        return $lines;
+    }
+
+    /**
      * Рядки, які сервер полагодив сам.
      *
      * Найдешевша сходинка лікування: правка вже готова й детермінована.

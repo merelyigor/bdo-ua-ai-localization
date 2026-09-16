@@ -36,7 +36,16 @@ if (str_ends_with($path, '/me')) {
     return;
 }
 if (str_ends_with($path, '/translations')) {
-    echo json_encode(['data'=>['meta'=>['written'=>1,'skipped'=>0,'rejected'=>0,'rows_remaining_today'=>19], 'results'=>[['index'=>0,'status'=>'ok']]]]);
+    // Попередження приходить ЛИШЕ коли воно виникло, і рядок при цьому записано.
+    $row = ['index'=>0,'status'=>'ok'];
+    if ($mode === 'warn') {
+        $row['warnings'] = ['Теги оформлення не збігаються з оригіналом: пропущено <PAColor0xffe9bd23>.'];
+        $row['warning_codes'] = ['markup_cosmetic_breakage'];
+    } elseif ($mode === 'warnlegacy') {
+        // Сервер, старший за 5.2.5: речення є, коду ще немає.
+        $row['warnings'] = ['Теги оформлення не збігаються з оригіналом.'];
+    }
+    echo json_encode(['data'=>['meta'=>['written'=>1,'skipped'=>0,'rejected'=>0,'rows_remaining_today'=>19], 'results'=>[$row]]]);
     return;
 }
 http_response_code(404); echo json_encode(['success'=>false]);
@@ -78,4 +87,20 @@ test "$code" -ne 0 || { fail "allowed=false прийнято: $(run php \"$TMP/s
 run php "$TMP/state-legacy-machine" legacy machine >/dev/null 2>&1 || fail 'legacy machine fallback'
 run php "$TMP/state-legacy-manual" legacy manual >/dev/null 2>&1 || fail 'legacy manual fallback'
 
-echo 'write channel rights: actual /me LIST, mapping and legacy fallback: OK'
+# ПРАВИЛО: попередження сервера про ЗАПИСАНИЙ рядок мусить дійти до звіту.
+# САБОТАЖ: мовчазне ігнорування warning_codes має зробити перевірку червоною.
+out="$(run php "$TMP/state-warn" warn machine 2>"$TMP/warn.err")" || fail 'запис із попередженням відхилено'
+grep -Fq 'Попередження сервера (рядки записано): markup_cosmetic_breakage · 1' <<<"$out" \
+    || fail "код попередження не дійшов до звіту: $out"
+grep -Fq 'зберегти теги cosmetic' <<<"$out" || fail 'звіт не каже, що робити з попередженням'
+
+# Сервер без warning_codes: попередження однаково не має зникнути.
+out="$(run php "$TMP/state-warn-legacy" warnlegacy machine 2>"$TMP/warnlegacy.err")" || fail 'запис зі старим попередженням відхилено'
+grep -Fq 'Попередження сервера (рядки записано): без коду · 1' <<<"$out" \
+    || fail "попередження без коду загубилось: $out"
+
+# Тиша, коли попереджень немає: звіт не має вигадувати рядок.
+out="$(run php "$TMP/state-quiet" list machine 2>/dev/null)" || fail 'звичайний запис відхилено'
+if grep -Fq 'Попередження сервера' <<<"$out"; then fail 'звіт вигадав попередження там, де його не було'; fi
+
+echo 'write channel rights: actual /me LIST, mapping, legacy fallback and server warnings: OK'
