@@ -883,3 +883,11 @@ body{
 .model-actions button:nth-child(4){grid-column:3;grid-row:2}
 .model-actions button:nth-child(4){font-size:0}
 .model-actions button:nth-child(4) .icon{width:16px;height:16px;vertical-align:0}
+
+/* MODEL ACTION HOVER · keep one stable hit area for the button and its icon.
+   Filter-based hover on the gold control can create a composited edge under
+   the pointer; explicit colors keep the cursor and layout stable. */
+.model-actions button{position:relative;cursor:pointer;transition:background-color .15s ease,border-color .15s ease,color .15s ease,box-shadow .15s ease}
+.model-actions button .icon,.model-actions button span{pointer-events:none}
+.model-actions button:hover{transform:none;filter:none}
+.model-actions button:disabled{cursor:not-allowed}
