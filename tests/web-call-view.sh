@@ -101,13 +101,36 @@ grep -Fq "'answer' => \$relative(\$responsePath)" "$ROOT/cli/model/client.php" \
 mkdir -p "$BDO_STATE_DIR/sessions/20260101_010101"
 printf '[03:51:55] awaiting_worker · роль translation-worker\n' \
     > "$BDO_STATE_DIR/sessions/20260101_010101/transcript.log"
-printf '{"role":"translation-worker","ms":1200}\n' \
+printf '{"at":"2026-01-01T03:51:55+00:00","role":"translation-worker","model":"m","verdict":"ok","ms":1200}\n' \
     > "$BDO_STATE_DIR/sessions/20260101_010101/model-calls.jsonl"
 body="$(curl -s -m 5 "http://127.0.0.1:$PORT/api/call?t=$TOKEN&session=20260101_010101")"
 grep -Fq 'translation-worker' <<<"$body" \
     || fail "журнал сесії не віддано: $body"
 grep -Fq 'прогін сесії 20260101_010101' <<<"$body" \
     || fail "вікно не називає, чий це прогін: $body"
+grep -Fq '"calls":[{"at":"2026-01-01T03:51:55+00:00"' <<<"$body" \
+    || fail "закрита сесія не віддала структуровані виклики ролей: $body"
+grep -Fq '"model":"m"' <<<"$body" \
+    || fail "закрита сесія не віддала модель виклику: $body"
+
+# --- 6a. КОРЕНЕВИЙ ЕКРАН після закриття сесії -------------------------------
+# current-batch лишається історією останньої пачки, але current-session після
+# close прибирається. Звʼязок через batches.jsonl мусить повернути архівні
+# картки на `/`.
+printf '{"id":"20260906_120000_abc123"}\n' \
+    > "$BDO_STATE_DIR/sessions/20260101_010101/batches.jsonl"
+printf '{"id":"20260906_120000_abc123","state":"verified","rows":1}\n' \
+    > "$B/manifest.json"
+printf '%s\n' '20260906_120000_abc123' > "$BDO_STATE_DIR/current-batch"
+mv "$BDO_STATE_DIR/model-calls.jsonl" \
+    "$BDO_STATE_DIR/sessions/20260101_010101/model-calls.jsonl"
+state_body="$(curl -s -m 5 "http://127.0.0.1:$PORT/api/state?t=$TOKEN")"
+grep -Fq '"session":{"id":"20260101_010101"' <<<"$state_body" \
+    || fail "закриту сесію не знайдено за поточною пачкою: $state_body"
+grep -Fq '"scope":"batch"' <<<"$state_body" \
+    || fail "кореневий екран не повернув виклики архівної пачки: $state_body"
+grep -Fq '"role_label":"перекладач"' <<<"$state_body" \
+    || fail "кореневий екран не повернув картку ролі: $state_body"
 
 # ПОВНИЙ ВИКЛИК ЗАКРИТОЇ СЕСІЇ: модельні файли лежать у batch dir, але ключ
 # виклику є лише в перенесеному session/model-calls.jsonl.
@@ -144,5 +167,9 @@ grep -Fq "session.delete" "$ROOT/lib/Run/Actions.php" \
     || fail 'дії «видалити сесію» немає в планувальнику'
 grep -Fq '/call?session=' "$ROOT/web/sessions.html" \
     || fail 'на закритій сесії немає посилання «відкрити прогін»'
+grep -Fq 'renderSessionCalls(d.calls)' "$ROOT/web/call.html" \
+    || fail 'екран закритої сесії не малює картки ролей'
+grep -Fq 'class="as-button" target="_blank"' "$ROOT/web/call.html" \
+    || fail 'посилання повного виклику не має читабельного оформлення'
 
 echo 'web call view: OK · роботу завершеного виклику видно цілком, чужий файл недосяжний, ключ перевіряється.'

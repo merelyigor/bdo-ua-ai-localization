@@ -50,6 +50,10 @@ final class Snapshot
         $manifest = $this->currentManifest();
         $ledger = new Ledger($this->stateDir);
         $sessionId = $ledger->currentId();
+        $batchId = (string) ($manifest['id'] ?? '');
+        if ($sessionId === null && $batchId !== '') {
+            $sessionId = $ledger->sessionForBatch($batchId);
+        }
 
         return [
             'at' => gmdate('c'),
@@ -63,7 +67,7 @@ final class Snapshot
             ],
             'batch' => $this->batch($manifest),
             'steps' => $this->steps($manifest),
-            'calls' => $this->callsView($manifest),
+            'calls' => $this->callsView($manifest, $sessionId),
             'summary' => $this->summary($manifest),
             'verdicts' => $this->verdicts($manifest),
             'transcript' => $this->transcript(),
@@ -630,10 +634,13 @@ final class Snapshot
      *
      * @return array{scope:string,batch:string,items:list<array<string,mixed>>,reason:string}
      */
-    private function callsView(array $manifest): array
+    private function callsView(array $manifest, ?string $sessionId = null): array
     {
         $batchId = (string) ($manifest['id'] ?? '');
         $all = $this->calls();
+        if ($all === [] && $sessionId !== null) {
+            $all = $this->callsFrom($this->path('sessions/'.$sessionId.'/model-calls.jsonl'));
+        }
         $reason = '';
         if ($all === []) {
             // ЖИВИЙ ПРОГІН НЕ Є ЗАКРИТОЮ СЕСІЄЮ. Журнал викликів пишеться
@@ -771,15 +778,24 @@ final class Snapshot
      */
     public function callRecords(?int $limit = null): array
     {
-        $out = [];
-        foreach ($this->tailLines($this->path('model-calls.jsonl'), $limit ?? self::CALLS) as $line) {
-            $entry = json_decode($line, true);
-            if (is_array($entry)) {
-                $out[] = $entry;
-            }
+        return $this->callRecordsFrom($this->path('model-calls.jsonl'), $limit);
+    }
+
+    /**
+     * Структуровані виклики закритої сесії · для її історичного екрана.
+     *
+     * Архівний журнал має ту саму форму, що й живий, тому UI не повинен
+     * розбирати JSONL вдруге або показувати його сирим текстом.
+     *
+     * @return list<array<string,mixed>>
+     */
+    public function sessionCallRecords(string $sessionId, ?int $limit = null): array
+    {
+        if (preg_match('/^[0-9]{8}_[0-9]{6}$/', $sessionId) !== 1) {
+            return [];
         }
 
-        return $out;
+        return $this->callRecordsFrom($this->path('sessions/'.$sessionId.'/model-calls.jsonl'), $limit);
     }
 
     /**
@@ -854,7 +870,27 @@ final class Snapshot
 
     private function calls(?int $limit = null): array
     {
-        $lines = $this->tailLines($this->path('model-calls.jsonl'), $limit ?? self::CALLS);
+        return $this->callsFrom($this->path('model-calls.jsonl'), $limit);
+    }
+
+    /** @return list<array<string,mixed>> */
+    private function callRecordsFrom(string $path, ?int $limit = null): array
+    {
+        $out = [];
+        foreach ($this->tailLines($path, $limit ?? self::CALLS) as $line) {
+            $entry = json_decode($line, true);
+            if (is_array($entry)) {
+                $out[] = $entry;
+            }
+        }
+
+        return $out;
+    }
+
+    /** @return list<array<string,mixed>> */
+    private function callsFrom(string $path, ?int $limit = null): array
+    {
+        $lines = $this->tailLines($path, $limit ?? self::CALLS);
         $out = [];
         foreach ($lines as $line) {
             $entry = json_decode($line, true);

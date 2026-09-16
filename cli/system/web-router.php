@@ -397,6 +397,7 @@ switch ($path) {
                 'out' => null,
                 'payload' => $transcript,
                 'answer' => $calls,
+                'calls' => $snapshot->sessionCallRecords($wantSession),
             ]);
 
             return;

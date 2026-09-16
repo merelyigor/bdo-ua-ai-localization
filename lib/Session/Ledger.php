@@ -361,6 +361,23 @@ final class Ledger
         return $this->collectBatches($this->dir($id));
     }
 
+    /** Знайти сесію, до якої привʼязана пачка. */
+    public function sessionForBatch(string $batchId): ?string
+    {
+        if ($batchId === '') {
+            return null;
+        }
+        foreach ($this->ids() as $id) {
+            foreach ($this->readJsonl($this->dir($id).'/batches.jsonl') as $entry) {
+                if ((string) ($entry['id'] ?? '') === $batchId) {
+                    return $id;
+                }
+            }
+        }
+
+        return null;
+    }
+
     /** @return array<string,bool> batch id-и, привʼязані до наявних сесій */
     public function attachedBatchIds(): array
     {

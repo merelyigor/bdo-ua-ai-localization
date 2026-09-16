@@ -41,6 +41,14 @@
       </div>
     </div>
 
+    <div class="panel" id="sessionCallsPanel" style="display:none">
+      <div class="bar" style="margin-bottom:8px">
+        <span style="font-size:13px;font-weight:500">ролі й виклики моделі</span>
+        <span class="empty" id="sessionCallsMeta"></span>
+      </div>
+      <div id="sessionCalls"></div>
+    </div>
+
     <div class="panel" id="livePanel" style="display:none">
       <div class="bar" style="margin-bottom:8px">
         <span style="font-weight:500;color:var(--acc-tx)" id="liveRole">роль друкує</span>
@@ -139,6 +147,39 @@
       + (work.truncated ? ' · показано перші 2 МБ' : '');
   }
 
+  function callCard(c) {
+    var verdict = c.verdict || '—';
+    var cardClass = verdict === 'ok' ? 'is-ok' : 'is-failed';
+    var bits = [];
+    if (c.hms) { bits.push(c.hms); }
+    if (c.rows) { bits.push(B.num(c.rows) + ' ' + (c.unit || 'рядків')); }
+    if (c.in || c.out) { bits.push(B.num(c.in) + '→' + B.num(c.out) + ' ток.'); }
+    if (c.ms) { bits.push(B.secs(c.ms)); }
+    if (c.model) { bits.push(c.model); }
+    bits.push('вирок ' + verdict);
+    var link = c.at && c.role
+      ? '<a href="/call?at=' + encodeURIComponent(c.at) + '&role=' + encodeURIComponent(c.role)
+        + '" class="as-button" target="_blank" rel="noopener">відкрити виклик ↗</a>'
+      : '';
+    return '<div class="msg role-card ' + cardClass + '"><div class="mh">'
+      + '<span style="font-weight:500">' + B.esc(c.role_label || c.role || 'роль') + '</span>'
+      + '<span class="empty" style="margin-left:auto">' + B.esc(bits.join(' · ')) + '</span>'
+      + '</div><div class="bar" style="margin-top:6px">'
+      + '<span class="empty">модель: ' + B.esc(c.model || 'не записана') + '</span>'
+      + link + '</div></div>';
+  }
+
+  function renderSessionCalls(calls) {
+    if (!session || !Array.isArray(calls)) { return; }
+    var panel = B.el('sessionCallsPanel');
+    var box = B.el('sessionCalls');
+    panel.style.display = 'block';
+    B.el('sessionCallsMeta').textContent = calls.length ? B.num(calls.length) : 'викликів немає';
+    box.innerHTML = calls.length
+      ? calls.map(callCard).join('')
+      : '<div class="empty">завершених викликів моделі немає</div>';
+  }
+
   // --- завершений виклик: беремо роботу цілком -------------------------------
   if (session || (at && role)) {
     // Робота ролі буває на сотні кілобайт · читання з диска й передача займають
@@ -170,6 +211,7 @@
         B.el('answerLoad').innerHTML = '';
         show('payload', 'payloadMeta', d.payload);
         show('answer', 'answerMeta', d.answer);
+        renderSessionCalls(d.calls);
         if (session) {
           document.querySelectorAll('.panel .bar > span:first-child').forEach(function (n) {
             if (n.textContent === 'що пішло в модель') { n.textContent = 'журнал кроків сесії'; }
