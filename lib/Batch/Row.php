@@ -266,13 +266,35 @@ final class Row
     /**
      * Токени, які мають вціліти дослівно.
      *
+     * API віддає `must_preserve` МАПОЮ «токен => скільки разів»:
+     * `{"{TextBind:USING_CLICK_RMB}":1}`. `array_values()` на ній повертав
+     * ЗНАЧЕННЯ, тобто кількості, а не самі токени · перевірка звіряла цифру «1»
+     * замість `{TextBind:…}`. Наслідок був двобічний і однаково тихий: видалений
+     * токен не давав дефекту взагалі, а зайва цифра в перекладі ставала
+     * «зламаним keep-токеном» і відправляла здоровий рядок до людини. Той самий
+     * `["1"]` ішов у payload воркера, QA, назв і ремонту як наказ берегти цифру
+     * (D172).
+     *
+     * Список лишається прийнятним: у ньому токени є значеннями, і саме таку
+     * форму досі вживали тести.
+     *
      * @return list<string>
      */
     public function keepTokens(): array
     {
         $tokens = $this->data['tokens']['must_preserve'] ?? [];
+        if (! is_array($tokens) || $tokens === []) {
+            return [];
+        }
+        $keep = [];
+        foreach (array_is_list($tokens) ? $tokens : array_keys($tokens) as $token) {
+            $token = (string) $token;
+            if ($token !== '' && ! in_array($token, $keep, true)) {
+                $keep[] = $token;
+            }
+        }
 
-        return is_array($tokens) ? array_values(array_map('strval', $tokens)) : [];
+        return $keep;
     }
 
     /**

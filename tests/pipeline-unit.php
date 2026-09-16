@@ -389,6 +389,58 @@ expect(($plain['ddd'] ?? '') === 'API: unchanged Без змін.', 'відмо�
     putenv('BDO_PIPELINE_OFFLINE');
     putenv('BDO_JUDGE');
 
+    // KEEP-ТОКЕНИ ПРИХОДЯТЬ МАПОЮ «токен => скільки разів».
+    //
+    // Саме цю форму віддає API (`{"{TextBind:USING_CLICK_RMB}":1}`), і саме на
+    // ній перевірка була сліпа: `keepTokens()` повертав кількості, тому
+    // звірялась цифра «1». Тест навмисно будує ОБИДВА боки дефекту (D172),
+    // бо кожен окремо пройшов би й на зламаному коді.
+    $keepToken = '{TextBind:USING_CLICK_RMB}';
+    $keepSource = 'Press '.$keepToken.' to open 1 box';
+    $keepHash = str_repeat('c', 64);
+    $keepRowsFile = $root.'/keep-rows.json';
+    $keepRowWith = static function (array $mustPreserve) use ($keepHash, $keepSource, $keepRowsFile) {
+        file_put_contents($keepRowsFile, json_encode(['data' => ['rows' => [[
+            'identity_hash' => $keepHash,
+            'source_hash' => hash('sha256', $keepSource),
+            'source_text' => $keepSource,
+            'tokens' => ['must_preserve' => $mustPreserve],
+        ]]]], JSON_THROW_ON_ERROR));
+
+        return RowSet::fromFile($keepRowsFile)->getOrEmpty($keepHash);
+    };
+
+    $keepMapRow = $keepRowWith([$keepToken => 1]);
+    expect($keepMapRow->keepTokens() === [$keepToken], 'keep-мапа дала кількості замість токенів');
+
+    // Токен видалено, а цифра з джерела на місці: на зламаному коді дефекту не було.
+    $withoutToken = 'Натисніть щоб відкрити 1 скриню';
+    $brokenDefects = $keepMapRow->tokenViolations($withoutToken);
+    expect($brokenDefects !== [], 'видалений keep-токен пройшов механічну перевірку');
+    expect(str_contains(implode(' ', $brokenDefects), $keepToken), 'дефект не називає сам токен');
+    expect(
+        str_contains(implode(' ', Defects::inTranslation($keepMapRow, $withoutToken)), $keepToken),
+        'видалений keep-токен не дав дефекту у зведеній перевірці',
+    );
+
+    // Токен цілий, але в перекладі є ще одна цифра «1»: на зламаному коді це
+    // ставало «зламано keep-токен 1» і відправляло здоровий рядок до людини.
+    expect(
+        $keepMapRow->tokenViolations('Натисніть '.$keepToken.' щоб відкрити 1 скриню 1 рівня') === [],
+        'стороння цифра зарахована як зламаний keep-токен',
+    );
+
+    // Список лишається робочим: цю форму вживали тести до появи мапи.
+    expect($keepRowWith([$keepToken])->keepTokens() === [$keepToken], 'форма-список зламалась');
+
+    // Модель мусить бачити токен НАЗВАНИМ, інакше промпт просить берегти цифру.
+    $keepRowWith([$keepToken => 1]);
+    $keepPayloadResult = $capture(new WorkerPayloadCommand(), [$keepRowsFile, '--no-context']);
+    expect($keepPayloadResult['code'] === 0, 'payload воркера для keep-рядка не побудувався');
+    $keepPayload = json_decode($keepPayloadResult['stdout'], true, 512, JSON_THROW_ON_ERROR);
+    $keepItem = $keepPayload['items'][0] ?? [];
+    expect(in_array($keepToken, $keepItem['keep'] ?? [], true), 'payload воркера не назвав справжній keep-токен');
+
     echo "pipeline unit: OK\n";
 } finally {
     $entries = new RecursiveIteratorIterator(
