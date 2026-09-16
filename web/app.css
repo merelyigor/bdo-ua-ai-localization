@@ -663,6 +663,27 @@ a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,te
   line-height:1.55
 }
 .role-card .callWork > pre.log.work:last-child{margin-bottom:0}
+.role-card.is-active{
+  display:grid;
+  grid-template-columns:minmax(0,1fr) auto;
+  align-items:center;
+  column-gap:16px
+}
+.role-card.is-active > .mh{grid-column:1/-1;grid-row:1;min-width:0}
+.role-card.is-active .active-work{grid-column:1/-1;grid-row:2;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-top:10px;min-width:0}
+.role-card.is-active .active-work>#reqbox,
+.role-card.is-active .active-work>#thinkwrap,
+.role-card.is-active .active-work>#streambox{min-width:0}
+.role-card.is-active .active-work>#reqbox{grid-column:1/-1;width:auto;margin-top:0}
+.role-card.is-active .active-work>#thinkwrap{grid-column:1;min-width:0}
+.role-card.is-active .active-work>#streambox{grid-column:2;min-width:0}
+.role-card.is-active .active-work>#thinkwrap .empty{margin-top:0!important}
+.role-card.is-active .active-work>#thinkwrap .box,
+.role-card.is-active .active-work>#streambox{width:100%;box-sizing:border-box}
+.role-card .call-work-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;min-width:0}
+.role-card .call-work-item{min-width:0}
+.role-card .call-work-item .empty{display:block;margin:0 0 6px!important;color:var(--ts);font-size:12px;line-height:1.45}
+.role-card .call-work-item pre.log.work{margin-bottom:0;max-height:260px;border:1px solid var(--line-soft);background:var(--s1);font-size:12px;line-height:1.55}
 @media (max-width:640px){
   .role-card:not(.is-active){display:block}
   .role-card:not(.is-active) > .bar{
@@ -674,6 +695,11 @@ a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,te
   }
   .role-card:not(.is-active) > .bar .openCall{margin-left:auto}
   .role-card .callWork{padding:10px}
+  .role-card.is-active .active-work{grid-template-columns:1fr}
+  .role-card.is-active .active-work>#reqbox,
+  .role-card.is-active .active-work>#thinkwrap,
+  .role-card.is-active .active-work>#streambox{grid-column:1}
+  .role-card .call-work-grid{grid-template-columns:1fr}
 }
 
 /* START SCREEN · reference 04 / 2026-09-15.

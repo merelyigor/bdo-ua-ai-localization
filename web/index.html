@@ -293,7 +293,10 @@
             return;
           }
           box.dataset.loaded = '1';
-          box.innerHTML = part('що пішло в модель', d.payload) + part('що модель відповіла', d.answer);
+          box.innerHTML = '<div class="call-work-grid">'
+            + part('що пішло в модель', d.payload)
+            + part('що модель відповіла', d.answer)
+            + '</div>';
         }).catch(function () {
           box.innerHTML = '<div class="empty">сервер не відповів</div>';
         });
@@ -303,15 +306,16 @@
 
   function part(title, work) {
     if (!work) {
-      return '<div class="empty" style="margin-top:6px">' + B.esc(title)
-        + ' · файла немає (пачку прибрано або відповіді не було)</div>';
+      return '<section class="call-work-item">'
+        + '<div class="empty" style="margin-top:6px">' + B.esc(title)
+        + ' · файла немає (пачку прибрано або відповіді не було)</div></section>';
     }
     var kb = work.size < 1024 ? work.size + ' Б' : Math.round(work.size / 1024) + ' КБ';
-    return '<div class="empty" style="margin-top:8px">' + B.esc(title) + ' · '
+    return '<section class="call-work-item"><div class="empty" style="margin-top:8px">' + B.esc(title) + ' · '
       + B.esc(work.path) + ' · ' + kb + (work.truncated ? ' · показано перші 2 МБ' : '') + '</div>'
       // Клас `work` тримає блок нижчим за журнал кроків: два технічні файли
       // по 12 КБ при спільній стелі 420 px давали пів екрана сирого JSON.
-      + '<pre class="log work">' + B.esc(B.prettyWorkText(work.text)) + '</pre>';
+      + '<pre class="log work">' + B.esc(B.prettyWorkText(work.text)) + '</pre></section>';
   }
 
   // Фільтр вердиктів живе поза `render`: перемальовка знімка не має скидати
@@ -684,6 +688,7 @@
               ? '<button class="chip" id="reqChip" type="button">запит ▾</button>'
               : '')
           + '</div>'
+          + '<div class="active-work">'
           + '<div class="box mono" id="reqbox" style="display:none"></div>'
           // РОЗДУМИ ПІДПИСАНІ Й ВИДНО ЗАВЖДИ, коли вони є.
           //
@@ -703,7 +708,7 @@
               ? '<div class="empty" style="margin-top:6px">Це не зависання: Ollama вивантажує модель за своїм '
                 + 'налаштуванням, і наступні виклики підуть без цієї паузи.</div>'
               : '')
-          + '<div class="box mono live-print" id="streambox" aria-live="polite"></div></div>';
+          + '<div class="box mono live-print" id="streambox" aria-live="polite"></div></div></div>';
       }
       B.el('calls').innerHTML = html;
       bindOpenCall();
