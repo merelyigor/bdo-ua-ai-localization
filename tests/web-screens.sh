@@ -482,8 +482,8 @@ foreach (array_keys($states) as $st) {
 if grep -Fq 'thinkChip' "$ROOT/web/index.html"; then
     fail 'повернувся чип «роздуми» · він недосяжний поза живим викликом (D103)'
 fi
-grep -Fq "if (!text) { wrap.style.display = 'none'; return; }" "$ROOT/web/index.html" \
-    || fail 'вікно роздумів показується не за наявністю тексту · знову залежить від прапорця'
+grep -Fq "if (!text) { wrap.open = false; box.textContent = ''; return; }" "$ROOT/web/index.html" \
+    || fail 'порожній блок роздумів не згортається й не очищується'
 grep -Fq 'streamFeed(stream, thinkStream)' "$ROOT/web/index.html" \
     || fail 'роздуми не мають власної друкарки · вони або зникнуть, або змішаються з відповіддю'
 # ЩО ПІШЛО В МОДЕЛЬ · доступне ПОКИ роль друкує, а не лише після відповіді.
