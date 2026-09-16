@@ -202,31 +202,27 @@
   }
 
   function bindRunContext() {
-    var hero = B.el('runHero');
+    var steps = B.el('steps');
     var nav = B.el('nav');
-    if (!hero || !nav) { return; }
+    if (!steps || !nav) { return; }
     var setVisible = function (visible) {
       nav.classList.toggle('run-context-visible', !visible);
       var context = B.el('navRunContext');
       if (context) { context.setAttribute('aria-hidden', String(visible)); }
     };
-    if ('IntersectionObserver' in window) {
-      new IntersectionObserver(function (entries) {
-        setVisible(entries[0].intersectionRatio >= 0.45);
-      }, { threshold: [0, 0.45, 1] }).observe(hero);
-    } else {
-      var update = function () {
-        if (typeof hero.getBoundingClientRect !== 'function') {
-          setVisible(true);
-          return;
-        }
-        var rect = hero.getBoundingClientRect();
-        var visibleHeight = Math.max(0, Math.min(rect.bottom, window.innerHeight) - Math.max(rect.top, 0));
-        setVisible(visibleHeight / Math.max(rect.height, 1) >= 0.45);
-      };
-      window.addEventListener('scroll', update, { passive: true });
-      update();
-    }
+    var update = function () {
+      if (typeof steps.getBoundingClientRect !== 'function' || typeof nav.getBoundingClientRect !== 'function') {
+        setVisible(true);
+        return;
+      }
+      var stepsRect = steps.getBoundingClientRect();
+      var navRect = nav.getBoundingClientRect();
+      var overlapsHeader = stepsRect.top < navRect.bottom && stepsRect.bottom > navRect.top;
+      setVisible(!overlapsHeader);
+    };
+    window.addEventListener('scroll', update, { passive: true });
+    window.addEventListener('resize', update);
+    update();
     B.el('navStopBtn').onclick = function () { B.el('stopBtn').click(); };
     B.el('navContinueBtn').onclick = function () { B.el('continueBtn').click(); };
   }
