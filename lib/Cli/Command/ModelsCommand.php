@@ -316,30 +316,25 @@ final class ModelsCommand implements Command, CommandHelp
 
     private function settings(array $config, string $stateDir, array $arguments, Output $output): int
     {
-        if (! in_array(count($arguments), [4, 6], true) || $arguments[0] !== '--think') {
-            return $this->failure('models settings: використання `models settings --think <0|1> [--think-level <low|medium|high>] --think-limit-bytes <байти>`', $output, 2);
+        if (! in_array(count($arguments), [2, 4], true) || $arguments[0] !== '--think') {
+            return $this->failure('models settings: використання `models settings --think <0|1> [--think-level <low|medium|high>]`', $output, 2);
         }
         $level = 'low';
-        $limitIndex = 2;
-        if (count($arguments) === 4 && $arguments[2] !== '--think-limit-bytes') {
-            return $this->failure('models settings: некоректний порядок аргументів', $output, 2);
-        }
-        if (count($arguments) === 6) {
-            if ($arguments[2] !== '--think-level' || ! in_array($arguments[3], ['low', 'medium', 'high'], true) || $arguments[4] !== '--think-limit-bytes') {
+        if (count($arguments) === 4) {
+            if ($arguments[2] !== '--think-level' || ! in_array($arguments[3], ['low', 'medium', 'high'], true)) {
                 return $this->failure('models settings: некоректний think-level або порядок аргументів', $output, 2);
             }
             $level = $arguments[3];
-            $limitIndex = 4;
         }
-        if (! in_array($arguments[1], ['0', '1'], true) || preg_match('/^[1-9][0-9]*$/', $arguments[$limitIndex + 1]) !== 1) {
-            return $this->failure('models settings: think є 0 або 1, стеля · додатне число байтів', $output, 2);
+        if (! in_array($arguments[1], ['0', '1'], true)) {
+            return $this->failure('models settings: think є 0 або 1', $output, 2);
         }
         try {
-            ModelSettings::save($stateDir, $arguments[1] === '1', (int) $arguments[$limitIndex + 1], $level);
+            ModelSettings::save($stateDir, $arguments[1] === '1', $level);
         } catch (ModelRuntimeError $exception) {
             return $this->failure($exception->reason.': '.$exception->getMessage(), $output);
         }
-        $output->stdout('Налаштування збережено: think='.$arguments[1].', think_level='.$level.', стеля='.$arguments[$limitIndex + 1].' байт з наступного виклику ролі'."\n");
+        $output->stdout('Налаштування збережено: think='.$arguments[1].', think_level='.$level.' з наступного виклику ролі'."\n");
 
         return 0;
     }
@@ -382,7 +377,7 @@ final class ModelsCommand implements Command, CommandHelp
   ./bdo models load <runtime> <model>
   ./bdo models unload <runtime> <model>
   ./bdo models probe <runtime> <model>
-  ./bdo models settings --think <0|1> [--think-level <low|medium|high>] --think-limit-bytes <байти>
+  ./bdo models settings --think <0|1> [--think-level <low|medium|high>]
 
 `list --json` оновлює state/model-catalog.json. Вибір зберігається в
 state/model-selection.json. Порожній стан повертає

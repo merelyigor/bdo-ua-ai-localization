@@ -97,7 +97,9 @@ if (trim($model) === '') {
 }
 $numCtx = (int) ($roleConfig['num_ctx'] ?? $config['num_ctx']);
 $numPredict = max(1, (int) ($roleConfig['num_predict'] ?? $config['num_predict'] ?? 8192));
-$timeout = (int) ($config['timeout_seconds'] ?? 900);
+// Це не бюджет якості: щедрий `timeout_seconds` — останній аварійний рубіж
+// для різних роздумів, які ніколи не дійшли до відповіді.
+$timeout = max(1, (int) ($config['timeout_seconds'] ?? 900));
 try {
     $settings = \Bdo\Translate\Model\ModelSettings::resolve($stateDir, $config, $roleConfig, $numPredict);
 } catch (\Bdo\Translate\Model\ModelRuntimeError $e) {
@@ -190,15 +192,13 @@ if ($think === true && is_array($catalogData)) {
             || ($catalogModel['model'] ?? '') !== $model) {
             continue;
         }
-        if (($catalogModel['thinking'] ?? false) !== true) {
-            $think = false;
-        } elseif (($catalogModel['thinking_levels'] ?? 'not_tested') === 'supported') {
+        if (($catalogModel['thinking'] ?? false) === true
+            && ($catalogModel['thinking_levels'] ?? 'not_tested') === 'supported') {
             $think = $settings['think_level'];
         }
         break;
     }
 }
-$thinkLimitBytes = $settings['think_limit_bytes'];
 $thinkObserved = false;
 $thinkMismatch = false;
 
@@ -258,7 +258,15 @@ $relative = static function (string $path) use ($stateDir): ?string {
     return substr($full, strlen($base) + 1);
 };
 
-$journal = static function (string $verdict) use ($callsFile, $role, $model, $provider, $started, $currentBatch, $runState, $rows, $payloadBytes, $relative, $payloadPath, $responsePath, &$stats, $numPredict, $think, $thinkLimitBytes, &$thinkObserved, &$thinkMismatch): void {
+$attempt = 1;
+$thinkingBytes = 0;
+$thinkingChunks = 0;
+$thinkingTokens = [];
+$thinkingCarry = '';
+$thinkingRepeatFragment = '';
+$thinkingRepeatCount = 0;
+$thinkingLoopDetected = false;
+$journal = static function (string $verdict) use ($callsFile, $role, $model, $provider, $started, $currentBatch, $runState, $rows, $payloadBytes, $relative, $payloadPath, $responsePath, &$stats, $numPredict, $timeout, $think, &$thinkObserved, &$thinkMismatch, &$attempt, &$thinkingBytes, &$thinkingChunks, &$thinkingRepeatFragment, &$thinkingRepeatCount, &$thinkingLoopDetected): void {
     $dir = dirname($callsFile);
     if (! is_dir($dir) && ! mkdir($dir, 0777, true) && ! is_dir($dir)) {
         return;
@@ -285,7 +293,13 @@ $journal = static function (string $verdict) use ($callsFile, $role, $model, $pr
         'think_mismatch' => $thinkMismatch,
         'think_note' => $thinkMismatch ? 'requested_false_received_thinking' : '',
         'num_predict' => $numPredict,
-        'think_limit_bytes' => $thinkLimitBytes,
+        'timeout_seconds' => $timeout,
+        'attempt' => $attempt,
+        'thinking_bytes' => $thinkingBytes,
+        'thinking_chunks' => $thinkingChunks,
+        'thinking_loop_detected' => $thinkingLoopDetected,
+        'thinking_repeat_fragment' => $thinkingRepeatFragment,
+        'thinking_repeat_count' => $thinkingRepeatCount,
         'stream' => getenv('BDO_MODEL_STREAM') !== '0',
     ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)."\n", FILE_APPEND);
 };
@@ -311,19 +325,22 @@ $journal = static function (string $verdict) use ($callsFile, $role, $model, $pr
 // Межа не змінилась: усі перевірки (`done_reason`, порожній `content`,
 // `not_json`, вікно, схема) робляться на ЗІБРАНІЙ відповіді, тобто там само,
 // де й раніше. Потік змінює лише спосіб доставки байтів.
-$request = new \Bdo\Translate\Model\Transport\Request(
-    role: $role,
-    model: $model,
-    prompt: $prompt,
-    payload: $payload,
-    schema: $schema,
-    stream: $stream,
-    think: $think,
-    temperature: (float) ($roleConfig['temperature'] ?? 0.1),
-    numCtx: $numCtx,
-    numPredict: $numPredict,
-    timeout: $timeout,
-);
+$makeRequest = static function (bool|string $requestThink) use ($role, $model, $prompt, $payload, $schema, $stream, $roleConfig, $numCtx, $numPredict, $timeout): \Bdo\Translate\Model\Transport\Request {
+    return new \Bdo\Translate\Model\Transport\Request(
+        role: $role,
+        model: $model,
+        prompt: $prompt,
+        payload: $payload,
+        schema: $schema,
+        stream: $stream,
+        think: $requestThink,
+        temperature: (float) ($roleConfig['temperature'] ?? 0.1),
+        numCtx: $numCtx,
+        numPredict: $numPredict,
+        timeout: $timeout,
+    );
+};
+$request = $makeRequest($think);
 
 /**
  * Живий показ роботи моделі.
@@ -354,35 +371,74 @@ if ($stream) {
 $dim = ($show && getenv('NO_COLOR') === false) ? "\033[2m" : '';
 $off = $dim !== '' ? "\033[0m" : '';
 $chunkSeen = 0;
-$thinkingOnlyBytes = 0;
 $contentSeen = false;
-$thinkingOnlyLimit = $thinkLimitBytes;
-$onChunk = function (string $text, bool $isThinking) use (
-    $show, $dim, $off, $streamLog, $stream, &$chunkSeen, &$thinkingOnlyBytes,
-    &$contentSeen, $thinkingOnlyLimit, &$thinkObserved, &$thinkMismatch, $think
-): void {
+$observeThinking = function (string $text) use (&$thinkingBytes, &$thinkingChunks, &$thinkingTokens, &$thinkingCarry, &$thinkingRepeatFragment, &$thinkingRepeatCount, &$thinkingLoopDetected, &$thinkObserved, &$thinkMismatch, $think): void {
     if ($text === '') {
         return;
     }
-    if ($isThinking) {
-        $thinkObserved = true;
-        if (! $think) {
-            $thinkMismatch = true;
+    $thinkObserved = true;
+    if (! $think) {
+        $thinkMismatch = true;
+    }
+    $thinkingBytes += strlen($text);
+    $thinkingChunks++;
+    // СЛОВО ЗБИРАЄТЬСЯ ЧЕРЕЗ МЕЖУ ШМАТКА. Потік ріже текст де завгодно, тому
+    // «думай» приходить як «дума»+«й». Токенізація кожного шматка ОКРЕМО дає
+    // токени, які залежать від НАРІЗКИ транспорту, а не від того, що написала
+    // модель: виміряно на зацикленому потоці · у журнал пішло «дума й дум ай»
+    // замість «думай», і те саме зміщення робить саме вікно повторів хитким.
+    // Тому незавершений хвіст переноситься в наступний шматок.
+    $chunk = $thinkingCarry.$text;
+    $thinkingCarry = '';
+    $normalized = preg_replace('/\s+/u', ' ', trim($chunk)) ?? trim($chunk);
+    if ($normalized === '') {
+        return;
+    }
+    $newTokens = preg_split('/\s+/u', $normalized, -1, PREG_SPLIT_NO_EMPTY) ?: [];
+    // Хвіст без завершального пробілу ще не є словом · чекаємо продовження.
+    if ($newTokens !== [] && preg_match('/\s\z/u', $chunk) !== 1) {
+        $thinkingCarry = (string) array_pop($newTokens);
+    }
+    if ($newTokens === []) {
+        return;
+    }
+    $thinkingTokens = array_slice(array_merge($thinkingTokens, $newTokens), -96);
+
+    // Вісім нормалізованих слів, що повторилися чотири рази поспіль, — щедра
+    // межа проти звичайної авторської самоперевірки. Вона ловить виміряний
+    // випадок із 108 повторами, але не прирівнює довгий різний текст до loop.
+    $tokenCount = count($thinkingTokens);
+    for ($length = 8; $length <= min(24, intdiv($tokenCount, 4)); $length++) {
+        $fragment = array_slice($thinkingTokens, -$length);
+        $copies = 1;
+        for ($copy = 1; $copy < 8; $copy++) {
+            $previous = array_slice($thinkingTokens, -($length * ($copy + 1)), $length);
+            if (count($previous) !== $length || $previous !== $fragment) {
+                break;
+            }
+            $copies++;
         }
-        $thinkingOnlyBytes += strlen($text);
-        if ($thinkingOnlyBytes > $thinkingOnlyLimit) {
-            // Код причини · САМЕ `empty_content`, бо його вже знають шість
-            // місць набору: звіт інцидентів, драйвер і три тести. А
-            // `no_answer` у наборі означає ІНШЕ · «терміну немає в
-            // каталозі» (`TerminologyPayloadCommand`), і перевантажувати
-            // його другим змістом означало б плутати два різні стани.
+        if ($copies >= 4) {
+            $thinkingLoopDetected = true;
+            $thinkingRepeatFragment = implode(' ', $fragment);
+            $thinkingRepeatCount = $copies;
             throw new \Bdo\Translate\Model\Transport\TransportError(
-                'empty_content',
-                'модель не дійшла до відповіді після '.$thinkingOnlyLimit.' байт thinking'
+                'thinking_loop',
+                'модель повторює фрагмент thinking '.$thinkingRepeatCount.' рази: '.$thinkingRepeatFragment
             );
         }
-    } else {
+    }
+};
+$onChunk = function (string $text, bool $isThinking) use (
+    $show, $dim, $off, $streamLog, $stream, &$chunkSeen, &$contentSeen, &$observeThinking
+): void {
+    if ($isThinking) {
+        $observeThinking($text);
+    } elseif ($text !== '') {
         $contentSeen = true;
+    }
+    if ($text === '') {
+        return;
     }
     $chunkSeen++;
     if ($show) {
@@ -396,7 +452,35 @@ $onChunk = function (string $text, bool $isThinking) use (
 };
 
 try {
-    $reply = $transport->send($request, $stream ? $onChunk : null);
+    while (true) {
+        try {
+            $reply = $transport->send($request, $stream ? $onChunk : null);
+            if (! $stream) {
+                $observeThinking($reply->thinking);
+            }
+            break;
+        } catch (\Bdo\Translate\Model\Transport\TransportError $e) {
+            if ($e->reason !== 'thinking_loop' || $attempt >= 2) {
+                throw $e;
+            }
+            $journal('thinking_loop');
+            $attempt++;
+            // Retry keeps the owner's explicit thinking choice intact.
+            $request = $makeRequest($think);
+            $chunkSeen = 0;
+            $contentSeen = false;
+            $thinkObserved = false;
+            $thinkMismatch = false;
+            $thinkingBytes = 0;
+            $thinkingChunks = 0;
+            $thinkingTokens = [];
+            $thinkingCarry = '';
+            $thinkingRepeatFragment = '';
+            $thinkingRepeatCount = 0;
+            $thinkingLoopDetected = false;
+            continue;
+        }
+    }
 } catch (\Bdo\Translate\Model\Transport\TransportError $e) {
     // Причина вже машиночитана й уже названа транспортом · клієнт її не
     // переписує, лише журналює й показує.
@@ -438,9 +522,6 @@ if ($window > 0 && $promptTokens > 0 && $promptTokens > (int) ($window * 0.9)) {
 
 $content = trim((string) ($answer['message']['content'] ?? ''));
 $thinking = trim((string) ($answer['message']['thinking'] ?? ''));
-if (strlen($thinking) > $thinkLimitBytes) {
-    $fail('empty_content', 'модель перевищила стелю після '.$thinkLimitBytes.' байт thinking');
-}
 if ($content === '' && $thinking !== '') {
     $fail('empty_content', 'модель не дійшла до відповіді · усе пішло в thinking');
 }

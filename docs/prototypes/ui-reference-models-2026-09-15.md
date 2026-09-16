@@ -31,7 +31,7 @@
 |---|---|---|
 | Active global model | `web/models.html` selection block | реалізовано й перевірено |
 | Runtime summary | `catalogSummary` у `web/models.html` | реалізовано |
-| Thinking controls | `thinkToggle`, `thinkLimit`, `saveThinking` | реалізовано |
+| Thinking controls | `thinkToggle`, `thinkLevel`, `saveThinking` | реалізовано |
 | Model catalog actions | `model-table` і `data-action` handlers | реалізовано |
 | Role model overrides | `selection-roles` і role apply actions | реалізовано |
 | Semantic colors, badges, buttons, focus states | `web/app.css` | реалізовано як спільний шар |

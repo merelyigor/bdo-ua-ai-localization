@@ -64,16 +64,6 @@
             <span class="track"></span>
             <span>🧠 Роздуми</span>
           </label>
-          <label class="thinking-limit" for="thinkLimit">
-            <span>⚙️ Ліміт thinking, байт · АВАРІЙНИЙ ОБРИВ виклику (не бюджет мислення)</span>
-            <select id="thinkLimit" aria-label="⚙️ Ліміт thinking, байт · аварійний обрив виклику">
-              <option value="2048">2 048 байт · коротко</option>
-              <option value="4096">4 096 байт</option>
-              <option value="8192">8 192 байт · стандарт</option>
-              <option value="16384">16 384 байт</option>
-              <option value="32768">32 768 байт · довго</option>
-            </select>
-          </label>
           <label class="thinking-limit" for="thinkLevel">
             <span>🎚️ Рівень роздумів</span>
             <select id="thinkLevel" aria-label="🎚️ Рівень роздумів">
@@ -85,10 +75,10 @@
           <span id="thinkState" class="empty"></span>
         </div>
         <div class="info-note"><span class="info-note-icon" aria-hidden="true">i</span>
-          <span>Більше роздумів — краща якість, але довший час відповіді.</span>
+          <span>Довге мислення дозволене. Зупинка — лише зациклення; останній аварійний рубіж — timeout виклику.</span>
         </div>
       </div>
-      <div class="empty thinking-note">Це аварійний обрив виклику після заданої кількості байт thinking; він не змушує модель думати коротше й завершує виклик із причиною <span class="mono">empty_content</span>.</div>
+      <div class="empty thinking-note">Повторюваний фрагмент thinking зупиняє виклик із причиною <span class="mono">thinking_loop</span>. Довгий, але різний текст не обривається за обсягом.</div>
     </div>
 
     <div class="panel">
@@ -235,31 +225,25 @@
   }
 
   var thinkingSaveSeq = 0;
-  var thinkingLimitOptions = ['2048', '4096', '8192', '16384', '32768'];
-
   function saveThinkingSettings() {
     var toggle = B.el('thinkToggle');
-    var limit = B.el('thinkLimit');
     var level = B.el('thinkLevel');
     var state = B.el('thinkState');
-    if (!toggle || !limit || !level || !state || toggle.disabled) { return; }
+    if (!toggle || !level || !state || toggle.disabled) { return; }
     var seq = ++thinkingSaveSeq;
     var think = toggle.checked;
-    var limitBytes = Number(limit.value);
     var thinkLevel = level.value;
     state.textContent = 'зберігаю…';
     toggle.disabled = true;
-    limit.disabled = true;
     level.disabled = true;
     B.post('/api/action', {
       action: 'models.settings',
-      payload: {think: think, think_level: thinkLevel, think_limit_bytes: limitBytes},
+      payload: {think: think, think_level: thinkLevel},
       confirm: true
     }).then(function(res) {
       if (seq !== thinkingSaveSeq) { return; }
       var body = res.body || {};
       toggle.disabled = false;
-      limit.disabled = false;
       level.disabled = false;
       if (body.ok) {
         state.textContent = (think ? 'увімкнено' : 'вимкнено') + ' · збережено';
@@ -270,7 +254,6 @@
     }).catch(function() {
       if (seq !== thinkingSaveSeq) { return; }
       toggle.disabled = false;
-      limit.disabled = false;
       level.disabled = false;
       state.textContent = 'не збережено · сервер не відповів';
     });
@@ -278,20 +261,17 @@
 
   function bindThinkingSettings() {
     var toggle = B.el('thinkToggle');
-    var limit = B.el('thinkLimit');
     var level = B.el('thinkLevel');
-    if (!toggle || !limit || !level) { return; }
+    if (!toggle || !level) { return; }
     toggle.onchange = saveThinkingSettings;
-    limit.onchange = saveThinkingSettings;
     level.onchange = saveThinkingSettings;
   }
 
   function renderSettings(data) {
     var settings = data.settings || {};
     var toggle = B.el('thinkToggle');
-    var limit = B.el('thinkLimit');
     var level = B.el('thinkLevel');
-    if (!toggle || !limit || !level) { return; }
+    if (!toggle || !level) { return; }
     var catalog = data.catalog || {};
     var selection = data.selection || {};
     var active = selection.global && selection.global.runtime && selection.global.model ? selection.global : null;
@@ -305,7 +285,6 @@
     var hasLevels = canThink && activeModel.thinking_levels === 'supported';
     toggle.checked = settings.think === true;
     toggle.disabled = !canThink;
-    limit.disabled = !canThink;
     level.disabled = !hasLevels;
     toggle.title = canThink ? 'рантайм декларує thinking' : 'недоступно: активна модель не декларує thinking';
     var levelReason = activeModel && activeModel.thinking_probe && activeModel.thinking_probe.reason
@@ -320,19 +299,7 @@
     } else {
       B.el('thinkState').textContent = toggle.checked ? 'увімкнено · рівні підтримує' : 'вимкнено · рівні підтримує';
     }
-    var value = String(Number(settings.think_limit_bytes) || 8192);
     level.value = ['low', 'medium', 'high'].indexOf(settings.think_level) === -1 ? 'low' : settings.think_level;
-    Array.prototype.forEach.call(limit.querySelectorAll('option[data-current]'), function(option) {
-      option.remove();
-    });
-    if (thinkingLimitOptions.indexOf(value) === -1) {
-      var current = document.createElement('option');
-      current.value = value;
-      current.textContent = Number(value).toLocaleString('uk-UA') + ' байт · поточне';
-      current.dataset.current = '1';
-      limit.appendChild(current);
-    }
-    limit.value = value;
     bindThinkingSettings();
   }
 
@@ -442,7 +409,6 @@
         if (action === 'models.settings') {
           payload.think = B.el('thinkToggle').checked;
           payload.think_level = B.el('thinkLevel').value;
-          payload.think_limit_bytes = Number(B.el('thinkLimit').value);
         }
         if (action === 'models.select.role') {
           var select = document.querySelector('.roleModel[data-role="' + CSS.escape(button.dataset.role) + '"]');

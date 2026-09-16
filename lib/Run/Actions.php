@@ -342,11 +342,10 @@ final class Actions
                 if (! is_bool($payload['think'] ?? null)) {
                     throw new RuntimeException('think: потрібно true або false');
                 }
-                $limit = self::count('think_limit_bytes', $payload['think_limit_bytes'] ?? '', 4 * 1024 * 1024);
                 $level = self::enum('think_level', $payload['think_level'] ?? 'low', ['low', 'medium', 'high']);
 
                 return [
-                    'steps' => [['./bdo', 'models', 'settings', '--think', $payload['think'] ? '1' : '0', '--think-level', $level, '--think-limit-bytes', (string) $limit]],
+                    'steps' => [['./bdo', 'models', 'settings', '--think', $payload['think'] ? '1' : '0', '--think-level', $level]],
                     'env' => [],
                     'detached' => false,
                     'needs_confirm' => false,

@@ -293,23 +293,21 @@ foreach ($on as $line) {
 ' "$ROOT/lib/autoload.php" || fail 'перемикач роздумів показує в плані не те, що виконається'
 grep -Fq 'id="thinkToggle"' "$MODELS" \
     || fail 'на екрані моделей немає persistent перемикача роздумів'
-grep -Fq '<select id="thinkLimit"' "$MODELS" \
-    || fail 'на екрані моделей немає селектора стелі роздумів'
+if grep -Fq 'thinkLimit' "$MODELS"; then fail 'на екрані моделей залишилася байтова ручка'; fi
 if grep -Fq 'id="saveThinking"' "$MODELS"; then fail 'на екрані моделей залишилася кнопка ручного збереження'; fi
 if grep -Fq '<input id="thinkLimit"' "$MODELS"; then fail 'стеля роздумів лишилася ручним полем'; fi
 grep -Fq "action: 'models.settings'" "$MODELS" \
-    || fail 'автозбереження стелі не проходить через models.settings'
+    || fail 'автозбереження роздумів не проходить через models.settings'
 grep -Fq 'onchange = saveThinkingSettings' "$MODELS" \
-    || fail 'перемикач і селектор роздумів не мають автозбереження'
+    || fail 'перемикач і рівень роздумів не мають автозбереження'
 grep -Fq 'data-icon="thinking"' "$MODELS" \
     || fail 'на екрані моделей немає іконки роздумів'
 grep -Fq '<span>🧠 Роздуми</span>' "$MODELS" \
     || fail 'біля перемикача роздумів немає emoji мозку'
-grep -Fq '⚙️ Ліміт thinking, байт' "$MODELS" \
-    || fail 'біля селектора немає окремого підпису ліміту'
-if grep -Fq 'section-title">🧠' "$MODELS" || grep -Fq 'Стеля thinking, байт' "$MODELS"; then
-    fail 'старий підпис стелі або emoji мозку лишився біля селектора'
-fi
+grep -Fq 'Довге мислення дозволене' "$MODELS" \
+    || fail 'екран не пояснює, що довге мислення дозволене'
+grep -Fq 'thinking_loop' "$MODELS" \
+    || fail 'екран не називає зупинку зациклення'
 grep -Fq 'models.unload' "$MODELS" \
     || fail 'у каталозі моделей немає кнопки вивантаження'
 grep -Fq 'unload_unsupported' "$ROOT/lib/Model/RuntimeModels.php" \

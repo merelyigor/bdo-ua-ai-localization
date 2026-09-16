@@ -52,7 +52,7 @@ $cases = [
     ["models.load", ["runtime" => "omlx", "model" => "model-a"]],
     ["models.unload", ["runtime" => "omlx", "model" => "model-a"]],
     ["models.probe", ["runtime" => "ollama", "model" => "model-a"]],
-    ["models.settings", ["think" => true, "think_limit_bytes" => 8192]],
+    ["models.settings", ["think" => true]],
 ];
 $checked = 0;
 foreach ($cases as [$action, $payload]) {
@@ -83,7 +83,7 @@ foreach (Actions::names() as $name) {
         "models.load" => ["runtime" => "omlx", "model" => "model-a"],
         "models.unload" => ["runtime" => "omlx", "model" => "model-a"],
         "models.probe" => ["runtime" => "ollama", "model" => "model-a"],
-        "models.settings" => ["think" => false, "think_limit_bytes" => 8192],
+        "models.settings" => ["think" => false],
         default => [],
     };
     Actions::plan($name, $payload);

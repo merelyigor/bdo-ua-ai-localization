@@ -281,9 +281,7 @@
     if (!node) { return; }
     var s = (data && data.settings) || {};
     if (s.think === undefined) { node.textContent = 'стан невідомий · відкрий екран моделей'; return; }
-    node.textContent = s.think
-      ? ('увімкнені · стеля ' + (s.think_limit || '—'))
-      : 'вимкнені';
+    node.textContent = s.think ? 'увімкнені · зупинка лише за зацикленням' : 'вимкнені';
   }
 
   B.get('/api/models').then(function (data) { renderModelPicker(data); renderThinkState(data); }).catch(function () {

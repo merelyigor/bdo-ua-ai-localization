@@ -2,9 +2,9 @@
 # Клієнт локальної моделі мусить ПАДАТИ з причиною, а не деградувати мовчки.
 #
 # Це заміна дитячої сесії OpenCode, і саме на тихій деградації набір втрачав
-# прогони: порожній `content` при ввімкненому думанні (D28), обрив на стелі, що
-# виглядає як зіпсований JSON (D29), викинутий початок payload при завищеному
-# вікні (D32). Жодна з цих ситуацій не має права виглядати як «спробуємо ще».
+# прогони: порожній `content` при ввімкненому думанні (D28), обрив на стелі
+# `num_predict` (D29), викинутий початок payload при завищеному вікні (D32).
+# Жодна з цих ситуацій не має права виглядати як «спробуємо ще».
 #
 # Перевіряємо не текстом коду, а поведінкою: піднімаємо ПІДРОБЛЕНИЙ endpoint
 # Ollama на вбудованому сервері PHP і дивимось код виходу, причину в stderr,
@@ -24,7 +24,9 @@ cat > "$WORK/router.php" <<'PHP'
 $mode = trim((string) @file_get_contents(getenv("SCENARIO_FILE")));
 if (str_contains($_SERVER["REQUEST_URI"], "/api/chat")) {
     // Тіло запиту лишається на диску: тест дивиться, що саме побачила модель.
-    @file_put_contents(getenv("SCENARIO_FILE").".request", (string) file_get_contents("php://input"));
+    $request = (string) file_get_contents("php://input");
+    @file_put_contents(getenv("SCENARIO_FILE").".request", $request);
+    @file_put_contents(getenv("SCENARIO_FILE").".requests", $request."\n", FILE_APPEND);
 }
 if (str_contains($_SERVER["REQUEST_URI"], "/api/ps")) {
     $window = $mode === "overflow" ? 1000 : 131072;
@@ -61,12 +63,19 @@ $answers = [
     // порожній, це відмова, скільки б роздумів не було (переміряно 2026-09-04).
     "think_only" => ["done_reason" => "stop", "prompt_eval_count" => 10, "eval_count" => 900,
              "message" => ["content" => "", "thinking" => "Спершу подумаю дуже довго…"]],
-    // Заміна живого зациклення: модель віддає тільки thinking великим потоком.
-    // Клієнт мусить розірвати читання до завершального чанка й назвати empty_content.
+    // Заміна живого зациклення: модель віддає тільки повторюваний thinking.
     "thinking_loop" => ["done_reason" => "stop", "prompt_eval_count" => 10, "eval_count" => 9000,
              "message" => ["content" => "", "thinking" => str_repeat("думай ", 20000)]],
 ];
 $answer = $answers[$mode] ?? $answers["ok"];
+if ($mode === "thinking_long") {
+    $pieces = [];
+    for ($i = 1; $i <= 1800; $i++) {
+        $pieces[] = "крок $i пояснює окрему перевірку без повторення попереднього фрагмента";
+    }
+    $answer = ["done_reason" => "stop", "prompt_eval_count" => 10, "eval_count" => 1200,
+        "message" => ["content" => '{"items":[{"identity_hash":"aa","text":"Меч"}]}', "thinking" => implode(" ", $pieces)]];
+}
 header("Content-Type: application/json");
 
 // Клієнт просить ПОТІК, тому підробка мусить віддавати NDJSON · інакше тест
@@ -130,8 +139,9 @@ JSON
 run() {
     printf '%s' "$1" > "$SCENARIO_FILE"
     rm -f "$WORK/response.json"
+    rm -f "$SCENARIO_FILE.request" "$SCENARIO_FILE.requests"
     set +e
-    STDERR="$(BDO_ROLES_CONFIG="$WORK/roles.json" BDO_STATE_DIR="$WORK/state" \
+    STDERR="$(BDO_MODEL_THINK="${BDO_TEST_THINK:-0}" BDO_ROLES_CONFIG="$WORK/roles.json" BDO_STATE_DIR="$WORK/state" \
         php "$ROOT/cli/model/client.php" translation-worker \
         "$WORK/payload.json" "$WORK/response.json" --schema "$WORK/schema.json" 2>&1 >/dev/null)"
     CODE=$?
@@ -172,20 +182,36 @@ grep -q '^empty_content' <<<"$STDERR" || fail "роздуми без відпо�
 grep -q '"think_mismatch":true' "$WORK/state/model-calls.jsonl" \
     || fail 'журнал не показав розбіжність: requested think=false, received thinking'
 
-# 8б. Штучне зациклення: межа thinking-only перериває потік за секунди, а не
-#      чекає `done` від моделі, яка його може не дати.
+# 8б. Штучне зациклення: повторюваний фрагмент перериває потік за секунди.
 SECONDS=0
-run thinking_loop
+BDO_TEST_THINK=1 run thinking_loop
 elapsed="$SECONDS"
 test "$CODE" = 1 || fail "зациклений thinking-виклик дав код $CODE"
-grep -q '^empty_content' <<<"$STDERR" || fail "зациклений thinking не зупинено з empty_content: $STDERR"
+grep -q '^thinking_loop' <<<"$STDERR" || fail "зациклений thinking не зупинено з thinking_loop: $STDERR"
 test "$elapsed" -lt 3 || fail "зациклений thinking не обірвано за секунди: ${elapsed}s"
+test "$(wc -l < "$SCENARIO_FILE.requests" | tr -d ' ')" = 2 || fail 'зациклений виклик не повторено рівно один раз'
+test "$(grep -c '"think":true' "$SCENARIO_FILE.requests")" = 2 || fail 'повтор зацикленого виклику вимкнув thinking'
+grep -q '"thinking_loop_detected":true' "$WORK/state/model-calls.jsonl" || fail 'журнал не довів спрацювання детектора'
+grep -q '"thinking_repeat_fragment":"думай думай думай думай думай думай думай думай"' "$WORK/state/model-calls.jsonl" || fail 'журнал не записав повторюваний фрагмент'
+loop_elapsed="$elapsed"
+
+# 8в. Довгі, але різні роздуми не можна обрізати за старою байтовою стелею.
+SECONDS=0
+BDO_TEST_THINK=1 run thinking_long
+elapsed="$SECONDS"
+test "$CODE" = 0 || fail "довгі різні роздуми помилково зупинені: $STDERR"
+test -s "$WORK/response.json" || fail 'довгі різні роздуми не дійшли до відповіді'
+php -r '$d=json_decode(file_get_contents($argv[1]), true); exit($d === [["identity_hash" => "aa", "text" => "Меч"]] ? 0 : 1);' "$WORK/response.json" \
+    || fail 'відповідь після довгих різних роздумів не зібралась'
+php -r '$lines=file($argv[1], FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES); $d=json_decode((string) end($lines), true); exit(($d["thinking_bytes"] ?? 0) > 8192 && ($d["thinking_loop_detected"] ?? true) === false ? 0 : 1);' "$WORK/state/model-calls.jsonl" \
+    || fail 'журнал не довів обсяг і відсутність false-positive для різних роздумів'
+printf 'thinking regression: loop=%ss, long-different=%ss\n' "${loop_elapsed:-0}" "${elapsed:-0}"
 
 # 9. Журнал бачить КОЖЕН виклик, і успішний, і невдалий.
 lines="$(wc -l < "$WORK/state/model-calls.jsonl" | tr -d ' ')"
 test "$lines" -ge 9 || fail "журнал має $lines рядків, а викликів було більше"
 grep -q '"verdict":"ok"' "$WORK/state/model-calls.jsonl" || fail 'журнал не знає успішних викликів'
-grep -q '"verdict":"truncated"' "$WORK/state/model-calls.jsonl" || fail 'журнал не знає обриву на стелі'
+grep -q '"verdict":"thinking_loop"' "$WORK/state/model-calls.jsonl" || fail 'журнал не знає зациклення'
 
 # 9б. Журнал мусить знати КРОК і СКІЛЬКИ РЯДКІВ пішло в модель.
 #
@@ -318,38 +344,27 @@ test -s "$WORK/response.json" || fail 'без потоку відповідь н
 
 # 12ж. Persistent settings мають силу над env, а порожній state повертає env
 # і конфіг у визначеному порядку.
-printf '%s\n' '{"version":1,"think":true,"think_limit_bytes":33}' > "$WORK/state/model-settings.json"
+printf '%s\n' '{"version":1,"think":true}' > "$WORK/state/model-settings.json"
 printf '%s' ok > "$SCENARIO_FILE"; rm -f "$WORK/response.json"
-BDO_MODEL_THINK=0 BDO_MODEL_THINK_LIMIT_BYTES=7 BDO_ROLES_CONFIG="$WORK/roles.json" BDO_STATE_DIR="$WORK/state" \
+BDO_MODEL_THINK=0 BDO_ROLES_CONFIG="$WORK/roles.json" BDO_STATE_DIR="$WORK/state" \
     php "$ROOT/cli/model/client.php" translation-worker "$WORK/payload.json" "$WORK/response.json" --schema "$WORK/schema.json" >/dev/null 2>&1 \
     || fail 'state model settings не застосувались'
 grep -q '"think":true' "$SCENARIO_FILE.request" || fail 'state think не має пріоритету над env'
-grep -q '"think_limit_bytes":33' "$WORK/state/model-calls.jsonl" || fail 'state cap не записано в журнал'
 
 rm -f "$WORK/state/model-settings.json"
 printf '%s' ok > "$SCENARIO_FILE"; rm -f "$WORK/response.json"
-BDO_MODEL_THINK=1 BDO_MODEL_THINK_LIMIT_BYTES=17 BDO_ROLES_CONFIG="$WORK/roles.json" BDO_STATE_DIR="$WORK/state" \
+BDO_MODEL_THINK=1 BDO_ROLES_CONFIG="$WORK/roles.json" BDO_STATE_DIR="$WORK/state" \
     php "$ROOT/cli/model/client.php" translation-worker "$WORK/payload.json" "$WORK/response.json" --schema "$WORK/schema.json" >/dev/null 2>&1 \
     || fail 'env model settings не застосувались'
 grep -q '"think":true' "$SCENARIO_FILE.request" || fail 'env think не застосувався після порожнього state'
-grep -q '"think_limit_bytes":17' "$WORK/state/model-calls.jsonl" || fail 'env cap не записано в журнал'
 
-php -r '$c=json_decode(file_get_contents($argv[1]),true); $c["think"]=true; $c["think_limit_bytes"]=19; file_put_contents($argv[2],json_encode($c));' \
+php -r '$c=json_decode(file_get_contents($argv[1]),true); $c["think"]=true; file_put_contents($argv[2],json_encode($c));' \
     "$WORK/roles.json" "$WORK/config-settings.json"
 printf '%s' ok > "$SCENARIO_FILE"; rm -f "$WORK/response.json"
-env -u BDO_MODEL_THINK -u BDO_MODEL_THINK_LIMIT_BYTES BDO_ROLES_CONFIG="$WORK/config-settings.json" BDO_STATE_DIR="$WORK/state" \
+env -u BDO_MODEL_THINK BDO_ROLES_CONFIG="$WORK/config-settings.json" BDO_STATE_DIR="$WORK/state" \
     php "$ROOT/cli/model/client.php" translation-worker "$WORK/payload.json" "$WORK/response.json" --schema "$WORK/schema.json" >/dev/null 2>&1 \
     || fail 'config model settings не застосувались'
 grep -q '"think":true' "$SCENARIO_FILE.request" || fail 'config think не застосувався після порожнього state/env'
-grep -q '"think_limit_bytes":19' "$WORK/state/model-calls.jsonl" || fail 'config cap не записано в журнал'
-
-printf '%s\n' '{"version":1,"think":true,"think_limit_bytes":4}' > "$WORK/state/model-settings.json"
-SECONDS=0
-run think_only
-test "$CODE" = 1 || fail 'досягнення стелі thinking мусило завершитись відмовою'
-grep -q '^empty_content' <<<"$STDERR" || fail "стеля thinking дала неправильну причину: $STDERR"
-grep -q '4 байт' <<<"$STDERR" || fail "відмова не назвала стелю: $STDERR"
-test "$SECONDS" -lt 3 || fail 'стеля thinking не обірвала виклик за секунди'
 rm -f "$WORK/state/model-settings.json"
 
 # 13. Вимикач для порівняння: BDO_ROW_ALIAS=0 повертає хеші моделі як є.
@@ -357,5 +372,67 @@ printf '%s' ok > "$SCENARIO_FILE"; rm -f "$WORK/response.json"
 BDO_ROW_ALIAS=0 BDO_ROLES_CONFIG="$WORK/roles.json" BDO_STATE_DIR="$WORK/state" \
     php "$ROOT/cli/model/client.php" translation-worker "$WORK/payload.json" "$WORK/response.json" --schema "$WORK/schema.json" >/dev/null 2>&1 || true
 grep -q "$H1" "$SCENARIO_FILE.request" || fail 'BDO_ROW_ALIAS=0 не вимкнув аліаси'
+
+# 14. Фальсифікація: кожне старе рішення мусить зламати відповідну регресію.
+# Копії ізольовані в tmp, production-файли не змінюються.
+VAR_ROOT="$WORK/variant"
+mkdir -p "$VAR_ROOT/cli/model"
+ln -s "$ROOT/lib" "$VAR_ROOT/lib"
+ln -s "$ROOT/roles" "$VAR_ROOT/roles"
+
+variant_prepare() {
+    local name="$1"
+    mkdir -p "$VAR_ROOT/$name/cli/model"
+    ln -s "$ROOT/lib" "$VAR_ROOT/$name/lib"
+    ln -s "$ROOT/roles" "$VAR_ROOT/$name/roles"
+    cp "$ROOT/cli/model/client.php" "$VAR_ROOT/$name/cli/model/client.php"
+}
+variant_run() {
+    local name="$1" scenario="$2"
+    printf '%s' "$scenario" > "$SCENARIO_FILE"
+    rm -f "$WORK/response.json" "$SCENARIO_FILE.request" "$SCENARIO_FILE.requests"
+    set +e
+    VAR_STDERR="$(BDO_MODEL_THINK=1 BDO_ROLES_CONFIG="$WORK/roles.json" BDO_STATE_DIR="$WORK/state" \
+        php "$VAR_ROOT/$name/cli/model/client.php" translation-worker \
+        "$WORK/payload.json" "$WORK/response.json" --schema "$WORK/schema.json" 2>&1 >/dev/null)"
+    VAR_CODE=$?
+    set -e
+}
+
+variant_prepare no-detector
+awk '{if (index($0, "if (\$copies >= 4)") > 0) sub(/if \(\$copies >= 4\)/, "if (false && \$copies >= 4)"); print}' \
+    "$VAR_ROOT/no-detector/cli/model/client.php" > "$VAR_ROOT/no-detector/cli/model/client.php.tmp"
+mv "$VAR_ROOT/no-detector/cli/model/client.php.tmp" "$VAR_ROOT/no-detector/cli/model/client.php"
+SECONDS=0
+variant_run no-detector thinking_loop
+variant_elapsed="$SECONDS"
+if test "$VAR_CODE" = 0 || grep -q '^thinking_loop' <<<"$VAR_STDERR"; then
+    fail 'саботаж detector не зламав loop-регресію'
+fi
+printf 'sabotage detector: fail in %ss (expected %s)\n' "$variant_elapsed" "${VAR_STDERR%%$'\n'*}"
+
+variant_prepare old-cap
+awk '{print; if (index($0, "$thinking = trim") > 0) print "if (strlen($thinking) > 8192) { $fail(\"empty_content\", \"legacy thinking byte cap\"); }"}' \
+    "$VAR_ROOT/old-cap/cli/model/client.php" > "$VAR_ROOT/old-cap/cli/model/client.php.tmp"
+mv "$VAR_ROOT/old-cap/cli/model/client.php.tmp" "$VAR_ROOT/old-cap/cli/model/client.php"
+SECONDS=0
+variant_run old-cap thinking_long
+variant_elapsed="$SECONDS"
+if test "$VAR_CODE" = 0 || ! grep -q '^empty_content' <<<"$VAR_STDERR"; then
+    fail 'саботаж старої байтової стелі не зламав довгі різні роздуми'
+fi
+printf 'sabotage byte-cap: fail in %ss (expected %s)\n' "$variant_elapsed" "${VAR_STDERR%%$'\n'*}"
+
+variant_prepare no-thinking-retry
+awk 'index($0, "$request = $makeRequest($think);") {n++; if (n == 2) {$0 = "            $request = $makeRequest(false);"}} {print}' \
+    "$VAR_ROOT/no-thinking-retry/cli/model/client.php" > "$VAR_ROOT/no-thinking-retry/cli/model/client.php.tmp"
+mv "$VAR_ROOT/no-thinking-retry/cli/model/client.php.tmp" "$VAR_ROOT/no-thinking-retry/cli/model/client.php"
+SECONDS=0
+variant_run no-thinking-retry thinking_loop
+variant_elapsed="$SECONDS"
+if test "$VAR_CODE" = 0 || ! grep -q '"think":false' "$SCENARIO_FILE.requests"; then
+    fail 'саботаж retry без thinking не зламав перевірку повтору'
+fi
+printf 'sabotage retry-thinking: fail in %ss (expected second request think=false)\n' "$variant_elapsed"
 
 echo "OK: клієнт моделі падає з причиною на кожному шляху відмови й ховає хеші за короткими ключами."

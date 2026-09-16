@@ -13,9 +13,10 @@
 # відповідь ролі обмежена схемою (`additionalProperties: false`), і вільного
 # тексту в ній немає місця.
 #
-# Що тут видно тепер: `truncated` (обрив на стелі вікна), `not_json`,
-# `empty_content` (усе пішло в `thinking`), `model_error`, `model_unreachable`,
-# `context_overflow`, `unknown_id`. Кожну причину пише `cli/model/client.php`
+# Що тут видно тепер: `truncated` (обрив на `num_predict`), `not_json`,
+# `empty_content` (відповідь порожня), `thinking_loop` (повтор фрагмента
+# thinking), `model_error`, `model_unreachable`, `context_overflow`, `unknown_id`.
+# Кожну причину пише `cli/model/client.php`
 # у момент відмови, тому журнал і робота ходять одним шляхом.
 #
 # `--clear` тут немає навмисно: єдиний журнал прогону чистити не можна, інакше

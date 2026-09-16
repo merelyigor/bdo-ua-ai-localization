@@ -10,7 +10,7 @@ use RuntimeException;
  * Відмова транспорту з МАШИНОЧИТАНОЮ причиною.
  *
  * Причина названа кодом (`model_unreachable`, `model_error`, `bad_response`,
- * `stream_incomplete`, `provider_key_missing`), бо цей код іде в
+ * `stream_incomplete`, `thinking_loop`, `provider_key_missing`), бо цей код іде в
  * `state/model-calls.jsonl` і в stderr першим словом. Текст поруч · для людини.
  *
  * Загального `Exception` тут не буває: «щось пішло не так» у журналі означає,

@@ -174,6 +174,7 @@ selected → awaiting_terminology → prepared → awaiting_worker
 | `truncated` | `done_reason != stop` · відповідь обрізало |
 | `context_overflow` | вхід зайняв >90% реального вікна · початок могло викинути |
 | `empty_content` | порожня відповідь; окремо названо випадок thinking |
+| `thinking_loop` | потік thinking повторює нормалізований фрагмент; зупинка після повторної спроби |
 | `not_json` | відповідь не розбирається як JSON |
 | `stream_incomplete` | потік обірвався без завершального чанка (`done` / `[DONE]`) |
 | `provider_key_missing` | зовнішній провайдер без ключа в оточенні |
@@ -181,7 +182,9 @@ selected → awaiting_terminology → prepared → awaiting_worker
 | `missing_model` | провайдер не має названої моделі |
 
 Кожен виклик, успішний і невдалий, пише рядок у `state/model-calls.jsonl`
-разом із провайдером · без цього дефект «за моделями» не розібрати.
+разом із провайдером · без цього дефект «за моделями» не розібрати. Для thinking
+рядок також містить `thinking_bytes`, `thinking_chunks`, `thinking_loop_detected`,
+`thinking_repeat_fragment`, `thinking_repeat_count` і `timeout_seconds`.
 Це джерело правди для `./bdo audit`.
 
 ## 4. Що робить кожна роль

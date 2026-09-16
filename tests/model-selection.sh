@@ -163,12 +163,12 @@ php -r '$d=json_decode($argv[1],true); foreach ($d["models"] as $m) { if (!array
 php -r '$d=json_decode($argv[1],true); $want=["ollama/ollama-model"=>"not_tested","omlx/omlx-model"=>"not_tested","omlx/omlx-not-tested"=>"not_tested","omlx/omlx-no-thinking"=>"unsupported"]; foreach ($d["models"] as $m) { $key=($m["runtime"]??"")."/".($m["model"]??""); if (isset($want[$key]) && ($m["thinking_levels"]??"")!==$want[$key]) { fwrite(STDERR,"початковий стан {$key} неочікуваний\n"); exit(1); } unset($want[$key]); } if ($want) { fwrite(STDERR,"початкові стани відсутні\n"); exit(1); }' "$json_output" \
     || fail 'catalog не розрізняє supported, unsupported і not_tested до probe'
 test -s "$WORK/state/model-catalog.json" || fail 'models list --json не записав state/model-catalog.json'
-php -r '$d=json_decode($argv[1],true); $s=$d["settings"]??[]; if (($s["think"]??null)!==false || ($s["think_limit_bytes"]??0)!==8192) { fwrite(STDERR,"default model settings не зберегли чинну стелю\n"); exit(1); }' "$json_output" \
-    || fail 'catalog не повернув default think settings'
-run_bdo models settings --think 1 --think-limit-bytes 33 | grep -Fq 'з наступного виклику ролі' || fail 'settings не підтвердили збереження'
-php -r '$s=json_decode(file_get_contents($argv[1]),true); exit(($s["think"]??false)===true && ($s["think_limit_bytes"]??0)===33 ? 0 : 1);' "$WORK/state/model-settings.json" \
+php -r '$d=json_decode($argv[1],true); $s=$d["settings"]??[]; if (($s["think"]??null)!==false || array_key_exists("think_limit_bytes", $s)) { fwrite(STDERR,"default model settings містять застарілу байтову ручку\n"); exit(1); }' "$json_output" \
+    || fail 'catalog не повернув чисті think settings'
+run_bdo models settings --think 1 | grep -Fq 'з наступного виклику ролі' || fail 'settings не підтвердили збереження'
+php -r '$s=json_decode(file_get_contents($argv[1]),true); exit(($s["think"]??false)===true && !array_key_exists("think_limit_bytes", $s) ? 0 : 1);' "$WORK/state/model-settings.json" \
     || fail 'settings не збережені в state/model-settings.json'
-run_bdo models settings --think 1 --think-level high --think-limit-bytes 33 >/dev/null
+run_bdo models settings --think 1 --think-level high >/dev/null
 php -r '$s=json_decode(file_get_contents($argv[1]),true); exit(($s["think_level"]??"")==="high" ? 0 : 1);' "$WORK/state/model-settings.json" \
     || fail 'think_level не збережено'
 set +e
