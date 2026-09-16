@@ -70,6 +70,10 @@ grep -Fq 'id="livePayload"' "$ROOT/web/call.html" \
     || fail 'live-екран виклику не показує постійно відкритий запит'
 grep -Fq 'id="completedThinking"' "$ROOT/web/call.html" \
     || fail 'завершений виклик не має окремого блока роздумів'
+grep -Fq "dataset.autoCollapsed !== '1'" "$ROOT/web/index.html" \
+    || fail 'live-прогін повторно згортає роздуми під час друку відповіді'
+grep -Fq "dataset.autoCollapsed !== '1'" "$ROOT/web/call.html" \
+    || fail 'окремий live-виклик повторно згортає роздуми під час відповіді'
 
 # --- 2. Робота завершеного виклику видна ЦІЛКОМ ------------------------------
 body="$(curl -s -m 5 "http://127.0.0.1:$PORT/api/call?t=$TOKEN&at=$(php -r 'echo rawurlencode($argv[1]);' "$AT")&role=translation-worker")"

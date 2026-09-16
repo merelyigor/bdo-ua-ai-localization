@@ -123,7 +123,13 @@
   function paintLive(text) {
     var box = B.el('livebox');
     var thinking = B.el('callThinkWrap');
-    if (text && thinking) { thinking.style.display = 'block'; thinking.open = false; }
+    if (text && thinking) {
+      thinking.style.display = 'block';
+      if (thinking.dataset.autoCollapsed !== '1') {
+        thinking.open = false;
+        thinking.dataset.autoCollapsed = '1';
+      }
+    }
     var atBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 24;
     var body = box.firstChild;
     if (!body || body.nodeType !== 3) {
@@ -147,7 +153,11 @@
     wrap.style.display = 'block';
     var answer = B.el('livebox');
     if (text && wasEmpty && (!answer || !answer.textContent)) { wrap.open = true; }
-    if (!text) { wrap.open = false; box.textContent = ''; return; }
+    if (!text) {
+      wrap.open = false; box.textContent = '';
+      wrap.dataset.autoCollapsed = '0';
+      return;
+    }
     box.textContent = text;
     if (atBottom) { box.scrollTop = box.scrollHeight; }
   }

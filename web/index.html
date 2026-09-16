@@ -257,10 +257,18 @@
   function paintStream(text) {
     var box = B.el('streambox');
     if (!box) { return; }
-    if (!text) { box.style.display = 'block'; box.textContent = ''; return; }
+    if (!text) {
+      box.style.display = 'block'; box.textContent = '';
+      var resetThinking = B.el('thinkwrap');
+      if (resetThinking) { resetThinking.dataset.autoCollapsed = '0'; }
+      return;
+    }
     box.style.display = 'block';
     var thinking = B.el('thinkwrap');
-    if (thinking) { thinking.open = false; }
+    if (thinking && thinking.dataset.autoCollapsed !== '1') {
+      thinking.open = false;
+      thinking.dataset.autoCollapsed = '1';
+    }
     var atBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 24;
     var body = box.firstChild;
     if (!body || body.nodeType !== 3) {
