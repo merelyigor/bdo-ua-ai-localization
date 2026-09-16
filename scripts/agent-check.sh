@@ -1286,9 +1286,20 @@ check_shell() {
         # сервер. Обидва боки тримає САМ applet: «Завершити» приходить як
         # `on quit`, а очікування робить `on idle`. Питаємо ЗІБРАНИЙ бандл
         # розкомпілюванням · джерело могло піти вперед без перезбирання.
+        # НЕ ЗМІГ ПРОЧИТАТИ · ЦЕ НЕ «ЗАСТАРІЛО». Раніше вивід розкомпілювання
+        # брався як `2>/dev/null || true`, тому збій самого інструмента давав
+        # порожній рядок, а далі гейт звинувачував бандл у тому, що він зібраний
+        # зі старого джерела. Виміряно: 32 з 35 логів делегування назвали
+        # причиною провалу саме `BDO.app`, і ЖОДЕН із 23 прогонів на цій машині
+        # такого FAIL не мав · тобто перевірка систематично брехала там, де їй
+        # бракувало доступу. Тихий збій у самому гейті дорожчий за пропуск.
+        local applet_src applet_rc=0
         if have osadecompile; then
-            local applet_src
-            applet_src="$(osadecompile 'BDO.app/Contents/Resources/Scripts/main.scpt' 2>/dev/null || true)"
+            applet_src="$(osadecompile 'BDO.app/Contents/Resources/Scripts/main.scpt' 2>/dev/null)" || applet_rc=$?
+        fi
+        if have osadecompile && { [ "$applet_rc" -ne 0 ] || [ -z "${applet_src:-}" ]; }; then
+            printf '   ПРОПУЩЕНО: osadecompile не прочитав BDO.app (код %s) · перевірку бандла не виконано\n' "$applet_rc"
+        elif have osadecompile; then
             grep -q 'on quit' <<<"$applet_src" \
                 || fail 'зібраний BDO.app не має on quit · закриття значка лишить інтерфейс жити (D90)'
             grep -q 'on idle' <<<"$applet_src" \
