@@ -682,8 +682,16 @@ a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,te
 .role-card.is-active .active-work>#streambox{width:100%;box-sizing:border-box}
 .role-card .call-work-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;min-width:0}
 .role-card .call-work-item{min-width:0}
-.role-card .call-work-item .empty{display:block;margin:0 0 6px!important;color:var(--ts);font-size:12px;line-height:1.45}
+.role-card .call-work-item .empty{display:block;min-height:2.9em;margin:0 0 6px!important;color:var(--ts);font-size:12px;line-height:1.45}
 .role-card .call-work-item pre.log.work{margin-bottom:0;max-height:260px;border:1px solid var(--line-soft);background:var(--s1);font-size:12px;line-height:1.55}
+.role-card .call-thinking{margin:0 0 10px;border:1px solid var(--line-soft);border-radius:8px;background:var(--surface-alpha)}
+.role-card .call-thinking>summary{padding:8px 10px;color:var(--wr-tx);cursor:pointer;font-size:12px;font-weight:600;list-style-position:inside}
+.role-card .call-thinking>summary .meta{font-weight:400}
+.role-card .call-thinking[open]>summary{border-bottom:1px solid var(--line-soft)}
+.role-card .call-thinking>.box,
+.role-card .call-thinking>pre.log.work{margin:8px}
+.role-card .answer-work>.empty:first-child{min-height:2.9em}
+.role-card .thinking-unavailable,.role-card .answer-unavailable{min-height:0!important;padding:8px 10px}
 @media (max-width:640px){
   .role-card:not(.is-active){display:block}
   .role-card:not(.is-active) > .bar{

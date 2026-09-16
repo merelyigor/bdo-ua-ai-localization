@@ -294,8 +294,19 @@
           }
           box.dataset.loaded = '1';
           box.innerHTML = '<div class="call-work-grid">'
-            + part('що пішло в модель', d.payload)
-            + part('що модель відповіла', d.answer)
+            + part('Запит', d.payload)
+            + '<section class="call-work-item answer-work">'
+            + '<div class="empty" style="margin-top:8px">Відповідь</div>'
+            + '<details class="call-thinking">'
+            + '<summary>Роздуми</summary>'
+            + (d.thinking
+              ? '<pre class="log work">' + B.esc(B.prettyWorkText(d.thinking.text || d.thinking)) + '</pre>'
+              : '<div class="empty thinking-unavailable">Роздуми не збережені в завершеному виклику</div>')
+            + '</details>'
+            + (d.answer
+              ? '<pre class="log work">' + B.esc(B.prettyWorkText(d.answer.text)) + '</pre>'
+              : '<div class="empty answer-unavailable">файла немає (відповіді не було)</div>')
+            + '</section>'
             + '</div>';
         }).catch(function () {
           box.innerHTML = '<div class="empty">сервер не відповів</div>';
@@ -697,13 +708,12 @@
           // і «нічого не відбувалось» (D103). Ховати чернетку теж не треба:
           // вона потрібна саме тоді, коли роль думає. Лишається одне ·
           // ВІДРІЗНИТИ її від відповіді, і це робить підпис, а не кнопка.
-          + '<div id="thinkwrap" style="display:none">'
-          + '<div class="empty" style="margin-top:6px;color:var(--wr-tx)">'
-          + 'роздуми моделі · чернетка, не переклад</div>'
+          + '<details id="thinkwrap" class="call-thinking" style="display:none">'
+          + '<summary>Роздуми <span class="meta">чернетка, не переклад</span></summary>'
           // Роздуми МОЖНА перечитати: без межі висоти й прокрутки блок ріс
           // нескінченно, показував лише хвіст, і повернутись до початку думки
           // було нікуди (власник 2026-09-14, жива пачка на 42 КБ роздумів).
-          + '<div class="box mono" id="thinkbox" style="color:var(--tm);max-height:260px;overflow-y:auto"></div></div>'
+          + '<div class="box mono" id="thinkbox" style="color:var(--tm);max-height:260px;overflow-y:auto"></div></details>'
           + (loading
               ? '<div class="empty" style="margin-top:6px">Це не зависання: Ollama вивантажує модель за своїм '
                 + 'налаштуванням, і наступні виклики підуть без цієї паузи.</div>'
