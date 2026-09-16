@@ -243,6 +243,33 @@ out="$(node "$TMP/typing.js" "$ROOT/web/app.js" 2>&1)" \
     || fail "живий друк ламається на довгій відповіді:
 $out"
 
+# ЗАВЕРШЕНІ РОЗДУМИ НЕ ДРУКУЮТЬСЯ ПІСЛЯ ПЕРЕЗАВАНТАЖЕННЯ.
+#
+# 2026-09-17 власник перезавантажив сторінку, коли модель уже друкувала
+# ВІДПОВІДЬ, розгорнув блок роздумів · і побачив, як роздуми набираються ще
+# кілька секунд. Тобто два вікна друкували одночасно, хоча живим було лише
+# одне. Причина: хвіст анімації однаковий для того, що триває, і для того, що
+# вже скінчилось. Ознака завершення надійна · почалася відповідь.
+instant="$(node -e "
+global.window={addEventListener(){},location:{href:'http://127.0.0.1/'},localStorage:{length:0,key(){return null},getItem(){return null},setItem(){}}};
+global.document={addEventListener(){},querySelectorAll(){return []},getElementById(){return null},createElement(){return {style:{},setAttribute(){},appendChild(){}}}};
+global.requestAnimationFrame=function(){};global.cancelAnimationFrame=function(){};
+eval(require('fs').readFileSync('$ROOT/web/app.js','utf8'));
+var done=[]; var t=window.BDO.typer(null,{onPaint:function(s){done.push(s);}});
+var big=new Array(5001).join('а');
+t.sync(big,true);
+var live=[]; var t2=window.BDO.typer(null,{onPaint:function(s){live.push(s);}});
+t2.sync(big,false);
+console.log((done[done.length-1]||'').length+' '+((live[live.length-1]||'').length));
+")"
+set -- $instant
+test "$1" = 5000 \
+    || fail "завершені роздуми не показані миттєво: видно $1 із 5000 символів · вікно друкуватиме вже скінчене"
+test "$2" -lt 5000 \
+    || fail "живий потік втратив анімацію хвоста: показано $2 із 5000 одразу · рух на екрані зник"
+grep -Fq "thinkBuffer.sync(think, raw !== '')" "$ROOT/web/app.js" \
+    || fail 'роздуми не позначаються завершеними після початку відповіді · два вікна знову друкуватимуть разом'
+
 # Сторінка мусить справді користуватись зшиванням, а не підміною: без цього
 # вимір вище перевіряв би бібліотеку, а не екран.
 grep -Fq 'feed.delta(d)' "$ROOT/web/index.html" \
