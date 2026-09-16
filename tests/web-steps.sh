@@ -109,6 +109,22 @@ echo count($d["calls"]["items"]);
 ' "$ROOT/lib/autoload.php" "$STATE")"
 test "$scope" = 1 || fail "у пачку потрапив чужий виклик: показано $scope замість 1"
 
+# --- 4б. НОВА пачка не показує роботу ПОПЕРЕДНЬОЇ ---------------------------
+# Пачка без власних викликів раніше віддавала ВСЮ сесію, покладаючись на підпис
+# «цієї сесії». Підпис не рятує: власник 2026-09-17 запустив новий прогін і
+# побачив під його шапкою шість завершених викликів попередньої пачки.
+printf '%s\n' \
+    '{"at":"2026-09-05T08:00:00+00:00","role":"translation-worker","batch":"20260905_080000_ffff","verdict":"ok","ms":100,"in":1,"out":1}' \
+    '{"at":"2026-09-05T08:10:00+00:00","role":"translation-qa","batch":"20260905_080000_ffff","verdict":"ok","ms":100,"in":1,"out":1}' \
+    > "$STATE/model-calls.jsonl"
+fresh="$(php -r '
+require $argv[1];
+$d = (new Bdo\Translate\Web\Snapshot($argv[2]))->toArray();
+echo $d["calls"]["scope"], "|", count($d["calls"]["items"]), "|", ($d["calls"]["reason"] === "" ? "без причини" : "причина є");
+' "$ROOT/lib/autoload.php" "$STATE")"
+test "$fresh" = "batch|0|причина є" \
+    || fail "нова пачка показала чужу роботу замість порожнього списку: «${fresh}»"
+
 # Записи без поля `batch` (старіші за 2026-09-05) не приписуються пачці мовчки.
 printf '%s\n' \
     '{"at":"2026-09-05T09:00:10+00:00","role":"translation-repair","verdict":"ok","ms":100,"in":1,"out":1}' \
