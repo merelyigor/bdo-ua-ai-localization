@@ -286,6 +286,13 @@ $journal = static function (string $verdict) use ($callsFile, $role, $model, $pr
         // ЦІЛКОМ, а не тільки те, що встигло проїхати потоком.
         'payload' => $relative($payloadPath),
         'answer' => $relative($responsePath),
+        // Роздуми лежать ПОРУЧ із відповіддю, у тій самій теці пачки, тому
+        // переживають закриття сесії так само, як `payload` і `answer` (D170).
+        // `null`, коли модель не думала або файл не створено · сторінка тоді
+        // чесно каже, що роздумів немає, а не показує порожній блок.
+        'thinking' => is_file($responsePath.'.thinking.txt')
+            ? $relative($responsePath.'.thinking.txt')
+            : null,
         'batch' => $currentBatch(),
         'model' => $model,
         'provider' => $provider,
@@ -501,6 +508,13 @@ try {
 }
 $thinkObserved = $thinkObserved || trim($reply->thinking) !== '';
 $thinkMismatch = $thinkMismatch || ($thinkObserved && ! $think);
+// РОЗДУМИ ЗБЕРІГАЮТЬСЯ ДО перевірок відповіді, а не після. Саме на невдалому
+// виклику вони найцінніші: `truncated` і `empty_content` завершують роботу
+// нижче, і якби запис стояв після них, сторінка показувала б роздуми лише для
+// успішних викликів · тобто рівно там, де вони найменше потрібні.
+if (trim($reply->thinking) !== '') {
+    @file_put_contents($responsePath.'.thinking.txt', $reply->thinking);
+}
 if ($show && $chunkSeen > 0) {
     fwrite(STDERR, "\n");
 }

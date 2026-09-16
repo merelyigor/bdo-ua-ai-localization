@@ -14,6 +14,10 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 fail() { printf 'FAIL: %s\n' "$1" >&2; exit 1; }
 
 WORK="$(mktemp -d)"
+# Відповідь лежить У ТЕЦІ СТАНУ, як у справжньому прогоні (`state/batches/<пачка>/`).
+# Поза нею журнал пише `null` замість шляху · і саме так перевірка «роздуми
+# збережені» проходила б на файлі, якого сторінка все одно не побачить.
+RESPONSE=""
 PORT=$((21000 + RANDOM % 2000))
 cleanup() { [ -n "${SERVER:-}" ] && kill "$SERVER" 2>/dev/null || true; rm -rf "$WORK"; }
 trap cleanup EXIT
@@ -128,6 +132,7 @@ if ! curl -fsS -m 1 "http://127.0.0.1:$PORT/api/ps" >/dev/null; then
 fi
 
 mkdir -p "$WORK/state" "$WORK/roles"
+RESPONSE="$WORK/state/response.json"
 printf '{"items":[{"identity_hash":"aa","source_text":"Sword"}]}' > "$WORK/payload.json"
 printf '{"type":"object"}' > "$WORK/schema.json"
 cat > "$WORK/roles.json" <<JSON
@@ -138,12 +143,15 @@ JSON
 
 run() {
     printf '%s' "$1" > "$SCENARIO_FILE"
-    rm -f "$WORK/response.json"
+    rm -f "$RESPONSE"
+    # Файл роздумів теж скидаємо: інакше наступний сценарій побачив би чужий
+    # і перевірка «роздуми збережені» проходила б на залишку від попереднього.
+    rm -f "$RESPONSE.thinking.txt"
     rm -f "$SCENARIO_FILE.request" "$SCENARIO_FILE.requests"
     set +e
     STDERR="$(BDO_MODEL_THINK="${BDO_TEST_THINK:-0}" BDO_ROLES_CONFIG="$WORK/roles.json" BDO_STATE_DIR="$WORK/state" \
         php "$ROOT/cli/model/client.php" translation-worker \
-        "$WORK/payload.json" "$WORK/response.json" --schema "$WORK/schema.json" 2>&1 >/dev/null)"
+        "$WORK/payload.json" "$RESPONSE" --schema "$WORK/schema.json" 2>&1 >/dev/null)"
     CODE=$?
     set -e
 }
@@ -151,11 +159,11 @@ run() {
 # 1. Успіх: конверт `{"items":[…]}` розпаковується у масив, файл зʼявляється.
 run ok
 test "$CODE" = 0 || fail "успішний виклик дав код $CODE: $STDERR"
-test -s "$WORK/response.json" || fail 'успішний виклик не створив файл відповіді'
+test -s "$RESPONSE" || fail 'успішний виклик не створив файл відповіді'
 grep -q '"num_predict":17' "$SCENARIO_FILE.request" \
     || fail "рольове num_predict не дійшло до Ollama: $(cat "$SCENARIO_FILE.request")"
 php -r 'exit(is_array(json_decode(file_get_contents($argv[1]), true)) && array_is_list(json_decode(file_get_contents($argv[1]), true)) ? 0 : 1);' \
-    "$WORK/response.json" || fail 'відповідь не є JSON-масивом · конвеєр такого не прийме'
+    "$RESPONSE" || fail 'відповідь не є JSON-масивом · конвеєр такого не прийме'
 
 # 1б. ВЛАСНОЇ СТЕЛІ НЕМАЄ. `num_predict` рахує токени роздумів РАЗОМ із
 #     відповіддю · виміряно на живій моделі: 32 дало 117 символів thinking і
@@ -168,11 +176,11 @@ cat > "$WORK/roles-nopredict.json" <<JSON
   "roles": { "translation-worker": { "schema": "response", "temperature": 0.1 } } }
 JSON
 printf '%s' ok > "$SCENARIO_FILE"
-rm -f "$WORK/response.json" "$SCENARIO_FILE.request" "$SCENARIO_FILE.requests"
+rm -f "$RESPONSE" "$SCENARIO_FILE.request" "$SCENARIO_FILE.requests"
 set +e
 BDO_MODEL_THINK=0 BDO_ROLES_CONFIG="$WORK/roles-nopredict.json" BDO_STATE_DIR="$WORK/state" \
     php "$ROOT/cli/model/client.php" translation-worker \
-    "$WORK/payload.json" "$WORK/response.json" --schema "$WORK/schema.json" >/dev/null 2>&1
+    "$WORK/payload.json" "$RESPONSE" --schema "$WORK/schema.json" >/dev/null 2>&1
 nopredict_code=$?
 set -e
 test "$nopredict_code" = 0 || fail "виклик без заданої стелі дав код $nopredict_code"
@@ -193,7 +201,7 @@ for case_reason in "truncated:truncated" "empty:empty_content" \
     test "$CODE" = 1 || fail "сценарій $scenario мусив упасти, а дав код $CODE"
     grep -q "^$expected" <<<"$STDERR" \
         || fail "сценарій $scenario: чекали причину «${expected}», маємо «${STDERR}»"
-    test ! -e "$WORK/response.json" \
+    test ! -e "$RESPONSE" \
         || fail "сценарій $scenario створив файл відповіді попри відмову"
 done
 
@@ -204,6 +212,18 @@ grep -q 'thinking' <<<"$STDERR" || fail "порожній content через д�
 grep -q '^empty_content' <<<"$STDERR" || fail "роздуми без відповіді не названі empty_content: $STDERR"
 grep -q '"think_mismatch":true' "$WORK/state/model-calls.jsonl" \
     || fail 'журнал не показав розбіжність: requested think=false, received thinking'
+
+# 8а. РОЗДУМИ ЗБЕРІГАЮТЬСЯ САМЕ НА ПРОВАЛІ. Цей сценарій завершується
+#     `empty_content`, тобто файла відповіді немає взагалі · і єдине, що
+#     пояснює власнику, ЩО робила модель, це збережені роздуми. Якби запис
+#     стояв після перевірок відповіді, тут не було б нічого.
+test -s "$RESPONSE.thinking.txt" \
+    || fail 'роздуми не збережені поруч із відповіддю · сторінка не покаже, що робила модель'
+php -r '$lines=file($argv[1], FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+$d=json_decode((string) end($lines), true);
+exit(is_string($d["thinking"] ?? null) && $d["thinking"] !== "" ? 0 : 1);' \
+    "$WORK/state/model-calls.jsonl" \
+    || fail 'журнал не назвав шляху до збережених роздумів'
 
 # 8б. Штучне зациклення: повторюваний фрагмент перериває потік за секунди.
 SECONDS=0
@@ -230,8 +250,8 @@ SECONDS=0
 BDO_TEST_THINK=1 run thinking_long
 elapsed="$SECONDS"
 test "$CODE" = 0 || fail "довгі різні роздуми помилково зупинені: $STDERR"
-test -s "$WORK/response.json" || fail 'довгі різні роздуми не дійшли до відповіді'
-php -r '$d=json_decode(file_get_contents($argv[1]), true); exit($d === [["identity_hash" => "aa", "text" => "Меч"]] ? 0 : 1);' "$WORK/response.json" \
+test -s "$RESPONSE" || fail 'довгі різні роздуми не дійшли до відповіді'
+php -r '$d=json_decode(file_get_contents($argv[1]), true); exit($d === [["identity_hash" => "aa", "text" => "Меч"]] ? 0 : 1);' "$RESPONSE" \
     || fail 'відповідь після довгих різних роздумів не зібралась'
 php -r '$lines=file($argv[1], FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES); $d=json_decode((string) end($lines), true); exit(($d["thinking_bytes"] ?? 0) > 8192 && ($d["thinking_loop_detected"] ?? true) === false ? 0 : 1);' "$WORK/state/model-calls.jsonl" \
     || fail 'журнал не довів обсяг і відсутність false-positive для різних роздумів'
@@ -251,10 +271,10 @@ grep -q '"verdict":"thinking_loop"' "$WORK/state/model-calls.jsonl" || fail 'ж�
 # НЕМОЖЛИВО, а «53 секунди» без числа рядків не має знаменника (2026-09-05).
 : > "$WORK/state/model-calls.jsonl"
 printf '%s' ok > "$SCENARIO_FILE"
-rm -f "$WORK/response.json"
+rm -f "$RESPONSE"
 BDO_RUN_STATE=names_pass BDO_ROLES_CONFIG="$WORK/roles.json" BDO_STATE_DIR="$WORK/state" \
     php "$ROOT/cli/model/client.php" translation-worker "$WORK/payload.json" \
-    "$WORK/response.json" --schema "$WORK/schema.json" >/dev/null 2>&1 || true
+    "$RESPONSE" --schema "$WORK/schema.json" >/dev/null 2>&1 || true
 grep -q '"state":"names_pass"' "$WORK/state/model-calls.jsonl" \
     || fail "журнал не записав кроку конвеєра: $(cat "$WORK/state/model-calls.jsonl")"
 grep -q '"rows":1' "$WORK/state/model-calls.jsonl" \
@@ -264,10 +284,10 @@ grep -qE '"payload_bytes":[0-9]+' "$WORK/state/model-calls.jsonl" \
 
 # Чуже значення в журнал не потрапляє: поле читає екран власника.
 : > "$WORK/state/model-calls.jsonl"
-rm -f "$WORK/response.json"
+rm -f "$RESPONSE"
 BDO_RUN_STATE='{"зле":1}' BDO_ROLES_CONFIG="$WORK/roles.json" BDO_STATE_DIR="$WORK/state" \
     php "$ROOT/cli/model/client.php" translation-worker "$WORK/payload.json" \
-    "$WORK/response.json" --schema "$WORK/schema.json" >/dev/null 2>&1 || true
+    "$RESPONSE" --schema "$WORK/schema.json" >/dev/null 2>&1 || true
 grep -q '"state":""' "$WORK/state/model-calls.jsonl" \
     || fail "у журнал пустили довільний рядок як крок: $(cat "$WORK/state/model-calls.jsonl")"
 
@@ -275,10 +295,10 @@ grep -q '"state":""' "$WORK/state/model-calls.jsonl" \
 # payload читає рівно один клас, і саме тому лічильник не залежить від неї.
 : > "$WORK/state/model-calls.jsonl"
 printf '[{"identity_hash":"aa"},{"identity_hash":"bb"},{"identity_hash":"cc"}]' > "$WORK/list-payload.json"
-rm -f "$WORK/response.json"
+rm -f "$RESPONSE"
 BDO_RUN_STATE=healing BDO_ROLES_CONFIG="$WORK/roles.json" BDO_STATE_DIR="$WORK/state" \
     php "$ROOT/cli/model/client.php" translation-worker "$WORK/list-payload.json" \
-    "$WORK/response.json" --schema "$WORK/schema.json" >/dev/null 2>&1 || true
+    "$RESPONSE" --schema "$WORK/schema.json" >/dev/null 2>&1 || true
 grep -q '"rows":3' "$WORK/state/model-calls.jsonl" \
     || fail "голий список рядків порахований неправильно: $(cat "$WORK/state/model-calls.jsonl")"
 
@@ -288,7 +308,7 @@ printf '{ "version":1, "endpoint":"http://127.0.0.1:1", "default_model":"тес�
 set +e
 STDERR="$(BDO_ROLES_CONFIG="$WORK/dead.json" BDO_STATE_DIR="$WORK/state" \
     php "$ROOT/cli/model/client.php" translation-worker "$WORK/payload.json" \
-    "$WORK/response.json" --schema "$WORK/schema.json" 2>&1 >/dev/null)"
+    "$RESPONSE" --schema "$WORK/schema.json" 2>&1 >/dev/null)"
 CODE=$?
 set -e
 test "$CODE" = 1 || fail "мертвий endpoint дав код $CODE"
@@ -313,20 +333,20 @@ grep -q '"required":\["id","text"\]' <<<"$request" || fail "схема для м
 php -r '$a=json_decode(file_get_contents($argv[1]),true);
     if (($a[0]["identity_hash"]??"")!==$argv[3] || ($a[0]["text"]??"")!=="Щит") { fwrite(STDERR, json_encode($a)); exit(1); }
     if (($a[1]["identity_hash"]??"")!==$argv[2] || isset($a[1]["id"])) { fwrite(STDERR, json_encode($a)); exit(1); }' \
-    "$WORK/response.json" "$H1" "$H2" || fail 'відповідь не повернула повні identity_hash у порядку відповіді моделі'
+    "$RESPONSE" "$H1" "$H2" || fail 'відповідь не повернула повні identity_hash у порядку відповіді моделі'
 
 # 12. Чужий короткий ключ · відмова з причиною, а не здогад про «найближчий» хеш.
 run alias_unknown
 test "$CODE" = 1 || fail "чужий id мусив дати відмову, а дав код $CODE"
 grep -q '^unknown_id' <<<"$STDERR" || fail "чужий id без причини unknown_id: $STDERR"
-test ! -e "$WORK/response.json" || fail 'чужий id створив файл відповіді'
+test ! -e "$RESPONSE" || fail 'чужий id створив файл відповіді'
 
 # 12б. Роль, чия відповідь хеша не несе (термінологія, smoke), бачить payload як є:
 #      інакше модель скопіювала б `r1` у поле, де конвеєр чекає на інше.
 printf '{"type":"object","properties":{"items":{"type":"array","items":{"type":"object","properties":{"canonical_source":{"type":"string"}},"required":["canonical_source"],"additionalProperties":false}}},"required":["items"],"additionalProperties":false}' > "$WORK/schema-terms.json"
-printf '%s' ok > "$SCENARIO_FILE"; rm -f "$WORK/response.json"
+printf '%s' ok > "$SCENARIO_FILE"; rm -f "$RESPONSE"
 BDO_ROLES_CONFIG="$WORK/roles.json" BDO_STATE_DIR="$WORK/state" \
-    php "$ROOT/cli/model/client.php" translation-worker "$WORK/payload.json" "$WORK/response.json" --schema "$WORK/schema-terms.json" >/dev/null 2>&1 || true
+    php "$ROOT/cli/model/client.php" translation-worker "$WORK/payload.json" "$RESPONSE" --schema "$WORK/schema-terms.json" >/dev/null 2>&1 || true
 grep -q "$H1" "$SCENARIO_FILE.request" || fail 'схема без identity_hash усе одно дістала аліаси в payload'
 
 # 12в. ПОТІК · те, чим клієнт ходить за замовчуванням.
@@ -337,7 +357,7 @@ grep -q "$H1" "$SCENARIO_FILE.request" || fail 'схема без identity_hash 
 run ok
 test "$CODE" = 0 || fail "потоковий виклик упав: $STDERR"
 php -r 'exit(json_decode(file_get_contents($argv[1]), true) === [["identity_hash" => "aa", "text" => "Меч"]] ? 0 : 1);' \
-    "$WORK/response.json" || fail 'зібрана з чанків відповідь не збіглася з очікуваною'
+    "$RESPONSE" || fail 'зібрана з чанків відповідь не збіглася з очікуваною'
 grep -q '"stream":true' "$SCENARIO_FILE.request" || fail 'клієнт не просив потоку'
 grep -q '"think":false' "$SCENARIO_FILE.request" || fail 'думання мусить бути вимкнене за замовчуванням'
 printf 'request fragment think=off: '
@@ -348,7 +368,7 @@ grep -o '"think":false' "$SCENARIO_FILE.request" | head -1
 run stream_cut
 test "$CODE" = 1 || fail "обірваний потік дав код $CODE замість відмови"
 grep -q '^stream_incomplete' <<<"$STDERR" || fail "обрив потоку без причини: $STDERR"
-test ! -e "$WORK/response.json" || fail 'обірваний потік створив файл відповіді'
+test ! -e "$RESPONSE" || fail 'обірваний потік створив файл відповіді'
 
 # 12д. Роздуми не є відповіддю: порожній `content` лишається відмовою.
 run think_only
@@ -356,51 +376,51 @@ test "$CODE" = 1 || fail "порожній content при довгих розд�
 grep -q '^empty_content' <<<"$STDERR" || fail "роздуми підмінили відповідь: $STDERR"
 
 # 12е. Думання ВКЛЮЧАЄТЬСЯ явно й тільки явно.
-printf '%s' ok > "$SCENARIO_FILE"; rm -f "$WORK/response.json"
+printf '%s' ok > "$SCENARIO_FILE"; rm -f "$RESPONSE"
 BDO_MODEL_THINK=1 BDO_ROLES_CONFIG="$WORK/roles.json" BDO_STATE_DIR="$WORK/state" \
-    php "$ROOT/cli/model/client.php" translation-worker "$WORK/payload.json" "$WORK/response.json" --schema "$WORK/schema.json" >/dev/null 2>&1 || true
+    php "$ROOT/cli/model/client.php" translation-worker "$WORK/payload.json" "$RESPONSE" --schema "$WORK/schema.json" >/dev/null 2>&1 || true
 grep -q '"think":true' "$SCENARIO_FILE.request" || fail 'BDO_MODEL_THINK=1 не ввімкнув думання'
 grep -q '"think":true' "$WORK/state/model-calls.jsonl" || fail 'журнал не записав, що виклик був із думанням'
 printf 'request fragment think=on: '
 grep -o '"think":true' "$SCENARIO_FILE.request" | head -1
 
 # 12ж. Запасний шлях: BDO_MODEL_STREAM=0 повертає одноразову відповідь.
-printf '%s' ok > "$SCENARIO_FILE"; rm -f "$WORK/response.json"
+printf '%s' ok > "$SCENARIO_FILE"; rm -f "$RESPONSE"
 BDO_MODEL_STREAM=0 BDO_ROLES_CONFIG="$WORK/roles.json" BDO_STATE_DIR="$WORK/state" \
-    php "$ROOT/cli/model/client.php" translation-worker "$WORK/payload.json" "$WORK/response.json" --schema "$WORK/schema.json" >/dev/null 2>&1 \
+    php "$ROOT/cli/model/client.php" translation-worker "$WORK/payload.json" "$RESPONSE" --schema "$WORK/schema.json" >/dev/null 2>&1 \
     || fail 'без потоку клієнт мусить працювати старим шляхом'
 grep -q '"stream":false' "$SCENARIO_FILE.request" || fail 'BDO_MODEL_STREAM=0 не вимкнув потік'
-test -s "$WORK/response.json" || fail 'без потоку відповідь не записано'
+test -s "$RESPONSE" || fail 'без потоку відповідь не записано'
 
 # 12ж. Persistent settings мають силу над env, а порожній state повертає env
 # і конфіг у визначеному порядку.
 printf '%s\n' '{"version":1,"think":true}' > "$WORK/state/model-settings.json"
-printf '%s' ok > "$SCENARIO_FILE"; rm -f "$WORK/response.json"
+printf '%s' ok > "$SCENARIO_FILE"; rm -f "$RESPONSE"
 BDO_MODEL_THINK=0 BDO_ROLES_CONFIG="$WORK/roles.json" BDO_STATE_DIR="$WORK/state" \
-    php "$ROOT/cli/model/client.php" translation-worker "$WORK/payload.json" "$WORK/response.json" --schema "$WORK/schema.json" >/dev/null 2>&1 \
+    php "$ROOT/cli/model/client.php" translation-worker "$WORK/payload.json" "$RESPONSE" --schema "$WORK/schema.json" >/dev/null 2>&1 \
     || fail 'state model settings не застосувались'
 grep -q '"think":true' "$SCENARIO_FILE.request" || fail 'state think не має пріоритету над env'
 
 rm -f "$WORK/state/model-settings.json"
-printf '%s' ok > "$SCENARIO_FILE"; rm -f "$WORK/response.json"
+printf '%s' ok > "$SCENARIO_FILE"; rm -f "$RESPONSE"
 BDO_MODEL_THINK=1 BDO_ROLES_CONFIG="$WORK/roles.json" BDO_STATE_DIR="$WORK/state" \
-    php "$ROOT/cli/model/client.php" translation-worker "$WORK/payload.json" "$WORK/response.json" --schema "$WORK/schema.json" >/dev/null 2>&1 \
+    php "$ROOT/cli/model/client.php" translation-worker "$WORK/payload.json" "$RESPONSE" --schema "$WORK/schema.json" >/dev/null 2>&1 \
     || fail 'env model settings не застосувались'
 grep -q '"think":true' "$SCENARIO_FILE.request" || fail 'env think не застосувався після порожнього state'
 
 php -r '$c=json_decode(file_get_contents($argv[1]),true); $c["think"]=true; file_put_contents($argv[2],json_encode($c));' \
     "$WORK/roles.json" "$WORK/config-settings.json"
-printf '%s' ok > "$SCENARIO_FILE"; rm -f "$WORK/response.json"
+printf '%s' ok > "$SCENARIO_FILE"; rm -f "$RESPONSE"
 env -u BDO_MODEL_THINK BDO_ROLES_CONFIG="$WORK/config-settings.json" BDO_STATE_DIR="$WORK/state" \
-    php "$ROOT/cli/model/client.php" translation-worker "$WORK/payload.json" "$WORK/response.json" --schema "$WORK/schema.json" >/dev/null 2>&1 \
+    php "$ROOT/cli/model/client.php" translation-worker "$WORK/payload.json" "$RESPONSE" --schema "$WORK/schema.json" >/dev/null 2>&1 \
     || fail 'config model settings не застосувались'
 grep -q '"think":true' "$SCENARIO_FILE.request" || fail 'config think не застосувався після порожнього state/env'
 rm -f "$WORK/state/model-settings.json"
 
 # 13. Вимикач для порівняння: BDO_ROW_ALIAS=0 повертає хеші моделі як є.
-printf '%s' ok > "$SCENARIO_FILE"; rm -f "$WORK/response.json"
+printf '%s' ok > "$SCENARIO_FILE"; rm -f "$RESPONSE"
 BDO_ROW_ALIAS=0 BDO_ROLES_CONFIG="$WORK/roles.json" BDO_STATE_DIR="$WORK/state" \
-    php "$ROOT/cli/model/client.php" translation-worker "$WORK/payload.json" "$WORK/response.json" --schema "$WORK/schema.json" >/dev/null 2>&1 || true
+    php "$ROOT/cli/model/client.php" translation-worker "$WORK/payload.json" "$RESPONSE" --schema "$WORK/schema.json" >/dev/null 2>&1 || true
 grep -q "$H1" "$SCENARIO_FILE.request" || fail 'BDO_ROW_ALIAS=0 не вимкнув аліаси'
 
 # 14. Фальсифікація: кожне старе рішення мусить зламати відповідну регресію.
@@ -420,11 +440,11 @@ variant_prepare() {
 variant_run() {
     local name="$1" scenario="$2"
     printf '%s' "$scenario" > "$SCENARIO_FILE"
-    rm -f "$WORK/response.json" "$SCENARIO_FILE.request" "$SCENARIO_FILE.requests"
+    rm -f "$RESPONSE" "$SCENARIO_FILE.request" "$SCENARIO_FILE.requests"
     set +e
     VAR_STDERR="$(BDO_MODEL_THINK=1 BDO_ROLES_CONFIG="$WORK/roles.json" BDO_STATE_DIR="$WORK/state" \
         php "$VAR_ROOT/$name/cli/model/client.php" translation-worker \
-        "$WORK/payload.json" "$WORK/response.json" --schema "$WORK/schema.json" 2>&1 >/dev/null)"
+        "$WORK/payload.json" "$RESPONSE" --schema "$WORK/schema.json" 2>&1 >/dev/null)"
     VAR_CODE=$?
     set -e
 }

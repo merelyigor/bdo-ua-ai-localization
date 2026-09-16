@@ -429,6 +429,10 @@ switch ($path) {
             'out' => $record['out'] ?? null,
             'payload' => $snapshot->readWork($record['payload'] ?? null),
             'answer' => $snapshot->readWork($record['answer'] ?? null),
+            // Та сама межа, що й для запиту та відповіді: `readWork` читає лише
+            // в межах `state/**`. Немає файла · `null`, і сторінка каже прямо,
+            // що роздумів не збережено, замість порожнього блоку.
+            'thinking' => $snapshot->readWork($record['thinking'] ?? null),
         ]);
 
         return;
