@@ -268,6 +268,11 @@ $thinkingBytes = 0;
 $thinkingChunks = 0;
 $thinkingTokens = [];
 $thinkingCarry = '';
+// Накопичувальний облік повторів: скільки фрагментів усього й скільки з них
+// модель уже писала раніше в цьому ж потоці.
+$thinkingSeen = [];
+$thinkingGrams = 0;
+$thinkingDup = 0;
 $thinkingRepeatFragment = '';
 $thinkingRepeatCount = 0;
 $thinkingLoopDetected = false;
@@ -384,7 +389,7 @@ $dim = ($show && getenv('NO_COLOR') === false) ? "\033[2m" : '';
 $off = $dim !== '' ? "\033[0m" : '';
 $chunkSeen = 0;
 $contentSeen = false;
-$observeThinking = function (string $text) use (&$thinkingBytes, &$thinkingChunks, &$thinkingTokens, &$thinkingCarry, &$thinkingRepeatFragment, &$thinkingRepeatCount, &$thinkingLoopDetected, &$thinkObserved, &$thinkMismatch, $think, $responsePath): void {
+$observeThinking = function (string $text) use (&$thinkingBytes, &$thinkingChunks, &$thinkingTokens, &$thinkingCarry, &$thinkingSeen, &$thinkingGrams, &$thinkingDup, &$thinkingRepeatFragment, &$thinkingRepeatCount, &$thinkingLoopDetected, &$thinkObserved, &$thinkMismatch, $think, $responsePath): void {
     if ($text === '') {
         return;
     }
@@ -420,39 +425,60 @@ $observeThinking = function (string $text) use (&$thinkingBytes, &$thinkingChunk
     if ($newTokens === []) {
         return;
     }
-    // Вікно мусить умістити найдовший шуканий повтор цілком: 24 слова на 10
-    // копій це 240 токенів, тому 512 · із запасом і без росту памʼяті.
-    $thinkingTokens = array_slice(array_merge($thinkingTokens, $newTokens), -512);
-
-    // ЗАЦИКЛЕННЯ · ЦЕ ПОВТОР БЕЗ ЗУПИНУ, А НЕ ПРОСТО ПОВТОР. Власник описав
-    // симптом точно: модель друкує одне й те саме слово або рядок десять-
-    // двадцять разів поспіль і далі. Звідси поріг у 10 копій підряд: на 4
-    // під нього підпадав живий текст, де модель монотонно перелічує рядки
-    // однаковою фразою, а виміряний справжній випадок мав 108 повторів і
-    // ловиться з великим запасом. Довжина рахується від ОДНОГО слова · це
-    // саме той випадок, який власник називає першим, і раніше він ловився
-    // лише побічно, через вікно з восьми однакових слів.
-    $tokenCount = count($thinkingTokens);
-    $needed = 10;
-    for ($length = 1; $length <= min(24, intdiv($tokenCount, $needed)); $length++) {
-        $fragment = array_slice($thinkingTokens, -$length);
-        $copies = 1;
-        for ($copy = 1; $copy < $needed * 2; $copy++) {
-            $previous = array_slice($thinkingTokens, -($length * ($copy + 1)), $length);
-            if (count($previous) !== $length || $previous !== $fragment) {
-                break;
+    // ЗАЦИКЛЕННЯ · ЦЕ КОЛИ МОДЕЛЬ ПЕРЕПИСУЄ САМУ СЕБЕ, А НЕ КОЛИ ВОНА ДОВГО
+    // ДУМАЄ. Тому міряється ВЛАСТИВІСТЬ ТЕКСТУ: яка частка написаного вже
+    // зустрічалась раніше в цьому ж потоці. Ні обсяг, ні час, ні стеля тут не
+    // беруть участі взагалі.
+    //
+    // Чому саме так, а не «копії поспіль», як було: на живому прогоні власника
+    // 2026-09-16 модель повторила ту саму фразу 41 раз, але ЖОДНОГО разу
+    // підряд · між копіями йшов інший текст. Старий детектор не спрацював би
+    // ніколи, скільки б годин вона не крутилась.
+    //
+    // Межа взята з двох ЗАМІРЯНИХ класів, а не зі стелі:
+    //   зациклення       · 18 096 фрагментів, повторних 93.4%;
+    //   здорове мислення ·    242 фрагменти, повторних  0.0%.
+    // Половина лежить посередині цієї прірви. На тому ж потоці 50% настає на
+    // 2 379-му слові · рішення ухвалюється за хвилини, а не за 12.
+    //
+    // Вісім слів у фрагменті накривають усі три випадки, які називає власник:
+    // одне повторене слово, кілька слів і ціле речення · будь-який із них
+    // піднімає ту саму частку.
+    $thinkingTokens = array_merge($thinkingTokens, $newTokens);
+    while (count($thinkingTokens) >= 8) {
+        $gram = array_slice($thinkingTokens, 0, 8);
+        array_shift($thinkingTokens);
+        $hash = crc32(implode(' ', $gram));
+        $thinkingGrams++;
+        if (isset($thinkingSeen[$hash])) {
+            $thinkingDup++;
+            $thinkingSeen[$hash]++;
+            if ($thinkingSeen[$hash] > $thinkingRepeatCount) {
+                $thinkingRepeatCount = $thinkingSeen[$hash];
+                // Один і той самий токен вісім разів читається як стіна · у
+                // журналі показуємо саме слово, бо власник бачить симптом так.
+                $thinkingRepeatFragment = count(array_unique($gram)) === 1
+                    ? $gram[0]
+                    : implode(' ', $gram);
             }
-            $copies++;
+        } else {
+            $thinkingSeen[$hash] = 1;
         }
-        if ($copies >= $needed) {
-            $thinkingLoopDetected = true;
-            $thinkingRepeatFragment = implode(' ', $fragment);
-            $thinkingRepeatCount = $copies;
-            throw new \Bdo\Translate\Model\Transport\TransportError(
-                'thinking_loop',
-                'модель повторює фрагмент thinking '.$thinkingRepeatCount.' рази: '.$thinkingRepeatFragment
-            );
-        }
+    }
+    // Порожній хвіст менший за фрагмент нічого не вирішує, але його треба
+    // зберегти: наступний шматок добудує з нього повний фрагмент.
+    if ($thinkingGrams >= 500 && $thinkingDup / $thinkingGrams >= 0.5) {
+        $thinkingLoopDetected = true;
+        throw new \Bdo\Translate\Model\Transport\TransportError(
+            'thinking_loop',
+            sprintf(
+                'модель переписує себе: %d%% роздумів уже зустрічалось (%d фрагментів), найчастіший %d разів: %s',
+                (int) round(100 * $thinkingDup / $thinkingGrams),
+                $thinkingGrams,
+                $thinkingRepeatCount,
+                $thinkingRepeatFragment
+            )
+        );
     }
 };
 $onChunk = function (string $text, bool $isThinking) use (
@@ -509,6 +535,9 @@ try {
             $thinkingChunks = 0;
             $thinkingTokens = [];
             $thinkingCarry = '';
+            $thinkingSeen = [];
+            $thinkingGrams = 0;
+            $thinkingDup = 0;
             $thinkingRepeatFragment = '';
             $thinkingRepeatCount = 0;
             $thinkingLoopDetected = false;

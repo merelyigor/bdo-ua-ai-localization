@@ -460,11 +460,11 @@ variant_prepare no-detector
 # підставляла `&&` через awk `sub()`, де `&` означає ВЕСЬ ЗБІГ · виходив
 # синтаксично зламаний файл, і перевірка «падала» з іншої причини, ніж
 # заявлено. Тепер поріг просто робиться недосяжним, а код лишається валідним.
-sed 's/if (\$copies >= \$needed)/if (\$copies >= 999999)/' \
+sed 's|\$thinkingDup / \$thinkingGrams >= 0.5|\$thinkingDup / \$thinkingGrams >= 99|' \
     "$VAR_ROOT/no-detector/cli/model/client.php" > "$VAR_ROOT/no-detector/cli/model/client.php.tmp"
 php -l "$VAR_ROOT/no-detector/cli/model/client.php.tmp" >/dev/null \
     || fail 'саботаж detector зламав синтаксис замість порога'
-grep -q 'copies >= 999999' "$VAR_ROOT/no-detector/cli/model/client.php.tmp" \
+grep -q 'thinkingGrams >= 99' "$VAR_ROOT/no-detector/cli/model/client.php.tmp" \
     || fail 'саботаж detector не знайшов порога · перевірка стала б фіктивною'
 mv "$VAR_ROOT/no-detector/cli/model/client.php.tmp" "$VAR_ROOT/no-detector/cli/model/client.php"
 SECONDS=0
