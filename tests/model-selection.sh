@@ -74,13 +74,17 @@ if ($path === '/admin/api/models') {
     $loaded = is_file($state.'.omlx-loaded');
     echo json_encode(['models' => [
         ['id' => 'omlx-model', 'loaded' => $loaded, 'thinking_default' => true, 'estimated_size_formatted' => '3.2 GB'],
-        ['id' => 'omlx-not-tested', 'loaded' => false, 'thinking_default' => true, 'estimated_size_formatted' => '2.1 GB'],
+        ['id' => 'omlx-not-tested', 'loaded' => is_file($state.'.omlx-not-tested-loaded'), 'thinking_default' => true, 'estimated_size_formatted' => '2.1 GB'],
         ['id' => 'omlx-no-thinking', 'loaded' => false, 'estimated_size_formatted' => '1.1 GB'],
     ]]);
     return true;
 }
-if ($path === '/admin/api/models/omlx-model/load') {
-    file_put_contents($state.'.omlx-loaded', '1');
+if (preg_match('~^/admin/api/models/(.+)/load$~', $path, $match)) {
+    $loadedModel = urldecode($match[1]);
+    file_put_contents($state.'.'.$loadedModel.'-loaded', '1');
+    if ($loadedModel === 'omlx-model') {
+        file_put_contents($state.'.omlx-loaded', '1');
+    }
     header('Content-Type: application/json');
     echo json_encode(['loaded' => true]);
     return true;
@@ -98,7 +102,9 @@ if ($path === '/v1/chat/completions') {
         $count = (int) (is_file($state.'.omlx-probe-count') ? file_get_contents($state.'.omlx-probe-count') : 0);
         file_put_contents($state.'.omlx-probe-count', (string) ($count + 1));
         $lengths = [1120, 899, 2057, 899];
-        $thinking = $model === 'omlx-model' ? str_repeat('x', $lengths[$count % count($lengths)]) : '';
+        $thinking = $model === 'omlx-model'
+            ? str_repeat('x', $lengths[$count % count($lengths)])
+            : ($model === 'omlx-not-tested' ? str_repeat('x', 100) : '');
         header('Content-Type: application/json');
         echo json_encode(['choices' => [['message' => ['content' => '', 'reasoning_content' => $thinking], 'finish_reason' => 'stop']]]);
         return true;
@@ -196,6 +202,9 @@ php -r '$d=json_decode(file_get_contents($argv[1]),true); foreach ($d["roles"]??
     || fail 'catalog не показав чинний вибір для ролі'
 
 run_bdo models load omlx omlx-model | grep -Fq 'завантажена в памʼять' || fail 'oMLX load не дочекався loaded=true'
+run_bdo models load omlx omlx-not-tested | grep -Fq 'рівні thinking перевірено автоматично' || fail 'load не запустив автоматичну probe рівнів'
+php -r '$d=json_decode(file_get_contents($argv[1]),true); foreach ($d["models"]??[] as $m) { if (($m["model"]??"")==="omlx-not-tested" && isset($m["thinking_probe"]["probed_at"]) && ($m["thinking_levels"]??"")==="unsupported") exit(0); } fwrite(STDERR,"автоматична probe не записана в каталог\n"); exit(1);' "$WORK/state/model-catalog.json" \
+    || fail 'автоматична probe не зберегла результат для завантаженої моделі'
 run_bdo models load ollama ollama-model | grep -Fq 'прогріта порожнім викликом POST /api/chat' || fail 'Ollama load не назвав порожній warmup'
 grep -Fq 'keep_alive' "$STATE_FILE.ollama-request" && fail 'Ollama warmup перекрив keep_alive'
 run_bdo models unload omlx omlx-model | grep -Fq 'вивантажена з памʼяті' || fail 'oMLX unload не викликав admin API'

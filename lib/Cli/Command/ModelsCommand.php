@@ -11,6 +11,7 @@ use Bdo\Translate\Model\ModelRuntimeError;
 use Bdo\Translate\Model\ModelSelection;
 use Bdo\Translate\Model\ModelSettings;
 use Bdo\Translate\Model\RuntimeModels;
+use Bdo\Translate\Model\Transport\TransportError;
 
 /** Lists, selects and loads models from the configured local runtimes. */
 final class ModelsCommand implements Command, CommandHelp
@@ -79,7 +80,7 @@ final class ModelsCommand implements Command, CommandHelp
         foreach ($catalog->list() as $model) {
             $key = (string) $model['runtime'].'/'.(string) $model['model'];
             $old = $previousModels[$key] ?? [];
-            if (($model['thinking'] ?? false) === true && isset($old['thinking_probe']) && is_array($old['thinking_probe'])) {
+            if (($model['thinking'] ?? false) === true && $this->probeMatches($model, $old['thinking_probe'] ?? null)) {
                 $model['thinking_probe'] = $old['thinking_probe'];
                 $model['thinking_levels'] = (string) ($old['thinking_probe']['status'] ?? $model['thinking_levels']);
             }
@@ -113,24 +114,10 @@ final class ModelsCommand implements Command, CommandHelp
         }
         [$runtime, $model] = $arguments;
         $result = $catalog->probeThinking($runtime, $model);
-        $data = $this->readCatalog($stateDir);
-        if ($data === []) {
-            $data = $this->catalogData($catalog, $config, $stateDir);
-        }
-        $found = false;
-        foreach ($data['models'] ?? [] as $index => $entry) {
-            if (is_array($entry) && ($entry['runtime'] ?? '') === $runtime && ($entry['model'] ?? '') === $model) {
-                $data['models'][$index]['thinking_probe'] = $result;
-                $data['models'][$index]['thinking_levels'] = $result['status'];
-                $found = true;
-                break;
-            }
-        }
-        if (! $found) {
+        $data = $this->storeProbe($catalog, $config, $stateDir, $runtime, $model, $result);
+        if ($data === null) {
             return $this->failure('catalog_write_failed: модель відсутня у state/model-catalog.json · спершу онови перелік', $output);
         }
-        $data['captured_at'] = gmdate('c');
-        $this->writeCatalog($stateDir, $data);
         $statusLabel = match ($result['status']) {
             'supported' => 'є',
             'unsupported' => 'немає',
@@ -297,9 +284,77 @@ final class ModelsCommand implements Command, CommandHelp
             return $this->failure('models load: використання `models load <runtime> <model>`', $output, 2);
         }
         $message = $catalog->load($arguments[0], $arguments[1]);
-        $this->writeCatalog($stateDir, $this->catalogData($catalog, $config, $stateDir));
-        $output->stdout($message."\n");
+        $data = $this->catalogData($catalog, $config, $stateDir);
+        $this->writeCatalog($stateDir, $data);
+        $probeMessage = '';
+        $entry = $this->findModel($data, $arguments[0], $arguments[1]);
+        if (is_array($entry) && ($entry['thinking'] ?? false) === true && ! $this->probeMatches($entry, $entry['thinking_probe'] ?? null)) {
+            try {
+                $result = $catalog->probeThinking($arguments[0], $arguments[1]);
+                $stored = $this->storeProbe($catalog, $config, $stateDir, $arguments[0], $arguments[1], $result);
+                $probeMessage = $stored === null
+                    ? ' · рівні залишено невідомими: каталог не знайдено'
+                    : ' · рівні thinking перевірено автоматично';
+            } catch (ModelRuntimeError|TransportError $exception) {
+                $probeMessage = ' · рівні залишено невідомими: '.$exception->getMessage();
+            }
+        }
+        $output->stdout($message.$probeMessage."\n");
         return 0;
+    }
+
+    /** @param array<string,mixed> $model @param mixed $probe */
+    private function probeMatches(array $model, mixed $probe): bool
+    {
+        return is_array($probe)
+            && isset($probe['model_fingerprint'])
+            && hash_equals((string) $probe['model_fingerprint'], $this->modelFingerprint($model));
+    }
+
+    /** @param array<string,mixed> $model */
+    private function modelFingerprint(array $model): string
+    {
+        return hash('sha256', (string) json_encode([
+            'runtime' => $model['runtime'] ?? '',
+            'model' => $model['model'] ?? '',
+            'size' => $model['size'] ?? '',
+            'revision' => $model['revision'] ?? '',
+            'thinking' => $model['thinking'] ?? false,
+        ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
+    }
+
+    /** @param array<string,mixed> $data @return array<string,mixed>|null */
+    private function findModel(array $data, string $runtime, string $model): ?array
+    {
+        foreach ($data['models'] ?? [] as $entry) {
+            if (is_array($entry) && ($entry['runtime'] ?? '') === $runtime && ($entry['model'] ?? '') === $model) {
+                return $entry;
+            }
+        }
+
+        return null;
+    }
+
+    /** @return array<string,mixed>|null */
+    private function storeProbe(RuntimeModels $catalog, array $config, string $stateDir, string $runtime, string $model, array $result): ?array
+    {
+        $data = $this->readCatalog($stateDir);
+        if ($data === []) {
+            $data = $this->catalogData($catalog, $config, $stateDir);
+        }
+        foreach ($data['models'] ?? [] as $index => $entry) {
+            if (is_array($entry) && ($entry['runtime'] ?? '') === $runtime && ($entry['model'] ?? '') === $model) {
+                $result['model_fingerprint'] = $this->modelFingerprint($entry);
+                $data['models'][$index]['thinking_probe'] = $result;
+                $data['models'][$index]['thinking_levels'] = $result['status'];
+                $data['captured_at'] = gmdate('c');
+                $this->writeCatalog($stateDir, $data);
+
+                return $data;
+            }
+        }
+
+        return null;
     }
 
     private function unload(RuntimeModels $catalog, array $config, string $stateDir, array $arguments, Output $output): int

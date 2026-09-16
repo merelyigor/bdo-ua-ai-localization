@@ -203,6 +203,7 @@ final class RuntimeModels
                     'runtime' => $runtime,
                     'model' => $name,
                     'size' => $this->formatBytes((int) ($entry['size'] ?? 0)),
+                    'revision' => (string) ($entry['digest'] ?? $entry['modified_at'] ?? ''),
                     'loaded' => isset($loaded[$name]) ? 'так' : 'ні',
                     ...($includeCapabilities ? [
                         'thinking' => $thinking,
@@ -225,6 +226,7 @@ final class RuntimeModels
                 'runtime' => $runtime,
                 'model' => (string) $entry['id'],
                 'size' => (string) ($entry['estimated_size_formatted'] ?? 'невідомо'),
+                'revision' => (string) ($entry['revision'] ?? $entry['version'] ?? $entry['updated_at'] ?? ''),
                 'loaded' => ! empty($entry['loaded']) ? 'так' : 'ні',
                 ...($includeCapabilities ? [
                     'thinking' => $thinking,
