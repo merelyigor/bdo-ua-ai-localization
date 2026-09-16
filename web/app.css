@@ -876,6 +876,7 @@ body{
 .model-table th:nth-child(8),.model-table td:nth-child(8){width:21%}
 .model-table td.model-actions-cell{width:21%}
 .model-table td:nth-child(7) .model-status{white-space:normal}
+.model-table .model-status{display:flex;min-width:0;white-space:normal;overflow-wrap:anywhere;line-height:1.25}
 .model-actions{grid-template-columns:minmax(0,1fr) 38px 38px;grid-template-rows:auto auto;gap:6px}
 .model-actions button:nth-child(1){grid-column:1;grid-row:1;white-space:nowrap}
 .model-actions button:nth-child(2){grid-column:2;grid-row:1;align-self:start}
