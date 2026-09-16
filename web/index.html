@@ -342,6 +342,20 @@
     return { kind: 'review', icon: 'review', label: c.verdict || 'перевірити', card: 'is-review' };
   }
 
+  function roleIcon(role) {
+    var icons = {
+      'translation-terminology': 'book',
+      'translation-worker': 'pen',
+      'translation-qa': 'search',
+      'translation-repair': 'wrench',
+      'translation-names': 'tag',
+      'translation-judge': 'scale',
+      'translation-glossary': 'library',
+      'translation-smoke': 'flask'
+    };
+    return B.icon(icons[role] || 'dot', 'role-icon');
+  }
+
   function applyVerdictFilter() {
     var q = verdictQuery.trim().toLowerCase();
     Array.prototype.forEach.call(B.el('verdicts').querySelectorAll('.vrow'), function (r) {
@@ -565,7 +579,7 @@
         // Ключ виклику · час і роль, той самий, що приймає `/api/call`.
         var key2 = 'at=' + encodeURIComponent(c.at) + '&role=' + encodeURIComponent(c.role);
         return '<div class="msg role-card ' + status.card + '" data-call="' + B.esc(key2) + '"><div class="mh">'
-          + '<span style="font-weight:500">' + B.esc(c.role_label) + '</span>'
+          + roleIcon(c.role) + '<span style="font-weight:500">' + B.esc(c.role_label) + '</span>'
           + '<span class="meta">' + B.esc(bits.join(' · ')) + '</span>'
           + '<span class="chip role-state ' + status.kind + '" style="margin-left:auto">'
           + '<span class="verdict-icon" aria-hidden="true">' + B.icon(status.icon) + '</span> '
@@ -588,7 +602,7 @@
         var waiting = (s.stream && s.stream.waiting) || 0;
         var loading = waiting >= 12;
         html += '<div class="msg active role-card is-active"><div class="mh">'
-          + '<span style="font-weight:500;color:var(--acc-tx)">' + B.esc(live) + '</span>'
+          + roleIcon(s.stream.role) + '<span style="font-weight:500;color:var(--acc-tx)">' + B.esc(live) + '</span>'
           + '<span class="meta" id="liveNote">' + (loading
               ? 'модель вантажиться, ' + waiting + ' с · перший виклик після паузи тягне вагу з диска'
               : 'друкує…') + '</span>'
