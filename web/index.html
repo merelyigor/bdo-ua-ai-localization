@@ -105,6 +105,8 @@
   B.el('app').style.display = 'block';
 
   var lastCallsKey = '';
+  var lastStepsKey = '';
+  var lastCardsKey = '';
   var journal = B.follow(B.el('log'), B.el('follow'));
 
   // Живий друк іде через рівномірний буфер (`B.typer`), а не малюється порціями
@@ -439,12 +441,18 @@
 
     // Хлібний слід: стан каже КОЛІР, а слово лишається в підказці · шість
     // однакових «зроблено» під кроками не додавали нічого, крім висоти.
-    B.el('steps').innerHTML = (s.steps || []).map(function (st, i) {
+    var stepsKey = JSON.stringify((s.steps || []).map(function (st) {
+      return { state: st.state || 'pending', label: st.label };
+    }));
+    if (stepsKey !== lastStepsKey) {
+      lastStepsKey = stepsKey;
+      B.el('steps').innerHTML = (s.steps || []).map(function (st, i) {
       var state = st.state || 'pending';
       return (i ? '<span class="arrow">›</span>' : '')
         + '<span class="step ' + state + '" title="' + B.esc(STEP_WORDS[state] || state) + '">'
         + '<span class="n">' + B.esc(st.label) + '</span></span>';
-    }).join('');
+      }).join('');
+    }
 
     var sum = s.summary || {};
     var callsView = s.calls || { scope: 'session', items: [] };
@@ -455,11 +463,15 @@
       ['карантин', sum.quarantine, (sum.quarantine ? 'var(--dn-tx)' : '')],
       ['викликів моделі', calls.length, '']
     ];
-    B.el('cards').innerHTML = cards.map(function (c) {
-      var v = (c[1] === undefined || c[1] === null) ? '—' : B.num(c[1]);
-      return '<div class="card"><div class="l">' + B.esc(c[0]) + '</div>'
-        + '<div class="v"' + (c[2] ? ' style="color:' + c[2] + '"' : '') + '>' + v + '</div></div>';
-    }).join('');
+    var cardsKey = JSON.stringify(cards);
+    if (cardsKey !== lastCardsKey) {
+      lastCardsKey = cardsKey;
+      B.el('cards').innerHTML = cards.map(function (c) {
+        var v = (c[1] === undefined || c[1] === null) ? '—' : B.num(c[1]);
+        return '<div class="card"><div class="l">' + B.esc(c[0]) + '</div>'
+          + '<div class="v"' + (c[2] ? ' style="color:' + c[2] + '"' : '') + '>' + v + '</div></div>';
+      }).join('');
+    }
 
     var meta = [];
     meta.push(s.running ? 'прогін іде' : 'прогін не йде');

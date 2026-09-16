@@ -108,6 +108,7 @@ touched_map() {
             printf 'test|tests/web-steps.sh|кроки сторінки\n'
             printf 'test|tests/web-screens.sh|екрани сторінки\n'
             printf 'test|tests/web-live-typing.sh|живий друк\n'
+            printf 'test|tests/web-inner-html-guard.sh|сторож innerHTML блоків\n'
             printf 'test|tests/web-call-view.sh|перегляд виклику\n' ;;
         tests/*.sh|tests/*.php|tests/*.ps1)
             printf 'test|%s|запущений саме змінений тест\n' "$path" ;;
@@ -1473,6 +1474,7 @@ $braceless"
     run bash tests/web-steps.sh
     run bash tests/web-screens.sh
     run bash tests/web-live-typing.sh
+    run bash tests/web-inner-html-guard.sh
     run bash tests/web-call-view.sh
     run bash tests/qa-memory-only.sh
     run bash tests/no-silent-failures.sh
