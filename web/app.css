@@ -42,6 +42,12 @@
   --ds-space-4:16px; --ds-space-5:20px; --ds-space-6:24px;
   --ds-radius-sm:8px; --ds-radius-md:10px; --ds-radius-lg:14px; --ds-radius-pill:999px;
   --ds-text-xs:11px; --ds-text-sm:12px; --ds-text-md:13px; --ds-text-lg:15px;
+  /* Ширина контенту · ОДНЕ джерело на всі сторінки. Раніше число жило в трьох
+     місцях (.wrap 1180, .models-screen 1180, .start-wrap 1240), і сторінки
+     розʼїхались. `body` має по 28px відступу, тож на екрані 1280 контент і так
+     обмежений 1224px · стеля 1240 не дає горизонтального скролу й водночас
+     використовує ширші екрани. `wide` · навмисний виняток для повного виклику. */
+  --ds-container:1240px; --ds-container-wide:1600px;
   --ds-shadow:var(--shadow);
 }
 
@@ -170,8 +176,7 @@
 }
 *{box-sizing:border-box}
 body{margin:0;padding:22px 28px 36px;background:radial-gradient(circle at 50% -20%,var(--body-glow),transparent 42%),var(--s0);color:var(--tp);font-family:var(--sans);font-size:15px;line-height:1.6}
-.wrap{max-width:1180px;margin:0 auto}
-.models-screen{max-width:1180px}
+.wrap{max-width:var(--ds-container);margin:0 auto}
 h1{font-size:26px;font-weight:600;letter-spacing:-.02em;margin:0 0 4px}
 .sub{font-size:13px;color:var(--tp);opacity:.82;margin:0 0 16px}
 .panel{background:var(--panel-fill);border:1px solid var(--bd);border-radius:var(--panel-radius);padding:18px;margin-bottom:14px;box-shadow:var(--shadow)}
@@ -330,7 +335,7 @@ select,input[type=number],input[type=text],input[type=search]{font-family:inheri
 /* Екран одного виклику · читати роботу моделі, а не підглядати в щілину.
    Власник попросив розгортати вікно на весь екран і відкривати окремою
    вкладкою (2026-09-06), тому тут ширша колонка й високі вікна. */
-.wrap.wide{max-width:1600px}
+.wrap.wide{max-width:var(--ds-container-wide)}
 .box.big{max-height:60vh}
 pre.log.big{max-height:70vh;font-size:13px}
 :fullscreen .wrap.wide{max-width:none;padding:0 24px}
@@ -646,7 +651,6 @@ a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,te
    This is intentionally scoped to `.start-page` so the other screens keep
    their current layout while they migrate one by one. */
 .start-page{background:radial-gradient(circle at 78% 0%,var(--body-glow),transparent 34%),var(--s0)}
-.start-wrap{max-width:1240px}
 .start-title{margin:28px 0 18px}
 .start-title h1{font-size:30px;letter-spacing:-.03em}
 .start-title .hint{font-size:13px;color:var(--ts)}
