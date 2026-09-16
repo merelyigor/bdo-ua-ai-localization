@@ -185,6 +185,49 @@
     return out.length > max ? out.slice(0, max - 1) + '…' : out;
   }
 
+  // Технічні файли ролі часто є JSON, але не кожен файл складається лише з
+  // JSON. Форматуємо повний JSON і окремі JSON-блоки в змішаному тексті, а
+  // звичайний текст лишаємо даними як є.
+  // Це тільки presentation layer: payload і відповідь не переписуються.
+  function prettyWorkText(text) {
+    var source = String(text == null ? '' : text);
+    if (source.trim() === '') { return source; }
+    try {
+      return JSON.stringify(JSON.parse(source), null, 2);
+    } catch (e) {
+      var lines = source.split(/\r?\n/);
+      var output = [];
+      var candidate = [];
+      var flush = function () {
+        if (candidate.length) { output = output.concat(candidate); candidate = []; }
+      };
+      lines.forEach(function (line) {
+        var trimmed = line.trim();
+        if (!candidate.length && /^[\[{]/.test(trimmed)) {
+          candidate.push(line);
+          try {
+            var formatted = JSON.stringify(JSON.parse(candidate.join('\n')), null, 2);
+            output.push(formatted);
+            candidate = [];
+          } catch (ignored) {}
+          return;
+        }
+        if (candidate.length) {
+          candidate.push(line);
+          try {
+            var formattedBlock = JSON.stringify(JSON.parse(candidate.join('\n')), null, 2);
+            output.push(formattedBlock);
+            candidate = [];
+          } catch (ignoredBlock) {}
+          return;
+        }
+        output.push(line);
+      });
+      flush();
+      return output.join('\n');
+    }
+  }
+
   function secs(ms) {
     var s = (Number(ms) || 0) / 1000;
     return s >= 10 ? Math.round(s) + ' с' : s.toFixed(1) + ' с';
@@ -275,8 +318,6 @@
       + (current === '/' ? '<div class="nav-run-context" id="navRunContext" aria-hidden="true">'
         + '<div class="nav-run-summary">'
         + '<span class="pill" id="navRunEnv">—</span>'
-        + '<span class="mono nav-run-batch" id="navRunBatch"></span>'
-        + '<span class="nav-run-state" id="navRunState">пачки немає</span>'
         + '</div>'
         + '<div class="nav-run-steps" id="navRunSteps" aria-label="послідовність прогону"></div>'
         + '<div class="nav-run-actions">'
@@ -892,6 +933,7 @@
     loadingHtml: loadingHtml,
     busy: busy,
     pref: pref,
+    prettyWorkText: prettyWorkText,
     keep: keep,
     keepPrune: keepPrune,
     screens: SCREENS

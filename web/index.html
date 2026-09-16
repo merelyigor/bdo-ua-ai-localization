@@ -167,16 +167,11 @@
   function renderRunContext(s, b, completed, resume) {
     var nav = B.el('nav');
     var env = B.el('navRunEnv');
-    var batch = B.el('navRunBatch');
-    var state = B.el('navRunState');
     var steps = B.el('navRunSteps');
-    if (!nav || !env || !batch || !state || !steps) { return; }
+    if (!nav || !env || !steps) { return; }
     env.textContent = B.el('env').textContent;
     env.style.background = B.el('env').style.background;
     env.style.color = B.el('env').style.color;
-    batch.textContent = B.el('batch').textContent;
-    state.textContent = B.el('statePhrase').textContent;
-    state.className = 'nav-run-state ' + (s.running ? 'is-running' : completed ? 'is-done' : resume ? 'is-paused' : '');
     var navStepsKey = JSON.stringify((s.steps || []).map(function (st) {
       return { state: st.state || 'pending', label: st.label };
     }));
@@ -205,20 +200,26 @@
     var steps = B.el('steps');
     var nav = B.el('nav');
     if (!steps || !nav) { return; }
-    var setVisible = function (visible) {
-      nav.classList.toggle('run-context-visible', !visible);
+    var contextVisible = false;
+    var setContextVisible = function (visible) {
+      contextVisible = visible;
+      nav.classList.toggle('run-context-visible', visible);
       var context = B.el('navRunContext');
-      if (context) { context.setAttribute('aria-hidden', String(visible)); }
+      if (context) { context.setAttribute('aria-hidden', String(!visible)); }
     };
     var update = function () {
       if (typeof steps.getBoundingClientRect !== 'function' || typeof nav.getBoundingClientRect !== 'function') {
-        setVisible(true);
+        setContextVisible(false);
         return;
       }
       var stepsRect = steps.getBoundingClientRect();
       var navRect = nav.getBoundingClientRect();
       var overlapsHeader = stepsRect.top < navRect.bottom && stepsRect.bottom > navRect.top;
-      setVisible(!overlapsHeader);
+      if (!contextVisible && overlapsHeader) {
+        setContextVisible(true);
+      } else if (contextVisible && stepsRect.top > navRect.bottom) {
+        setContextVisible(false);
+      }
     };
     window.addEventListener('scroll', update, { passive: true });
     window.addEventListener('resize', update);
@@ -310,7 +311,7 @@
       + B.esc(work.path) + ' · ' + kb + (work.truncated ? ' · показано перші 2 МБ' : '') + '</div>'
       // Клас `work` тримає блок нижчим за журнал кроків: два технічні файли
       // по 12 КБ при спільній стелі 420 px давали пів екрана сирого JSON.
-      + '<pre class="log work">' + B.esc(work.text) + '</pre>';
+      + '<pre class="log work">' + B.esc(B.prettyWorkText(work.text)) + '</pre>';
   }
 
   // Фільтр вердиктів живе поза `render`: перемальовка знімка не має скидати

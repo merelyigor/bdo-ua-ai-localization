@@ -342,6 +342,7 @@ select,input[type=number],input[type=text],input[type=search]{font-family:inheri
 .wrap.wide{max-width:var(--ds-container-wide)}
 .box.big{max-height:60vh}
 pre.log.big{max-height:70vh;font-size:13px}
+.call-screen .box.big,.call-screen pre.log.big,.call-screen #callThinkBox{max-height:none;overflow:visible}
 :fullscreen .wrap.wide{max-width:none;padding:0 24px}
 :fullscreen pre.log.big{max-height:80vh}
 
@@ -777,13 +778,8 @@ body{
 }
 .nav-run-context{display:none;flex:1 0 100%;min-width:0;align-items:center;gap:12px;padding-top:8px;border-top:1px solid var(--line-soft)}
 .nav.run-context-visible .nav-run-context{display:flex}
-.nav-run-summary{display:flex;align-items:center;gap:8px;min-width:0;flex:0 1 340px}
+.nav-run-summary{display:flex;align-items:center;gap:8px;min-width:0;flex:0 0 auto}
 .nav-run-summary .pill{flex:none}
-.nav-run-batch{min-width:0;max-width:230px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--ts)}
-.nav-run-state{min-width:0;max-width:145px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--ts);font-size:12px}
-.nav-run-state.is-running{color:var(--acc-tx)}
-.nav-run-state.is-done{color:var(--ok-tx)}
-.nav-run-state.is-paused{color:var(--wr-tx)}
 .nav-run-steps{display:flex;align-items:center;gap:3px;min-width:0;flex:1 1 auto;overflow:hidden;white-space:nowrap}
 .nav-run-steps .step{padding:2px 5px;gap:3px;border-radius:999px;font-size:11px;line-height:1.2;white-space:nowrap}
 .nav-run-steps .step-status-icon{width:11px;height:11px}
@@ -794,16 +790,13 @@ body{
 .nav-run-actions a.as-button{display:inline-flex}
 @media (max-width:900px){
   .nav-run-context{flex-wrap:wrap;gap:7px}
-  .nav-run-summary{flex:1 1 100%}
+  .nav-run-summary{flex:0 0 auto}
   .nav-run-steps{order:2;flex-basis:55%}
   .nav-run-actions{order:3;margin-left:auto}
 }
 @media (max-width:640px){
   .nav{margin-bottom:20px;padding:10px 12px}
   .nav-run-context{align-items:flex-start}
-  .nav-run-summary{flex-wrap:wrap}
-  .nav-run-batch{max-width:calc(100% - 54px)}
-  .nav-run-state{flex-basis:100%;max-width:none}
   .nav-run-steps{flex-basis:100%;overflow-x:auto;padding-bottom:2px}
   .nav-run-actions{width:100%;justify-content:flex-start}
 }

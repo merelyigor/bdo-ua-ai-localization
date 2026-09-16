@@ -54,8 +54,8 @@ grep -Fq 'requestFullscreen' "$ROOT/web/call.html" \
     || fail 'екран не вміє розгортатись на весь екран'
 grep -Fq 'target="_blank"' "$ROOT/web/index.html" \
     || fail 'з прогону не можна відкрити роботу окремою вкладкою'
-grep -Fq 'B.streamFeed(stream)' "$ROOT/web/call.html" \
-    || fail 'повний екран не показує живого друку тим самим буфером · зʼявиться друга реалізація'
+grep -Fq 'B.streamFeed(stream, thinkStream)' "$ROOT/web/call.html" \
+    || fail 'повний екран не показує живий текст і thinking через спільний feed'
 
 # --- 2. Робота завершеного виклику видна ЦІЛКОМ ------------------------------
 body="$(curl -s -m 5 "http://127.0.0.1:$PORT/api/call?t=$TOKEN&at=$(php -r 'echo rawurlencode($argv[1]);' "$AT")&role=translation-worker")"

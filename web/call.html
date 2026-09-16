@@ -21,7 +21,7 @@
   Дані беруться лише з `/api/call` і `/api/state`. Своєї правди тут немає.
 -->
 </head>
-<body>
+<body class="call-screen">
 <div class="wrap wide">
   <div class="nav" id="nav"></div>
   <div id="gate" class="panel" style="display:none"></div>
@@ -45,6 +45,10 @@
       <div class="bar" style="margin-bottom:8px">
         <span style="font-weight:500;color:var(--acc-tx)" id="liveRole">роль друкує</span>
         <span class="empty" id="liveNote">друкує…</span>
+      </div>
+      <div id="callThinkWrap" style="display:none">
+        <div class="empty" style="margin:8px 0 6px;color:var(--wr-tx)">роздуми моделі · чернетка, не переклад</div>
+        <div class="box mono" id="callThinkBox" style="color:var(--tm)"></div>
       </div>
       <div class="box mono big" id="livebox"></div>
     </div>
@@ -88,7 +92,8 @@
   // Живий друк · той самий буфер і та сама логіка потоку, що на прогоні.
   // Другої реалізації тут навмисно немає: саме роздвоєння дало D83.
   var stream = B.typer(null, { onPaint: paintLive });
-  var feed = B.streamFeed(stream);
+  var thinkStream = B.typer(null, { onPaint: paintThinking });
+  var feed = B.streamFeed(stream, thinkStream);
 
   function paintLive(text) {
     var box = B.el('livebox');
@@ -105,6 +110,15 @@
     box.scrollTop = box.scrollHeight;
   }
 
+  function paintThinking(text) {
+    var box = B.el('callThinkBox');
+    var wrap = B.el('callThinkWrap');
+    if (!box || !wrap) { return; }
+    wrap.style.display = text ? 'block' : 'none';
+    box.textContent = text;
+    box.scrollTop = box.scrollHeight;
+  }
+
   function size(bytes) {
     var n = Number(bytes) || 0;
     return n < 1024 ? n + ' Б' : (n < 1024 * 1024 ? Math.round(n / 1024) + ' КБ'
@@ -118,7 +132,7 @@
       B.el(metaId).textContent = '';
       return;
     }
-    node.textContent = work.text;
+    node.textContent = B.prettyWorkText(work.text);
     B.el(metaId).textContent = work.path + ' · ' + size(work.size)
       + (work.truncated ? ' · показано перші 2 МБ' : '');
   }
@@ -195,7 +209,7 @@
   function applyWrap() {
     B.el('wrapBtn').setAttribute('aria-pressed', wrapped ? 'true' : 'false');
     B.el('wrapBtn').textContent = wrapped ? 'переносити рядки' : 'не переносити';
-    ['payload', 'answer', 'livebox'].forEach(function (id) {
+    ['payload', 'answer', 'livebox', 'callThinkBox'].forEach(function (id) {
       var n = B.el(id);
       if (n) { n.style.whiteSpace = wrapped ? 'pre-wrap' : 'pre'; }
     });
@@ -206,7 +220,7 @@
     CP.set('wrap', wrapped);
     this.setAttribute('aria-pressed', wrapped ? 'true' : 'false');
     this.textContent = wrapped ? 'переносити рядки' : 'не переносити';
-    ['payload', 'answer', 'livebox'].forEach(function (id) {
+    ['payload', 'answer', 'livebox', 'callThinkBox'].forEach(function (id) {
       var n = B.el(id);
       if (n) { n.style.whiteSpace = wrapped ? 'pre-wrap' : 'pre'; }
     });
