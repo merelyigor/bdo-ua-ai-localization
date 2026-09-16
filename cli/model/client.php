@@ -402,23 +402,31 @@ $observeThinking = function (string $text) use (&$thinkingBytes, &$thinkingChunk
     if ($newTokens === []) {
         return;
     }
-    $thinkingTokens = array_slice(array_merge($thinkingTokens, $newTokens), -96);
+    // Вікно мусить умістити найдовший шуканий повтор цілком: 24 слова на 10
+    // копій це 240 токенів, тому 512 · із запасом і без росту памʼяті.
+    $thinkingTokens = array_slice(array_merge($thinkingTokens, $newTokens), -512);
 
-    // Вісім нормалізованих слів, що повторилися чотири рази поспіль, — щедра
-    // межа проти звичайної авторської самоперевірки. Вона ловить виміряний
-    // випадок із 108 повторами, але не прирівнює довгий різний текст до loop.
+    // ЗАЦИКЛЕННЯ · ЦЕ ПОВТОР БЕЗ ЗУПИНУ, А НЕ ПРОСТО ПОВТОР. Власник описав
+    // симптом точно: модель друкує одне й те саме слово або рядок десять-
+    // двадцять разів поспіль і далі. Звідси поріг у 10 копій підряд: на 4
+    // під нього підпадав живий текст, де модель монотонно перелічує рядки
+    // однаковою фразою, а виміряний справжній випадок мав 108 повторів і
+    // ловиться з великим запасом. Довжина рахується від ОДНОГО слова · це
+    // саме той випадок, який власник називає першим, і раніше він ловився
+    // лише побічно, через вікно з восьми однакових слів.
     $tokenCount = count($thinkingTokens);
-    for ($length = 8; $length <= min(24, intdiv($tokenCount, 4)); $length++) {
+    $needed = 10;
+    for ($length = 1; $length <= min(24, intdiv($tokenCount, $needed)); $length++) {
         $fragment = array_slice($thinkingTokens, -$length);
         $copies = 1;
-        for ($copy = 1; $copy < 8; $copy++) {
+        for ($copy = 1; $copy < $needed * 2; $copy++) {
             $previous = array_slice($thinkingTokens, -($length * ($copy + 1)), $length);
             if (count($previous) !== $length || $previous !== $fragment) {
                 break;
             }
             $copies++;
         }
-        if ($copies >= 4) {
+        if ($copies >= $needed) {
             $thinkingLoopDetected = true;
             $thinkingRepeatFragment = implode(' ', $fragment);
             $thinkingRepeatCount = $copies;

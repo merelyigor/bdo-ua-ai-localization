@@ -192,7 +192,14 @@ test "$elapsed" -lt 3 || fail "зациклений thinking не обірван
 test "$(wc -l < "$SCENARIO_FILE.requests" | tr -d ' ')" = 2 || fail 'зациклений виклик не повторено рівно один раз'
 test "$(grep -c '"think":true' "$SCENARIO_FILE.requests")" = 2 || fail 'повтор зацикленого виклику вимкнув thinking'
 grep -q '"thinking_loop_detected":true' "$WORK/state/model-calls.jsonl" || fail 'журнал не довів спрацювання детектора'
-grep -q '"thinking_repeat_fragment":"думай думай думай думай думай думай думай думай"' "$WORK/state/model-calls.jsonl" || fail 'журнал не записав повторюваний фрагмент'
+# ОДНЕ СЛОВО · саме той випадок, який власник назвав першим. Раніше поріг
+# починався з восьми слів, тому в журнал ішло «думай» ×8 замість одного слова.
+grep -q '"thinking_repeat_fragment":"думай"' "$WORK/state/model-calls.jsonl" || fail 'журнал не записав повторюваний фрагмент'
+php -r '$lines=file($argv[1], FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+foreach ($lines as $line) { $d=json_decode($line, true);
+    if (($d["thinking_loop_detected"] ?? false) === true) { exit(($d["thinking_repeat_count"] ?? 0) >= 10 ? 0 : 1); } }
+exit(1);' "$WORK/state/model-calls.jsonl" \
+    || fail 'детектор спрацював менш ніж на десяти повторах поспіль'
 loop_elapsed="$elapsed"
 
 # 8в. Довгі, але різні роздуми не можна обрізати за старою байтовою стелею.
@@ -400,8 +407,16 @@ variant_run() {
 }
 
 variant_prepare no-detector
-awk '{if (index($0, "if (\$copies >= 4)") > 0) sub(/if \(\$copies >= 4\)/, "if (false && \$copies >= 4)"); print}' \
+# САБОТАЖ МУСИТЬ ГАСИТИ ДЕТЕКТОР, А НЕ ЛАМАТИ PHP. Попередня редакція
+# підставляла `&&` через awk `sub()`, де `&` означає ВЕСЬ ЗБІГ · виходив
+# синтаксично зламаний файл, і перевірка «падала» з іншої причини, ніж
+# заявлено. Тепер поріг просто робиться недосяжним, а код лишається валідним.
+sed 's/if (\$copies >= \$needed)/if (\$copies >= 999999)/' \
     "$VAR_ROOT/no-detector/cli/model/client.php" > "$VAR_ROOT/no-detector/cli/model/client.php.tmp"
+php -l "$VAR_ROOT/no-detector/cli/model/client.php.tmp" >/dev/null \
+    || fail 'саботаж detector зламав синтаксис замість порога'
+grep -q 'copies >= 999999' "$VAR_ROOT/no-detector/cli/model/client.php.tmp" \
+    || fail 'саботаж detector не знайшов порога · перевірка стала б фіктивною'
 mv "$VAR_ROOT/no-detector/cli/model/client.php.tmp" "$VAR_ROOT/no-detector/cli/model/client.php"
 SECONDS=0
 variant_run no-detector thinking_loop
