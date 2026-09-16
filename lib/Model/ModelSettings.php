@@ -44,7 +44,7 @@ final class ModelSettings
     }
 
     /** @return array{think:bool,think_level:string} */
-    public static function resolve(string $stateDir, array $config, array $roleConfig, int $numPredict): array
+    public static function resolve(string $stateDir, array $config, array $roleConfig): array
     {
         $stored = self::read($stateDir);
         $think = $stored['think'] ?? null;

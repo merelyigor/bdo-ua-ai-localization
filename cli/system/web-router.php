@@ -485,7 +485,7 @@ switch ($path) {
         $configPath = getenv('BDO_ROLES_CONFIG') ?: dirname(__DIR__, 2).'/config/roles.json';
         $config = json_decode((string) @file_get_contents($configPath), true);
         $config = is_array($config) ? $config : [];
-        $settings = ModelSettings::resolve($stateDir, $config, [], (int) ($config['num_predict'] ?? 8192));
+        $settings = ModelSettings::resolve($stateDir, $config, []);
         $catalog = is_file($catalogPath) ? json_decode((string) file_get_contents($catalogPath), true) : null;
         $selection = is_file($selectionPath) ? json_decode((string) file_get_contents($selectionPath), true) : [];
         $load = is_file($loadPath) ? json_decode((string) file_get_contents($loadPath), true) : [];

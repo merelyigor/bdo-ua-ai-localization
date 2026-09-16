@@ -157,6 +157,29 @@ grep -q '"num_predict":17' "$SCENARIO_FILE.request" \
 php -r 'exit(is_array(json_decode(file_get_contents($argv[1]), true)) && array_is_list(json_decode(file_get_contents($argv[1]), true)) ? 0 : 1);' \
     "$WORK/response.json" || fail 'відповідь не є JSON-масивом · конвеєр такого не прийме'
 
+# 1б. ВЛАСНОЇ СТЕЛІ НЕМАЄ. `num_predict` рахує токени роздумів РАЗОМ із
+#     відповіддю · виміряно на живій моделі: 32 дало 117 символів thinking і
+#     ПОРОЖНІЙ content із `done_reason=length`. Тому стеля різала саме
+#     відповідь, а не зациклення. Поле йде в рантайм ЛИШЕ коли його свідомо
+#     задали в конфігурації; без цього рядка стеля тихо повернулася б назад.
+cat > "$WORK/roles-nopredict.json" <<JSON
+{ "version": 1, "endpoint": "http://127.0.0.1:$PORT", "default_model": "тест-модель",
+  "num_ctx": 131072, "timeout_seconds": 30,
+  "roles": { "translation-worker": { "schema": "response", "temperature": 0.1 } } }
+JSON
+printf '%s' ok > "$SCENARIO_FILE"
+rm -f "$WORK/response.json" "$SCENARIO_FILE.request" "$SCENARIO_FILE.requests"
+set +e
+BDO_MODEL_THINK=0 BDO_ROLES_CONFIG="$WORK/roles-nopredict.json" BDO_STATE_DIR="$WORK/state" \
+    php "$ROOT/cli/model/client.php" translation-worker \
+    "$WORK/payload.json" "$WORK/response.json" --schema "$WORK/schema.json" >/dev/null 2>&1
+nopredict_code=$?
+set -e
+test "$nopredict_code" = 0 || fail "виклик без заданої стелі дав код $nopredict_code"
+if grep -q 'num_predict' "$SCENARIO_FILE.request"; then
+    fail "стеля надіслана в рантайм, хоча її не задано: $(cat "$SCENARIO_FILE.request")"
+fi
+
 # 2. Голий масив без конверта теж приймається: схема ролі може бути й такою.
 run envelopeless
 test "$CODE" = 0 || fail "голий масив відхилено: $STDERR"

@@ -92,7 +92,7 @@ final class ModelsCommand implements Command, CommandHelp
             'captured_at' => gmdate('c'),
             'models' => $models,
             'selection' => $selection,
-            'settings' => ModelSettings::resolve($stateDir, $config, [], (int) ($config['num_predict'] ?? 8192)),
+            'settings' => ModelSettings::resolve($stateDir, $config, []),
             'roles' => $roles,
         ];
     }

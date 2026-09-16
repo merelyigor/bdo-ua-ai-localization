@@ -96,12 +96,17 @@ if (trim($model) === '') {
     exit(1);
 }
 $numCtx = (int) ($roleConfig['num_ctx'] ?? $config['num_ctx']);
-$numPredict = max(1, (int) ($roleConfig['num_predict'] ?? $config['num_predict'] ?? 8192));
+// Стелі за замовчуванням НЕМАЄ. Вона була додана в 7.2.4 проти зациклення, але
+// міряла не те: `num_predict` рахує роздуми разом із відповіддю, тому різала
+// саме відповідь. Зациклення тепер ловить детектор повторів, тож число діє лише
+// тоді, коли його свідомо задали в конфігурації ролі або провайдера.
+$configuredPredict = $roleConfig['num_predict'] ?? $config['num_predict'] ?? null;
+$numPredict = $configuredPredict === null ? null : max(1, (int) $configuredPredict);
 // Це не бюджет якості: щедрий `timeout_seconds` — останній аварійний рубіж
 // для різних роздумів, які ніколи не дійшли до відповіді.
 $timeout = max(1, (int) ($config['timeout_seconds'] ?? 900));
 try {
-    $settings = \Bdo\Translate\Model\ModelSettings::resolve($stateDir, $config, $roleConfig, $numPredict);
+    $settings = \Bdo\Translate\Model\ModelSettings::resolve($stateDir, $config, $roleConfig);
 } catch (\Bdo\Translate\Model\ModelRuntimeError $e) {
     fwrite(STDERR, $e->reason.': '.$e->getMessage()."\n");
     exit(1);
@@ -538,7 +543,11 @@ if ($done !== 'stop') {
     // `length` тут означає, що відповідь обрізало вікном або стелею. Мовчазний
     // повтор дав би той самий обрив і сховав причину · саме так пачка тричі
     // ходила колами 2026-08-28 (D29).
-    $fail('truncated', "досягнуто num_predict=$numPredict; done_reason=$done, вихід ".(string) ($stats['out'] ?? '?')." токенів; зменш пачку або підніми стелю");
+    $fail('truncated', 'рантайм обірвав генерацію: done_reason='.$done.', вихід '
+        .(string) ($stats['out'] ?? '?').' токенів'
+        .($numPredict === null
+            ? '; власної стелі набір не накидав · межа прийшла з рантайму або вікна, тому зменш пачку'
+            : "; задано num_predict=$numPredict · зменш пачку або прибери стелю з конфігурації ролі"));
 }
 if ($content === '') {
     $fail('empty_content', 'модель повернула порожній content');

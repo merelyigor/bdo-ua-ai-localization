@@ -58,9 +58,16 @@ final class Ollama implements Transport
             'options' => [
                 'temperature' => $request->temperature,
                 'num_ctx' => $request->numCtx,
-                'num_predict' => $request->numPredict,
             ],
         ];
+        // СТЕЛЯ ГЕНЕРАЦІЇ НЕ НАКИДАЄТЬСЯ. `num_predict` рахує токени роздумів
+        // РАЗОМ із відповіддю (виміряно: `num_predict=32` дало 117 символів
+        // thinking і ПОРОЖНІЙ content, `done_reason=length`), тому власна межа
+        // різала саме відповідь. Поле йде в рантайм лише коли його свідомо
+        // задали в конфігурації ролі; інакше діє налаштування рантайму.
+        if ($request->numPredict !== null) {
+            $body['options']['num_predict'] = $request->numPredict;
+        }
         if ($request->schema !== null) {
             $body['format'] = $request->schema;
         }

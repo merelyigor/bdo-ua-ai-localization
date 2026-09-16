@@ -27,7 +27,10 @@ final class Request
         public readonly bool|string $think,
         public readonly float $temperature,
         public readonly int $numCtx,
-        public readonly int $numPredict,
+        // `null` · стелі генерації НЕМАЄ, і поле взагалі не йде в рантайм.
+        // Своєї межі набір більше не накидає: зациклення ловить детектор
+        // повторів, а не обрізання відповіді на півслові.
+        public readonly ?int $numPredict,
         public readonly int $timeout,
     ) {}
 }
