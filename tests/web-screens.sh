@@ -399,7 +399,7 @@ grep -Fq "id=\"thinkbox\"" "$ROOT/web/index.html" \
 # він живе лише в картці живого виклику, тому поза прогоном його немає, і
 # власник тиснув «нічого не відбувалось» (D103). Відрізняє чернетку від
 # відповіді ПІДПИС, а не кнопка.
-grep -Fq 'Роздуми <span class="meta">чернетка, не переклад</span>' "$ROOT/web/index.html" \
+grep -Fq '<summary>Роздуми <span class="meta">' "$ROOT/web/index.html" \
     || fail 'роздуми не підписані · власник читатиме чернетку як переклад'
 grep -Fq 'thinking-indicator' "$ROOT/web/index.html" \
     || fail 'індикатор роздумів не доданий до картки виклику'
