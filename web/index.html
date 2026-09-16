@@ -34,7 +34,7 @@
     <!-- Шапка ОДНИМ рядком, як у прототипі 01: ціль, пачка, стан, час, дії.
          Два рядки з великими підписами «КУДИ ПИШЕМО / ЩО ЗАРАЗ» називали
          очевидне й відсували роботу ролей нижче згину екрана. -->
-    <div class="panel hero">
+    <div class="panel hero" id="runHero">
       <div class="bar" style="margin-bottom:12px">
         <span class="pill" id="env">—</span>
         <span class="mono" id="batch" style="color:var(--ts)"></span>
@@ -106,6 +106,7 @@
 
   var lastCallsKey = '';
   var lastStepsKey = '';
+  var lastNavStepsKey = '';
   var lastCardsKey = '';
   var journal = B.follow(B.el('log'), B.el('follow'));
 
@@ -161,6 +162,73 @@
 
   function stepStatusIcon(state) {
     return B.icon(state === 'done' ? 'pass' : (state === 'skipped' ? 'dot' : 'circle'), 'step-status-icon');
+  }
+
+  function renderRunContext(s, b, completed, resume) {
+    var nav = B.el('nav');
+    var env = B.el('navRunEnv');
+    var batch = B.el('navRunBatch');
+    var state = B.el('navRunState');
+    var steps = B.el('navRunSteps');
+    if (!nav || !env || !batch || !state || !steps) { return; }
+    env.textContent = B.el('env').textContent;
+    env.style.background = B.el('env').style.background;
+    env.style.color = B.el('env').style.color;
+    batch.textContent = B.el('batch').textContent;
+    state.textContent = B.el('statePhrase').textContent;
+    state.className = 'nav-run-state ' + (s.running ? 'is-running' : completed ? 'is-done' : resume ? 'is-paused' : '');
+    var navStepsKey = JSON.stringify((s.steps || []).map(function (st) {
+      return { state: st.state || 'pending', label: st.label };
+    }));
+    if (navStepsKey !== lastNavStepsKey) {
+      lastNavStepsKey = navStepsKey;
+      steps.innerHTML = (s.steps || []).map(function (st, i) {
+        var stepState = st.state || 'pending';
+        return (i ? '<span class="arrow" aria-hidden="true">›</span>' : '')
+          + '<span class="step ' + stepState + '" title="' + B.esc(STEP_WORDS[stepState] || stepState) + '">'
+          + stepStatusIcon(stepState) + '<span class="n">' + B.esc(st.label) + '</span></span>';
+      }).join('');
+    }
+    var navStop = B.el('navStopBtn');
+    var navContinue = B.el('navContinueBtn');
+    var navStart = B.el('navStartLink');
+    if (navStop) { navStop.disabled = !s.running; }
+    if (navContinue) {
+      navContinue.style.display = (resume || completed) ? '' : 'none';
+      navContinue.disabled = !resume;
+      navContinue.setAttribute('aria-disabled', String(!resume));
+    }
+    if (navStart) { navStart.style.display = resume ? 'none' : ''; }
+  }
+
+  function bindRunContext() {
+    var hero = B.el('runHero');
+    var nav = B.el('nav');
+    if (!hero || !nav) { return; }
+    var setVisible = function (visible) {
+      nav.classList.toggle('run-context-visible', !visible);
+      var context = B.el('navRunContext');
+      if (context) { context.setAttribute('aria-hidden', String(visible)); }
+    };
+    if ('IntersectionObserver' in window) {
+      new IntersectionObserver(function (entries) {
+        setVisible(entries[0].intersectionRatio >= 0.45);
+      }, { threshold: [0, 0.45, 1] }).observe(hero);
+    } else {
+      var update = function () {
+        if (typeof hero.getBoundingClientRect !== 'function') {
+          setVisible(true);
+          return;
+        }
+        var rect = hero.getBoundingClientRect();
+        var visibleHeight = Math.max(0, Math.min(rect.bottom, window.innerHeight) - Math.max(rect.top, 0));
+        setVisible(visibleHeight / Math.max(rect.height, 1) >= 0.45);
+      };
+      window.addEventListener('scroll', update, { passive: true });
+      update();
+    }
+    B.el('navStopBtn').onclick = function () { B.el('stopBtn').click(); };
+    B.el('navContinueBtn').onclick = function () { B.el('continueBtn').click(); };
   }
 
   // Малюємо ТЕКСТОМ, а не розміткою: `innerHTML` на кожен кадр змушував браузер
@@ -558,6 +626,7 @@
         : completed ? 'пачку завершено автоматично · продовження недоступне' : '';
     }
     if (startLink) { startLink.style.display = resume ? 'none' : ''; }
+    renderRunContext(s, b, completed, resume);
 
     var key = calls.map(function (c) { return c.at + c.role + c.verdict + c.ms; }).join('|');
     var live = (s.stream && s.stream.role_label && s.stream.fresh) ? s.stream.role_label : '';
@@ -718,6 +787,7 @@
   }
 
   B.live(render, function (d) { feed.delta(d); });
+  bindRunContext();
 
   B.el('continueBtn').onclick = function () {
     if (this.disabled) { return; }

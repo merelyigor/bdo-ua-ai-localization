@@ -271,7 +271,19 @@
       + '<span class="brand-mark" aria-hidden="true">' + icon('brand') + '</span>'
       + '<span class="brand-copy"><strong>BDO · AI Localization</strong><small>Українська локалізація. Разом.</small></span>'
       + '</a><div class="nav-links">' + links + '</div>'
-      + '<span class="sp"><span class="dot" id="dot"></span><span id="link">зʼєднання…</span></span>';
+      + '<span class="sp"><span class="dot" id="dot"></span><span id="link">зʼєднання…</span></span>'
+      + (current === '/' ? '<div class="nav-run-context" id="navRunContext" aria-hidden="true">'
+        + '<div class="nav-run-summary">'
+        + '<span class="pill" id="navRunEnv">—</span>'
+        + '<span class="mono nav-run-batch" id="navRunBatch"></span>'
+        + '<span class="nav-run-state" id="navRunState">пачки немає</span>'
+        + '</div>'
+        + '<div class="nav-run-steps" id="navRunSteps" aria-label="послідовність прогону"></div>'
+        + '<div class="nav-run-actions">'
+        + '<button id="navStopBtn" class="btn-danger" type="button">зупинити</button>'
+        + '<button id="navContinueBtn" class="btn-primary" type="button" style="display:none">продовжити пачку</button>'
+        + '<a href="/start" id="navStartLink" class="as-button">новий прогін →</a>'
+        + '</div></div>' : '');
   }
 
   // --- стан звʼязку людською мовою ----------------------------------------
