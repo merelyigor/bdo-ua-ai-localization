@@ -169,9 +169,9 @@ final class WriteTranslationsCommand implements Command, \Bdo\Translate\Cli\Comm
 Контракт доступу: API_WRITE_CONTRACT.md.
 
 Використання:
-  ./write-translations.sh <items.json> [provider] [model]
-  ./write-translations.sh --channel proposal <items.json>
-  ./write-translations.sh --idempotency-key <stable-key> <items.json>
+  ./bdo write <items.json> [provider] [model]
+  ./bdo write --channel proposal <items.json>
+  ./bdo write --idempotency-key <stable-key> <items.json>
 
 Канали (власник обирає явно):
   machine  - layer=machine, mode=direct. ШІ-шар, як і раніше (типово).

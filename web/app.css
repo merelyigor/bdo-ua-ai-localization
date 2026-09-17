@@ -803,6 +803,17 @@ a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,te
 .start-run-grid{display:grid;grid-template-columns:minmax(0,1.6fr) minmax(260px,.8fr);gap:14px;align-items:stretch;margin-top:20px}
 .start-preview-section,.start-confirm{min-width:0}
 .start-preview-section .box{margin-top:0;min-height:88px;padding:12px 14px;border:1px solid var(--line-soft);background:var(--s1)}
+/* План людською мовою · нумерований список, а не моношрифт: цифра показує
+   ПОРЯДОК кроків, якого в суцільному тексті не видно. */
+.plan-steps{margin:0;padding:0 0 0 20px;list-style:decimal;white-space:normal}
+.plan-steps li{font-size:13px;line-height:1.45;color:var(--tp);padding:2px 0}
+.plan-steps li::marker{color:var(--tm);font-size:12px}
+.plan-steps li.empty{list-style:none;margin-left:-20px}
+/* Команди · для розбору, тому згорнуті й підписані явно. */
+.plan-commands{margin-top:8px}
+.plan-commands>summary{font-size:12px;color:var(--tm);cursor:pointer}
+.plan-commands>summary:hover{color:var(--ts)}
+.plan-commands .mono{margin-top:6px;padding:8px 10px;border-radius:8px;background:var(--s2);font-size:12px;line-height:1.5;white-space:pre-wrap;word-break:break-word}
 .start-confirm{display:flex;align-items:center;margin:24px 0 0;padding:14px;border:1px solid var(--gold-border);border-radius:9px;background:var(--gold-bg);color:var(--tp);line-height:1.4}
 .start-confirm b{font-weight:600;color:var(--dn-tx)}
 .start-actions{gap:9px;margin:18px 0 0;padding-top:16px;border-top:1px solid var(--line-soft)}

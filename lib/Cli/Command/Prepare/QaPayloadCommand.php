@@ -108,8 +108,8 @@ final class QaPayloadCommand implements Command, \Bdo\Translate\Cli\CommandHelp
         return <<<'BDO_HELP_TEXT'
 Побудувати компактний payload для translation-qa.
 
-  ./qa-payload.sh rows.json candidate.json [--with-current]  # + поточний ШІ-текст
-  ./qa-payload.sh rows.json candidate.json [--with-current]  # + поточний ШІ-текст --context FILE   # приклади з іншого файла
+  ./bdo payload qa rows.json candidate.json [--with-current]  # + поточний ШІ-текст
+  ./bdo payload qa rows.json candidate.json [--with-current]  # + поточний ШІ-текст --context FILE   # приклади з іншого файла
 
 Друкує JSON-масив: identity_hash, source_text, candidate, glossary, keep.
 QA працює під constrained decoding, а обмежена відповідь не може містити
@@ -122,7 +122,7 @@ QA працює під constrained decoding, а обмежена відпові�
 вердиктів на живому патчі. Тому сюди входять і `unresolved`, і `examples`.
 
 `examples` беруться з `context.json` теки пачки, який пише
-`cli/prepare/worker-payload.sh --with-context`. Свого запиту до API цей скрипт не робить:
+`./bdo payload worker --with-context`. Свого запиту до API ця команда не робить:
 платити вдруге за ті самі приклади сенсу немає, а без файла поле просто
 відсутнє.
 

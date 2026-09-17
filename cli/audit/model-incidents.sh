@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # Виклики моделі, які завершились НЕ вердиктом `ok`.
 #
-#   ./model-incidents.sh            зведення за роллю й причиною
-#   ./model-incidents.sh --list     останні записи повністю
-#   ./model-incidents.sh --list 50  останні 50
+#   ./bdo incidents            зведення за роллю й причиною
+#   ./bdo incidents --list     останні записи повністю
+#   ./bdo incidents --list 50  останні 50
 #
 # Джерело · `state/model-calls.jsonl`, той самий журнал, що й у `./bdo audit`.
 # Раніше цей звіт читав `state/flow-incidents.jsonl` і `state/child-notes.jsonl`,

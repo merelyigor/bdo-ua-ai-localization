@@ -57,7 +57,7 @@ final class NormalizeCandidateCommand implements Command, \Bdo\Translate\Cli\Com
         return <<<'BDO_HELP_TEXT'
 Детерміновані виправлення кандидата ДО перевірок. Модель не викликається.
 
-  ./normalize-candidate.sh candidate.json > fixed.json
+  ./bdo normalize candidate.json > fixed.json
 
 Зараз тут одне: латинські гомогліфи всередині кириличних слів (`Eданa` ->
 `Едана`). Це не стилістика, а зламаний символ: пошук, сортування й звірка з

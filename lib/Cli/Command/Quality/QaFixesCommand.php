@@ -80,7 +80,7 @@ final class QaFixesCommand implements Command, \Bdo\Translate\Cli\CommandHelp
         if ($accepted === []) {
             $output->stderr("\nВИРОК: безпечних виправлень немає. Відхилені рядки - у translation-repair.\n");
         } else {
-            $output->stderr(sprintf("\nВИРОК: cli/quality/merge-items.sh на %d рядках, потім повторні validate і QA по них.\n", count($accepted)));
+            $output->stderr(sprintf("\nВИРОК: ./bdo merge на %d рядках, потім повторні validate і QA по них.\n", count($accepted)));
             if ($rejected !== []) {
                 $output->stderr("Решту - у translation-repair, не в merge.\n");
             }
@@ -130,9 +130,9 @@ final class QaFixesCommand implements Command, \Bdo\Translate\Cli\CommandHelp
     public static function help(): string
     {
         return <<<'BDO_HELP_TEXT'
-Витягти БЕЗПЕЧНІ виправлення з вердиктів QA у формат для cli/quality/merge-items.sh.
+Витягти БЕЗПЕЧНІ виправлення з вердиктів QA у формат для `./bdo merge`.
 
-  ./qa-fixes.sh verdicts.json rows.json candidate.json > fixes.json
+  ./bdo qa-fixes verdicts.json rows.json candidate.json > fixes.json
 
 QA повертає в полі fix повний виправлений текст, тож лікування зазвичай не
 потребує ще одного виклику моделі. АЛЕ довіряти цьому полю наосліп не можна:

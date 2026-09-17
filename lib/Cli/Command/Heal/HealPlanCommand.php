@@ -295,12 +295,12 @@ final class HealPlanCommand implements Command, \Bdo\Translate\Cli\CommandHelp
         $output->stdout("\nЗлитий кандидат: {$mergedFile}\n");
         if ($forRepair !== []) {
             $output->stdout("Payload для repair: {$repairFile}\n");
-            $output->stdout(sprintf("\nВИРОК: віддай %s агенту translation-repair, потім КОНТРОЛЬНИЙ QA лише по цих %d рядках - і одразу cli/batch/batch-commit.sh.\n", basename($repairFile), count($forRepair)));
+            $output->stdout(sprintf("\nВИРОК: віддай %s агенту translation-repair, потім КОНТРОЛЬНИЙ QA лише по цих %d рядках - і одразу ./bdo commit.\n", basename($repairFile), count($forRepair)));
             $output->stdout("Третього кола не буде: те, що лишиться не-PASS, іде в модерацію.\n");
         } elseif ($hopeless !== []) {
-            $output->stdout("\nВИРОК: коло лікування вичерпано. cli/batch/batch-commit.sh: PASS у ШІ-шар, решта в модерацію.\n");
+            $output->stdout("\nВИРОК: коло лікування вичерпано. ./bdo commit: PASS у ШІ-шар, решта в модерацію.\n");
         } else {
-            $output->stdout("\nВИРОК: дефектів не лишилось. Злитий кандидат готовий до cli/batch/batch-commit.sh.\n");
+            $output->stdout("\nВИРОК: дефектів не лишилось. Злитий кандидат готовий до ./bdo commit.\n");
         }
     }
 
@@ -319,7 +319,7 @@ final class HealPlanCommand implements Command, \Bdo\Translate\Cli\CommandHelp
         return <<<'BDO_HELP_TEXT'
 Довести пачку до повного PASS, витративши мінімум викликів моделі.
 
-  ./heal-plan.sh rows.json candidate.json verdicts.json [validate.json]
+  ./bdo heal rows.json candidate.json verdicts.json [validate.json]
 
 Друкує в stdout план дій і готує файли; сам модель НЕ викликає - виклик
 translation-repair лишається за диригентом у видимій субагентській сесії.
@@ -329,7 +329,7 @@ translation-repair лишається за диригентом у видимі�
 
   1. `repaired_text` від API. Сервер уже полагодив рядок сам і повернув текст
      у validate. Це безкоштовно й детерміновано, а ми досі це викидали.
-  2. `fix` від QA, пропущений фільтром cli/quality/qa-fixes.sh (дрібна правка, >=85%
+  2. `fix` від QA, пропущений фільтром `./bdo qa-fixes` (дрібна правка, >=85%
      схожості, без русизмів, токени й довжина цілі). Нуль викликів моделі.
   3. translation-repair - лише те, що не полагодили сходинки 1-2.
   4. Карантин - лише те, що не полагодила навіть модель за N спроб.

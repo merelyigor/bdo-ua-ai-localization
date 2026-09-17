@@ -87,8 +87,10 @@ final class RunSpecCommand implements Command, \Bdo\Translate\Cli\CommandHelp
         return <<<'BDO_HELP_TEXT'
 Керувати immutable RunSpec для чотирьох готових режимів прогону.
 
-  ./run-spec.sh status patch
-  ./run-spec.sh plan patch <parent-session-id> [batch-size]
+  ./bdo mode status patch
+
+Дія `plan` лишається внутрішнім контрактом рушія й через `./bdo` не
+маршрутизується.
 
 Цей скрипт не викликає API та не викликає моделей. Він лише формує машинний
 контракт, який драйвер і рушій приймають без розбору тексту.

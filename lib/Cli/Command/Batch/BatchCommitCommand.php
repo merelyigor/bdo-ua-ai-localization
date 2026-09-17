@@ -449,7 +449,7 @@ final class BatchCommitCommand implements Command, \Bdo\Translate\Cli\CommandHel
         return <<<'BDO_HELP_TEXT'
 Завершити пачку без зупинки процесу: PASS - записати, решту - у карантин.
 
-  ./batch-commit.sh rows.json candidate.json verdicts.json [--write] [опції]
+  ./bdo commit rows.json candidate.json verdicts.json [--write] [опції]
 
 Опції:
   --channel machine|manual|proposal   куди пишуться PASS-рядки (типово machine)

@@ -79,7 +79,7 @@ final class MergeItemsCommand implements Command, \Bdo\Translate\Cli\CommandHelp
         return <<<'BDO_HELP_TEXT'
 Влити виправлення repair у наявний кандидат без повторного перекладу пачки.
 
-  ./merge-items.sh candidate.json fixes.json merged.json
+  ./bdo merge candidate.json fixes.json merged.json
 
 candidate.json і fixes.json - масиви {identity_hash, text}. Кожен хеш із
 fixes мусить існувати в candidate; дублікат або чужий хеш - помилка.

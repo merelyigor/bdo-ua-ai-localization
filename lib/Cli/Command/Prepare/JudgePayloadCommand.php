@@ -145,7 +145,7 @@ final class JudgePayloadCommand implements Command, \Bdo\Translate\Cli\CommandHe
         return <<<'BDO_HELP_TEXT'
 Побудувати payload для translation-judge · лише спірні рядки пачки.
 
-  ./judge-payload.sh rows.json candidate.json verdicts.json [validate.json]
+  ./bdo payload judge rows.json candidate.json verdicts.json [validate.json]
 
 Друкує JSON-масив спірних рядків у stdout, а в stderr · підсумок. Порожній
 масив означає, що судити нема чого й виклик моделі не потрібен.

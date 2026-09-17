@@ -465,7 +465,14 @@ switch ($path) {
             return;
         }
         try {
-            $json(['commands' => Actions::commands((string) ($_GET['action'] ?? ''), $payload)]);
+            // Сторінка показує `explain` · те саме, але людською мовою. Команди
+            // лишаються в тій самій відповіді: вони потрібні розробникові й
+            // лежать на сторінці під згорткою, а не перед очима власника.
+            $planAction = (string) ($_GET['action'] ?? '');
+            $json([
+                'explain' => Actions::explain($planAction, $payload),
+                'commands' => Actions::commands($planAction, $payload),
+            ]);
         } catch (Throwable $e) {
             $fail(422, 'plan_refused', $e->getMessage());
         }
@@ -509,6 +516,9 @@ switch ($path) {
         $json([
             'actions' => Actions::names(),
             'modes' => Actions::MODES,
+            // Підписи режимів · із `Labels`, бо в розмітці вони були другою
+            // копією й уже розходились із журналом прогону.
+            'mode_info' => Labels::modes(),
             'domains' => Actions::DOMAINS,
             'batch_size' => Actions::BATCH_SIZE,
         ]);

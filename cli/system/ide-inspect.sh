@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Інспекції PhpStorm по всьому проєкту, без IDE.
 #
-#   ./ide-inspect.sh            # усі теки з кодом
-#   ./ide-inspect.sh lib        # лише одна тека
+#   ./bdo inspect            # усі теки з кодом
+#   ./bdo inspect lib        # лише одна тека
 #
 # Навіщо окремо від `./bdo gate full`. Gate ловить синтаксис (`php -l`,
 # `shellcheck`) і поведінку (тести), але НЕ типи TypeScript і не інспекції рівня

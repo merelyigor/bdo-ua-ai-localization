@@ -67,7 +67,7 @@ final class BatchAssertCommand implements Command, \Bdo\Translate\Cli\CommandHel
         return <<<'BDO_HELP_TEXT'
 Перевірити, що файли належать поточній пачці.
 
-  ./batch-assert.sh rows.json [candidate.json]
+  ./bdo batch check rows.json [candidate.json]
 
 Окремий крок, а не частина кожного скрипта, з двох причин: його може викликати
 і диригент перед будь-якою дією, і сусідні скрипти; і вивід тут чистий -

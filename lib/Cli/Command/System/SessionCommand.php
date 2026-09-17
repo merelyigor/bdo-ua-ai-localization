@@ -429,12 +429,12 @@ final class SessionCommand implements Command, \Bdo\Translate\Cli\CommandHelp
         return <<<'BDO_HELP_TEXT'
 Сесія роботи: період, у якому власник провів N пачок.
 
-  ./session.sh new                    # почати нову (поточну закриє сама)
-  ./session.sh close [--drop-journals] # закрити; журнали лишити на 7 днів або прибрати
-  ./session.sh list [N]               # історія сесій, найновіші зверху
-  ./session.sh show [id]              # пачки однієї сесії (типово · поточної)
-  ./session.sh journals [id] [--drop] # переглянути або прибрати журнали
-  ./session.sh ensure                 # внутрішнє: відкрити, якщо немає
+  ./bdo session new                    # почати нову (поточну закриє сама)
+  ./bdo session close [--drop-journals] # закрити; журнали лишити на 7 днів або прибрати
+  ./bdo session list [N]               # історія сесій, найновіші зверху
+  ./bdo session show [id]              # пачки однієї сесії (типово · поточної)
+  ./bdo session journals [id] [--drop] # переглянути або прибрати журнали
+  ./bdo session ensure                 # внутрішнє: відкрити, якщо немає
 
 Навіщо. Квитанція є в кожної пачки, а між пачками не було нічого: питання
 «що я зробив за сьогодні» вимагало читати теки руками, а живі журнали

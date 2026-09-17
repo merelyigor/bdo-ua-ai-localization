@@ -598,6 +598,82 @@ grep -Fq 'id="modelSelect"' "$START" || fail 'на старті немає ко�
 grep -Fq "action: 'models.select'" "$START" || fail 'селект старту не викликає models.select'
 grep -Fq 'href="/models"' "$START" || fail 'зі старту немає переходу на повний екран моделей'
 
+# --- Блок «що зараз станеться» · ЛЮДСЬКОЮ МОВОЮ, а не командами -------------
+#
+# Власник не складає команд і не читає їх (головний UX-контракт), а блок перед
+# кнопкою запуску показував `BDO_WRITE=1 ./bdo watch loop --batches 1`. Перевірка
+# тримає обидві половини: сторінка бере `explain`, а сам `explain` не має права
+# сповзти назад у командний рядок.
+grep -Fq 'd.explain' "$START" \
+    || fail 'екран старту показує не людське пояснення плану'
+php -r '
+$html = (string) file_get_contents($argv[1]);
+// Команди дозволені лише всередині згортки для розробника.
+if (preg_match("~el\(.preview.\)[^;]*d\.commands~", $html) === 1) {
+    fwrite(STDERR, "команди повернулись у видимий блок плану\n"); exit(1);
+}
+if (! str_contains($html, "id=\"previewCommands\"")) {
+    fwrite(STDERR, "команди зникли зовсім · розбирати прогін немає чим\n"); exit(1);
+}
+' "$START" || fail 'блок плану показує власникові командний рядок'
+php -r '
+require $argv[1];
+use Bdo\Translate\Pipeline\RunSpec;
+use Bdo\Translate\Run\Actions;
+foreach (RunSpec::modes() as $mode) {
+    $lines = Actions::explain("run.start", ["mode" => $mode, "patch" => "9", "batches" => 1]);
+    if (count($lines) < 3) {
+        fwrite(STDERR, "режим $mode: план із ".count($lines)." рядків · кроки загублено\n"); exit(1);
+    }
+    foreach ($lines as $line) {
+        foreach (["./bdo", "BDO_", "--", "="] as $trace) {
+            if (str_contains($line, $trace)) {
+                fwrite(STDERR, "режим $mode: у людському поясненні лишився «$trace»: $line\n"); exit(1);
+            }
+        }
+    }
+    // Запис незворотний · про нього мусить бути сказано словами, а не лише
+    // галочкою згоди поруч.
+    if (! str_contains(implode(" ", $lines), "ЗАПИСУЄТЬСЯ")) {
+        fwrite(STDERR, "режим $mode: план не каже, що результат пишеться на сервер\n"); exit(1);
+    }
+    $dry = implode(" ", Actions::explain("run.start", ["mode" => $mode, "patch" => "9", "dry_run" => true]));
+    if (str_contains($dry, "ЗАПИСУЄТЬСЯ") || ! str_contains($dry, "Нічого не записується")) {
+        fwrite(STDERR, "режим $mode: тестовий прогін описано як запис: $dry\n"); exit(1);
+    }
+}
+' "$ROOT/lib/autoload.php" || fail 'пояснення плану розійшлося з тим, що виконається'
+# Підписи режимів живуть в одному місці · копія в розмітці вже розходилась.
+php -r '
+$html = (string) file_get_contents($argv[1]);
+if (preg_match("~patch:\s*\{\s*name~", $html) === 1) {
+    fwrite(STDERR, "у розмітці повернулась власна копія підписів режимів\n"); exit(1);
+}
+' "$START" || fail 'екран старту тримає другу копію підписів режимів'
+grep -Fq 'mode_info' "$START" \
+    || fail 'екран старту не бере підписи режимів із сервера'
+
+# --- Рядок «активний» показує ЧИСЛА активного патча ------------------------
+#
+# API прямо каже, який знімок активний (`active: true`), а рядок вибору стояв із
+# самими «—» · власник читав це як «даних немає». Числа беруться з того самого
+# патча, що й рядок таблиці нижче, тому розійтися вони не можуть.
+php -r '
+$html = (string) file_get_contents($argv[1]);
+if (! preg_match("~function livePatch~", $html)) {
+    fwrite(STDERR, "немає визначення активного патча · рядок «активний» знову порожній\n"); exit(1);
+}
+if (preg_match("~data-patch=\"active\".{0,80}<td>активний</td><td>—</td>~su", $html) === 1) {
+    fwrite(STDERR, "рядок «активний» знову показує прочерки замість чисел\n"); exit(1);
+}
+if (! str_contains($html, "той, що зараз у грі · патч ")) {
+    fwrite(STDERR, "рядок «активний» не називає, який саме це патч\n"); exit(1);
+}
+if (! str_contains($html, "в активному патчі ")) {
+    fwrite(STDERR, "підказка під таблицею мовчить про вибір «активний»\n"); exit(1);
+}
+' "$START" || fail 'рядок «активний» не показує чисел активного патча'
+
 # МЕЖА: згода на незворотний запис у PROD НЕ памʼятається ніколи. Інакше
 # свідома дія перетворюється на випадковий клік по вже поставленій галочці.
 php -r '

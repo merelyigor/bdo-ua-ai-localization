@@ -100,7 +100,7 @@ final class TermNotesDescribeCommand implements Command, \Bdo\Translate\Cli\Comm
         return <<<'BDO_HELP_TEXT'
 Підготувати завдання для child `translation-glossary`: описати терміни з черги.
 
-  ./term-notes-describe.sh          # payload + envelope для наступного Task
+  ./bdo terms describe          # payload + envelope для наступного Task
 
 Черга наповнюється сама під час прогону (`cli/api/term-notes-queue.sh`) і
 містить ЛИШЕ терміни з доведено порожнім описом · тобто такі, де опис не може

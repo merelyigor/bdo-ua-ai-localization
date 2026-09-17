@@ -720,6 +720,18 @@ check_references() {
     done
     note 'жоден інструктивний файл не кличе видалені скрипти'
 
+    step 'Довідка команд кличе ./bdo, а не зниклий скрипт'
+    # ДОВІДКА · ТЕЖ ДОКУМЕНТАЦІЯ. `./bdo help <команда>` друкує те, що написано в
+    # `help()` самої команди, і після переїзду кроків пачки в PHP там лишались
+    # рядки на кшталт `./run-loop.sh --batches 3` · команда до файла, якого в
+    # наборі немає. Перевірок це не проходило взагалі: gate дивився лише на
+    # markdown. Тепер приклад у довідці мусить називати штатний вхід.
+    local help_hit
+    help_hit="$(grep -rn -- '\./[a-z0-9_-]\+\.sh' lib/Cli/ cli/ --include='*.php' --include='*.sh' \
+        | grep -v 'scripts/agent-check\.sh' | grep -v 'bin/tui\.sh' | sed -n '1p' || true)"
+    test -z "$help_hit" || fail "довідка або повідомлення кличе скрипт замість ./bdo: $help_hit"
+    note 'приклади в довідці команд ведуть на ./bdo'
+
     step 'Структура планів'
     test -f docs/plans/README.md || fail 'немає реєстру docs/plans/README.md'
     test -f docs/plans/BACKLOG.md || fail 'немає docs/plans/BACKLOG.md'

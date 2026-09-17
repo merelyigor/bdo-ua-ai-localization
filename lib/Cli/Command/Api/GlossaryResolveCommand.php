@@ -127,8 +127,8 @@ final class GlossaryResolveCommand implements Command, \Bdo\Translate\Cli\Comman
         return <<<'BDO_HELP_TEXT'
 Перевірити immutable identity канонічної назви через POST /glossary/terms/resolve.
 
-  ./glossary-resolve.sh "Agris Gold Coin"
-  ./glossary-resolve.sh "Agris Gold Coin" <identity_hash>
+  ./bdo glossary resolve "Agris Gold Coin"
+  ./bdo glossary resolve "Agris Gold Coin" <identity_hash>
 
 Другий аргумент потрібен, коли однакову назву мають кілька сутностей: тоді
 resolve без identity повертає blocked_identity. Хеш беруть із того самого

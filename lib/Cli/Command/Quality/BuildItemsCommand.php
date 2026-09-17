@@ -91,7 +91,7 @@ final class BuildItemsCommand implements Command, \Bdo\Translate\Cli\CommandHelp
         return <<<'BDO_HELP_TEXT'
 Створити безпечний items.json із rows JSON.
 Hashes беруться тільки з API-вибірки; ручне введення identity/source hash не потрібне.
-Використання: ./build-items.sh rows.json translations.json items.json
+Використання: ./bdo items rows.json translations.json items.json
 
 BDO_HELP_TEXT;
     }

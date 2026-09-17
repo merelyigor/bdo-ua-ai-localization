@@ -122,7 +122,7 @@ final class ValidateCommand implements Command, \Bdo\Translate\Cli\CommandHelp
 Перевірити переклади через POST /translations/validate (без запису).
 
 Використання:
-  ./validate.sh <items.json>
+  ./bdo validate <items.json>
 
 Формат items.json:
   [{"identity_hash": "...", "text": "переклад"}, ...]

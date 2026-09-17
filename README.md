@@ -1,6 +1,6 @@
 # bdo-ua-ai-localization
 
-<img src="docs/assets/banner.png" alt="BDO UA AI Localization · інтерфейс у браузері, конвеєр із семи ролей на локальних моделях, механічні перевірки й запис через Agent API" width="100%">
+<img src="docs/assets/banner.png" alt="BDO UA AI Localization · інтерфейс у браузері, конвеєр із восьми ролей на локальних моделях, механічні перевірки й запис через Agent API" width="100%">
 
 Набір інструментів для перекладу рядків **Black Desert Online** українською для
 проєкту [BDO UA Translate](https://bdo-ua.com.ua).
@@ -20,11 +20,12 @@
 - Робота починається з вибору режиму на сторінці: активний патч, ручний шар,
   пропозиції або поліпшення ШІ-шару. Драйвер веде всі пачки до нульового
   залишку через відновлюваний `run drive`.
-- Мовну роботу роблять сім вузьких ролей на локальних GGUF-моделях. Оплати за
+- Мовну роботу роблять вісім вузьких ролей на локальних GGUF-моделях. Оплати за
   токени немає взагалі.
 - Формат відповіді ролі прибитий JSON-схемою, тому вона не може загубити,
   здублювати чи вигадати ідентифікатор рядка.
-- Пачками по 50 рядків (допустимий діапазон 20-100), з памʼяттю перекладів і глосарієм.
+- Пачками по 50 рядків (допустимий діапазон 20-100), з памʼяттю перекладів і
+  глосарієм. Рядок, для якого в памʼяті вже є переклад без механічних дефектів,
   закривається без виклику моделі взагалі.
 - У ШІ-шар пишеться все, що має текст. Черга модерації · для ручного шару, де
   проблемний рядок справді потребує людини.
@@ -271,7 +272,7 @@ BDO_API_KEY_PROD=ваш-ключ
 береться лише `BDO_API_BASE_DEV`. Застарілий `BDO_API_BASE` ігнорується незалежно
 від `BDO_ENV`.
 
-## Хто працює: драйвер і сім ролей
+## Хто працює: драйвер і вісім ролей
 
 Порядок кроків тримає `RunLoopCommand`. Він читає конверт `./bdo run drive` і виконує його: `child` · виклик ролі, `retry` ·
 пауза, `continue_run` · наступна пачка, `blocked` · зупинка з причиною. Жодна
@@ -283,6 +284,7 @@ BDO_API_KEY_PROD=ваш-ключ
 | `translation-worker` | перекладає рядки пачки |
 | `translation-qa` | виносить вирок кожному рядку |
 | `translation-repair` | виправляє рядки з вироком REVIEW/REJECT |
+| `translation-names` | підставляє канонічні назви з глосарія перед записом |
 | `translation-judge` | вирішує маршрут спірного рядка (не текст) |
 | `translation-glossary` | працює з чергою термінів |
 | `translation-smoke` | перевіряє справність каналу |
@@ -389,7 +391,14 @@ API (наприклад, який саме відповідник вимагає
 `BDO_JUDGE_MIN_CONFIDENCE` рядок іде до людини. Журнал рішень ·
 `state/judge-decisions.jsonl`.
 
-#### 7. Фінальна валідація й запис
+#### 7. `translation-names` — підстановка назв
+
+Останній крок перед записом (`ready_to_commit` → `names_pass` →
+`ready_to_commit`). Роль підставляє канонічні назви з глосарія в уже готовий
+текст і не має права переписувати решту рядка: джерелом назви є поле `orders`,
+а не памʼять моделі про гру.
+
+#### 8. Фінальна валідація й запис
 
 Текст ще раз перевіряється ПЕРЕД записом · уже після ремонту й судді. Рядок,
 який відхилив API на цьому кроці, знімається із запису й іде до людини, а не
@@ -409,19 +418,21 @@ API (наприклад, який саме відповідник вимагає
 ./bdo help fetch      # довідка самої команди
 ```
 
+Групи · рівно ті, що в реєстрі; повний перелік із описами ·
+[docs/COMMANDS.md](docs/COMMANDS.md):
+
 | Група | Команди |
 |---|---|
-| Прогін | `env`, `runtime`, `run start\|show\|end`, `gate` |
-| Вибірка | `patch`, `fetch`, `show`, `context`, `subset` |
-| Пачка | `batch new\|dir\|check\|end` |
-| Підготовка | `memory find\|apply\|expand`, `glossary gaps\|resolve`, `schema`, `payload` |
-| Перевірка | `normalize`, `items`, `russianisms`, `validate` |
-| Лікування | `heal`, `qa-fixes`, `merge` |
+| Прогін і середовище | `loop`, `tui`, `watch`, `gif`, `timer`, `session`, `web`, `desktop`, `env`, `sync`, `runtime`, `platform`, `run`, `patches`, `mode`, `gate`, `browser` |
+| Вибірка й пачка | `patch`, `fetch`, `batch`, `subset`, `show`, `context` |
+| Підготовка пачки | `memory`, `glossary`, `schema`, `payload` |
+| Перевірка й лікування | `normalize`, `items`, `russianisms`, `suspects`, `validate`, `heal`, `qa-fixes`, `merge` |
 | Завершення | `commit`, `write`, `moderation` |
-| Обслуговування | `audit`, `profile`, `models`, `bench`, `clean`, `paths` |
+| Обслуговування | `audit`, `models-run`, `inspect`, `review`, `timing`, `bench`, `incidents`, `quarantine`, `judge`, `terms`, `concepts`, `clean`, `paths`, `api`, `capabilities`, `models` |
 
-Скрипти в корені лишаються реалізацією підкоманд і працюють при прямому виклику,
-але штатний шлях · через `bdo`.
+Реалізація підкоманд живе в `lib/Cli/Command/**` і викликається через
+`cli/bdo.php`; окремих shell-скриптів кроків пачки більше немає · лишились
+тільки службові (`cli/runtime/`, `cli/system/`, `cli/audit/`).
 
 ## Чому роль не може піти не туди
 
@@ -447,9 +458,12 @@ API (наприклад, який саме відповідник вимагає
 | `GET /rows` | вибірка рядків на переклад |
 | `GET /rows/{hash}/context` | затверджені приклади зі спільним терміном |
 | `GET /patch/summary` | скільки в патчі лишилось |
+| `GET /patches` | перелік знімків патчів: номер у грі, дата, обсяг |
 | `GET /taxonomy`, `GET /guide` | категорії рядків і машинна інструкція |
 | `POST /translations/memory` | чи вже перекладено цей оригінал |
-| `POST /glossary/terms/resolve` | канонічний відповідник терміна |
+| `GET /glossary/terms`, `POST /glossary/terms/resolve` | пошук терміна й канонічний відповідник |
+| `GET /glossary/concepts` | поняття гри для кешу `state/game-concepts.json` |
+| `POST /glossary/proposals` | опис терміна як пропозиція (`./bdo terms submit`) |
 | `POST /translations/validate` | серверна перевірка до запису |
 | `POST /translations` | запис перекладу |
 | `GET /translations/proposals` | черга модерації |
@@ -487,6 +501,7 @@ API (наприклад, який саме відповідник вимагає
 перекладу. Власнику вони в щоденній роботі не потрібні.
 
 ```bash
+./bdo gate touched    # ДЕФОЛТ: лише перевірки, яких стосуються змінені шляхи
 ./bdo gate preflight  # середовище, ціль прогону, розкладка, правила
 ./bdo gate docs       # правила, плани, посилання, публічна безпека
 ./bdo gate shell      # bash, ShellCheck, PHP syntax
@@ -495,6 +510,10 @@ API (наприклад, який саме відповідник вимагає
 ./bdo gate api        # read-only запит до API
 ./bdo gate full       # усі локальні детерміновані перевірки
 ```
+
+Перевірка пропорційна зміні: щоденний дефолт · `./bdo gate touched && ./bdo api`,
+повний прогін несе CI. Карта «шлях → перевірка» живе в
+`scripts/agent-check.sh` (`touched_map`).
 
 Гейт нічого не пише в API, не деплоїть, не видаляє стан і не змінює Git.
 
@@ -569,10 +588,14 @@ repair її будує рушій під рядки пачки, для решт�
 
 ```text
 bdo                         єдиний вхід: ./bdo · сторінка, ./bdo help · дерево команд
+cli/bdo.php                 диспетчер команд: реєстр, маршрутизація, коди виходу
+cli/command-registry.json   ЄДИНЕ джерело дерева команд, описів і guard allowlist
 bin/tui.sh                  вікно-монітор у терміналі (./bdo tui)
-web/index.html              сторінка інтерфейсу · один файл, без CDN, офлайн
-./bdo web                   сервер сторінки: вільний порт, токен, посилання
+web/index.html              прогін як чат; поруч queue, sessions, start, models, call
+web/app.js, web/app.css     спільний скрипт і дизайн-токени всіх екранів
 cli/system/web-router.php   межа читання й дій: лише GET, дії лише POST
+lib/Web/Snapshot.php        читання state/** для сторінки; lib/Web/Runner.php · виконання дій
+lib/Run/Actions.php         кнопка → команда набору (одна для сторінки й вікна)
 bdo.bat                     нативний запуск інтерфейсу з Windows (WSL2 · запасний спосіб)
 BDO.app                     значок для Dock на macOS · applet, збирає scripts/build-mac-app.sh
 lib/Cli/Command/System/DesktopCommand.php
@@ -581,14 +604,20 @@ cli/system/mac-app.sh       тонкий Dock-вхід: PATH bootstrap і пер
 cli/system/mac-app.applescript  джерело значка · бандл є applet, інакше Dock стрибає вічно
 bdo.ico                     значок для ярлика Windows · сам .bat його не несе
 roles/translation-*.md      промпт кожної ролі · самодостатній, без include
+roles/schema/*.json         схеми відповідей ролей зі сталим форматом
 config/roles.json           модель, схема й температура кожної ролі
 lib/Cli/Command/Run/RunLoopCommand.php
                             драйвер: виконує конверт `run drive`
+lib/Cli/Command/Run/RunDriveCommand.php
+                            рушій: який крок пачки наступний
 cli/model/client.php        виклик локальної моделі під strict-схемою
-cli/{api,batch,prepare,quality,heal,write,run,runtime,audit,system}/
-                            реалізація підкоманд за доменами
-lib/                        PHP: identity, пачки, якість, машина станів, API
-scripts/agent-check.sh      єдиний quality gate
+lib/Cli/Command/**          реалізація підкоманд за доменами (Api, Batch, Prepare,
+                            Quality, Heal, Write, Run, Audit, System)
+cli/{api,model,run,runtime,audit,system}/
+                            службові скрипти: HTTP, клієнт моделі, звіти, платформа
+lib/                        PHP: identity, пачки, якість, машина станів, API, сторінка
+scripts/agent-check.sh      єдиний quality gate (./bdo gate)
+tests/                      регресії: кожен закритий дефект має свій файл
 docs/                       довідники, API, виміри, плани
 legacy/                     архів версії на оркестрації OpenCode (ignored)
 state/                      робочий стан прогонів, пачок і журнал викликів моделі
@@ -611,14 +640,17 @@ output/                     відповіді API, бенчмарки, квит
 | Потреба | Документ |
 |---|---|
 | Призначення, межі, структура | [docs/PROJECT_OVERVIEW.md](docs/PROJECT_OVERVIEW.md) |
+| Усі команди з описами | [docs/COMMANDS.md](docs/COMMANDS.md) · генерується з реєстру |
 | Ендпоінти й параметри API | [docs/API.md](docs/API.md) |
 | Контракт запису | [API_WRITE_CONTRACT.md](API_WRITE_CONTRACT.md) |
 | Повний процес перекладу | [WORKFLOW.md](WORKFLOW.md) |
+| Що перевіряти після зміни й після прогону | [docs/CHECKLIST.md](docs/CHECKLIST.md) |
 | Виміри, інциденти, рішення | [docs/FLOW_STATE.md](docs/FLOW_STATE.md) |
+| Що ламалося і чим закрито | [docs/plans/DEFECTS.md](docs/plans/DEFECTS.md) |
 | Публічна безпека | [docs/SECURITY.md](docs/SECURITY.md) |
 | Правила для AI-агентів | [AGENTS.md](AGENTS.md), [docs/AI_AGENT_RULES_REFERENCE.md](docs/AI_AGENT_RULES_REFERENCE.md) |
+| Кому делегується частина розробки | [docs/DELEGATION.md](docs/DELEGATION.md) |
 | Плани й черга робіт | [docs/plans/README.md](docs/plans/README.md), [docs/plans/BACKLOG.md](docs/plans/BACKLOG.md) |
-| Виміри, інциденти, рішення | [docs/FLOW_STATE.md](docs/FLOW_STATE.md) |
 
 Уся навігація по документації · [docs/README.md](docs/README.md).
 

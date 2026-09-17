@@ -87,7 +87,7 @@ final class CheckRussianismsCommand implements Command, \Bdo\Translate\Cli\Comma
         return <<<'BDO_HELP_TEXT'
 Знайти русизми в перекладах пачки. Детермінована перевірка, без моделі.
 
-  ./check-russianisms.sh candidate.json [rows.json]
+  ./bdo russianisms candidate.json [rows.json]
 
 candidate.json - масив {identity_hash, text} від воркера або після merge.
 rows.json передавати ЗАВЖДИ: без нього не видно затвердженого глосарію, і

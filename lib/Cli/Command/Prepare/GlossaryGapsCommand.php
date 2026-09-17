@@ -72,7 +72,7 @@ final class GlossaryGapsCommand implements Command, \Bdo\Translate\Cli\CommandHe
         return <<<'BDO_HELP_TEXT'
 Показати терміни пачки, для яких канонічний відповідник ще не затверджено.
 
-  ./glossary-gaps.sh rows.json
+  ./bdo glossary gaps rows.json
 
 Термін із severity=mandatory і ukrainian=null означає: назва оголошена
 канонічною, але жоден варіант не затверджений. Якщо перекласти такий рядок

@@ -184,13 +184,13 @@ final class FetchRowsCommand implements Command, \Bdo\Translate\Cli\CommandHelp
 Завантажити пачку рядків для перекладу з API й зберегти у JSON-файл.
 
 Використання:
-  ./fetch-rows.sh [кількість] [параметри_додаткові]
+  ./bdo fetch [кількість] [параметри_додаткові]
 
 Приклади:
-  ./fetch-rows.sh 20                                         # 20 неперекладених
-  ./fetch-rows.sh 20 "domain=item&semantic_type=name"        # 20 назв предметів
-  ./fetch-rows.sh 20 "patch=active&diff=added"               # 20 нових з патча
-  ./fetch-rows.sh 20 "state=stale"                           # 20 застарілих
+  ./bdo fetch 20                                         # 20 неперекладених
+  ./bdo fetch 20 "domain=item&semantic_type=name"        # 20 назв предметів
+  ./bdo fetch 20 "patch=active&diff=added"               # 20 нових з патча
+  ./bdo fetch 20 "state=stale"                           # 20 застарілих
 
 Вихід: ./output/rows_YYYYMMDD_HHMMSS.json
 

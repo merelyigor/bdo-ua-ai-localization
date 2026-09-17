@@ -138,14 +138,14 @@ final class BuildSchemaCommand implements Command, \Bdo\Translate\Cli\CommandHel
 
 Схема робить структурно неможливим втратити або вигадати identity_hash: список хешів
 задається enum, а довжина масиву фіксується. Формат виходу моделі збігається з тим,
-що очікує cli/quality/build-items.sh, тому перепакування не потрібне.
+що очікує ./bdo items, тому перепакування не потрібне.
 
 Використання:
-  ./build-schema.sh rows.json          # схема для worker/repair
-  ./build-schema.sh --qa rows.json     # схема для translation-qa (статус на КОЖЕН рядок)
-  ./build-schema.sh --clear            # зняти обидві схеми
-  ./build-schema.sh --show             # показати активні схеми
-  ./build-schema.sh --out FILE rows.json   # у свій файл, активну НЕ чіпати
+  ./bdo schema build rows.json         # схема для worker/repair
+  ./bdo schema qa rows.json            # схема для translation-qa (статус на КОЖЕН рядок)
+  ./bdo schema clear                   # зняти обидві схеми
+  ./bdo schema show                    # показати активні схеми
+  ./bdo schema build --out FILE rows.json  # у свій файл, активну НЕ чіпати
 
 BDO_HELP_TEXT;
     }

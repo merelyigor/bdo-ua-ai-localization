@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Перевірити середовище прогону і, за запитом, доставити те, чого бракує.
 #
-#   ./check-platform.sh          # діагностика: платформа, залежності, дані OpenCode
-#   ./check-platform.sh --fix    # доставити відсутні пакети через apt або brew
+#   ./bdo platform          # діагностика: платформа, залежності, дані OpenCode
+#   ./bdo platform --fix    # доставити відсутні пакети через apt або brew
 #
 # Підтримувані платформи: macOS, Linux, Windows через WSL2. На Windows у WSL
 # виконується САМ набір; OpenCode при цьому може бути native Windows-застосунком ·

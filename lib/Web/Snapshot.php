@@ -683,25 +683,19 @@ final class Snapshot
         $mode = (string) ($goal['mode'] ?? '');
         $patch = (string) ($goal['patch'] ?? '');
         $bits = [];
-        $bits[] = match ($mode) {
-            'patch' => 'рядки без ШІ-шару',
-            'improve' => 'другий прохід по вже машинних',
-            'proposal' => 'усе в чергу до людини',
-            'manual' => 'вузький набір під підтвердження',
-            default => $mode === '' ? 'режим не зафіксовано' : 'режим '.$mode,
-        };
+        // Підписи режиму й каналу · з `Labels`, а не своїм `match`. Свій
+        // розходився зі сторінкою старту («усе в чергу до людини» проти «усе
+        // віддати людині»), і власник бачив два описи однієї роботи.
+        $bits[] = Labels::modeWhat($mode);
         if ($patch !== '') {
             $bits[] = $patch === 'active' ? 'активний патч' : 'патч '.$patch;
         }
         if ((string) ($goal['domain'] ?? '') !== '') {
             $bits[] = 'категорія '.$goal['domain'];
         }
-        $bits[] = match ((string) ($goal['channel'] ?? '')) {
-            'machine' => 'запис у ШІ-шар',
-            'proposal' => 'запис у чергу до людини',
-            'manual' => 'запис у ручний шар',
-            default => 'канал запису не зафіксовано',
-        };
+        // Канал беремо із ЗАФІКСОВАНОГО в цілі значення, а не з режиму: це
+        // запис про те, куди пачка вже пішла.
+        $bits[] = Labels::channel((string) ($goal['channel'] ?? ''));
         $goal['phrase'] = ($hasBatch ? '' : 'ціль наступної пачки · ').implode(' · ', $bits);
 
         return $goal;

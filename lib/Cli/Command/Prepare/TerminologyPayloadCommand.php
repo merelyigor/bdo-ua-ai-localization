@@ -105,8 +105,8 @@ final class TerminologyPayloadCommand implements Command, \Bdo\Translate\Cli\Com
         return <<<'BDO_HELP_TEXT'
 Побудувати компактний payload для translation-terminology.
 
-  ./terminology-payload.sh rows.json
-  ./terminology-payload.sh rows.json --no-resolve   # без звернень до API
+  ./bdo payload terminology rows.json
+  ./bdo payload terminology rows.json --no-resolve   # без звернень до API
 
 Навіщо цей скрипт існує. Раніше primary передавав субагенту ШЛЯХ до
 `rows.json`, і той читав пачку сам інструментом `read`. Пачка містить

@@ -615,7 +615,7 @@ if (! is_array($decoded)) {
     $fail('not_json', substr($content, 0, 200));
 }
 // Конверт `{"items":[…]}` розпаковуємо в масив · саме такий вигляд очікують
-// `cli/quality/build-items.sh` і решта конвеєра. Правило живе окремо, бо його
+// `./bdo items` і решта конвеєра. Правило живе окремо, бо його
 // перевіряє тест: один шлях для роботи й перевірки.
 require_once __DIR__.'/unwrap.php';
 $items = bdo_unwrap_child_json($decoded);

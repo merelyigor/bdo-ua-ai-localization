@@ -441,10 +441,10 @@ final class BatchCleanCommand implements Command, \Bdo\Translate\Cli\CommandHelp
         return <<<'BDO_HELP_TEXT'
 Прибрати все, що флоу вже не може використати.
 
-  ./batch-clean.sh                 # показати, що буде прибрано, і нічого не робити
-  ./batch-clean.sh --apply         # прибрати
-  ./batch-clean.sh --days 3 --apply
-  ./batch-clean.sh --keep 20 --apply   # скільки квитанцій лишити
+  ./bdo clean                 # показати, що буде прибрано, і нічого не робити
+  ./bdo clean --apply         # прибрати
+  ./bdo clean --days 3 --apply
+  ./bdo clean --keep 20 --apply   # скільки квитанцій лишити
 
 ОДНЕ ПРАВИЛО, і воно доказове: тека пачки, на яку НЕ вказує
 `state/current-batch`, недосяжна для флоу. `Workspace::current()` читає рівно

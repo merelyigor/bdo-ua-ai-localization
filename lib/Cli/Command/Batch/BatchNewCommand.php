@@ -124,9 +124,9 @@ final class BatchNewCommand implements Command, \Bdo\Translate\Cli\CommandHelp
         return <<<'BDO_HELP_TEXT'
 Почати пачку: створити ізольовану теку під її робочі файли.
 
-  ./batch-new.sh rows.json      # почати пачку з цієї вибірки
-  ./batch-new.sh --show         # яка пачка зараз поточна
-  ./batch-new.sh --end          # закрити пачку (тека лишається)
+  ./bdo batch new rows.json     # почати пачку з цієї вибірки
+  ./bdo batch dir               # яка пачка зараз поточна
+  ./bdo batch end               # закрити пачку (тека лишається)
 
 Навіщо. Робочі файли пачки раніше мали фіксовані імена в state/, тож друга
 пачка мовчки затирала першу, а імена rows і candidate диригент вигадував сам.

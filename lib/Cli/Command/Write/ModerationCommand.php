@@ -228,11 +228,11 @@ final class ModerationCommand implements Command, \Bdo\Translate\Cli\CommandHelp
         return <<<'BDO_HELP_TEXT'
 Черга модерації перекладів: подивитись і розібрати пачками через API.
 
-  ./moderation-queue.sh                          # показати чергу (20 перших)
-  ./moderation-queue.sh --limit 100              # більше за раз (стеля 100)
-  ./moderation-queue.sh --row <identity_hash>    # лише пропозиції цього рядка
+  ./bdo moderation                          # показати чергу (20 перших)
+  ./bdo moderation --limit 100              # більше за раз (стеля 100)
+  ./bdo moderation --row <identity_hash>    # лише пропозиції цього рядка
   ./bdo moderation --approve 12,15,18       # схвалити перелічені
-  ./moderation-queue.sh --reject 12,15 --reason "калька"
+  ./bdo moderation --reject 12,15 --reason "калька"
   ./bdo moderation --approve-batch 20       # схвалити перші N з черги
   ./bdo moderation --approve-batch 20 --dry # показати, кого б схвалив
   ./bdo moderation --limit 20 --json        # черга як JSON (для інтерфейсу)

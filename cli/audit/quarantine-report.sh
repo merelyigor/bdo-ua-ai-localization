@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # Показати рядки, які не доїхали до жодного шару.
 #
-#   ./quarantine-report.sh              зведення за причинами
-#   ./quarantine-report.sh --list       останні 20 рядків із кандидатом
-#   ./quarantine-report.sh --list 100   останні 100
-#   ./quarantine-report.sh --clear      очистити карантин після розбору
+#   ./bdo quarantine              зведення за причинами
+#   ./bdo quarantine --list       останні 20 рядків із кандидатом
+#   ./bdo quarantine --list 100   останні 100
+#   ./bdo quarantine --clear      очистити карантин після розбору
 #
 # Навіщо команда взагалі зʼявилась. `state/quarantine.jsonl` писався з першого
 # дня і не читався НІКИМ: ні скриптом, ні gate, ні дерева команд. Заміряно

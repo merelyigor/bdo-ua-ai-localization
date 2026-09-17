@@ -8,9 +8,10 @@
 
 - API keys, tokens, passwords, private URLs та інші credentials · лише в
   локальному `.env` або зовнішньому файлі `TRANSLATE_ENV_FILE` поза Git.
-- У репозиторії є тільки `.env.example`: ключі порожні, URL · публічні безпечні
-  defaults або нейтральні placeholders.
-- `.env`, `.env.*` і nested env-файли ігноруються; `.env.example` є єдиним винятком.
+- У репозиторії є тільки шаблони `.env.example` і `.env.minimal.example`: ключі
+  порожні, URL · публічні безпечні defaults або нейтральні placeholders.
+- `.env`, `.env.*` і nested env-файли ігноруються; ці два шаблони є єдиними
+  винятками.
 - Не вставляти реальні значення у приклади `curl`, shell history, screenshots,
   issue, prompts, error reports або debug output.
 

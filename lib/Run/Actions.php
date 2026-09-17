@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Bdo\Translate\Run;
 
+use Bdo\Translate\Ui\Labels;
 use RuntimeException;
 
 /**
@@ -74,7 +75,8 @@ final class Actions
      * Оточення прогону · роздуми й тестовий режим.
      *
      * ТЕСТОВИЙ ПРОГІН (`dry_run`) знімає рівно `--write` на кроці commit
-     * (`cli/run/run-drive.sh`, `BDO_DRY_RUN`). Усі інші кроки · переклад, QA,
+     * (`lib/Cli/Command/Run/RunDriveCommand.php`, `BDO_DRY_RUN`). Усі інші
+     * кроки · переклад, QA,
      * суддя, назви, карантин · ідуть ТИМ САМИМ кодом, що й бойовий: власник
      * просив «усе повністю як у бойовому, просто без виливки на прод»
      * (2026-09-07). Тому це змінна, а не окрема гілка конвеєра: гілка
@@ -387,6 +389,119 @@ final class Actions
         }
 
         return $out;
+    }
+
+    /**
+     * ТОЙ САМИЙ план людською мовою · рядок на крок.
+     *
+     * Власник не складає команд і не читає їх (головний UX-контракт). Блок «що
+     * запуститься» показував `BDO_WRITE=1 ./bdo watch loop --batches 1` · рядок,
+     * який нічого не каже людині про те, що зараз станеться з її перекладом,
+     * зате створює враження, що без термінала тут не обійтися.
+     *
+     * Пояснення будується З ТОГО САМОГО `plan()`, а не поруч із ним: воно читає
+     * фактичний argv кроку й фактичне оточення. Тому розійтися з виконанням
+     * воно може лише разом із самим виконанням · це та сама механічна межа, що
+     * й у `commands()`, заради якої показ узагалі існує.
+     *
+     * Команди нікуди не діваються: `commands()` лишається для розробника й для
+     * gate, сторінка ховає їх під «команди для розробника».
+     *
+     * @param  array<string,mixed>  $payload
+     * @return list<string>
+     */
+    public static function explain(string $action, array $payload): array
+    {
+        $plan = self::plan($action, $payload);
+        $lines = [];
+        foreach ($plan['steps'] as $argv) {
+            $line = self::describeStep($argv, $payload);
+            if ($line !== '') {
+                $lines[] = $line;
+            }
+        }
+        foreach (array_keys($plan['env']) as $name) {
+            $line = self::describeEnv($name);
+            if ($line !== '') {
+                $lines[] = $line;
+            }
+        }
+
+        // Дія без власного опису кроків не має права лишитись порожнім блоком:
+        // порожній показ читається як «нічого не буде», а буде.
+        return $lines === [] ? [self::ucfirst($plan['label']).'.'] : $lines;
+    }
+
+    /**
+     * @param  list<string>  $argv
+     * @param  array<string,mixed>  $payload
+     */
+    private static function describeStep(array $argv, array $payload): string
+    {
+        $tail = array_values(array_slice($argv, 1));
+        $head = implode(' ', array_slice($tail, 0, 2));
+
+        if ($head === 'watch --stop') {
+            return 'Закриваю вікно минулого прогону, якщо воно лишилось відкритим · на вже записані переклади це не впливає.';
+        }
+        if ($head === 'mode start') {
+            $size = (int) ($tail[3] ?? self::BATCH_SIZE);
+            $patch = (string) ($tail[4] ?? 'active');
+            $where = $patch === 'active' ? 'активного патча' : 'патча '.$patch;
+            $domain = (string) ($tail[5] ?? '');
+            $mode = (string) ($tail[2] ?? '');
+
+            return 'Відбираю з '.$where.' пачку · '.$size.' '
+                .Labels::plural($size, 'рядок', 'рядки', 'рядків')
+                .($domain === '' ? '' : ' лише з категорії «'.$domain.'»')
+                .' · режим «'.Labels::mode($mode).'»: '.Labels::modeWhat($mode).'.';
+        }
+        if ($head === 'watch loop' || ($tail[0] ?? '') === 'loop') {
+            return self::describeLoop($argv, $payload);
+        }
+        if ($head === 'run stop') {
+            return 'Спиняю прогін: поточний крок дороблюється, нова пачка не береться.';
+        }
+
+        return '';
+    }
+
+    /**
+     * @param  list<string>  $argv
+     * @param  array<string,mixed>  $payload
+     */
+    private static function describeLoop(array $argv, array $payload): string
+    {
+        $at = array_search('--batches', $argv, true);
+        $batches = $at === false ? 0 : (int) ($argv[$at + 1] ?? 0);
+        $howMany = $batches > 0
+            ? $batches.' '.Labels::plural($batches, 'пачку', 'пачки', 'пачок')
+            : 'пачку за пачкою, доки в патчі є робота,';
+        // Кроки називаємо ті, що справді робить драйвер · власник бачить їх у
+        // журналі прогону тими самими словами.
+        $steps = 'терміни → переклад → перевірка якості → ремонт дефектів → суддя';
+        $mode = trim((string) ($payload['mode'] ?? ''));
+        $end = $mode === '' ? 'запис результату' : Labels::modeChannel($mode);
+
+        return 'Проганяю '.$howMany.' через увесь конвеєр: '.$steps.' → '.$end.'.';
+    }
+
+    private static function describeEnv(string $name): string
+    {
+        return match ($name) {
+            // Саме цього рядка бракувало найбільше: галочка згоди стоїть
+            // окремо, і зв'язок «цей прогін пише на сервер» читався лише з
+            // `BDO_WRITE=1` у команді.
+            'BDO_WRITE' => 'Те, що пройде суддю, ЗАПИСУЄТЬСЯ на сервер · скасувати запис не можна.',
+            'BDO_DRY_RUN' => 'Нічого не записується: усі кроки ті самі, але результат лишається тільки тут.',
+            'BDO_MODEL_THINK' => 'Модель спершу міркує вголос · відповідь ретельніша, прогін у кілька разів довший.',
+            default => '',
+        };
+    }
+
+    private static function ucfirst(string $text): string
+    {
+        return $text === '' ? '' : mb_strtoupper(mb_substr($text, 0, 1)).mb_substr($text, 1);
     }
 
     /**

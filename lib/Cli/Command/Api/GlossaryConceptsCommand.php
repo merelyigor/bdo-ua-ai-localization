@@ -139,8 +139,8 @@ final class GlossaryConceptsCommand implements Command, \Bdo\Translate\Cli\Comma
         return <<<'BDO_HELP_TEXT'
 Поняття гри з глосарія · один запит на прогін, далі з кешу.
 
-  ./glossary-concepts.sh              # оновити кеш за потреби й показати підсумок
-  ./glossary-concepts.sh --path       # надрукувати шлях до кешу
+  ./bdo concepts              # оновити кеш за потреби й показати підсумок
+  ./bdo concepts --path       # надрукувати шлях до кешу
 
 Навіщо. Поняття гри (`AP`, `Set Effect`, `Node`, пробудження, вузли) не є
 назвами в рядку: індекс згадок їх не містить свідомо, тому через

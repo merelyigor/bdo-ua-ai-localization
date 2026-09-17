@@ -196,7 +196,7 @@ final class TermNotesSubmitCommand implements Command, \Bdo\Translate\Cli\Comman
         return <<<'BDO_HELP_TEXT'
 Надіслати описи термінів як пропозиції · з повторною перевіркою перед записом.
 
-  ./term-notes-submit.sh
+  ./bdo terms submit
 
 Правило безпеки даних (AGENTS.md, дефект D18): пропозиція можлива ЛИШЕ коли
 API прямо каже, що опис порожній. Стан із черги для цього не годиться · між

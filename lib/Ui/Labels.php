@@ -2,6 +2,7 @@
 
 namespace Bdo\Translate\Ui;
 
+use Bdo\Translate\Pipeline\RunSpec;
 use Bdo\Translate\Pipeline\StateMachine;
 
 /**
@@ -94,6 +95,19 @@ final class Labels
     public static function unit(string $role, int $count): string
     {
         [$one, $few, $many] = self::ROLE_UNITS[$role] ?? ['рядок', 'рядки', 'рядків'];
+
+        return self::plural($count, $one, $few, $many);
+    }
+
+    /**
+     * Форма слова за числом · українські три форми.
+     *
+     * Винесено з `unit()`, бо потрібна не лише ролям: людський опис прогону
+     * рахує ПАЧКИ й РЯДКИ, а «1 пачок» на екрані власника виглядає як дефект
+     * тексту й підриває довіру до всього блоку.
+     */
+    public static function plural(int $count, string $one, string $few, string $many): string
+    {
         $mod100 = $count % 100;
         if ($mod100 >= 11 && $mod100 <= 14) {
             return $many;
@@ -123,6 +137,91 @@ final class Labels
         $key = trim((string) $key);
 
         return self::JUDGE[$key] ?? ($key === '' ? '—' : $key);
+    }
+
+    /**
+     * Режими прогону людською мовою · назва і ЩО САМЕ режим робить.
+     *
+     * Підписів було ТРИ копії: розмітка `web/start.html`, `Snapshot::goal()` і
+     * пояснення плану. Копії вже розходились (сторінка казала «вузький набір
+     * під підтвердження», журнал · «режим manual»), і це той самий клас, що дав
+     * D50. Тому текст лишається рівно тут, а куди піде запис · не пишеться
+     * вручну взагалі: його дає `RunSpec::preset()`, тобто те саме місце, що
+     * визначає канал на прогоні.
+     *
+     * @var array<string,array{0:string,1:string}> режим -> [назва, що робить]
+     */
+    private const MODES = [
+        'patch' => ['патч', 'перекласти рядки без ШІ-шару'],
+        'improve' => ['покращення ШІ', 'другий прохід по вже машинних'],
+        'proposal' => ['пропозиції', 'усе віддати людині'],
+        'manual' => ['ручний', 'вузький набір під підтвердження'],
+    ];
+
+    /** @var array<string,string> канали запису · ключі `RunSpec` */
+    private const CHANNELS = [
+        'machine' => 'запис у ШІ-шар',
+        'proposal' => 'запис у чергу до людини',
+        'manual' => 'запис у ручний шар',
+    ];
+
+    /** Коротка назва режиму. */
+    public static function mode(?string $key): string
+    {
+        $key = trim((string) $key);
+
+        return self::MODES[$key][0] ?? ($key === '' ? '—' : $key);
+    }
+
+    /** Що саме робить режим · рядок для екрана, не для логіки. */
+    public static function modeWhat(?string $key): string
+    {
+        $key = trim((string) $key);
+
+        return self::MODES[$key][1] ?? ($key === '' ? 'режим не зафіксовано' : 'режим '.$key);
+    }
+
+    /** Куди піде запис режиму · канал бере `RunSpec`, а не другий перелік. */
+    public static function modeChannel(?string $key): string
+    {
+        $key = trim((string) $key);
+        if (! isset(self::MODES[$key])) {
+            return 'канал запису не зафіксовано';
+        }
+
+        return self::channel((string) RunSpec::preset($key)['channel']);
+    }
+
+    public static function channel(?string $key): string
+    {
+        $key = trim((string) $key);
+
+        return self::CHANNELS[$key] ?? 'канал запису не зафіксовано';
+    }
+
+    /**
+     * Усі режими для екранів · один перелік замість копії в розмітці.
+     *
+     * @return array<string,array{name:string,what:string,where:string}>
+     */
+    public static function modes(): array
+    {
+        $out = [];
+        foreach (array_keys(self::MODES) as $key) {
+            $out[$key] = [
+                'name' => self::mode($key),
+                'what' => self::modeWhat($key),
+                'where' => self::modeChannel($key),
+            ];
+        }
+
+        return $out;
+    }
+
+    /** @return list<string> режими `RunSpec`, для яких підпису немає */
+    public static function missingModes(): array
+    {
+        return array_values(array_diff(RunSpec::modes(), array_keys(self::MODES)));
     }
 
     public static function state(?string $key): string

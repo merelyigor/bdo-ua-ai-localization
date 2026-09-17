@@ -303,10 +303,10 @@ final class WorkerPayloadCommand implements Command, \Bdo\Translate\Cli\CommandH
         return <<<'BDO_HELP_TEXT'
 Побудувати компактний payload для translation-worker або translation-repair.
 
-  ./worker-payload.sh rows.json                 # з прикладами (за замовчуванням)
-  ./worker-payload.sh rows.json --no-context     # без прикладів, без звернень до API
-  ./worker-payload.sh rows.json --with-current   # + поточний machine-переклад (для retranslate)
-  ./worker-payload.sh rows.json --with-reference # + російський довідковий текст
+  ./bdo payload worker rows.json                 # з прикладами (за замовчуванням)
+  ./bdo payload worker rows.json --no-context     # без прикладів, без звернень до API
+  ./bdo payload worker rows.json --with-current   # + поточний machine-переклад (для retranslate)
+  ./bdo payload worker rows.json --with-reference # + російський довідковий текст
 
 ПРИКЛАДИ ВВІМКНЕНІ ЗА ЗАМОВЧУВАННЯМ. Промпт воркера сам називає їх найсильнішим
 сигналом («тримайся їхнього стилю й термінології, навіть якщо маєш свою думку»),
@@ -340,7 +340,7 @@ semantic_type, mandatory glossary і must_preserve токени. Це єдине
 службовими полями в промпт не потрапляє, що економить токени primary-моделі.
 
 Контекст зберігається у теку пачки (`context.json`), а не в тимчасовий файл:
-ті самі приклади потрібні `cli/prepare/qa-payload.sh`, інакше QA судить рядок, не бачачи
+ті самі приклади потрібні `./bdo payload qa`, інакше QA судить рядок, не бачачи
 підстави, за якою воркер обрав відповідник. Повторно питати API за ними
 означало б заплатити N викликів удруге за те саме.
 

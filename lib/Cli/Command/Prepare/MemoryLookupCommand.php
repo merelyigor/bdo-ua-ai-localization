@@ -107,7 +107,7 @@ final class MemoryLookupCommand implements Command, \Bdo\Translate\Cli\CommandHe
         return <<<'BDO_HELP_TEXT'
 Спитати API, чи цей самий англійський оригінал уже перекладено деінде.
 
-  ./memory-lookup.sh rows.json [memory.json]
+  ./bdo memory find rows.json [memory.json]
 
 Виміряно на живій базі: 80,9% неперекладених активних рядків мають точний збіг
 оригіналу серед уже перекладених; на реальних вибірках агента - 25%. Але

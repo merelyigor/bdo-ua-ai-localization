@@ -28,7 +28,7 @@ final class MemoryApplyCommand implements Command, \Bdo\Translate\Cli\CommandHel
             throw new RuntimeException('Потрібен rows.json');
         }
         if ($memoryFile === '') {
-            throw new RuntimeException('Потрібен memory.json від cli/prepare/memory-lookup.sh');
+            throw new RuntimeException('Потрібен memory.json від ./bdo memory find');
         }
         $stateDir = getenv('BDO_STATE_DIR') ?: dirname(__DIR__, 4).'/state';
         $workspace = Workspace::current($stateDir);
@@ -117,7 +117,7 @@ final class MemoryApplyCommand implements Command, \Bdo\Translate\Cli\CommandHel
         return <<<'BDO_HELP_TEXT'
 Закрити памʼяттю те, що вже перекладено, і лишити моделі тільки решту.
 
-  ./memory-apply.sh rows.json memory.json
+  ./bdo memory apply rows.json memory.json
 
 Робить три речі, кожна з яких економить виклик моделі й тримає корпус
 узгодженим:

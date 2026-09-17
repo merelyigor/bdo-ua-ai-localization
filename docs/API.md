@@ -166,6 +166,13 @@ machine-перекладу, у патчі 5 · два, у патчі 3 · 442, �
 `total_matching`, `has_more`, `next_cursor`, `fields`. Курсорна пагінація;
 `fields=core|full`. Використовує `./bdo suspects` для пошуку підозрілих записів.
 
+### `GET /glossary/terms?q=<термін>&match=exact`
+
+Свіжий стан ОДНОГО терміна перед надсиланням опису. `./bdo terms submit` питає
+його щоразу заново: між збором черги й надсиланням опис міг зʼявитися, а
+наявний опис не перезаписується ніколи. Відсутність поля у відповіді означає
+«невідомо», а не «порожньо» · такий термін пропускається вголос.
+
 ### `POST /translations/memory`
 
 Чи цей самий англійський оригінал уже перекладено деінде. Тіло ·
@@ -191,6 +198,17 @@ resolve по кожному терміну пачки сам, включно з 
 
     ./bdo payload terminology rows.json
     ./bdo glossary resolve "Reforge"                    # окремий термін вручну
+
+### `POST /glossary/proposals`
+
+ОПИС терміна як пропозиція, а не як факт. Тіло · `term_id`,
+`canonical_source`, `ukrainian`, `source_identity` (`identity_hash`,
+`source_snapshot_id`), `provider`, `model` і самі тексти `gist` (до 200
+символів) та `definition` (до 4000). Термін, у якого опис уже є, пропускається
+без запиту: затверджене не перезаписується.
+
+    ./bdo terms describe    # завдання для ролі
+    ./bdo terms submit      # надіслати описи як пропозиції
 
 ## Запис
 

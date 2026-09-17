@@ -90,10 +90,10 @@ final class CapabilitiesCommand implements Command, \Bdo\Translate\Cli\CommandHe
 змінюється раз на місяць. Кеш має TTL і скидається `--refresh`.
 
 Використання:
-  ./capabilities.sh                    показати таблицю для поточної цілі
-  ./capabilities.sh --has glossary     код 0 · можливість є, 1 · немає
-  ./capabilities.sh --fields a,b,c     лишити з переліку те, що ціль приймає
-  ./capabilities.sh --refresh          перепитати, не дивлячись у кеш
+  ./bdo capabilities                    показати таблицю для поточної цілі
+  ./bdo capabilities --has glossary     код 0 · можливість є, 1 · немає
+  ./bdo capabilities --fields a,b,c     лишити з переліку те, що ціль приймає
+  ./bdo capabilities --refresh          перепитати, не дивлячись у кеш
 
 BDO_HELP_TEXT;
     }

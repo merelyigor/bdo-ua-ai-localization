@@ -24,7 +24,7 @@
   <div id="app" class="start-app" style="display:none">
     <div class="screen-title start-title">
       <h1>Почати прогін</h1>
-      <span class="hint">кнопка виконує ті самі команди, що й термінал</span>
+      <span class="hint">кнопка робить рівно те саме, що й прогін із термінала</span>
     </div>
 
     <div class="panel start-panel">
@@ -83,8 +83,19 @@
 
       <div class="start-run-grid">
         <section class="start-preview-section">
-          <div class="start-section-heading"><span class="lbl">що запуститься</span></div>
-          <div class="box mono" id="preview">—</div>
+          <div class="start-section-heading"><span class="lbl">що зараз станеться</span></div>
+          <!-- ЛЮДСЬКОЮ МОВОЮ, А НЕ КОМАНДАМИ. Тут стояв вивід
+               `BDO_WRITE=1 ./bdo watch loop --batches 1` · рядок, який власник
+               не складає і не читає (головний UX-контракт). Текст приходить із
+               ТОГО САМОГО планувальника (`Actions::explain`), тому розійтися з
+               виконанням не може. Команди лишились нижче під згорткою · вони
+               потрібні розробникові при розборі, а не власникові перед
+               натисканням. -->
+          <ol class="box plan-steps" id="preview"><li class="empty">складаю план…</li></ol>
+          <details class="plan-commands" id="previewCommands" style="display:none">
+            <summary>команди для розробника</summary>
+            <div class="mono" id="previewRaw"></div>
+          </details>
         </section>
 
         <!-- Підтвердження PROD · перемикач із іншим кольором: це не налаштування,
@@ -103,7 +114,9 @@
              думаючи, що це тест. Підтвердження PROD їй не потрібне · вона
              нічого не надсилає, тому й незворотності немає. -->
         <button id="dryBtn">тестовий прогін · без запису</button>
-        <span class="empty start-action-note">знімає лише <code>--write</code> на кроці запису · решта кроків та сама</span>
+        <!-- Підпис теж без командного рядка: `--write` нічого не пояснює тому,
+             хто не складає команд. -->
+        <span class="empty start-action-note">усі кроки ті самі, але на сервер не йде нічого</span>
         <span id="actionMsg" class="empty"></span>
         <button id="logToggle" class="start-log-toggle" style="display:none">показати вивід</button>
       </div>
@@ -123,12 +136,12 @@
 
   // Наслідок режиму · головне, чого бракувало: кнопки міняли рядок команди й
   // більше нічого, тому було незрозуміло, що взагалі перемикається.
-  var MODE_INFO = {
-    patch: { name: 'патч', what: 'перекласти рядки без ШІ-шару', where: 'запис у ШІ-шар' },
-    improve: { name: 'покращення ШІ', what: 'другий прохід по вже машинних', where: 'запис у ШІ-шар' },
-    proposal: { name: 'пропозиції', what: 'усе віддати людині', where: 'черга до людини' },
-    manual: { name: 'ручний', what: 'вузький набір під підтвердження', where: 'ручний шар і черга' }
-  };
+  //
+  // Підписи ПРИХОДЯТЬ ІЗ СЕРВЕРА (`/api/actions`, `Bdo\Translate\Ui\Labels`).
+  // Тут був свій перелік, і він уже розійшовся з журналом прогону: сторінка
+  // казала «усе віддати людині», журнал · «усе в чергу до людини», а «ручний
+  // шар і черга» не відповідало жодному каналу `RunSpec`.
+  var MODE_INFO = null;
   // Памʼять вибору · режим, патч, категорія, кількість пачок і роздуми.
   // Підтвердження PROD сюди НЕ входить навмисно: це згода на незворотний
   // запис, і давати її треба щоразу заново.
@@ -141,6 +154,10 @@
   function selectedPatch() { return chosenPatch || 'active'; }
 
   function renderModes() {
+    if (!MODE_INFO) {
+      B.el('modes').innerHTML = '<span class="empty">' + B.loadingHtml('беру перелік режимів') + '</span>';
+      return;
+    }
     B.el('modes').innerHTML = Object.keys(MODE_INFO).map(function (key) {
       var m = MODE_INFO[key];
       return '<button class="mode" data-mode="' + key + '" aria-pressed="' + (key === mode) + '">'
@@ -158,12 +175,34 @@
     });
   }
 
+  // Який патч сервер вважає активним. Потрібен ДВІЧІ: у рядку «активний» і в
+  // підказці під таблицею.
+  function livePatch() {
+    var found = null;
+    patches.forEach(function (p) { if (p.active) { found = p; } });
+    return found;
+  }
+
   function renderPatches() {
+    // РЯДОК «АКТИВНИЙ» ПОКАЗУЄ ЧИСЛА, А НЕ ПРОЧЕРКИ. Раніше тут стояли самі
+    // «—», хоча API прямо каже, який патч активний (`active: true`), і поруч у
+    // таблиці ті самі числа вже були. Власник читав це як «даних немає».
+    // Різниця з рядком конкретного патча лишається змістовною: вибір
+    // «активний» надсилає `patch=active`, тому з виходом наступного патча він
+    // поїде за грою сам, а число 10 лишиться числом 10.
+    var live = livePatch();
     var rows = '<tr data-patch="active"' + (chosenPatch === 'active' ? ' class="on"' : '') + '>'
-      + '<td>активний</td><td>—</td><td>—</td><td class="num">—</td><td class="num">—</td>'
-      + '<td class="empty">той, що зараз у грі</td></tr>';
+      + '<td>активний</td>'
+      + '<td class="empty">' + B.esc(live && live.game_number ? live.game_number : '—') + '</td>'
+      + '<td class="empty">' + B.esc(live && live.published ? live.published : '—') + '</td>'
+      + '<td class="num">' + (live ? B.num(live.rows) : '—') + '</td>'
+      + '<td class="num"' + (live && Number(live.missing_machine) ? ' style="color:var(--ok-tx)"' : ' class="num empty"') + '>'
+      + (live && Number(live.missing_machine) ? B.num(live.missing_machine) : '—') + '</td>'
+      + '<td class="empty">' + (live ? 'той, що зараз у грі · патч ' + B.esc(live.patch) : 'той, що зараз у грі') + '</td></tr>';
     rows += patches.map(function (p) {
       var left = Number(p.missing_machine) || 0;
+      // Той самий патч уже стоїть рядком «активний» вище · тут лишається
+      // ПОЗНАЧКА, а не другий рядок із тими самими числами.
       return '<tr data-patch="' + B.esc(p.patch) + '"'
         + (String(chosenPatch) === String(p.patch) ? ' class="on"' : '') + '>'
         + '<td>' + B.esc(p.patch) + '</td>'
@@ -191,15 +230,23 @@
   function patchHint() {
     var value = selectedPatch();
     var found = null;
-    patches.forEach(function (p) { if (String(p.patch) === value) { found = p; } });
+    // Вибір «активний» описується числами ТОГО САМОГО патча, що й рядок у
+    // таблиці · інакше підказка мовчала саме там, де її найчастіше читають.
+    if (value === 'active') {
+      found = livePatch();
+    } else {
+      patches.forEach(function (p) { if (String(p.patch) === value) { found = p; } });
+    }
     if (!found) {
       B.el('patchHint').textContent = patches.length
         ? '«Неактивний» не означає «неактуальний»: більшість роботи живе в старих патчах.'
         : 'перелік патчів вантажиться…';
       return;
     }
-    var batches = Math.max(1, Math.ceil(found.missing_machine / 50));
-    B.el('patchHint').textContent = 'у патчі ' + found.patch + ' лишилось ' + B.num(found.missing_machine)
+    var left = Number(found.missing_machine) || 0;
+    var batches = Math.max(1, Math.ceil(left / 50));
+    B.el('patchHint').textContent = (value === 'active' ? 'в активному патчі ' : 'у патчі ')
+      + found.patch + ' лишилось ' + B.num(left)
       + ' рядків без ШІ-шару · це приблизно ' + B.num(batches) + ' пачок по 50'
       + (patchesFromCache ? ' · числа з кешу, оновлюються раз на 5 хв' : ' · числа щойно з API');
   }
@@ -246,9 +293,18 @@
     previewTimer = setTimeout(function () {
       B.get('/api/plan?action=run.start&payload=' + encodeURIComponent(JSON.stringify(payload())))
         .then(function (d) {
-          B.el('preview').textContent = (d.commands || []).join('\n') || (d.hint || '—');
+          var steps = d.explain || [];
+          B.el('preview').innerHTML = steps.length
+            ? steps.map(function (s) { return '<li>' + B.esc(s) + '</li>'; }).join('')
+            : '<li class="empty">' + B.esc(d.hint || 'план невідомий') + '</li>';
+          var raw = (d.commands || []).join('\n');
+          B.el('previewRaw').textContent = raw;
+          B.el('previewCommands').style.display = raw ? '' : 'none';
         })
-        .catch(function () { B.el('preview').textContent = 'сервер не відповів · план невідомий'; });
+        .catch(function () {
+          B.el('preview').innerHTML = '<li class="empty">сервер не відповів · план невідомий</li>';
+          B.el('previewCommands').style.display = 'none';
+        });
     }, 150);
   }
 
@@ -274,7 +330,15 @@
   B.get('/api/actions').then(function (d) {
     B.el('domain').innerHTML = '<option value="">усі</option>'
       + (d.domains || []).map(function (x) { return '<option>' + B.esc(x) + '</option>'; }).join('');
-  }).catch(function () {});
+    MODE_INFO = d.mode_info || null;
+    // Збережений вибір може вказувати на режим, якого набір уже не знає ·
+    // тоді мовчки беремо перший, а не лишаємо кнопку без стану.
+    if (MODE_INFO && !MODE_INFO[mode]) { mode = Object.keys(MODE_INFO)[0]; }
+    renderModes();
+    refresh();
+  }).catch(function () {
+    B.el('modes').innerHTML = '<span class="empty">перелік режимів не завантажився · онови сторінку</span>';
+  });
 
   function renderThinkState(data) {
     var node = B.el('think');

@@ -138,8 +138,8 @@ final class TermNotesQueueCommand implements Command, \Bdo\Translate\Cli\Command
         return <<<'BDO_HELP_TEXT'
 Черга термінів, яким бракує опису · збирається під час прогону, нічого не шле.
 
-  ./term-notes-queue.sh <terms.json> <rows.json>   # додати терміни пачки
-  ./term-notes-queue.sh --report [N]               # показати найчастіші
+  ./bdo terms <terms.json> <rows.json>   # додати терміни пачки
+  ./bdo terms --report [N]               # показати найчастіші
 
 Навіщо саме черга, а не автоматична пропозиція.
 

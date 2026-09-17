@@ -58,7 +58,7 @@ final class MemoryExpandCommand implements Command, \Bdo\Translate\Cli\CommandHe
         return <<<'BDO_HELP_TEXT'
 Зібрати повного кандидата: переклад моделі + близнюки + те, що дала памʼять.
 
-  ./memory-expand.sh candidate.json twins.json memory-candidate.json > full.json
+  ./bdo memory expand candidate.json twins.json memory-candidate.json > full.json
 
 Близнюк отримує текст свого представника з тієї самої пачки: однаковий
 англійський оригінал не має давати двох різних українських варіантів у межах

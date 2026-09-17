@@ -71,10 +71,10 @@ final class SubsetRowsCommand implements Command, \Bdo\Translate\Cli\CommandHelp
         return <<<'BDO_HELP_TEXT'
 Вирізати підмножину рядків із rows.json для повтору лише проблемної частини пачки.
 
-  ./subset-rows.sh rows.json hash1,hash2,... subset.json
+  ./bdo subset rows.json hash1,hash2,... subset.json
 
-Вихід має ту саму структуру {data:{rows:[...]}}, тому cli/prepare/build-schema.sh і
-cli/prepare/worker-payload.sh працюють із ним без змін. Невідомий хеш - помилка, щоб
+Вихід має ту саму структуру {data:{rows:[...]}}, тому ./bdo schema build і
+./bdo payload worker працюють із ним без змін. Невідомий хеш - помилка, щоб
 повтор не розійшовся з реальною пачкою.
 
 BDO_HELP_TEXT;
