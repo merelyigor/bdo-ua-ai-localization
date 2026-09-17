@@ -278,6 +278,56 @@ grep -Fq 'buffer.sync(prettyIfJson(raw), true)' "$ROOT/web/app.js" \
 grep -Fq 'thinkBuffer.sync(think, true)' "$ROOT/web/app.js" \
     || fail 'роздуми друкуються не сиро · вікно знову набиратиме вже скінчений текст'
 
+# ПОВТОРНА ДОСТАВКА НЕ ДРУКУЄТЬСЯ ДВІЧІ.
+#
+# 2026-09-17, жива пачка `20260917_043356`: власник побачив у вікні роздумів
+# «…де багато іменників — це назЯ розглядаю терміни з масиву…», тобто початок
+# думки, надрукований двічі підряд. Виміряно в DOM сторінки · голова тексту
+# трапилась 2 рази, у зібраному сервером тексті · 1. Причина не в моделі:
+# порція й знімок рахують текст від різних точок, і `+=` склеїв думку сама з
+# собою. Тут перевіряються ОБА напрями: повтор не дублюється, продовження не
+# губиться.
+dedup="$(node -e "
+global.window={addEventListener(){},location:{href:'http://127.0.0.1/'},localStorage:{length:0,key(){return null},getItem(){return null},setItem(){}}};
+global.document={addEventListener(){},querySelectorAll(){return []},getElementById(){return null},createElement(){return {style:{},setAttribute(){},appendChild(){}}}};
+global.requestAnimationFrame=function(){};global.cancelAnimationFrame=function(){};
+eval(require('fs').readFileSync('$ROOT/web/app.js','utf8'));
+var B=window.BDO;
+var seen=[]; var think=B.typer(null,{onPaint:function(s){seen.push(s);}});
+var feed=B.streamFeed(B.typer(null,{onPaint:function(){}}),think);
+// Порція, потім ПОВТОРНА доставка того самого з продовженням.
+feed.delta({thinking:'Я розглядаю терміни', restarted:false});
+feed.delta({thinking:'Я розглядаю терміни з масиву, де багато іменників', restarted:false});
+// А тепер чесне продовження · воно мусить дописатись.
+feed.delta({thinking:' у грі', restarted:false});
+console.log(feed.thinking());
+")"
+test "$dedup" = 'Я розглядаю терміни з масиву, де багато іменників у грі' \
+    || fail "повторна доставка роздумів склеїлась сама з собою: [$dedup]"
+
+# ПІДПИС РОЗДУМІВ · один опис стану, і він знає ТРИ стани.
+#
+# Підпис брехав двічі: спершу писав «міркування вимкнено» над увімкненими, а
+# потім «ще не почались» над живим друком · бо робився один раз, коли
+# малювалась картка виклику. Тому опис живе в бібліотеці, а екран лише
+# оновлює його текстом.
+labels="$(node -e "
+global.window={addEventListener(){},location:{href:'http://127.0.0.1/'},localStorage:{length:0,key(){return null},getItem(){return null},setItem(){}}};
+global.document={addEventListener(){},querySelectorAll(){return []},getElementById(){return null},createElement(){return {style:{},setAttribute(){},appendChild(){}}}};
+global.requestAnimationFrame=function(){};global.cancelAnimationFrame=function(){};
+eval(require('fs').readFileSync('$ROOT/web/app.js','utf8'));
+var L=window.BDO.thinkingLabel;
+console.log([L('думка',true),L('думка',false),L('',true),L('',false),L('',null)].join('|'));
+")"
+test "$labels" = 'чернетка моделі|чернетка моделі|ще не почались|міркування вимкнено|стан невідомий' \
+    || fail "підпис роздумів описує стани неправильно: [$labels]"
+# Екран мусить ОНОВЛЮВАТИ підпис, а не малювати його раз: саме через це власник
+# бачив «ще не почались» над текстом, який у цю мить друкувався.
+grep -Fq "B.el('thinkstate')" "$ROOT/web/index.html" \
+    || fail 'екран прогону не оновлює підпис роздумів · він застигне на першому стані'
+grep -Fq 'B.thinkingLabel(' "$ROOT/web/call.html" \
+    || fail 'сторінка виклику має власну копію підпису роздумів · копії розійдуться'
+
 # Сторінка мусить справді користуватись зшиванням, а не підміною: без цього
 # вимір вище перевіряв би бібліотеку, а не екран.
 grep -Fq 'feed.delta(d)' "$ROOT/web/index.html" \

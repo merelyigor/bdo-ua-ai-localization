@@ -108,6 +108,9 @@
   var lastStepsKey = '';
   var lastNavStepsKey = '';
   var lastCardsKey = '';
+  // Настройка роздумів · факт із знімка, а не здогад екрана. Потрібна
+  // `paintThinking`, який малюється частіше за картку виклику.
+  var thinkSetting = null;
   var journal = B.follow(B.el('log'), B.el('follow'));
 
   // Живий друк іде через рівномірний буфер (`B.typer`), а не малюється порціями
@@ -244,6 +247,13 @@
     if (!wrap || !box) { return; }
     var wasEmpty = !box.textContent;
     wrap.style.display = 'block';
+    // Підпис іде за текстом, а не за миттю малювання картки: інакше він
+    // застигає на «ще не почались» і бреше просто над живим друком.
+    var state = B.el('thinkstate');
+    if (state) {
+      var label = B.thinkingLabel(text, thinkSetting);
+      if (state.textContent !== label) { state.textContent = label; }
+    }
     var answer = B.el('streambox');
     if (text && wasEmpty && (!answer || !answer.textContent)) { wrap.open = true; }
     if (!text) { wrap.open = false; box.textContent = ''; return; }
@@ -498,6 +508,7 @@
     // Чинні параметри моделі в хедері · оновлюються тим самим знімком, тому не
     // можуть розійтися з тим, що бачить решта екрана.
     B.renderModelParams(s.model);
+    thinkSetting = s.model && typeof s.model.think === 'boolean' ? s.model.think : null;
     var target = (s.env || '').toUpperCase() || '—';
     var envEl = B.el('env');
     envEl.textContent = target;
@@ -742,9 +753,14 @@
           // підпис при увімкнених роздумах, які попередні ролі справно видавали.
           // Тепер настройка приходить окремим фактом (`model.think`), і невідомий
           // стан теж називається собою, а не підміняється «вимкнено».
-          + '<summary>Роздуми <span class="meta">' + (s.stream.thinking ? 'очікує тексту'
-              : (s.model && s.model.think === false ? 'міркування вимкнено'
-                : (s.model && s.model.think === true ? 'ще не почались' : 'стан невідомий'))) + '</span></summary>'
+          //
+          // ПІДПИС ОНОВЛЮЄ `paintThinking`, А НЕ ЦЕЙ РЯДОК. Картка малюється
+          // один раз на виклик (сторож ключа), тому напис, зроблений тут,
+          // застигав назавжди: власник бачив «ще не почались» над роздумами,
+          // які в цю мить друкувались. Тут лишається лише ПЕРШИЙ стан.
+          + '<summary>Роздуми <span class="meta" id="thinkstate">'
+          + B.thinkingLabel(s.stream.thinking, s.model && s.model.think)
+          + '</span></summary>'
           // Роздуми МОЖНА перечитати: без межі висоти й прокрутки блок ріс
           // нескінченно, показував лише хвіст, і повернутись до початку думки
           // було нікуди (власник 2026-09-14, жива пачка на 42 КБ роздумів).

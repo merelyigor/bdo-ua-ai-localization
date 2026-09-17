@@ -293,9 +293,7 @@
     // ТРИ СТАНИ, А НЕ ДВА · та сама причина, що й на екрані прогону: відсутність
     // тексту не означає вимкненої настройки, і підписувати її так було неправдою.
     if (thinkingMeta) {
-      thinkingMeta.textContent = live.thinking ? 'очікує тексту'
-        : (s.model && s.model.think === false ? 'міркування вимкнено'
-          : (s.model && s.model.think === true ? 'ще не почались' : 'стан невідомий'));
+      thinkingMeta.textContent = B.thinkingLabel(live.thinking, s.model && s.model.think);
     }
     if (!at) {
       B.el('title').textContent = live.role_label;
