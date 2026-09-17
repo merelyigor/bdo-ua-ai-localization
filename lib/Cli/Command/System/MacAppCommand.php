@@ -33,15 +33,17 @@ final class MacAppCommand implements Command
         if ($url === null) {
             [$status, $message] = $this->web(['--background', '--no-open']);
             if ($status !== 0) {
+                // Діалог бачить ВЛАСНИК, тому перший рядок · що це означає
+                // для нього, а не яку перевірку запустити.
                 if (str_contains($message, 'немає php')) {
-                    $message .= "\n\nPATH клікового запуску не бачить php. Перевірка: ./bdo gate shell";
+                    $message .= "\n\nЗапуск зі значка не бачить PHP на цьому Mac · сам собою це не мине, покажи повідомлення агенту.";
                 }
                 return $this->dieGui($output, "Не вдалося підняти інтерфейс.\n\n{$message}");
             }
             [, $message] = $this->web(['--status']);
             $url = $this->url($message);
             if ($url === null) {
-                return $this->dieGui($output, 'Сервер стартував, але посилання не знайдено: ./bdo web --status');
+                return $this->dieGui($output, "Інтерфейс піднявся, але посилання на сторінку не знайшлося.\n\nПокажи це повідомлення агенту.");
             }
         }
         $this->open($url);

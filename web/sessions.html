@@ -350,7 +350,7 @@
       var out = (steps[i] && steps[i].output ? String(steps[i].output) : '').trim();
       if (out) { return out.split('\n').slice(-2).join(' · '); }
     }
-    return body.hint ? String(body.hint) : 'відмова, код ' + res.status;
+    return body.hint ? String(body.hint) : 'не вдалося · сервер відповів кодом ' + res.status;
   }
 
   function act(action, payload) {

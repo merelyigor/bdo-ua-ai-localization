@@ -220,7 +220,7 @@
     note(ids, 'надсилаю…', false);
     B.post('/api/action', { action: action, payload: payload, confirm: true }).then(function (res) {
       if (res.status >= 400) {
-        note(ids, (res.body && res.body.hint) ? res.body.hint : 'відмова, код ' + res.status, true);
+        note(ids, (res.body && res.body.hint) ? res.body.hint : 'не вдалося · сервер відповів кодом ' + res.status, true);
         return;
       }
       note(ids, res.body && res.body.ok ? 'рішення надіслано' : 'крок не вдався', !(res.body && res.body.ok));

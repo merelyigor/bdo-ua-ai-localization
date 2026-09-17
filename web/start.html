@@ -11,8 +11,8 @@
   ЕКРАН СТАРТУ · за макетом `docs/prototypes/04-start.html`.
 
   Три речі, яких бракувало в першій редакції й на які власник вказав прямо:
-  патч вибирається СЕЛЕКТОМ із живими числами (а не вводиться рядком), режим
-  пояснює НАСЛІДОК (куди піде запис), а попередній показ команди приходить із
+  патч вибирається ТАБЛИЦЕЮ з живими числами (а не вводиться рядком), режим
+  пояснює НАСЛІДОК (куди піде запис), а показ «що зараз станеться» приходить із
   сервера · щоб він не міг розійтися з тим, що виконається.
 -->
 </head>
@@ -118,7 +118,7 @@
              хто не складає команд. -->
         <span class="empty start-action-note">усі кроки ті самі, але на сервер не йде нічого</span>
         <span id="actionMsg" class="empty"></span>
-        <button id="logToggle" class="start-log-toggle" style="display:none">показати вивід</button>
+        <button id="logToggle" class="start-log-toggle" style="display:none">показати технічні подробиці</button>
       </div>
       <pre class="log start-log" id="actionLog" style="display:none"></pre>
     </div>
@@ -402,7 +402,7 @@
     var log = B.el('actionLog');
     var short = log.textContent === log.dataset.short;
     log.textContent = short ? log.dataset.full : log.dataset.short;
-    this.textContent = short ? 'згорнути вивід' : 'показати вивід';
+    this.textContent = short ? 'сховати технічні подробиці' : 'показати технічні подробиці';
   };
 
   // ОДИН ЗАПУСКАЧ НА ДВІ КНОПКИ. Друга копія цієї функції розійшлася б із
@@ -423,26 +423,33 @@
       var steps = (res.body && res.body.steps) || [];
       var log = B.el('actionLog');
       if (res.status >= 400 && !steps.length) {
-        msg.textContent = (res.body && res.body.hint) ? res.body.hint : 'відмова, код ' + res.status;
+        msg.textContent = (res.body && res.body.hint) ? res.body.hint : 'не вдалося · сервер відповів кодом ' + res.status;
         msg.style.color = 'var(--dn-tx)';
         return;
       }
+      // ТЕХНІЧНИЙ ВИВІД ПОКАЗУЄМО ЛИШЕ НА ВІДМОВІ. На успіху тут одразу після
+      // натискання розгортався shell-лог (`$ ./bdo mode start … → код 0`) ·
+      // рядок, якого власник не складав і який за секунду зникав
+      // разом із переходом на екран прогону. Коли ж крок не вдався, ці самі
+      // рядки є єдиним, що можна показати агентові.
       log.dataset.full = steps.map(function (s) {
         return '$ ' + s.command + '  → код ' + s.code + (s.output ? '\n' + s.output : '');
       }).join('\n\n');
       log.dataset.short = steps.map(function (s) { return '$ ' + s.command + '  → код ' + s.code; }).join('\n');
       log.textContent = log.dataset.short;
-      log.style.display = 'block';
-      B.el('logToggle').style.display = '';
-      B.el('logToggle').textContent = 'показати вивід';
       if (res.body && res.body.ok) {
+        log.style.display = 'none';
+        B.el('logToggle').style.display = 'none';
         msg.innerHTML = 'прогін запущено · <a href="/" style="color:var(--acc-tx)">дивитись роботу →</a>';
         // Одразу ведемо на екран прогону: після старту дивитись більше нема на
         // що, а зайвий клік на порожній сторінці · це ще одне «а де воно?».
         setTimeout(function () { location.href = '/'; }, 1200);
         msg.style.color = 'var(--ok-tx)';
       } else {
-        msg.textContent = 'крок не вдався · дивись вивід';
+        log.style.display = 'block';
+        B.el('logToggle').style.display = '';
+        B.el('logToggle').textContent = 'показати технічні подробиці';
+        msg.textContent = 'прогін не почався · подробиці нижче, покажи їх агенту';
         msg.style.color = 'var(--dn-tx)';
       }
     });

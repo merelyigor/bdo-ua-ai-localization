@@ -868,7 +868,7 @@
     msg.textContent = 'продовжую…';
     B.post('/api/action', { action: 'run.continue', confirm: true }).then(function (res) {
       msg.textContent = res.status >= 400
-        ? (res.body && res.body.hint ? res.body.hint : 'відмова, код ' + res.status)
+        ? (res.body && res.body.hint ? res.body.hint : 'не вдалося · сервер відповів кодом ' + res.status)
         : 'пачка продовжена · дивись кроки нижче';
       msg.style.color = res.status >= 400 ? 'var(--dn-tx)' : 'var(--ok-tx)';
     });
@@ -879,7 +879,7 @@
     msg.textContent = 'зупиняю…';
     B.post('/api/action', { action: 'run.stop' }).then(function (res) {
       msg.textContent = res.status >= 400
-        ? (res.body && res.body.hint ? res.body.hint : 'відмова, код ' + res.status)
+        ? (res.body && res.body.hint ? res.body.hint : 'не вдалося · сервер відповів кодом ' + res.status)
         : 'прогін зупинено';
       msg.style.color = res.status >= 400 ? 'var(--dn-tx)' : 'var(--ok-tx)';
     });

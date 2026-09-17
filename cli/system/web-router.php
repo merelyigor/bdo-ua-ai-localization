@@ -5,7 +5,7 @@ declare(strict_types=1);
 /**
  * Маршрутизатор локального інтерфейсу · ТІЛЬКИ читання.
  *
- * Запускає його `cli/system/web.sh`:
+ * Запускає його `./bdo web` (`lib/Cli/Command/System/WebCommand.php`):
  *   PHP_CLI_SERVER_WORKERS=4 php -S 127.0.0.1:<порт> cli/system/web-router.php
  *
  * Межі стоять у КОДІ, а не в проханні до браузера, і кожна з них має причину.
@@ -158,12 +158,14 @@ if ($isAction && $origin === '') {
 $publicPaths = ['/', '/index.html', '/queue', '/sessions', '/start', '/models', '/call', '/app.css', '/app.js', '/assets/bdo-background.webp', '/favicon.ico', '/api/ping'];
 $given = (string) ($_GET['t'] ?? ($_SERVER['HTTP_X_BDO_TOKEN'] ?? ''));
 if ($token === '') {
-    $fail(500, 'token_missing_on_server', 'сервер запущено без BDO_WEB_TOKEN · запускай через ./bdo web');
+    // Текст бачить ВЛАСНИК у вікні браузера, тому він каже, що зробити
+    // руками, а не яку змінну оточення підставити.
+    $fail(500, 'token_missing_on_server', 'інтерфейс піднявся без ключа доступу · закрий вкладку й запусти BDO значком ще раз');
 
     return;
 }
 if (! in_array($path, $publicPaths, true) && ($given === '' || ! hash_equals($token, $given))) {
-    $fail(403, 'bad_token', 'відкривай посилання, яке надрукувала команда ./bdo web');
+    $fail(403, 'bad_token', 'ключ у цьому посиланні не діє · запусти BDO значком ще раз, він відкриє свіжу сторінку');
 
     return;
 }

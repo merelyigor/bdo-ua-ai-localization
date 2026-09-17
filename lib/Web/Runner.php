@@ -199,7 +199,9 @@ final class Runner
         $environment = $env === [] ? null : array_merge(getenv(), $env);
         $process = proc_open($argv, $descriptors, $pipes, $this->root, $environment);
         if (! is_resource($process)) {
-            throw new RuntimeException('не вдалося запустити: '.implode(' ', $argv));
+            // Повідомлення йде НА СТОРІНКУ власникові, тому командний рядок
+            // у ньому не допомагає: він його не складав і не виконає.
+            throw new RuntimeException('крок не вдалося запустити · набір не зміг відкрити процес; покажи це повідомлення агенту');
         }
         stream_set_blocking($pipes[1], false);
         stream_set_blocking($pipes[2], false);
