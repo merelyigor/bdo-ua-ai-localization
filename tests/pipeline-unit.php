@@ -204,7 +204,17 @@ try {
             expect(is_file(dirname(__DIR__).'/'.substr($kind, 5)), "role $role points at a missing schema file");
         }
         $model = (string) ($conf['model'] ?? $roles['default_model']);
-        expect($model !== '' && !str_contains($model, '/'), "role $role model must be a bare Ollama tag, got $model");
+        // Тег Ollama, а не шлях до файла й не «провайдер/модель».
+        //
+        // Заборона будь-якого `/` тут БУЛА і виявилась хибною: в Ollama є
+        // namespace автора (`huihui_ai/Qwen3.6-abliterated:35b-Claude-4.7-q4_K`),
+        // і саме такою моделлю йде вся робота · 25 із 25 викликів останньої
+        // пачки, `GET /api/show` віддає на неї capabilities. Правило ламало
+        // конфіг на моделі, яка працює, тому звузилось до того, що воно
+        // справді стереже: не порожньо, без пробілів і не шлях у файловій
+        // системі (щоб у конфіг не потрапив `./models/x.gguf`).
+        expect($model !== '' && preg_match('~^[^\s/]+(/[^\s/]+)?$~', $model) === 1 && !str_starts_with($model, '.'),
+            "role $role model must be an Ollama tag (optionally namespaced), got $model");
     }
     expect(isset($roles['roles']['translation-worker']), 'translation-worker is missing from the role registry');
 

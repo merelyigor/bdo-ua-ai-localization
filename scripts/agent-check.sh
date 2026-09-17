@@ -958,9 +958,9 @@ check_design() {
         || fail 'AGENTS.md не вимагає перевіряти у вкладці власника (§16)'
     # Стан під'єднання мусить питатись КОМАНДОЮ · інакше кожна сесія знову
     # витрачає спроби на діагностику, а `curl` до 9222 вводить в оману (§16.6).
-    test -x cli/system/browser-check.sh \
-        || fail 'немає cli/system/browser-check.sh · стан під\x27єднання до браузера власника нічим не перевірити'
-    php -r 'require "lib/autoload.php"; exit(Bdo\Translate\Cli\Router::targetFor(["browser"]) === "bash:cli/system/browser-check.sh" ? 0 : 1);' \
+    test -f lib/Cli/Command/System/BrowserCheckCommand.php \
+        || fail 'немає команди browser · стан під\x27єднання до браузера власника нічим не перевірити'
+    php -r 'require "lib/autoload.php"; exit(Bdo\Translate\Cli\Router::targetFor(["browser"]) === "php:browser-check" ? 0 : 1);' \
         || fail 'єдиний вхід не має ./bdo browser · діагностика браузера недосяжна'
     # ПОРЯДОК закриття зміни в `web/**` мусить стояти в правилах, бо саме їх
     # агент читає на початку сесії · інакше наступна сесія знову перевірить
@@ -1321,7 +1321,7 @@ check_shell() {
     # ЄДИНИЙ ДОЗВОЛЕНИЙ shell-маршрут · `./bdo gate` (`scripts/agent-check.sh`):
     # це інструмент РОЗРОБКИ, ним користується агент, а не власник.
     local -r SHELL_ROUTE_ALLOWED='scripts/agent-check.sh'
-    local -r SHELL_ROUTES_MAX=7
+    local -r SHELL_ROUTES_MAX=4
     local script_routes queue script_count
     script_routes="$(rg -o "'script' => '[^']+'" lib/Cli/Router.php | sed "s/.*'\(.*\)'/\1/" | sort -u)"
     queue="$(printf '%s\n' "$script_routes" | grep -vFx "$SHELL_ROUTE_ALLOWED" || true)"
@@ -1352,6 +1352,29 @@ $queue"
         || fail "PHP запускає shell-скрипт · робота проєкту мусить бути на PHP:
 $php_runs_shell"
     note "shell-маршрути в черзі переходу: $script_count (стеля $SHELL_ROUTES_MAX, лише вниз); PHP shell не запускає"
+
+    # У РОБОЧОМУ ФЛОУ .sh-ФАЙЛІВ БУТИ НЕ МАЄ · рішення власника 2026-09-18.
+    #
+    # Попередня перевірка дивиться лише маршрути `./bdo`, тому скрипт, який
+    # кличе `Makefile`, бандл `BDO.app` або інший скрипт, лишався невидимим:
+    # `gui-path.sh` і `mac-app.sh` стоять саме на шляху запуску застосунку.
+    # Тому рахуються ФАЙЛИ, а не маршрути. Програма мусить працювати чисто на
+    # PHP і кросплатформенно · shell тут є і залежністю від платформи теж.
+    #
+    # Дозволені теки рівно дві й назавжди: `tests/**` і `scripts/**` · це
+    # розробка, власник туди не заходить. Число нижче · ЧЕРГА ПЕРЕХОДУ, і воно
+    # може лише падати до нуля. Гейт не дасть ні додати новий файл, ні лишити
+    # стелю завищеною після того, як черга скоротилась.
+    local -r SHELL_FILES_MAX=7
+    local work_shells work_count
+    work_shells="$(git ls-files '*.sh' | grep -vE '^(tests|scripts)/' || true)"
+    work_count="$(printf '%s\n' "$work_shells" | grep -c . || true)"
+    test "$work_count" -le "$SHELL_FILES_MAX" \
+        || fail "у робочому флоу $work_count .sh-файлів, а черга переходу допускає щонайбільше $SHELL_FILES_MAX. Новий shell поза tests/ і scripts/ заборонений · пиши PHP-команду:
+$work_shells"
+    test "$work_count" -eq "$SHELL_FILES_MAX" \
+        || fail "у робочому флоу лишилось $work_count .sh-файлів, а стеля досі $SHELL_FILES_MAX · опусти SHELL_FILES_MAX до $work_count"
+    note "shell-файли в робочому флоу: $work_count (стеля $SHELL_FILES_MAX, лише вниз до нуля)"
 
     # КЛІКОВІ ВХОДИ · Windows має `bdo.bat`, macOS `BDO.app`. Бандл лишається
     # тонким містком: уся логіка живе в `cli/system/mac-app.sh`, бо всередині

@@ -21,7 +21,7 @@
       "reasoning_effort": "low"
     }
   },
-  "default_model": "qwen3.6:35b-a3b-mtp-q4_K_M",
+  "default_model": "huihui_ai/Qwen3.6-abliterated:35b-Claude-4.7-q4_K",
   "num_ctx": 131072,
   "timeout_seconds": 900,
   "roles": {

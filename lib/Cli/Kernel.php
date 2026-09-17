@@ -6,6 +6,9 @@ namespace Bdo\Translate\Cli;
 
 use Bdo\Translate\Cli\Command\Api\PatchesOverviewCommand;
 use Bdo\Translate\Cli\Command\Audit\GlossarySuspectsCommand;
+use Bdo\Translate\Cli\Command\Runtime\CheckRuntimeCommand;
+use Bdo\Translate\Cli\Command\System\BrowserCheckCommand;
+use Bdo\Translate\Cli\Command\System\CheckPlatformCommand;
 use Bdo\Translate\Cli\Command\Audit\JudgeReportCommand;
 use Bdo\Translate\Cli\Command\Audit\ModelBenchCommand;
 use Bdo\Translate\Cli\Command\Audit\ModelIncidentsCommand;
@@ -201,6 +204,9 @@ final class Kernel
             'glossary-suspects' => new GlossarySuspectsCommand(),
             'model-run' => new ModelRunCommand(),
             'model-bench' => new ModelBenchCommand(),
+            'check-platform' => new CheckPlatformCommand(),
+            'check-runtime' => new CheckRuntimeCommand(),
+            'browser-check' => new BrowserCheckCommand(),
             default => null,
         };
     }

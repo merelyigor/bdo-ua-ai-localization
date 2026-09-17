@@ -297,7 +297,21 @@ find "$HARNESS_OUTPUT" -maxdepth 1 -type f -name 'write_*.json' -delete
 run_capture config-fallback.php "$TMP/state-config-php" php cli/batch/batch-commit.sh "$TMP/rows.json" "$TMP/candidate-dir/candidate.json" "$TMP/verdicts.json" --write --idempotency-key-prefix config
 assert_php_capture config-fallback
 grep -Fq '\"provider\":\"ollama\"' "$TMP/config-fallback.php.log" || fail 'config fallback provider'
-grep -Fq "\\\"model\\\":\\\"$CONFIG_MODEL\\\"" "$TMP/config-fallback.php.log" || fail 'config fallback model'
+# Модель може містити namespace автора (`huihui_ai/Qwen3.6-…`), а лог пише ТІЛО
+# запиту рядком усередині JSON · скісна риска екранується двічі (`\\/`). Голий
+# `grep -F` на такій назві шукав те, чого в лозі немає, і падав на РОБОЧІЙ
+# моделі. Тому вирок виноситься за РОЗІБРАНИМ значенням, а не за байтами запису.
+"$REAL_PHP" -r '
+$want = $argv[1];
+foreach (file($argv[2], FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) as $line) {
+    $entry = json_decode($line, true);
+    if (! is_array($entry)) { continue; }
+    $body = json_decode((string) ($entry["body"] ?? ""), true);
+    if (is_array($body) && ($body["model"] ?? null) === $want) { exit(0); }
+}
+fwrite(STDERR, "у лозі немає запису з model=".$want."\n");
+exit(1);
+' "$CONFIG_MODEL" "$TMP/config-fallback.php.log" || fail 'config fallback model'
 test -f "$TMP/state-config-sh/batches/config-sh/batch-summary.json" || fail 'config shell summary location'
 test -f "$TMP/state-config-php/batches/config-php/batch-summary.json" || fail 'config PHP summary location'
 
