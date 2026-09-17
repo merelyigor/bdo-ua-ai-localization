@@ -526,22 +526,26 @@
     return parts;
   }
 
-  function readable(raw) {
+  // СИРИЙ ВИВІД, ФОРМАТУВАННЯ ЛИШЕ ВІЗУАЛЬНЕ · вимога власника 2026-09-17.
+  //
+  // Раніше живий друк проганяв потік через `readable()`, яка ВИТЯГАЛА значення
+  // відомих ключів і показувала лише їх. Через це власник бачив охайний текст
+  // там, де модель насправді друкувала JSON, а після завершення той самий
+  // виклик виглядав інакше · два різні вигляди однієї відповіді. Тепер на
+  // екрані рівно те, що віддала модель; коли накопичене стає ЦІЛИМ JSON, воно
+  // лише розкладається відступами, щоб не бути суцільним рядком. Текст при
+  // цьому не змінюється: `JSON.stringify` того самого розбору.
+  function prettyIfJson(raw) {
     if (!raw) { return ''; }
-    var parts = scanKeys(raw, READABLE_KEYS);
-    // Нічого не впізнали. Два різні випадки, і плутати їх не можна:
-    //   · роль друкує JSON (strict-схема), але ключ ще не дописано · показувати
-    //     нема чого, і сирий конверт `{"items":[{"id":"r1","te` на екрані є
-    //     сміттям, яке ще й осідає в накопичувачі назавжди;
-    //   · відповідь узагалі не JSON · тоді показати сире краще, ніж мовчати.
     var head = raw.charAt(0);
-    if (parts.length === 0) { return (head === '{' || head === '[') ? '' : raw; }
-    // Порожні значення пропускаємо: у вироку QA поля `issue` й `fix` порожні на
-    // кожному чистому рядку, і вікно починалось із десятка порожніх рядків ·
-    // видно оком на живому прогоні 2026-09-06.
-    return parts.filter(function (p) { return p.value !== ''; })
-      .map(function (p) { return p.value; }).join('\n\n');
+    if (head !== '{' && head !== '[') { return raw; }
+    try {
+      return JSON.stringify(JSON.parse(raw), null, 2);
+    } catch (e) {
+      return raw;   // ще недописаний · показуємо як є, без вигадок
+    }
   }
+
 
   // --- пам'ять вікон -------------------------------------------------------
   //
@@ -867,7 +871,7 @@
       // просив, навіть якщо виглядатиме рвано. Додумування тут коштувало трьох
       // дефектів поспіль: друк історії з нуля, набір уже скінчених роздумів і
       // два вікна, що друкували одночасно.
-      buffer.sync(readable(raw), true);
+      buffer.sync(prettyIfJson(raw), true);
       if (thinkBuffer) { thinkBuffer.sync(think, true); }
     }
 
@@ -910,7 +914,7 @@
         if (typeof st.text !== 'string' || st.text === '') { return; }
         if (raw !== '' && ! st.complete) { return; }
         raw = st.text;
-        buffer.sync(readable(raw));
+        buffer.sync(prettyIfJson(raw), true);
       },
       raw: function () { return raw; },
       thinking: function () { return think; }
@@ -981,7 +985,7 @@
     live: live,
     follow: follow,
     typer: typer,
-    readable: readable,
+    prettyIfJson: prettyIfJson,
     streamFeed: streamFeed,
     loadingHtml: loadingHtml,
     busy: busy,
