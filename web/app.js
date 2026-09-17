@@ -345,9 +345,18 @@
     if (key === lastModelKey) { return; }
     lastModelKey = key;
     if (!rows.length) { host.innerHTML = ''; return; }
+    // КОРОТКІ ПІДПИСИ · повні назви займали 463 пікселі, і блок цілком
+    // переносився на другий рядок, роблячи шапку вдвічі вищою. Повна назва й
+    // джерело лишаються в підказці, тому нічого не втрачено · скорочення тут
+    // косметичне, а не змістове. Великі числа теж стискаються: 131072 → 131k.
+    var SHORT = {
+      temperature: 'temp', presence_penalty: 'pp', repeat_penalty: 'rp',
+      frequency_penalty: 'fp', num_predict: 'predict', num_ctx: 'ctx'
+    };
     host.innerHTML = rows.map(function (p) {
+      var value = /^\d{4,}$/.test(p.value) ? Math.round(Number(p.value) / 1024) + 'k' : p.value;
       return '<span class="nav-param" title="' + esc(p.key + ' = ' + p.value + ' · джерело: ' + p.source) + '">'
-        + '<b>' + esc(p.key) + '</b> ' + esc(p.value) + '</span>';
+        + '<b>' + esc(SHORT[p.key] || p.key) + '</b> ' + esc(value) + '</span>';
     }).join('');
     host.title = (model.name || '') + (model.runtime ? ' · ' + model.runtime : '');
   }

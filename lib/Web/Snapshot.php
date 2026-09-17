@@ -113,6 +113,12 @@ final class Snapshot
         if ($want === '') {
             return ['name' => '', 'runtime' => '', 'params' => []];
         }
+        // ПОРЯДОК ВИРІШУЄ, ЩО ЗНИКНЕ ПЕРШИМ. Блок у хедері стискається з лівого
+        // краю, тож при вузькому вікні ховаються саме перші елементи · на
+        // живому екрані 2026-09-17 зрізало `temperature`, найважливіший із них.
+        // Тому найцінніше ставимо В КІНЕЦЬ: воно лишається видимим довше за все.
+        $weight = ['num_ctx' => 0, 'min_p' => 1, 'top_p' => 2, 'top_k' => 3, 'presence_penalty' => 4, 'temperature' => 5];
+        uksort($declared, static fn (string $a, string $b): int => ($weight[$a] ?? -1) <=> ($weight[$b] ?? -1));
         $params = [];
         foreach ($declared as $key => $value) {
             $params[] = ['key' => (string) $key, 'value' => (string) $value, 'source' => 'модель'];
