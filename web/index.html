@@ -667,8 +667,15 @@
     if (startLink) { startLink.style.display = resume ? 'none' : ''; }
     renderRunContext(s, b, completed, resume);
 
-    var key = calls.map(function (c) { return c.at + c.role + c.verdict + c.ms; }).join('|');
     var live = (s.stream && s.stream.role_label && s.stream.fresh) ? s.stream.role_label : '';
+    // ЖИВА КАРТКА Є ЧАСТИНОЮ КЛЮЧА. Сторож ключа рятує від перемальовування
+    // щосекунди, але має сліпу пляму: коли роль договорила, список ВИКЛИКІВ ще
+    // не змінився, і картка «друкує…» лишалась на екрані назавжди · власник
+    // бачив «підстановка назв друкує…» через три хвилини після завершення
+    // пачки (2026-09-17). Мітка живої ролі стала частиною ключа: поки роль
+    // друкує, вона стала, тому зайвого перемальовування не додає.
+    var key = calls.map(function (c) { return c.at + c.role + c.verdict + c.ms; }).join('|')
+      + '|друкує:' + live;
     if (key !== lastCallsKey || (live && !B.el('streambox'))) {
       lastCallsKey = key;
       var html = calls.length ? calls.map(function (c) {

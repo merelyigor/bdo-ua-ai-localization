@@ -148,5 +148,32 @@ for (const [id, node] of elements) {
   }
 }
 
-console.log('web innerHTML guard: OK · однаковий snapshot не переписує innerHTML');
+// ЖИВА КАРТКА МУСИТЬ ЗНИКНУТИ, КОЛИ РОЛЬ ДОГОВОРИЛА.
+//
+// Сторож ключа мав сліпу пляму: список викликів після завершення ролі не
+// змінюється, тому картка «друкує…» лишалась назавжди · власник бачив
+// «підстановка назв друкує…» через три хвилини після завершення пачки
+// (2026-09-17). Перевіряються ОБА напрями: поява живої картки перемальовує
+// список, її зникнення · теж, а два однакові знімки · ні.
+const livingSnapshot = JSON.parse(JSON.stringify(snapshot));
+livingSnapshot.running = true;
+livingSnapshot.stream = { role_label: 'підстановка назв', role: 'translation-names', fresh: true, text: null, payload: null };
+const callsNode = elements.get('calls');
+if (!callsNode) { die('у фікстурі немає #calls · перевірка нічого не доводить'); }
+const beforeLive = callsNode.innerHTMLWrites;
+render(livingSnapshot);
+if (callsNode.innerHTMLWrites === beforeLive) {
+  die('жива картка не перемалювала список викликів · власник не побачить, що роль друкує');
+}
+const withLive = callsNode.innerHTMLWrites;
+render(livingSnapshot);
+if (callsNode.innerHTMLWrites !== withLive) {
+  die('той самий живий знімок перемальовує список щоразу · повернулось блимання');
+}
+render(snapshot);
+if (callsNode.innerHTMLWrites === withLive) {
+  die('картка «друкує…» лишилась після завершення ролі · сторож ключа її не бачить');
+}
+
+console.log('web innerHTML guard: OK · однаковий snapshot не переписує innerHTML, жива картка приходить і зникає');
 NODE
