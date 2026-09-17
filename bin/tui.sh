@@ -346,7 +346,7 @@ screen_resume() {
     printf '%s' "Довести до кінця? [y/N] "
     read -r yes || true
     case "$yes" in y|Y|так|Т|т) ;; *) return ;; esac
-    "$BDO" run-loop || printf '%s\n' "${C_WARN}Прогін зупинено · причина вище.${C_RESET}"
+    "$BDO" loop || printf '%s\n' "${C_WARN}Прогін зупинено · причина вище.${C_RESET}"
     pause
 }
 
