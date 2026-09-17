@@ -22,7 +22,7 @@
 | Формат | JSON. Успіх: `success: true` + `data`, у частини ендпоінтів ще `meta`. Помилка: `success: false` + `error` (код), `message`, `hint`, `details` |
 | Ліміти | `GET /me` → `limits`: `requests_per_minute`, `rows_per_day`, `rows_written_today`, `rows_remaining_today`, `quota_resets_at`. Цифри не зашивати в документацію · вони залежать від ключа |
 | Середовище | одна константа `BDO_ENV=PROD\|DEV`, див. [PROJECT_OVERVIEW.md](PROJECT_OVERVIEW.md) |
-| Мережеві збої | усі штатні BDO API-виклики йдуть через `cli/api/http-request.sh`: backoff, `Retry-After`, максимум 10 хвилин на операцію; далі прогін зупиняється |
+| Мережеві збої | усі штатні BDO API-виклики йдуть через `lib/Http/Client.php`: backoff, `Retry-After`, максимум 10 хвилин на операцію; далі прогін зупиняється |
 
 Розбір конверта · `Bdo\Translate\Api\Response`, підказки за кодами помилок ·
 `Bdo\Translate\Api\ErrorCodes`. Свій `curl` в обхід штатних команд заборонений:

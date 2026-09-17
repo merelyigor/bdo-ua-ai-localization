@@ -12,7 +12,7 @@ use Bdo\Translate\Http\Request;
 
 /**
  * Перевіряє /me, /guide та /taxonomy без зовнішнього HTTP-процесу.
- * Тексти лишаються форматом старого test-api.sh, а доступність guide
+ * Тексти лишаються форматом попередньої shell-реалізації, а доступність guide
  * перевіряється самим запитом, щоб не заводити окремий shell-викликач.
  */
 final class TestApiCommand implements Command
@@ -71,7 +71,7 @@ final class TestApiCommand implements Command
             $text .= "  типи (".count($types)."): ".implode(', ', $types)."\n";
             $text .= "  кодів помилок: ".count($taxonomy['data']['error_codes'] ?? [])."\n";
             $output->stdout($text);
-            // Старий test-api.sh огортає цей рядок ANSI без перевірки поверхні
+            // Стара shell-реалізація огортала цей рядок ANSI без перевірки поверхні
             // виводу; збереження байтів має пріоритет, тому тут не змінюємо
             // його pipe-поведінку через Output::color().
             $output->stdout("\n\033[32mAPI працює. Ключ активний, ліміти доступні.\033[0m\n");

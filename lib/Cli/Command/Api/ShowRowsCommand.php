@@ -9,7 +9,7 @@ use Bdo\Translate\Cli\Command;
 use Bdo\Translate\Cli\Output;
 
 /**
- * Показує локальний JSON із рядками в тому самому форматі, що й show-rows.sh.
+ * Показує локальний JSON із рядками в тому самому форматі, що й до порту на PHP.
  * Формат лишається тут дослівним, бо його читають і люди, і наступні кроки
  * конвеєра; HTTP для цієї команди не потрібен.
  */
@@ -18,7 +18,7 @@ final class ShowRowsCommand implements Command
     public function execute(array $arguments, Output $output): int
     {
         if (! isset($arguments[0])) {
-            $output->stderr("Потрібен шлях до JSON-файлу (cli/api/fetch-rows.sh)\n");
+            $output->stderr("Потрібен шлях до JSON-файлу з рядками (вибірка ./bdo rows)\n");
 
             return 1;
         }

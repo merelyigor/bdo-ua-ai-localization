@@ -72,7 +72,7 @@ count() { grep -c "^$1$" "$TMP/counts" || true; }
 URL="http://127.0.0.1:$PORT/?case="
 
 : > "$TMP/counts"
-run_bounded "$TMP/404.out" "$TMP/404.meta" "$ROOT/cli/api/http-request.sh" -fsS "${URL}404"
+run_bounded "$TMP/404.out" "$TMP/404.meta" php "$ROOT/cli/api/http-client.php" -fsS "${URL}404"
 read -r code_seconds code <"$TMP/404.meta"
 test "$code" -eq 22 || { echo "FAIL: 404 code=$code time=${code_seconds}s" >&2; exit 1; }
 test "$code_seconds" -lt 2 || { echo "FAIL: 404 time=${code_seconds}s" >&2; exit 1; }
@@ -80,13 +80,13 @@ test "$(count 404)" -eq 1 || { echo 'FAIL: 404 повторився' >&2; exit 1
 
 for scenario in 429 503; do
     : > "$TMP/counts"
-    "$ROOT/cli/api/http-request.sh" -sS "${URL}${scenario}" >"$TMP/$scenario.out"
+    php "$ROOT/cli/api/http-client.php" -sS "${URL}${scenario}" >"$TMP/$scenario.out"
     grep -Fxq ok "$TMP/$scenario.out" || { echo "FAIL: $scenario не завершився успішно" >&2; exit 1; }
     test "$(count "$scenario")" -gt 1 || { echo "FAIL: $scenario не повторився" >&2; exit 1; }
 done
 
 : > "$TMP/counts"
-"$ROOT/cli/api/http-request.sh" -sS -m 1 "${URL}timeout" >"$TMP/timeout.out"
+php "$ROOT/cli/api/http-client.php" -sS -m 1 "${URL}timeout" >"$TMP/timeout.out"
 grep -Fxq ok "$TMP/timeout.out" || { echo 'FAIL: timeout не відновився повтором' >&2; exit 1; }
 test "$(count timeout)" -gt 1 || { echo 'FAIL: timeout не мав другої спроби' >&2; exit 1; }
 

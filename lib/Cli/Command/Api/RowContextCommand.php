@@ -13,7 +13,7 @@ use Bdo\Translate\Http\Request;
 /**
  * Показує підтверджений контекст рядка через Agent API.
  * Запит іде без shell-посередника, але формат рядків навмисно повторює
- * row-context.sh байт у байт, щоб власник не отримав інший звіт.
+ * попередню shell-реалізацію байт у байт, щоб власник не отримав інший звіт.
  */
 final class RowContextCommand implements Command
 {

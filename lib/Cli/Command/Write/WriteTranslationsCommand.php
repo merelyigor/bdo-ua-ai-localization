@@ -16,7 +16,7 @@ use RuntimeException;
  *
  * Файл items і видимий порядок повідомлень лишаються контрактом shell-команди,
  * але actual write та side effects виконуються TranslationWriter без shell або
- * проміжного `cli/api/http-request.sh`.
+ * проміжного shell-шва · запит іде прямо в `lib/Http/Client.php`.
  */
 final class WriteTranslationsCommand implements Command, \Bdo\Translate\Cli\CommandHelp
 {

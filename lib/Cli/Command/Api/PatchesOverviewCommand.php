@@ -11,7 +11,7 @@ use Bdo\Translate\Http\Request;
 
 /**
  * Показує перелік патчів і доступний обсяг шарів перекладу.
- * Переносить обчислення з patches-overview.sh, щоб усі HTTP-виклики цієї
+ * Тримає обчислення в PHP, щоб усі HTTP-виклики цієї
  * команди проходили безпосередньо через прийнятий PHP-клієнт.
  */
 final class PatchesOverviewCommand implements Command

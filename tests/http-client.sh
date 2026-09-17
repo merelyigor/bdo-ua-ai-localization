@@ -92,53 +92,53 @@ URL="http://127.0.0.1:$PORT/?case="
 printf 'raw\0line\n\377' > "$TMP/expected-body"
 
 run_bounded "$TMP/dead.out" "$TMP/dead.meta" \
-    "$ROOT/cli/api/http-request.sh" -sS -X POST -H 'X-API-Key: test' \
+    php "$ROOT/cli/api/http-client.php" -sS -X POST -H 'X-API-Key: test' \
     --data '{"x":1}' 'http://127.0.0.1:1/glossary/terms/resolve'
 read -r dead_seconds dead_code <"$TMP/dead.meta"
 test "$dead_code" -eq 7 || { echo "FAIL: dead port code=$dead_code time=${dead_seconds}s" >&2; exit 1; }
 test "$dead_seconds" -lt 2 || { echo "FAIL: dead port time=${dead_seconds}s" >&2; exit 1; }
 
 : > "$TMP/counts"
-run_bounded "$TMP/501.out" "$TMP/501.meta" "$ROOT/cli/api/http-request.sh" -sS "${URL}501"
+run_bounded "$TMP/501.out" "$TMP/501.meta" php "$ROOT/cli/api/http-client.php" -sS "${URL}501"
 read -r not_implemented_seconds not_implemented_code <"$TMP/501.meta"
 test "$not_implemented_code" -eq 0 || { echo "FAIL: 501 code=$not_implemented_code" >&2; exit 1; }
 test "$not_implemented_seconds" -lt 2 || { echo "FAIL: 501 повторився за ${not_implemented_seconds}s" >&2; exit 1; }
 test "$(grep -c '^501$' "$TMP/counts" || true)" -eq 1 || { echo 'FAIL: 501 повторився' >&2; exit 1; }
 
 : > "$TMP/counts"
-"$ROOT/cli/api/http-request.sh" -sS "${URL}503" >"$TMP/503.out"
+php "$ROOT/cli/api/http-client.php" -sS "${URL}503" >"$TMP/503.out"
 grep -Fq raw "$TMP/503.out" || { echo 'FAIL: 503 не завершився повтором' >&2; exit 1; }
 test "$(grep -c '^503$' "$TMP/counts" || true)" -gt 1 || { echo 'FAIL: 503 не повторився' >&2; exit 1; }
 
-"$ROOT/cli/api/http-request.sh" -sS -H 'X-API-Key: test-key' "${URL}raw" >"$TMP/body"
+php "$ROOT/cli/api/http-client.php" -sS -H 'X-API-Key: test-key' "${URL}raw" >"$TMP/body"
 cmp -s "$TMP/expected-body" "$TMP/body" || { echo 'FAIL: 200 тіло змінилось побайтово' >&2; exit 1; }
 grep -Fxq test-key "$TMP/seen-key" || { echo 'FAIL: X-API-Key не дійшов до сервера' >&2; exit 1; }
 
-"$ROOT/cli/api/http-request.sh" -sS -o "$TMP/output-file" "${URL}raw" >"$TMP/output-stdout"
+php "$ROOT/cli/api/http-client.php" -sS -o "$TMP/output-file" "${URL}raw" >"$TMP/output-stdout"
 test ! -s "$TMP/output-stdout" || { echo 'FAIL: -o продублював тіло у stdout' >&2; exit 1; }
 cmp -s "$TMP/expected-body" "$TMP/output-file" || { echo 'FAIL: -o змінив тіло або файл' >&2; exit 1; }
 
-write_out="$("$ROOT/cli/api/http-request.sh" -sS -o /dev/null -w '%{http_code}' "${URL}raw")"
+write_out="$(php "$ROOT/cli/api/http-client.php" -sS -o /dev/null -w '%{http_code}' "${URL}raw")"
 test "$write_out" = 200 || { echo "FAIL: -w дав '$write_out'" >&2; exit 1; }
 
 printf 'payload\0bytes\n' > "$TMP/request-body"
-"$ROOT/cli/api/http-request.sh" -sS -X POST -H 'Content-Type: application/octet-stream' \
+php "$ROOT/cli/api/http-client.php" -sS -X POST -H 'Content-Type: application/octet-stream' \
     --data-binary "@$TMP/request-body" "${URL}echo" >"$TMP/echo"
 cmp -s "$TMP/request-body" "$TMP/echo" || { echo 'FAIL: --data-binary змінив запит або відповідь' >&2; exit 1; }
 
 : > "$TMP/counts"
-"$ROOT/cli/api/http-request.sh" -sS -m 1 "${URL}timeout" >"$TMP/timeout"
+php "$ROOT/cli/api/http-client.php" -sS -m 1 "${URL}timeout" >"$TMP/timeout"
 grep -Fq raw "$TMP/timeout" || { echo 'FAIL: таймаут спроби не відновився повтором' >&2; exit 1; }
 test "$(grep -c '^timeout$' "$TMP/counts" || true)" -gt 1 || { echo 'FAIL: таймаут не мав повторної спроби' >&2; exit 1; }
 
-"$ROOT/cli/api/http-request.sh" -sS -L "${URL}redirect" >"$TMP/redirect-body"
+php "$ROOT/cli/api/http-client.php" -sS -L "${URL}redirect" >"$TMP/redirect-body"
 redirect_body="$(od -An -t x1 "$TMP/redirect-body" | tr -d ' \n')"
 test "$redirect_body" = '726177006c696e650aff' || { echo 'FAIL: перенаправлення не дійшло до цілі' >&2; exit 1; }
 
 set +e
-"$ROOT/cli/api/http-request.sh" -sS --unknown-flag "${URL}raw" >"$TMP/unknown.out" 2>"$TMP/unknown.err"
+php "$ROOT/cli/api/http-client.php" -sS --unknown-flag "${URL}raw" >"$TMP/unknown.out" 2>"$TMP/unknown.err"
 unknown_code=$?
-"$ROOT/cli/api/http-request.sh" -sS -H 'X-API-Key: super-secret-key' 'http://[bad' >"$TMP/bad.out" 2>"$TMP/bad.err"
+php "$ROOT/cli/api/http-client.php" -sS -H 'X-API-Key: super-secret-key' 'http://[bad' >"$TMP/bad.out" 2>"$TMP/bad.err"
 bad_code=$?
 set -e
 test "$unknown_code" -eq 2 || { echo "FAIL: unknown flag code=$unknown_code" >&2; exit 1; }
