@@ -623,23 +623,23 @@ use Bdo\Translate\Run\Actions;
 foreach (RunSpec::modes() as $mode) {
     $lines = Actions::explain("run.start", ["mode" => $mode, "patch" => "9", "batches" => 1]);
     if (count($lines) < 3) {
-        fwrite(STDERR, "режим $mode: план із ".count($lines)." рядків · кроки загублено\n"); exit(1);
+        fwrite(STDERR, "режим {$mode}: план із ".count($lines)." рядків · кроки загублено\n"); exit(1);
     }
     foreach ($lines as $line) {
         foreach (["./bdo", "BDO_", "--", "="] as $trace) {
             if (str_contains($line, $trace)) {
-                fwrite(STDERR, "режим $mode: у людському поясненні лишився «$trace»: $line\n"); exit(1);
+                fwrite(STDERR, "режим {$mode}: у людському поясненні лишився «{$trace}»: {$line}\n"); exit(1);
             }
         }
     }
     // Запис незворотний · про нього мусить бути сказано словами, а не лише
     // галочкою згоди поруч.
     if (! str_contains(implode(" ", $lines), "ЗАПИСУЄТЬСЯ")) {
-        fwrite(STDERR, "режим $mode: план не каже, що результат пишеться на сервер\n"); exit(1);
+        fwrite(STDERR, "режим {$mode}: план не каже, що результат пишеться на сервер\n"); exit(1);
     }
     $dry = implode(" ", Actions::explain("run.start", ["mode" => $mode, "patch" => "9", "dry_run" => true]));
     if (str_contains($dry, "ЗАПИСУЄТЬСЯ") || ! str_contains($dry, "Нічого не записується")) {
-        fwrite(STDERR, "режим $mode: тестовий прогін описано як запис: $dry\n"); exit(1);
+        fwrite(STDERR, "режим {$mode}: тестовий прогін описано як запис: {$dry}\n"); exit(1);
     }
 }
 ' "$ROOT/lib/autoload.php" || fail 'пояснення плану розійшлося з тим, що виконається'
