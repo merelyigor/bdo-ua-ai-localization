@@ -148,7 +148,22 @@ final class Snapshot
             }
         }
 
-        return ['name' => $want, 'runtime' => $runtime, 'params' => $params];
+        // ЧИ ВВІМКНЕНІ РОЗДУМИ · окремий ФАКТ, а не здогад за наявністю тексту.
+        // Сторінка мала лише `stream.thinking` і, не знайшовши тексту, писала
+        // «міркування вимкнено» · тобто відсутність даних підписувала як
+        // вимкнену настройку. Власник 2026-09-17 побачив цей підпис при
+        // увімкнених роздумах, які попередні ролі справно видавали.
+        $think = null;
+        try {
+            $config = json_decode((string) @file_get_contents(dirname(__DIR__, 2).'/config/roles.json'), true);
+            if (is_array($config)) {
+                $think = (bool) (\Bdo\Translate\Model\ModelSettings::resolve($this->stateDir, $config, [])['think'] ?? false);
+            }
+        } catch (\Throwable) {
+            $think = null;   // не знаємо · сторінка скаже саме це, а не «вимкнено»
+        }
+
+        return ['name' => $want, 'runtime' => $runtime, 'params' => $params, 'think' => $think];
     }
 
     /** Скільки рядків пачки показувати в блоці вердиктів. */

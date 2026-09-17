@@ -444,6 +444,14 @@ if (($dry["env"]["BDO_DRY_RUN"] ?? "") !== "1") {
 if (isset($live["env"]["BDO_DRY_RUN"])) {
     fwrite(STDERR, "бойовий прогін отримав BDO_DRY_RUN · записувати не буде\n"); exit(1);
 }
+// ДОЗВІЛ ПРОГОВОРЮЄТЬСЯ. Мовчання більше не означає «пиши»: саме мовчазний
+// дефолт дав запис 43 рядків у PROD із тестової пачки (2026-09-17).
+if (($live["env"]["BDO_WRITE"] ?? "") !== "1") {
+    fwrite(STDERR, "бойовий прогін не сказав BDO_WRITE · пачка народиться без дозволу на запис\n"); exit(1);
+}
+if (isset($dry["env"]["BDO_WRITE"])) {
+    fwrite(STDERR, "тестовий прогін отримав дозвіл на запис\n"); exit(1);
+}
 // Кроки мусять бути ТІ САМІ: різниця рівно в змінній, інакше тестовий прогін
 // перестає перевіряти бойовий шлях.
 if (json_encode($dry["steps"]) !== json_encode($live["steps"])) {
@@ -453,11 +461,13 @@ if ($dry["needs_confirm"] !== false || $live["needs_confirm"] !== true) {
     fwrite(STDERR, "підтвердження PROD переплутане між тестовим і бойовим\n"); exit(1);
 }
 ' || fail 'план тестового прогону неправильний'
-# Різниця мусить бути РІВНО в одному аргументі кроку commit.
-grep -Fq "if (getenv('BDO_DRY_RUN') !== '1') \$args[] = '--write';" "$ROOT/lib/Cli/Command/Run/RunDriveCommand.php" \
-    || fail 'драйвер не знає BDO_DRY_RUN · тестовий прогін усе одно запише в API'
-grep -Fq 'BDO_DRY_RUN' "$ROOT/lib/Cli/Command/Run/RunDriveCommand.php" \
-    || fail 'тестовий прогін не знімає --write'
+# Різниця мусить бути РІВНО в одному аргументі кроку commit, і рішення про нього
+# драйвер бере з МАНІФЕСТА, а не зі свого оточення: оточення живе рівно один
+# процес, а пачку продовжують іншим (інцидент 2026-09-17).
+grep -Fq "if ((\$this->manifest()['write'] ?? false) === true) \$args[] = '--write';" "$ROOT/lib/Cli/Command/Run/RunDriveCommand.php" \
+    || fail 'драйвер бере дозвіл на запис не з маніфеста пачки'
+grep -Fq "'write' => getenv('BDO_DRY_RUN') === '1' ? false : (getenv('BDO_WRITE') === '1')" "$ROOT/lib/Batch/Workspace.php" \
+    || fail 'маніфест пачки не фіксує дозвіл на запис у момент створення'
 # ЧИСТИМО ПОКАЗ, А НЕ ДАНІ: `keep` і placeholders тримаються саме на цих
 # тегах, тому їхнє прибирання в даних зламало б перевірки перед записом.
 grep -Fq 'ЦЕ ПОКАЗ, А НЕ ДАНІ' "$ROOT/web/app.js" \

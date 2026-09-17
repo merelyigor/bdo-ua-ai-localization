@@ -97,10 +97,14 @@ TWENTY_ROW_FILE="$TMP/rows-20.json"
     foreach ($ids as $id) if (! preg_match("/\A[0-9a-f]{64}\z/", $id)) exit(1);
 ' "$TWENTY_ROW_FILE" || fail 'D151 fixture is not exactly 20 unique 64-hex rows'
 
+# Четвертий аргумент · ДОЗВІЛ НА ЗАПИС, і він дається в момент СТВОРЕННЯ пачки,
+# бо саме там його тепер записує `Workspace::create`. Оточення драйвера на це
+# більше не впливає: інакше повторний запуск без `BDO_DRY_RUN` знову став би
+# бойовим (інцидент 2026-09-17).
 make_workspace() {
-    local state="$1" mode="$2" batch_state="$3"
+    local state="$1" mode="$2" batch_state="$3" write="${4:-0}"
     mkdir -p "$state"
-    "$REAL_PHP" -r '
+    BDO_WRITE="$write" "$REAL_PHP" -r '
         require $argv[3];
         $w=Bdo\Translate\Batch\Workspace::create($argv[1], Bdo\Translate\Batch\RowSet::fromFile($argv[2]), "20260910_120000");
         copy($argv[2], $w->path("rows.json"));
@@ -162,14 +166,17 @@ done
 assert_same_output "$TMP/sh-child.out" "$TMP/php-child.out"
 
 make_dry_workspace() {
-    local state="$1"
-    make_workspace "$state" patch ready_to_commit
+    local state="$1" write="${2:-0}"
+    make_workspace "$state" patch ready_to_commit "$write"
     local batch_dir
     batch_dir="$(find "$state/batches" -mindepth 1 -maxdepth 1 -type d -print -quit)"
     printf '%s\n' '[{"identity_hash":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","text":"Прогін"}]' >"$batch_dir/final-candidate.json"
     printf '%s\n' '[{"identity_hash":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","status":"PASS","severity":"none","issue":"","fix":""}]' >"$batch_dir/final-verdicts.json"
     printf 'local\n' >"$state/run-target"
 }
+
+# Пачка, якій запис ДОЗВОЛЕНО: рівно те, що робить кнопка «почати прогін».
+make_write_workspace() { make_dry_workspace "$1" 1; }
 
 make_d151_workspace() {
     local state="$1"
@@ -210,7 +217,8 @@ run_dry_side() {
     printf '%s\n' "$code"
 }
 
-# ПРАВИЛО: BDO_DRY_RUN=1 знімає рівно --write і не робить translation POST.
+# ПРАВИЛО: пачка без дозволу на запис не робить translation POST · навіть коли
+# сам драйвер бачить BDO_DRY_RUN=1, рішення вже лежить у маніфесті.
 # САБОТАЖ: примусовий --write має дати captured localhost POST або різний стан.
 : >"$REQUEST_LOG"
 for side in sh php; do
@@ -286,11 +294,11 @@ run_write_side() {
 # мають однаковий GET /me -> POST /translations sequence і verified summary.
 # САБОТАЖ: інший channel/body або POST поза localhost має зробити proof red.
 : >"$REQUEST_LOG"
-make_dry_workspace "$TMP/sh-write"
+make_write_workspace "$TMP/sh-write"
 write_sh_code="$(run_write_side sh "$TMP/sh-write" "$TMP/sh-write.out" "$TMP/sh-write.err")"
 cp "$REQUEST_LOG" "$TMP/write.sh.requests"
 : >"$REQUEST_LOG"
-make_dry_workspace "$TMP/php-write"
+make_write_workspace "$TMP/php-write"
 write_php_code="$(run_write_side php "$TMP/php-write" "$TMP/php-write.out" "$TMP/php-write.err")"
 cp "$REQUEST_LOG" "$TMP/write.php.requests"
 test "$write_sh_code" = 0 && test "$write_php_code" = 0 || fail "localhost write codes: $write_sh_code/$write_php_code"
@@ -300,6 +308,22 @@ grep -Fq '"uri":"/translations"' "$TMP/write.php.requests" || fail "normal write
 grep -Fq '"content_type":"application/json"' "$TMP/write.php.requests" || fail 'normal write omitted Content-Type'
 grep -Fq '"idempotency_present":true' "$TMP/write.php.requests" || fail 'normal write omitted Idempotency-Key'
 assert_same_output "$TMP/sh-write.out" "$TMP/php-write.out"
+
+# ПРАВИЛО (інцидент 2026-09-17): пачку, створену БЕЗ дозволу на запис, не можна
+# зробити бойовою, продовживши її з іншого процесу. Саме так 43 рядки пішли в
+# PROD: драйвер питав `BDO_DRY_RUN` у свого оточення, а в процесі продовження її
+# просто не було. Тут той самий сценарій і має закінчитись НУЛЕМ POST.
+# САБОТАЖ: повернути `getenv('BDO_DRY_RUN') !== '1'` у RunDriveCommand · POST зʼявиться.
+: >"$REQUEST_LOG"
+make_dry_workspace "$TMP/continued-without-permission"
+continued_code="$(run_write_side php "$TMP/continued-without-permission" "$TMP/continued.out" "$TMP/continued.err")"
+test "$continued_code" = 0 || fail "continued-without-permission code=$continued_code: $(cat "$TMP/continued.err")"
+grep -Fq '"kind":"complete"' "$TMP/continued.out" || fail 'continued-without-permission did not complete'
+if grep -Fq '"method":"POST"' "$REQUEST_LOG"; then
+    fail "пачка без дозволу записала в API при продовженні: $(cat "$REQUEST_LOG")"
+fi
+grep -Fq 'пачка створена без дозволу на запис' "$TMP/continued.err" \
+    || fail 'драйвер не сказав уголос, що запису не буде'
 
 run_goal_unavailable_side() {
     local side="$1" state="$2" out="$3" err="$4"
@@ -743,7 +767,7 @@ run_blocker_case summary-failure verified
 # САБОТАЖ: prune or emit success after blocked completion, and the post-write case fails.
 for side in sh php; do
     state="$TMP/$side-post-write-summary"
-    make_dry_workspace "$state"
+    make_write_workspace "$state"
     mkdir -p "$state/run-summary.json"
     : >"$REQUEST_LOG"
     code="$(run_write_side "$side" "$state" "$state.out" "$state.err")"

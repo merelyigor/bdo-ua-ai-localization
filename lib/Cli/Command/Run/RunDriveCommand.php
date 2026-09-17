@@ -455,9 +455,52 @@ final class RunDriveCommand implements Command, \Bdo\Translate\Cli\CommandHelp
             return $this->child($output, 'healing', 'translation-repair', $this->workspace->path('heal-repair-payload.json'), $fixes);
         }
         copy($this->workspace->path('healed.json'), $this->workspace->path('final-candidate.json'));
-        copy($this->workspace->path('verdicts.json'), $this->workspace->path('final-verdicts.json'));
+        $this->refreshMechanicalVerdicts();
 
         return $this->judgeOrCommit($output);
+    }
+
+    /**
+     * Вирок мусить описувати ТОЙ текст, який поїде далі.
+     *
+     * `pre-verdicts.json` складає механіку ДО ремонту (`MechanicalSplitCommand`
+     * читає `clean.json`), а `final-candidate.json` після ремонту вже інший.
+     * Досі сюди просто копіювався `verdicts.json`, тому полагоджений рядок ніс
+     * ярлик неіснуючого дефекту: 2026-09-17 власник побачив на сторінці
+     * «переносів рядка 2 замість 3» під текстом, у якому їх рівно 3. Той самий
+     * файл читає суддя, тож брехало не лише око.
+     *
+     * Маршрут це не змінює: `ChannelRouter` рахує механіку на ФІНАЛЬНОМУ тексті
+     * окремо. Тут рівно одне · вирок перестає описувати вчорашній текст.
+     */
+    private function refreshMechanicalVerdicts(): void
+    {
+        $prefix = 'механічний дефект: ';
+        $verdicts = json_decode((string) file_get_contents($this->workspace->path('verdicts.json')), true, 512, JSON_THROW_ON_ERROR);
+        $rows = RowSet::fromFile($this->workspace->path('rows.json'));
+        $healed = \Bdo\Translate\Batch\Candidate::fromFile($this->workspace->path('healed.json'));
+        $refreshed = [];
+        foreach (is_array($verdicts) ? $verdicts : [] as $verdict) {
+            if (! is_array($verdict) || ! str_starts_with((string) ($verdict['issue'] ?? ''), $prefix)) {
+                $refreshed[] = $verdict;
+                continue;
+            }
+            $hash = (string) ($verdict['identity_hash'] ?? '');
+            $text = $healed->has($hash) ? $healed->text($hash) : '';
+            if (trim($text) === '') {
+                $refreshed[] = $verdict;
+                continue;
+            }
+            $defects = \Bdo\Translate\Quality\Defects::inTranslation($rows->getOrEmpty($hash), $text);
+            // Дефектів більше немає · ремонт спрацював. Статус лишається тим
+            // самим навмисно: повної перевірки якості цей рядок не проходив,
+            // і підвищувати його самим лише фактом ремонту було б рішенням.
+            $verdict['issue'] = $defects === []
+                ? 'механічний дефект виправлено ремонтом · повної перевірки якості рядок не проходив'
+                : $prefix.implode('; ', $defects);
+            $refreshed[] = $verdict;
+        }
+        $this->write($this->workspace->path('final-verdicts.json'), json_encode($refreshed, JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR)."\n");
     }
 
     private function awaitingControlQa(Output $output): int
@@ -565,8 +608,14 @@ final class RunDriveCommand implements Command, \Bdo\Translate\Cli\CommandHelp
         $args = [$this->workspace->path('rows.json'), $this->workspace->path('final-candidate.json'), $this->workspace->path('final-verdicts.json'), '--channel', $channel, '--idempotency-key-prefix', $key];
         if (is_file($this->workspace->path('judge-verdicts.json'))) { $args[] = '--judge'; $args[] = $this->workspace->path('judge-verdicts.json'); }
         if ($finalValidate !== '') { $args[] = '--api-rejected'; $args[] = $finalValidate; }
-        if (getenv('BDO_DRY_RUN') !== '1') $args[] = '--write';
-        else $output->stderr("ТЕСТОВИЙ ПРОГІН: запису в API не буде (BDO_DRY_RUN=1)\n");
+        // ДОЗВІЛ НА ЗАПИС БЕРЕТЬСЯ З МАНІФЕСТА ПАЧКИ, А НЕ З ОТОЧЕННЯ ЦЬОГО ПРОЦЕСУ.
+        // Раніше тут стояло `getenv('BDO_DRY_RUN') !== '1'`: будь-який процес без
+        // цієї змінної вважав себе бойовим · тестову пачку продовжили з іншого
+        // процесу, і вона записала 43 рядки в PROD (2026-09-17, 20260917_024429).
+        // Маніфест без поля `write` означає ЗАБОРОНУ: старі пачки дописуються
+        // рішенням власника, а не мовчазним дефолтом.
+        if (($this->manifest()['write'] ?? false) === true) $args[] = '--write';
+        else $output->stderr("ЗАПИСУ В API НЕ БУДЕ: пачка створена без дозволу на запис\n");
         if ($state === 'ready_to_commit') $this->transition('committing');
         $started = microtime(true);
         $report = $this->captureMerged(new BatchCommitCommand(), $args);
