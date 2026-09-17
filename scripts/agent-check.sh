@@ -283,6 +283,94 @@ touched_run_test() {
     esac
 }
 
+# ТЕСТИ ЙДУТЬ ПАРАЛЕЛЬНО · рішення власника 2026-09-18.
+#
+# Причина проста й вимірювана: тести незалежні один від одного (кожен робить
+# власний `mktemp -d` і власний порт), а машина має десять ядер. Послідовний
+# прогін тримав їх у черзі по одному й з'їдав хвилини там, де потрібні секунди,
+# і саме це відбирало час у розробки.
+#
+# Вивід НЕ ЗМІШУЄТЬСЯ: кожен тест пише у свій файл, і результати друкуються в
+# тому ж порядку, у якому їх назвала карта. Інакше паралельність купувала б
+# швидкість ціною нечитабельного журналу.
+#
+# Кількість потоків береться з машини, але лишається керованою:
+# `BDO_GATE_JOBS=1` повертає стару послідовну поведінку, коли треба зловити
+# тест, який не терпить сусідів.
+gate_jobs() {
+    local jobs="${BDO_GATE_JOBS:-}"
+    if [ -z "$jobs" ]; then
+        if have sysctl; then
+            jobs="$(sysctl -n hw.ncpu 2>/dev/null || printf '4')"
+        elif have nproc; then
+            jobs="$(nproc 2>/dev/null || printf '4')"
+        else
+            jobs=4
+        fi
+    fi
+    case "$jobs" in ''|*[!0-9]*) jobs=4 ;; esac
+    [ "$jobs" -ge 1 ] || jobs=1
+    printf '%s\n' "$jobs"
+}
+
+touched_test_command() {
+    local file="$1"
+    case "$file" in
+        *.php) php "$file" ;;
+        *.sh) bash "$file" ;;
+        *.ps1) pwsh -File "$file" ;;
+        *) printf 'карта назвала тест непідтримуваного типу: %s\n' "$file" >&2; return 2 ;;
+    esac
+}
+
+touched_run_tests() {
+    local list="$1" jobs dir total=0 batch=0 index failed=0 file code
+    if [ ! -s "$list" ]; then
+        return 0
+    fi
+    jobs="$(gate_jobs)"
+    if [ "$jobs" -le 1 ]; then
+        while IFS= read -r file; do
+            test -n "$file" || continue
+            touched_run_test "$file"
+        done < "$list"
+        return 0
+    fi
+    dir="$(mktemp -d)"
+    while IFS= read -r file; do
+        test -n "$file" || continue
+        total=$((total + 1))
+        printf '%s\n' "$file" > "$dir/$total.name"
+        (
+            touched_test_command "$file" > "$dir/$total.out" 2>&1
+            printf '%s\n' "$?" > "$dir/$total.code"
+        ) &
+        batch=$((batch + 1))
+        if [ "$batch" -ge "$jobs" ]; then
+            wait
+            batch=0
+        fi
+    done < "$list"
+    wait
+    index=1
+    while [ "$index" -le "$total" ]; do
+        file="$(cat "$dir/$index.name")"
+        code="$(cat "$dir/$index.code" 2>/dev/null || printf '1')"
+        printf '   $ %s\n' "$file"
+        if [ -s "$dir/$index.out" ]; then
+            cat "$dir/$index.out"
+        fi
+        if [ "$code" != 0 ]; then
+            printf 'FAIL: %s завершився з кодом %s\n' "$file" "$code" >&2
+            failed=$((failed + 1))
+        fi
+        index=$((index + 1))
+    done
+    rm -rf "$dir"
+    note "тестів: $total, потоків: $jobs"
+    test "$failed" -eq 0 || fail "провалених тестів: $failed"
+}
+
 run_gate_profile() {
     case "$1" in
         docs) check_docs ;;
@@ -335,15 +423,21 @@ check_touched() {
         note 'plan-only: виконання перевірок пропущено навмисно тестом карти'
         return 0
     fi
+    # Профілі й лінти лишаються послідовними · вони швидкі й ходять спільним
+    # станом. Паралельниться рівно те, що цього варте: тести.
+    local tests
+    tests="$(mktemp)"
     while IFS='|' read -r kind target reason; do
         test -n "$kind" || continue
         case "$kind" in
             profile) run_gate_profile "$target" ;;
             lint) touched_lint "$target" ;;
-            test) touched_run_test "$target" ;;
+            test) printf '%s\n' "$target" >> "$tests" ;;
             *) fail "карта повернула невідомий тип: $kind" ;;
         esac
     done < "$plan"
+    touched_run_tests "$tests"
+    rm -f "$tests"
 }
 
 public_files() {

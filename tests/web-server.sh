@@ -435,6 +435,21 @@ status="$(web --status)" || fail "--status упав: $status"
 grep -q "порт $PORT" <<<"$status" || fail "--status не назвав порт: $status"
 grep -q '/api/health -> 200' <<<"$status" || fail "--status не перевіряє живу відповідь: $status"
 
+# ЗАПИС ЗНИК, А СЕРВЕР ЖИВИЙ · найчастіша скарга власника (2026-09-18).
+# `state/web.json` прибирає чистка стану, видалення сесії або падіння без
+# штатного завершення, а сам сервер далі слухає порт і віддає сторінку. Раніше
+# `--status` у цьому разі казав «Сервер не запущено», і `BDO.app` показував
+# власникові вікно «посилання на сторінку не знайшлося» · при тому, що
+# сторінка в браузері працювала.
+# САБОТАЖ: прибрати відновлення в `WebCommand::status` · цей блок червоніє.
+mv "$BDO_STATE_DIR/web.json" "$BDO_STATE_DIR/web.json.hidden" || fail 'не вдалося сховати web.json'
+lost="$(web --status)" || fail "--status упав без web.json: $lost"
+grep -q "порт $PORT" <<<"$lost" \
+    || fail "--status не впізнав живий сервер без web.json: $lost"
+grep -q "t=$TOKEN" <<<"$lost" \
+    || fail "--status віддав не той токен без web.json · сторінка відхилить посилання: $lost"
+mv "$BDO_STATE_DIR/web.json.hidden" "$BDO_STATE_DIR/web.json" || fail 'не вдалося повернути web.json'
+
 web --stop >/dev/null || fail '--stop упав'
 test ! -e "$BDO_STATE_DIR/web.json" || fail '--stop не прибрав state/web.json'
 # ГОЛОВНА перевірка зупинки · порт вільний, а не «процес зник». Воркери

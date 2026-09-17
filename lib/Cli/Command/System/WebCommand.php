@@ -52,7 +52,7 @@ final class WebCommand implements Command, \Bdo\Translate\Cli\CommandHelp
 
         $first = (string) ($arguments[0] ?? '');
         if ($first === '--status') {
-            return $this->status($info, $output);
+            return $this->status($info, $tokenFile, $output);
         }
         if ($first === '--stop') {
             return $this->stop($info, $output);
@@ -199,9 +199,27 @@ final class WebCommand implements Command, \Bdo\Translate\Cli\CommandHelp
         return 0;
     }
 
-    private function status(string $info, Output $output): int
+    private function status(string $info, string $tokenFile, Output $output): int
     {
         if (! is_file($info) || filesize($info) === 0) {
+            // ЗАПИС МІГ ЗНИКНУТИ, А СЕРВЕР ЛИШИТИСЬ. `state/web.json` прибирає
+            // і чистка стану, і видалення сесії, і падіння без штатного
+            // завершення · сам сервер при цьому далі слухає порт і віддає
+            // сторінку. Власник 2026-09-18 бачив саме це: `BDO.app` казав
+            // «посилання не знайшлося», а сторінка в браузері працювала.
+            //
+            // Тому перед вироком питаємо ПОРТ: `/api/ping` каже, що там наш
+            // сервер, а `/api/health` із нашим токеном · що це той самий
+            // примірник, а не чужий із іншим токеном. Обидві умови разом, бо
+            // одного `ping` мало: він однаковий у будь-якого нашого сервера.
+            $port = (string) (getenv('BDO_WEB_PORT') ?: (getenv('BDO_WEB_DEFAULT_PORT') ?: '7654'));
+            $token = is_file($tokenFile) ? trim((string) @file_get_contents($tokenFile)) : '';
+            if ($token !== '' && $this->oursOnPort($port) && $this->healthCode($port, $token) === '200') {
+                $output->stdout("Сервер працює: порт {$port}, /api/health -> 200 (запис state/web.json загублено)\n");
+                $output->stdout("Інтерфейс: http://127.0.0.1:{$port}/?t={$token}\n");
+
+                return 0;
+            }
             $output->stdout("Сервер не запущено (немає state/web.json).\n");
 
             return 0;
