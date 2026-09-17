@@ -73,13 +73,13 @@ grep -Eq 'у модерацію: 1' <<<"$out" || fail 'рядок без verdict
 # --- 5. Бенчмарка не має права мовчки міряти на замалій фікстурі ------------
 # Той самий урок з іншого боку: на payload із 5 рядків `./bdo bench` показав
 # 6 із 6 повних відповідей у моделі, яка вбивала живі пачки (D82).
-grep -Fq 'BDO_BENCH_MIN_ROWS' "$ROOT/cli/audit/model-bench.sh" \
+grep -Fq 'BDO_BENCH_MIN_ROWS' "$ROOT/lib/Cli/Command/Audit/ModelBenchCommand.php" \
     || fail 'бенчмарка не перевіряє розміру фікстури · вона знову буде сліпа до неповної відповіді (D82)'
 mkdir -p "$TMP/tiny/bench-payloads"
 php -r 'file_put_contents($argv[1], json_encode([["identity_hash"=>"aa","source_text"=>"x"]]));' \
     "$TMP/tiny/bench-payloads/qa-payload.json"
 set +e
-tiny_out="$(BDO_STATE_DIR="$TMP/tiny" bash "$ROOT/cli/audit/model-bench.sh" будь-яка-модель 2>&1)"
+tiny_out="$(BDO_STATE_DIR="$TMP/tiny" "$ROOT/bdo" bench будь-яка-модель 2>&1)"
 tiny_code=$?
 set -e
 test "$tiny_code" != 0 || fail "бенчмарка погодилась працювати на фікстурі з 1 рядка: $tiny_out"

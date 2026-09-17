@@ -94,7 +94,8 @@ SERVER=''
 grep -Fq 'attempts->record' "$ROOT/lib/Api/TranslationWriter.php" \
     || fail 'відмова API не пише в журнал спроб'
 grep -Fq 'attempts->record' "$ROOT/lib/Cli/Command/Batch/BatchCommitCommand.php" || fail 'збій на коміті не пише в журнал спроб'
-grep -Fq 'RowAttempts($argv[2]))->clear()' "$ROOT/cli/audit/quarantine-report.sh" || fail '--clear не обнуляє журнал спроб'
+grep -Fq '(new RowAttempts($stateDir))->clear();' "$ROOT/lib/Cli/Command/Audit/QuarantineReportCommand.php" \
+    || fail '--clear не обнуляє журнал спроб'
 
 # 3. Ціль прогону враховує виключені рядки: сервер каже «лишилось 3», усі три
 #    вичерпали спроби · це `goal_complete`, а не вічний `continue_run`.

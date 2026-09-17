@@ -5,6 +5,14 @@ declare(strict_types=1);
 namespace Bdo\Translate\Cli;
 
 use Bdo\Translate\Cli\Command\Api\PatchesOverviewCommand;
+use Bdo\Translate\Cli\Command\Audit\GlossarySuspectsCommand;
+use Bdo\Translate\Cli\Command\Audit\JudgeReportCommand;
+use Bdo\Translate\Cli\Command\Audit\ModelBenchCommand;
+use Bdo\Translate\Cli\Command\Audit\ModelIncidentsCommand;
+use Bdo\Translate\Cli\Command\Audit\ModelRunCommand;
+use Bdo\Translate\Cli\Command\Audit\ProjectReviewCommand;
+use Bdo\Translate\Cli\Command\Audit\QuarantineReportCommand;
+use Bdo\Translate\Cli\Command\Audit\TimingReportCommand;
 use Bdo\Translate\Cli\Command\Api\PatchInfoCommand;
 use Bdo\Translate\Cli\Command\Api\RowContextCommand;
 use Bdo\Translate\Cli\Command\Api\ShowRowsCommand;
@@ -185,6 +193,14 @@ final class Kernel
             'mac-app' => new MacAppCommand(),
             'write' => new WriteTranslationsCommand(),
             'moderation' => new ModerationCommand(),
+            'timing-report' => new TimingReportCommand(),
+            'judge-report' => new JudgeReportCommand(),
+            'model-incidents' => new ModelIncidentsCommand(),
+            'quarantine-report' => new QuarantineReportCommand(),
+            'project-review' => new ProjectReviewCommand(),
+            'glossary-suspects' => new GlossarySuspectsCommand(),
+            'model-run' => new ModelRunCommand(),
+            'model-bench' => new ModelBenchCommand(),
             default => null,
         };
     }

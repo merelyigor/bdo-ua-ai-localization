@@ -114,13 +114,17 @@ jq -e '.reasons | keys | any(.[]; contains("русизм"))' "$FIX_STATE/fix-pol
 #    рухається» і сказав «сесія мовчить». Насправді крок двічі отримав відмову ·
 #    ні стан пачки, ні лічильники цього не показують. Тепер таке видно в журналі
 #    викликів моделі, і в нього є своя команда.
-test -x "$ROOT/cli/audit/model-run.sh" || fail 'немає інструмента для дебагу прогону'
-grep -Fq 'model-calls.jsonl' "$ROOT/cli/audit/model-run.sh" \
+#    Інструмент лишився той самий, місце · інше: порт 2026-09-17 переніс тіло з
+#    `cli/audit/model-run.sh` у PHP-команду, тому перевіряється КОМАНДА, а не
+#    файл скрипта.
+AUDIT_PHP="$ROOT/lib/Cli/Command/Audit/ModelRunCommand.php"
+test -f "$AUDIT_PHP" || fail 'немає інструмента для дебагу прогону'
+grep -Fq 'model-calls.jsonl' "$AUDIT_PHP" \
     || fail 'аудит прогону не читає журнал викликів моделі'
 grep -Fq '"models-run"' "$ROOT/cli/command-registry.json" || fail 'команда models-run не в реєстрі'
-php -r 'require "lib/autoload.php"; exit(Bdo\Translate\Cli\Router::targetFor(["models-run"]) === "bash:cli/audit/model-run.sh" ? 0 : 1);' \
+php -r 'require "lib/autoload.php"; exit(Bdo\Translate\Cli\Router::targetFor(["models-run"]) === "php:model-run" ? 0 : 1);' \
     || fail 'dispatcher не знає команди models-run'
-grep -Fq 'Збої (' "$ROOT/cli/audit/model-run.sh" || fail 'аудит прогону не показує збоїв окремо'
+grep -Fq 'Збої (' "$AUDIT_PHP" || fail 'аудит прогону не показує збоїв окремо'
 
 # 7. Регістр затвердженого терміна виправляється КОДОМ, а не людиною.
 #    Заміряно на пачці 2026-08-28 (патч 7, `knowledge`): з 11 рядків у модерації

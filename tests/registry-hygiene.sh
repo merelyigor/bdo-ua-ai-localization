@@ -54,9 +54,9 @@ for needle in './bdo review' './bdo audit' './bdo timer' 'plans/DEFECTS.md' 'FLO
 done
 
 # 5. Команда огляду існує і зареєстрована · інакше чекліст радить те, чого немає.
-test -x "$ROOT/cli/audit/project-review.sh" || fail 'немає cli/audit/project-review.sh'
+test -f "$ROOT/lib/Cli/Command/Audit/ProjectReviewCommand.php" || fail 'немає команди review'
 grep -Fq '"review"' "$ROOT/cli/command-registry.json" || fail 'команда review не в реєстрі команд'
-php -r 'require "lib/autoload.php"; exit(Bdo\Translate\Cli\Router::targetFor(["review"]) === "bash:cli/audit/project-review.sh" ? 0 : 1);' \
+php -r 'require "lib/autoload.php"; exit(Bdo\Translate\Cli\Router::targetFor(["review"]) === "php:project-review" ? 0 : 1);' \
     || fail 'dispatcher не знає команди review'
 
 # 6. Правило ведення реєстру живе в правилах, а не лише в голові агента.
@@ -80,7 +80,7 @@ grep -Fq 'exit 2' "$ROOT/cli/system/ide-inspect.sh" || fail 'inspect мовчк�
 work="$(mktemp -d)"
 mkdir -p "$work/docs/plans/active" "$work/state"
 cp "$ROOT/docs/plans/README.md" "$ROOT/docs/plans/DEFECTS.md" "$ROOT/docs/plans/BACKLOG.md" "$work/docs/plans/"
-out="$(BDO_STATE_DIR="$work/state" bash "$ROOT/cli/audit/project-review.sh" 2>&1)" \
+out="$(BDO_STATE_DIR="$work/state" "$ROOT/bdo" review 2>&1)" \
     || fail "екран стану впав при порожній теці active/: $out"
 grep -q 'Дефекти' <<<"$out" \
     || fail "екран стану обірвався до розділу дефектів при порожній active/: $out"
