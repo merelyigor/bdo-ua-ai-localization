@@ -75,7 +75,74 @@ final class Snapshot
             'stream' => $this->stream($fullStream),
             'run' => $this->run(),
             'running' => $this->running(),
+            'model' => $this->modelParams(),
         ];
+    }
+
+    /**
+     * ЧИННІ параметри моделі · те, з чим вона справді працює.
+     *
+     * Показувати самі лише значення рантайму було б неправдою: набір частину з
+     * них ПЕРЕКРИВАЄ у запиті (`temperature`, `num_ctx`), і власник у хедері
+     * побачив би не те, що поїхало в модель. Тому кожен рядок несе ще й
+     * джерело · «модель» або «набір», і розбіжність видно одразу.
+     *
+     * У рантайм звідси не ходимо: параметри вже лежать у каталозі стану, який
+     * оновлює команда переліку. Межа сервера сторінки лишається недоторканою.
+     *
+     * @return array<string,mixed>
+     */
+    private function modelParams(): array
+    {
+        $catalog = $this->readJson('model-catalog.json');
+        $selection = $this->readJson('model-selection.json');
+        $want = (string) ($selection['global']['model'] ?? '');
+        $runtime = (string) ($selection['global']['runtime'] ?? '');
+        $declared = [];
+        foreach ($catalog['models'] ?? [] as $entry) {
+            if (! is_array($entry)) {
+                continue;
+            }
+            if ($want === '' || (string) ($entry['model'] ?? '') === $want) {
+                $want = (string) ($entry['model'] ?? '');
+                $runtime = $runtime !== '' ? $runtime : (string) ($entry['runtime'] ?? '');
+                $declared = is_array($entry['parameters'] ?? null) ? $entry['parameters'] : [];
+                break;
+            }
+        }
+        if ($want === '') {
+            return ['name' => '', 'runtime' => '', 'params' => []];
+        }
+        $params = [];
+        foreach ($declared as $key => $value) {
+            $params[] = ['key' => (string) $key, 'value' => (string) $value, 'source' => 'модель'];
+        }
+        // Перекриття набору · рівно ті, що йдуть в `options` запиту.
+        $config = json_decode((string) @file_get_contents(dirname(__DIR__, 2).'/config/roles.json'), true);
+        if (is_array($config)) {
+            $ours = [];
+            foreach (['temperature', 'num_ctx', 'num_predict'] as $key) {
+                $value = $config['roles']['translation-worker'][$key] ?? $config[$key] ?? null;
+                if ($value !== null) {
+                    $ours[$key] = (string) $value;
+                }
+            }
+            foreach ($ours as $key => $value) {
+                $found = false;
+                foreach ($params as $index => $row) {
+                    if ($row['key'] === $key) {
+                        $params[$index] = ['key' => $key, 'value' => $value, 'source' => 'набір'];
+                        $found = true;
+                        break;
+                    }
+                }
+                if (! $found) {
+                    $params[] = ['key' => $key, 'value' => $value, 'source' => 'набір'];
+                }
+            }
+        }
+
+        return ['name' => $want, 'runtime' => $runtime, 'params' => $params];
     }
 
     /** Скільки рядків пачки показувати в блоці вердиктів. */

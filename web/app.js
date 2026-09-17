@@ -314,6 +314,7 @@
       + '<span class="brand-mark" aria-hidden="true">' + icon('brand') + '</span>'
       + '<span class="brand-copy"><strong>BDO · AI Localization</strong><small>Українська локалізація. Разом.</small></span>'
       + '</a><div class="nav-links">' + links + '</div>'
+      + '<span class="nav-model" id="navModel"></span>'
       + '<span class="sp"><span class="dot" id="dot"></span><span id="link">зʼєднання…</span></span>'
       + (current === '/' ? '<div class="nav-run-context" id="navRunContext" aria-hidden="true">'
         + '<div class="nav-run-summary">'
@@ -325,6 +326,30 @@
         + '<button id="navContinueBtn" class="btn-primary" type="button" style="display:none">продовжити пачку</button>'
         + '<a href="/start" id="navStartLink" class="as-button">новий прогін →</a>'
         + '</div></div>' : '');
+  }
+
+  // ЧИННІ ПАРАМЕТРИ МОДЕЛІ В ХЕДЕРІ · вимога власника 2026-09-17: бачити, з
+  // чим модель справді працює, а не здогадуватись. Джерело кожного значення
+  // названо підказкою, бо «модель» і «набір» це різні речі: частину параметрів
+  // ми перекриваємо у запиті, і саме перекриття колись дало зациклення.
+  var lastModelKey = '';
+  function renderModelParams(model) {
+    var host = el('navModel');
+    if (!host) { return; }
+    var rows = (model && model.params) || [];
+    // СТОРОЖ КЛЮЧА · параметри міняються раз на прогін, а знімок приходить раз
+    // на секунду. Без нього хедер перемальовувався на КОЖНОМУ тику · саме це
+    // й спіймала перевірка `web-inner-html-guard`, написана вранці того самого
+    // дня проти цього класу. Перевірка зловила автора правила.
+    var key = JSON.stringify([model && model.name, rows]);
+    if (key === lastModelKey) { return; }
+    lastModelKey = key;
+    if (!rows.length) { host.innerHTML = ''; return; }
+    host.innerHTML = rows.map(function (p) {
+      return '<span class="nav-param" title="' + esc(p.key + ' = ' + p.value + ' · джерело: ' + p.source) + '">'
+        + '<b>' + esc(p.key) + '</b> ' + esc(p.value) + '</span>';
+    }).join('');
+    host.title = (model.name || '') + (model.runtime ? ' · ' + model.runtime : '');
   }
 
   // --- стан звʼязку людською мовою ----------------------------------------
@@ -942,6 +967,7 @@
     ensureToken: ensureToken,
     tokenRejected: tokenRejected,
     renderNav: renderNav,
+    renderModelParams: renderModelParams,
     setLink: setLink,
     live: live,
     follow: follow,

@@ -194,10 +194,21 @@ final class RuntimeModels
                 }
                 $name = (string) $entry['name'];
                 $thinking = false;
+                $parameters = [];
                 if ($includeCapabilities) {
                     $show = $this->requestJson('POST', $this->endpoint($settings).'/api/show', ['model' => $name], 'capabilities');
                     $capabilities = is_array($show['capabilities'] ?? null) ? $show['capabilities'] : [];
                     $thinking = in_array('thinking', $capabilities, true);
+                    // ПАРАМЕТРИ БЕРУТЬСЯ З ТІЄЇ САМОЇ ВІДПОВІДІ · зайвого запиту
+                    // немає. Рантайм віддає їх текстовим блоком «ключ значення»
+                    // рядками, як у Modelfile. Це те, що модель оголошує ПРО
+                    // СЕБЕ; чинним значенням воно стає лише після наших
+                    // перекриттів, тому мішати їх тут не можна.
+                    foreach (preg_split('/\R/', (string) ($show['parameters'] ?? '')) ?: [] as $line) {
+                        if (preg_match('/^\s*([a-z_]+)\s+(\S.*?)\s*$/i', $line, $m) === 1) {
+                            $parameters[$m[1]] = trim($m[2], "\"'");
+                        }
+                    }
                 }
                 $models[] = [
                     'runtime' => $runtime,
@@ -209,6 +220,7 @@ final class RuntimeModels
                         'thinking' => $thinking,
                         'thinking_reason' => $thinking ? 'Ollama capabilities' : 'Ollama не декларує thinking',
                         'thinking_levels' => $thinking ? 'not_tested' : 'unsupported',
+                        'parameters' => $parameters,
                     ] : []),
                 ];
             }

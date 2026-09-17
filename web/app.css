@@ -320,6 +320,11 @@ td.num,th.num{text-align:right;font-family:var(--mono)}
 .nav a:hover{background:var(--s1)}
 .nav a[aria-current="page"]{background:var(--acc-bg);color:var(--acc-tx);border-color:var(--bda);font-weight:500}
 .nav .sp{margin-left:auto;display:flex;align-items:center;gap:6px;font-size:12px;color:var(--tm)}
+/* Чинні параметри моделі · довідка, а не керування, тому найтихіший рівень
+   тексту зі шкали (11) і колір другорядного. Ключ виділено вагою, бо ока
+   шукає саме його; значення читається поруч. */
+.nav-model{margin-left:auto;display:flex;align-items:center;gap:10px;font-size:11px;color:var(--tm);flex-wrap:wrap;justify-content:flex-end}
+.nav-param b{font-weight:500;color:var(--ts)}
 .nav .badge{margin-left:6px;font-size:11px;opacity:.85}
 
 /* Заголовок екрана: назва зліва, підказка поруч · щоб було видно, де ти. */
