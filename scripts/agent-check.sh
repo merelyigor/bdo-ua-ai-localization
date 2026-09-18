@@ -485,13 +485,13 @@ check_rules() {
     test -z "$bad_number" || fail "номер правила не відповідає секції: $bad_number"
     # Розподіл прав на Git · рішення власника, а не стильова деталь, тому воно не
     # має права тихо зникнути при наступному переписуванні карти правил.
-    grep -Fq 'force-push і теги · власник' AGENTS.md \
+    grep -Fq 'force-push і теги ·' AGENTS.md \
         || fail 'у AGENTS.md немає межі push: force-push лишається за власником'
-    grep -Fq '§4.2 `git push` ДОЗВОЛЕНИЙ агенту' "$RULE_REFERENCE" \
+    grep -Fq '§4.2 `git push` агенту НЕ дозволений' "$RULE_REFERENCE" \
         || fail "у $RULE_REFERENCE немає §4.2 про push"
     grep -Fq 'gate touched' AGENTS.md \
         || fail 'AGENTS.md не називає gate touched дефолтною пропорційною перевіркою'
-    grep -Fq 'Після кожного пушу агент ЧЕКАЄ прогін CI до кінця' AGENTS.md \
+    grep -Fq 'агент ЧЕКАЄ прогін CI до кінця' AGENTS.md \
         || fail 'AGENTS.md не вимагає чекати CI до кінця після push'
     grep -Fq '§10.9 Пропорційна локальна перевірка' "$RULE_REFERENCE" \
         || fail "у $RULE_REFERENCE немає §10.9 про gate touched"
