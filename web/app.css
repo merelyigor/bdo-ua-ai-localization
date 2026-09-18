@@ -545,6 +545,13 @@ a.as-button:hover{background:var(--s2)}
 .hero #startLink{display:inline-flex;align-items:center;min-height:32px;padding:6px 12px;line-height:1.25;white-space:nowrap}
 /* Пошук у переліках: той самий вигляд поля, що й решта вводу. */
 .search{min-width:200px;flex:1 1 220px}
+/* СЕЛЕКТ У РЯДКУ ДІЙ · РОЗМІРОМ ПО ЗМІСТУ.
+   Базове `select{width:100%}` потрібне формам, де вибір стоїть окремим полем.
+   Але в `.bar` воно робить із вибору на три варіанти смугу на всю сторінку
+   (заміряно 2026-09-18 на черзі до людини: 1202 px із 1240) і заодно
+   відриває підпис «показувати» в кінець попереднього рядка · власник бачить
+   слово, яке ні до чого не належить. */
+.bar select{width:auto;flex:0 0 auto}
 /* Рядки, по яких можна пробігти очима: hover тримає звʼязок «де я». */
 .vrow{border-radius:8px;padding-left:8px;padding-right:8px}
 .vrow:hover{background:var(--s2)}
