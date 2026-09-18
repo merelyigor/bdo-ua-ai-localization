@@ -319,8 +319,14 @@
       + '<span class="brand-mark" aria-hidden="true">' + icon('brand') + '</span>'
       + '<span class="brand-copy"><strong>BDO · AI Localization</strong><small>Українська локалізація. Разом.</small></span>'
       + '</a><div class="nav-links">' + links + '</div>'
-      + '<span class="nav-model" id="navModel"></span>'
+      // ПОРЯДОК ТУТ Є ПРІОРИТЕТОМ ПЕРЕНОСУ. Шапка переноситься по словах, і
+      // першим на другий рядок іде ОСТАННІЙ елемент. Поки параметри моделі
+      // стояли перед станом звʼязку, при вужчому вікні вниз падав САМЕ стан ·
+      // і опинявся сам-один під брендом (власник показав це 2026-09-18).
+      // Стан звʼязку коротший і потрібніший, тому він лишається в першому
+      // рядку, а параметри за потреби переходять у другий, притиснуті вправо.
       + '<span class="sp"><span class="dot" id="dot"></span><span id="link">зʼєднання…</span></span>'
+      + '<span class="nav-model" id="navModel"></span>'
       + (current === '/' ? '<div class="nav-run-context" id="navRunContext" aria-hidden="true">'
         + '<div class="nav-run-summary">'
         + '<span class="pill" id="navRunEnv">—</span>'

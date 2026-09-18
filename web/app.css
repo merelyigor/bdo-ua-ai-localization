@@ -340,13 +340,19 @@ td.num,th.num{text-align:right;font-family:var(--mono)}
    двох рядків по 11px менша за висоту назви, тому шапка не росте. */
 .nav-model{display:grid;grid-template-rows:repeat(2,auto);grid-auto-flow:column;
   gap:1px 8px;font-size:11px;line-height:1.35;color:var(--tm);align-content:center;justify-content:end;
-  flex:0 1 auto;min-width:0;overflow:hidden;white-space:nowrap}
+  /* РОСТЕ, ЩОБ ТРИМАТИ ПРАВИЙ КРАЙ. На вузькому вікні блок переходить у другий
+     рядок, і без росту він ліпився б до лівого краю під брендом · тому займає
+     рядок цілком, а власні параметри тримає праворуч (`justify-content:end`). */
+  flex:1 1 auto;min-width:0;overflow:hidden;white-space:nowrap}
 .nav-param{flex:0 0 auto}
-/* ДВА `margin-left:auto` ПОСПІЛЬ РОЗПИХАЮТЬ. Індикатор звʼязку має власний
-   `auto`, і разом із таким самим у параметрів вони ділили вільне місце, через
-   що блок не вміщався в рядок і хедер ставав двоповерховим. Коли параметри
-   стоять перед індикатором, правий край тримають саме вони. */
-.nav-model + .sp{margin-left:8px}
+/* ДВА `margin-left:auto` ПОСПІЛЬ РОЗПИХАЮТЬ, тому правий край тримає ОДИН
+   елемент · індикатор звʼязку, і параметри йдуть одразу за ним звичайним
+   відступом. Порядок саме такий (спершу індикатор, потім параметри) не заради
+   вигляду: шапка переноситься по словах, і вниз іде ОСТАННІЙ елемент. Поки
+   останнім був індикатор, при вужчому вікні він падав сам-один під бренд
+   (власник показав 2026-09-18). Тепер за потреби переходять параметри · вони
+   довші й менш потрібні в першому рядку. */
+.sp + .nav-model{margin-left:8px}
 .nav-param b{font-weight:500;color:var(--ts)}
 .nav .badge{margin-left:6px;font-size:11px;opacity:.85}
 
