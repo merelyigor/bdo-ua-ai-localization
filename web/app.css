@@ -440,6 +440,11 @@ pre.log.big{max-height:70vh;font-size:13px}
 .sess.on .tog{color:var(--acc-tx)}
 .sess .sb{margin-top:10px}
 .sess table{margin-top:0}
+/* Історія пачок читається зверху вниз від найновішої до найдавнішої.
+   Переворот лишається суто візуальним: порядок даних, DOM і таблична
+   семантика не змінюються. */
+.sess table tbody{transform:scaleY(-1)}
+.sess table tbody tr{transform:scaleY(-1)}
 .v-open{background:var(--acc-bg);color:var(--acc-tx)}
 .v-closed{background:var(--s1);color:var(--ts)}
 
