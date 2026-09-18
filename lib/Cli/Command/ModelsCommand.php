@@ -86,6 +86,40 @@ final class ModelsCommand implements Command, CommandHelp
             }
             $models[] = $model;
         }
+        // РІВНІ ПЕРЕВІРЯЮТЬСЯ ТОДІ, КОЛИ МОДЕЛЬ ЗАВАНТАЖЕНА (рішення власника
+        // 2026-09-18). Досі проба йшла лише з НАШОЇ команди `models load`, а
+        // власник вантажить моделі самим прогоном · тому всі десять рядків
+        // каталогу роками показували «рівні: не перевірено».
+        //
+        // Умова саме «завантажена»: проба це чотири справжні виклики, і робити
+        // їх на моделі, якої немає в памʼяті, означало б тягнути 22 ГБ ваги
+        // заради напису. Резидентну модель це коштує секунд.
+        //
+        // Результат лишається ЛОКАЛЬНО в каталозі й переживає перезнімання:
+        // `probeMatches` звіряє відбиток (рантайм, імʼя, розмір, ревізія,
+        // thinking), тому повторна проба йде лише коли модель СПРАВДІ інша.
+        // Той самий білд після перезавантаження проби не потребує.
+        //
+        // Збій проби не має права завалити перелік · він лишає рівні
+        // невідомими, і це видно на екрані як було.
+        if (getenv('BDO_MODEL_PROBE') !== 'off') {
+            foreach ($models as $index => $model) {
+                if (($model['thinking'] ?? false) !== true || ($model['loaded'] ?? '') !== 'так') {
+                    continue;
+                }
+                if ($this->probeMatches($model, $model['thinking_probe'] ?? null)) {
+                    continue;
+                }
+                try {
+                    $result = $catalog->probeThinking((string) $model['runtime'], (string) $model['model']);
+                    $result['model_fingerprint'] = $this->modelFingerprint($model);
+                    $models[$index]['thinking_probe'] = $result;
+                    $models[$index]['thinking_levels'] = (string) $result['status'];
+                } catch (ModelRuntimeError|TransportError) {
+                    // Причина вже названа в самій пробі; тут лишаємо як є.
+                }
+            }
+        }
         $selection = ModelSelection::read($stateDir);
         $roles = $this->roleResolutions($config, $selection);
         return [
