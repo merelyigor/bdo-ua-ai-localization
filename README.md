@@ -431,8 +431,11 @@ API (наприклад, який саме відповідник вимагає
 | Обслуговування | `audit`, `models-run`, `inspect`, `review`, `timing`, `bench`, `incidents`, `quarantine`, `judge`, `terms`, `concepts`, `clean`, `paths`, `api`, `capabilities`, `models` |
 
 Реалізація підкоманд живе в `lib/Cli/Command/**` і викликається через
-`cli/bdo.php`; окремих shell-скриптів кроків пачки більше немає · лишились
-тільки службові (`cli/runtime/`, `cli/system/`, `cli/audit/`).
+`cli/bdo.php`. Shell-скриптів у роботі програми НЕМАЄ ЖОДНОГО (перехід
+завершено 2026-09-18): ні кроків пачки, ні службових, ні клікового входу.
+Bash лишається виключно для розробки · `tests/**` і `scripts/**`, куди власник
+не заходить. Межу тримає `./bdo gate shell`: дві стелі на нулі, і кожна може
+лише падати.
 
 ## Чому роль не може піти не туди
 
@@ -590,17 +593,19 @@ repair її будує рушій під рядки пачки, для решт�
 bdo                         єдиний вхід: ./bdo · сторінка, ./bdo help · дерево команд
 cli/bdo.php                 диспетчер команд: реєстр, маршрутизація, коди виходу
 cli/command-registry.json   ЄДИНЕ джерело дерева команд, описів і guard allowlist
-./bdo tui                  вікно-монітор у терміналі (./bdo tui)
+lib/Cli/Command/System/TuiCommand.php
+                            вікно-монітор у терміналі (`./bdo tui`)
 web/index.html              прогін як чат; поруч queue, sessions, start, models, call
 web/app.js, web/app.css     спільний скрипт і дизайн-токени всіх екранів
 cli/system/web-router.php   межа читання й дій: лише GET, дії лише POST
 lib/Web/Snapshot.php        читання state/** для сторінки; lib/Web/Runner.php · виконання дій
 lib/Run/Actions.php         кнопка → команда набору (одна для сторінки й вікна)
 bdo.bat                     нативний запуск інтерфейсу з Windows (WSL2 · запасний спосіб)
-BDO.app                     значок для Dock на macOS · applet, збирає scripts/build-mac-app.sh
+BDO.app                     значок для Dock на macOS · applet кличе php напряму, PATH у бандлі
 lib/Cli/Command/System/DesktopCommand.php
                             встановлення Linux `.desktop`-ярлика в меню програм
-./bdo mac-app       тонкий Dock-вхід: PATH bootstrap і передача в PHP-команду
+lib/Cli/Command/System/MacAppCommand.php
+                            Dock-вхід: піднімає інтерфейс і тримає значок
 cli/system/mac-app.applescript  джерело значка · бандл є applet, інакше Dock стрибає вічно
 bdo.ico                     значок для ярлика Windows · сам .bat його не несе
 roles/translation-*.md      промпт кожної ролі · самодостатній, без include
