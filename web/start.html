@@ -194,25 +194,31 @@
   }
 
   function renderPatches() {
-    // РЯДОК «АКТИВНИЙ» ПОКАЗУЄ ЧИСЛА, А НЕ ПРОЧЕРКИ. Раніше тут стояли самі
-    // «—», хоча API прямо каже, який патч активний (`active: true`), і поруч у
-    // таблиці ті самі числа вже були. Власник читав це як «даних немає».
-    // Різниця з рядком конкретного патча лишається змістовною: вибір
-    // «активний» надсилає `patch=active`, тому з виходом наступного патча він
-    // поїде за грою сам, а число 10 лишиться числом 10.
+    // АКТИВНИЙ ПАТЧ · ОДИН РЯДОК, А НЕ ДВА (рішення власника 2026-09-18).
+    //
+    // Спершу верхній рядок стояв із прочерками, і власник читав це як «даних
+    // немає». Числа туди повернули · і вийшов дубль: поки патч 10 активний,
+    // обидва рядки показують те саме, бо це той самий патч. Різниця між ними
+    // зʼявиться аж із виходом наступного патча (вибір «активний» надсилає
+    // `patch=active` й поїде за грою сам), але побачити її на екрані сьогодні
+    // неможливо · видно лише два однакові рядки.
+    //
+    // Тому активний патч малюється РІВНО один раз, верхнім рядком, і з номером.
+    // Коли вийде наступний, цей патч сам стане звичайним рядком списку, і його
+    // можна буде прибити номером.
     var live = livePatch();
     var rows = '<tr data-patch="active"' + (chosenPatch === 'active' ? ' class="on"' : '') + '>'
-      + '<td>активний</td>'
+      + '<td>' + (live ? 'активний · ' + B.esc(live.patch) : 'активний') + '</td>'
       + '<td class="empty">' + B.esc(live && live.game_number ? live.game_number : '—') + '</td>'
       + '<td class="empty">' + B.esc(live && live.published ? live.published : '—') + '</td>'
       + '<td class="num">' + (live ? B.num(live.rows) : '—') + '</td>'
       + '<td class="num"' + (live && Number(live.missing_machine) ? ' style="color:var(--ok-tx)"' : ' class="num empty"') + '>'
       + (live && Number(live.missing_machine) ? B.num(live.missing_machine) : '—') + '</td>'
-      + '<td class="empty">' + (live ? 'той, що зараз у грі · патч ' + B.esc(live.patch) : 'той, що зараз у грі') + '</td></tr>';
+      + '<td class="empty">той, що зараз у грі</td></tr>';
     rows += patches.map(function (p) {
+      // Активний уже стоїть верхнім рядком · другий раз його не малюємо.
+      if (p.active) { return ''; }
       var left = Number(p.missing_machine) || 0;
-      // Той самий патч уже стоїть рядком «активний» вище · тут лишається
-      // ПОЗНАЧКА, а не другий рядок із тими самими числами.
       return '<tr data-patch="' + B.esc(p.patch) + '"'
         + (String(chosenPatch) === String(p.patch) ? ' class="on"' : '') + '>'
         + '<td>' + B.esc(p.patch) + '</td>'
@@ -223,7 +229,7 @@
         // хоча означає «тут уже все зроблено».
         + '<td class="num"' + (left ? ' style="color:var(--ok-tx)"' : ' class="num empty"') + '>'
         + (left ? B.num(left) : '—') + '</td>'
-        + '<td class="empty">' + (p.active ? 'активний' : '') + '</td></tr>';
+        + '<td class="empty"></td></tr>';
     }).join('');
     B.el('patchRows').innerHTML = rows;
     Array.prototype.forEach.call(B.el('patchRows').querySelectorAll('tr'), function (tr) {
@@ -403,6 +409,14 @@
   B.get('/api/patches').then(function (d) {
     patches = d.patches || [];
     patchesFromCache = d.cached === true;
+    // Збережений вибір міг указувати на патч, який ТЕПЕР активний · окремого
+    // рядка в нього більше немає. Переводимо такий вибір на «активний», інакше
+    // таблиця показала б, що не вибрано нічого.
+    var live = livePatch();
+    if (live && String(chosenPatch) === String(live.patch)) {
+      chosenPatch = 'active';
+      P.set('patch', chosenPatch);
+    }
     renderPatches();
     refresh();
   }).catch(function () {
