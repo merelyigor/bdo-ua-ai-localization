@@ -47,7 +47,7 @@
 ```json
 {
   "endpoint": "http://127.0.0.1:11434",
-  "default_model": "qwen3.6:35b-a3b-mtp-q4_K_M",
+  "default_model": "huihui_ai/Qwen3.6-abliterated:35b-Claude-4.7-q4_K",
   "num_ctx": 131072,
   "roles": { "translation-qa": { "schema": "qa", "temperature": 0.1 } }
 }
@@ -99,7 +99,7 @@ toolkit повністю працює через Agent API.
 | Моделі ролей | [Ollama](https://ollama.com) з моделлю з `config/roles.json` |
 | Ключ | Agent API key проєкту BDO UA Translate |
 | Runtime | Bash, PHP CLI 8.3+, jq, curl, ShellCheck |
-| Залізо | для моделі 35B-A3B потрібно ~22 ГБ вільної памʼяті |
+| Залізо | для моделі 35B у q4_K потрібно ~23 ГБ вільної памʼяті |
 
 Стороннього застосунку-оркестратора не потрібно: конвеєр веде сам набір.
 
@@ -108,8 +108,13 @@ runner мовчки ігнорував обмеження формату; на O
 дотримав strict-схему в 4 прогонах із 4. Формат моделі не вгадується за назвою
 тега: його доводить `./bdo runtime` перед першою пачкою.
 
-**Робочою лишається GGUF-збірка** `qwen3.6:35b-a3b-mtp-q4_K_M`. Рішення стоїть
-не на швидкості · на ПОВНОТІ відповіді.
+**Робочою лишається GGUF-збірка.** Рішення стоїть не на швидкості · на ПОВНОТІ
+відповіді. Який саме тег стоїть зараз, каже `config/roles.json`: із 2026-09-14 це
+`huihui_ai/Qwen3.6-abliterated:35b-Claude-4.7-q4_K` (23 ГБ), і саме на ній зняті
+дефекти D163, D172 і D173 · зокрема температура всіх восьми ролей приведена до
+1.0, під яку налаштована сама модель. Заміри нижче зроблені на попередньому
+тезі `qwen3.6:35b-a3b-mtp-q4_K_M` і лишаються як є: вони порівнюють ФОРМАТИ,
+а не тег.
 
 Швидкість, виміряна `./bdo bench` на однакових payload і з ОДНІЄЮ резидентною
 моделлю за раз: GGUF 40.9 вихідних токенів/с проти 38.1 у `qwen3.6:35b-mlx`,
@@ -220,7 +225,7 @@ DEV, локальних моделей, ротації та адміністру
 4. Завантажити модель ролей:
 
 ```bash
-ollama pull qwen3.6:35b-a3b-mtp-q4_K_M
+ollama pull huihui_ai/Qwen3.6-abliterated:35b-Claude-4.7-q4_K   # тег із config/roles.json
 ```
 
 5. Перевірити, що все на місці:
@@ -426,7 +431,7 @@ API (наприклад, який саме відповідник вимагає
 | Прогін і середовище | `loop`, `tui`, `watch`, `gif`, `timer`, `session`, `web`, `desktop`, `env`, `sync`, `runtime`, `platform`, `run`, `patches`, `mode`, `gate`, `browser` |
 | Вибірка й пачка | `patch`, `fetch`, `batch`, `subset`, `show`, `context` |
 | Підготовка пачки | `memory`, `glossary`, `schema`, `payload` |
-| Перевірка й лікування | `normalize`, `items`, `russianisms`, `suspects`, `validate`, `heal`, `qa-fixes`, `merge` |
+| Перевірка й лікування | `normalize`, `items`, `russianisms`, `suspects`, `validate`, `heal`, `qa-fixes`, `merge`, `names-apply` |
 | Завершення | `commit`, `write`, `moderation` |
 | Обслуговування | `audit`, `models-run`, `inspect`, `review`, `timing`, `bench`, `incidents`, `quarantine`, `judge`, `terms`, `concepts`, `clean`, `paths`, `api`, `capabilities`, `models` |
 
@@ -619,7 +624,8 @@ cli/model/client.php        виклик локальної моделі під 
 lib/Cli/Command/**          реалізація підкоманд за доменами (Api, Batch, Prepare,
                             Quality, Heal, Write, Run, Audit, System)
 cli/{api,model,run,runtime,audit,system}/
-                            службові скрипти: HTTP, клієнт моделі, звіти, платформа
+                            PHP поза деревом команд: HTTP-клієнт, клієнт моделі,
+                            план аргументів для вікна, синхронізація .env
 lib/                        PHP: identity, пачки, якість, машина станів, API, сторінка
 scripts/agent-check.sh      єдиний quality gate (./bdo gate)
 tests/                      регресії: кожен закритий дефект має свій файл
