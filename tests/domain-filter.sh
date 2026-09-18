@@ -61,13 +61,13 @@ for domain in $(php -r '
 require $argv[1];
 echo implode(" ", array_diff(Bdo\Translate\Pipeline\RunSpec::domains(), ["unknown"]));
 ' "$ROOT/lib/autoload.php"); do
-    grep -Fq "$domain" "$ROOT/bin/tui.sh" \
+    grep -Fq "$domain" "$ROOT/lib/Cli/Command/System/TuiCommand.php" \
         || fail "категорія $domain є в RunSpec, але її немає в меню TUI"
 done
 
 # 4. І навпаки: меню не має пропонувати категорію, якої код не знає · вибір
 #    такої категорії дав би порожню пачку без пояснення.
-menu_domains="$(sed -n 's/.*Категорії: \(.*\)" >&2.*/\1/p' "$ROOT/bin/tui.sh")"
+menu_domains="$(sed -n "s/.*Категорії: \\([a-z_ ]*\\).*/\\1/p" "$ROOT/lib/Cli/Command/System/TuiCommand.php" | head -1)"
 test -n "$menu_domains" || fail 'меню більше не показує переліку категорій'
 for domain in $menu_domains; do
     php -r '

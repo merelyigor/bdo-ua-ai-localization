@@ -46,7 +46,7 @@ final class RunStopCommand implements Command, \Bdo\Translate\Cli\CommandHelp
 
 ЗУПИНКА НЕ Є ВІДМОВОЮ. Пачка лишається незакритою навмисно: `mode start`
 бачить її й ПРОДОВЖУЄ з того самого кроку, а не бере нову
-(`cli/run/run-mode.sh`, гілка `resume`). Ніяких `failed_*` тут не ставимо.
+(команда `run mode`, гілка `resume`). Ніяких `failed_*` тут не ставимо.
 
 BDO_HELP_TEXT;
     }

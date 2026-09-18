@@ -107,7 +107,12 @@ touched_map() {
     esac
     case "$path" in
         scripts/agent-check.sh|.githooks/*|.github/*)
-            printf 'profile|full|сам механізм перевірки може бути зламаний і не перевіряє сам себе\n' ;;
+            # ЛОКАЛЬНО · лише синтаксис самого механізму. Повний прогін тут БУВ
+            # і коштував 170 секунд на кожну правку гейта, тобто робив розробку
+            # дорожчою за саму перевірку (рішення власника 2026-09-18: «має йти
+            # розробка, а не перевірки»). Зламаний механізм ловить CI, і це
+            # єдине місце, де повний прогін нічого не коштує власникові.
+            printf 'lint|scripts/agent-check.sh|синтаксис самого механізму перевірки\n' ;;
         web/*)
             printf 'test|tests/web-server.sh|сервер і сторінка\n'
             printf 'test|tests/web-actions.sh|дії сторінки\n'
@@ -119,7 +124,9 @@ touched_map() {
         tests/*.sh|tests/*.php|tests/*.ps1)
             printf 'test|%s|запущений саме змінений тест\n' "$path" ;;
         tests/*)
-            printf 'profile|full|змінено fixture або інший support-файл тестів\n' ;;
+            # Fixture зачіпає невідомо які тести · локально не вгадуємо, а
+            # віддаємо це CI. Вгадування коштувало повного прогону щоразу.
+            printf 'lint|%s|синтаксис зміненого support-файла\n' "$path" ;;
         roles/*|config/*)
             printf 'profile|agents|ролі, prompts і конфігурація ролей\n' ;;
         docs/*|*.md)
@@ -246,7 +253,11 @@ touched_map() {
             printf 'test|tests/cli-kernel.sh|маршрутизація entrypoint\n'
             printf 'test|tests/command-registry.sh|реєстр команд entrypoint\n' ;;
         *)
-            printf 'profile|full|невідомий шлях не можна безпечно звузити\n' ;;
+            # НЕВІДОМИЙ ШЛЯХ · не привід ганяти все локально. Раніше будь-який
+            # файл поза картою давав повний прогін, і саме так звичайна правка
+            # перетворювалась на три хвилини очікування. Межа лишається, але
+            # тримає її CI.
+            printf 'note|%s|шлях не в карті · повну перевірку зробить CI\n' "$path" ;;
     esac
 }
 
@@ -433,6 +444,7 @@ check_touched() {
             profile) run_gate_profile "$target" ;;
             lint) touched_lint "$target" ;;
             test) printf '%s\n' "$target" >> "$tests" ;;
+            note) note "$target · $reason" ;;
             *) fail "карта повернула невідомий тип: $kind" ;;
         esac
     done < "$plan"
@@ -550,7 +562,7 @@ check_rules() {
         'mode.{0,12}start.{0,12}\b50\b' cli bin lib web 2>/dev/null | sed -n '1p' || true)"
     test -z "$hardcoded" \
         || fail "розмір пачки прописаний поруч із командою поза планувальником: $hardcoded"
-    grep -Fq 'cli/run/plan-args.php' bin/tui.sh \
+    grep -Fq 'cli/run/plan-args.php' lib/Cli/Command/System/TuiCommand.php \
         || fail 'вікно в терміналі не бере план у спільного планувальника'
     # `.gitattributes` тримає кінці рядків, і його вміст не має права зникнути:
     # без правила LF клон на Windows дає CRLF у кожному `.sh`, і всередині WSL
@@ -1415,7 +1427,7 @@ check_shell() {
     # ЄДИНИЙ ДОЗВОЛЕНИЙ shell-маршрут · `./bdo gate` (`scripts/agent-check.sh`):
     # це інструмент РОЗРОБКИ, ним користується агент, а не власник.
     local -r SHELL_ROUTE_ALLOWED='scripts/agent-check.sh'
-    local -r SHELL_ROUTES_MAX=4
+    local -r SHELL_ROUTES_MAX=0
     local script_routes queue script_count
     script_routes="$(rg -o "'script' => '[^']+'" lib/Cli/Router.php | sed "s/.*'\(.*\)'/\1/" | sort -u)"
     queue="$(printf '%s\n' "$script_routes" | grep -vFx "$SHELL_ROUTE_ALLOWED" || true)"
@@ -1459,7 +1471,7 @@ $php_runs_shell"
     # розробка, власник туди не заходить. Число нижче · ЧЕРГА ПЕРЕХОДУ, і воно
     # може лише падати до нуля. Гейт не дасть ні додати новий файл, ні лишити
     # стелю завищеною після того, як черга скоротилась.
-    local -r SHELL_FILES_MAX=7
+    local -r SHELL_FILES_MAX=0
     local work_shells work_count
     work_shells="$(git ls-files '*.sh' | grep -vE '^(tests|scripts)/' || true)"
     work_count="$(printf '%s\n' "$work_shells" | grep -c . || true)"
@@ -1475,7 +1487,7 @@ $work_shells"
     # бандла її не бачать ні `bash -n`, ні ShellCheck, ні цей gate.
     if [ -d BDO.app ]; then
         test -f 'BDO.app/Contents/Info.plist' || fail 'BDO.app без Info.plist · macOS такий бандл не запустить'
-        test -x cli/system/mac-app.sh || fail 'cli/system/mac-app.sh не виконуваний'
+        test -f lib/Cli/Command/System/MacAppCommand.php || fail 'немає команди mac-app'
         # БАНДЛ МУСИТЬ БУТИ APPLET, А НЕ СКРИПТ (D91). Бандл, чий виконуваний
         # файл є звичайним скриптом, не відкриває зʼєднання з WindowServer,
         # тому LaunchServices не бачить запуск завершеним і значок у Dock
@@ -1505,11 +1517,16 @@ $work_shells"
                 || fail 'зібраний BDO.app не має on quit · закриття значка лишить інтерфейс жити (D90)'
             grep -q 'on idle' <<<"$applet_src" \
                 || fail 'зібраний BDO.app не має on idle · значок не переживе смерті сервера'
-            grep -Fq 'cli/system/mac-app.sh' <<<"$applet_src" \
-                || fail 'зібраний BDO.app не кличе cli/system/mac-app.sh · логіка переїхала в бандл, де її ніхто не перевіряє'
-            # Пояснення для скопійованого бандла живе в скрипті: коли набору
-            # поруч немає, сказати про це має саме він.
-            grep -Fq 'Набір не знайдено поруч із додатком' cli/system/mac-app.sh \
+            # Бандл кличе PHP-вхід набору, а не shell-скрипт: перехід на PHP
+            # 2026-09-18 прибрав `cli/system/mac-app.sh` разом із рештою bash.
+            grep -Fq 'cli/bdo.php' <<<"$applet_src" \
+                || fail 'зібраний BDO.app не кличе cli/bdo.php · логіка переїхала в бандл, де її ніхто не перевіряє'
+            if grep -E '^[^-]' <<<"$applet_src" | grep -qE '\.sh\b'; then
+                fail 'зібраний BDO.app знову кличе shell-скрипт · робота програми мусить бути на PHP'
+            fi
+            # Пояснення для скопійованого бандла живе в команді: коли набору
+            # поруч немає, сказати про це має саме вона.
+            grep -Fq 'Набір не знайдено поруч із додатком' lib/Cli/Command/System/MacAppLauncherCommand.php \
                 || fail 'скопійований BDO.app мовчить замість пояснення'
             # Зібране мусить відповідати ДЖЕРЕЛУ. Без цього `BDO.app` тихо
             # застигне на старій редакції, а правку в `.applescript` ніхто не
@@ -1570,11 +1587,12 @@ $work_shells"
         # КЛІКОВИЙ ЗАПУСК НЕ МАЄ PATH ТЕРМІНАЛА (D89). Перевірка структурна й
         # доповнює `tests/gui-path.sh`: той тест SKIP-иться там, де php лежить
         # у базовому PATH, а прибрати рядок із `bdo` можна на будь-якій машині.
-        test -f cli/system/gui-path.sh || fail 'немає cli/system/gui-path.sh · кліковий запуск лишиться без Homebrew у PATH'
-        grep -Fq '. "$SCRIPT_DIR/cli/system/gui-path.sh"' cli/system/mac-app.sh \
-            || fail 'mac-app.sh не лагодить PATH · значок у Dock помре на «немає php» (D89)'
-        grep -Fq '. ./cli/system/gui-path.sh' Makefile \
-            || fail 'Makefile не лагодить PATH · запуск із PhpStorm помре на «немає php» (D89)'
+        # PATH клікового запуску живе ОДНИМ РЯДКОМ у самому бандлі: перехід на
+        # PHP 2026-09-18 прибрав `gui-path.sh` разом із рештою bash, бо його
+        # доводилось SOURCE-ити в оболонку. Властивість стереже `tests/gui-path.sh`,
+        # який бере PATH прямо з `.applescript` і запускає ним php.
+        grep -Fq 'property bdoPath' cli/system/mac-app.applescript \
+            || fail 'кліковий запуск лишиться без Homebrew у PATH · у бандлі немає bdoPath'
         note 'BDO.app: applet, зібраний із cli/system/mac-app.applescript; значок BDO.icns, Windows · bdo.ico'
     fi
 
@@ -1665,61 +1683,81 @@ $braceless"
     note "php -l: $count файлів"
 
     step 'Pipeline unit contracts'
-    run php tests/pipeline-unit.php
-    run php tests/pipeline-faults.php
-    run bash tests/cli-kernel.sh
-    run bash tests/cli-api-reports.sh
-    run bash tests/cli-api-glossary.sh
-    run bash tests/cli-api-fetch.sh
-    run bash tests/cli-quality-parity.sh
-    run bash tests/cli-prepare-parity.sh
-    run bash tests/cli-batch-heal-parity.sh
-    run bash tests/cli-batch-clean-parity.sh
-    run bash tests/cli-run-foundation-parity.sh
-    run bash tests/cli-run-mode-parity.sh
-    run bash tests/cli-run-drive-parity.sh
-    run bash tests/cli-system-parity.sh
+    # ТЕСТИ ПАРАЛЕЛЬНО · послідовний прогін цього блоку займав хвилини
+    # там, де потрібні секунди (заміряно 2026-09-18: профіль shell · 170 с,
+    # з них 53 незалежні тести по черзі). Вивід друкується в тому самому
+    # порядку, тому журнал не змішується.
+    local gate_tests_1
+    gate_tests_1="$(mktemp)"
+    cat > "$gate_tests_1" <<'GATE_TESTS'
+tests/pipeline-unit.php
+tests/pipeline-faults.php
+tests/cli-kernel.sh
+tests/cli-api-reports.sh
+tests/cli-api-glossary.sh
+tests/cli-api-fetch.sh
+tests/cli-quality-parity.sh
+tests/cli-prepare-parity.sh
+tests/cli-batch-heal-parity.sh
+tests/cli-batch-clean-parity.sh
+tests/cli-run-foundation-parity.sh
+tests/cli-run-mode-parity.sh
+tests/cli-run-drive-parity.sh
+tests/cli-system-parity.sh
+GATE_TESTS
+    touched_run_tests "$gate_tests_1"
+    rm -f "$gate_tests_1"
     check_write_test_safety
     check_write_php_subprocess_guards
-    run bash tests/cli-write-parity.sh
-    run bash tests/cli-payload-parity.sh
-    run bash tests/batch-summary.sh
-    run bash tests/drive-memory-layers.sh
-    run bash tests/judge-flow.sh
-    run bash tests/patch-argument.sh
-    run bash tests/pre-push-attribution.sh
-    run bash tests/commit-version-guard.sh
-    run bash tests/run-resume.sh
-    run bash tests/run-target-env.sh
-    run bash tests/api-target-switch.sh
-    run bash tests/http-retry.sh
-    run bash tests/http-client.sh
-    run bash tests/model-selection.sh
-    run bash tests/rotation.sh
-    run bash tests/session-lifecycle.sh
-    run bash tests/web-server.sh
-    run bash tests/web-actions.sh
-    run bash tests/web-steps.sh
-    run bash tests/web-screens.sh
-    run bash tests/web-live-typing.sh
-    run bash tests/web-inner-html-guard.sh
-    run bash tests/web-call-view.sh
-    run bash tests/qa-memory-only.sh
-    run bash tests/no-silent-failures.sh
-    run bash tests/quarantine-recovery.sh
-    run bash tests/worker-reference.sh
-    run bash tests/schema-provider-compat.sh
-    run bash tests/mechanical-final-check.sh
-    run bash tests/domain-filter.sh
-    run bash tests/audit-response-shape.sh
-    run bash tests/mechanical-before-qa.sh
-    run bash tests/cli-quality-parity.sh
-    run bash tests/heal-attempts.sh
-    run bash tests/payload-shared-examples.sh
-    run bash tests/registry-hygiene.sh
-    run bash tests/api-doc-contract.sh
-    run bash tests/glossary-listing.sh
-    run bash tests/write-channel-rights.sh
+    # ТЕСТИ ПАРАЛЕЛЬНО · послідовний прогін цього блоку займав хвилини
+    # там, де потрібні секунди (заміряно 2026-09-18: профіль shell · 170 с,
+    # з них 53 незалежні тести по черзі). Вивід друкується в тому самому
+    # порядку, тому журнал не змішується.
+    local gate_tests_2
+    gate_tests_2="$(mktemp)"
+    cat > "$gate_tests_2" <<'GATE_TESTS'
+tests/cli-write-parity.sh
+tests/cli-payload-parity.sh
+tests/batch-summary.sh
+tests/drive-memory-layers.sh
+tests/judge-flow.sh
+tests/patch-argument.sh
+tests/pre-push-attribution.sh
+tests/commit-version-guard.sh
+tests/run-resume.sh
+tests/run-target-env.sh
+tests/api-target-switch.sh
+tests/http-retry.sh
+tests/http-client.sh
+tests/model-selection.sh
+tests/rotation.sh
+tests/session-lifecycle.sh
+tests/web-server.sh
+tests/web-actions.sh
+tests/web-steps.sh
+tests/web-screens.sh
+tests/web-live-typing.sh
+tests/web-inner-html-guard.sh
+tests/web-call-view.sh
+tests/qa-memory-only.sh
+tests/no-silent-failures.sh
+tests/quarantine-recovery.sh
+tests/worker-reference.sh
+tests/schema-provider-compat.sh
+tests/mechanical-final-check.sh
+tests/domain-filter.sh
+tests/audit-response-shape.sh
+tests/mechanical-before-qa.sh
+tests/cli-quality-parity.sh
+tests/heal-attempts.sh
+tests/payload-shared-examples.sh
+tests/registry-hygiene.sh
+tests/api-doc-contract.sh
+tests/glossary-listing.sh
+tests/write-channel-rights.sh
+GATE_TESTS
+    touched_run_tests "$gate_tests_2"
+    rm -f "$gate_tests_2"
 }
 
 # Ролі й драйвер · те, що замінило шар OpenCode.
@@ -1764,26 +1802,36 @@ check_agents() {
         jq -e --arg r "$role" '.roles[$r]' config/roles.json >/dev/null || missing="$missing $role"
     done
     test -z "$missing" || fail "рушій кличе ролі, яких немає в config/roles.json:$missing"
-    run bash tests/model-client.sh
-    run bash tests/model-transports.sh
-    run bash tests/driver-loop.sh
-    run bash tests/tui.sh
-    run bash tests/tui-live.sh
-    run bash tests/watch-session.sh
-    run bash tests/gui-path.sh
-    run bash tests/run-stop.sh
-    run bash tests/mac-app-quit.sh
-    run bash tests/linux-desktop.sh
-    run bash tests/step-report.sh
-    run bash tests/glossary-provenance.sh
-    run bash tests/qa-scope.sh
-    run bash tests/row-attempts.sh
-    run bash tests/names-pass.sh
-    run bash tests/prompt-payload-contract.sh
-    run bash tests/step-times.sh
-    run bash tests/qa-gap-costs-rows.sh
-    run bash tests/terminology-excerpt.sh
-    run bash tests/terminology-chunks.sh
+    # ТЕСТИ ПАРАЛЕЛЬНО · послідовний прогін цього блоку займав хвилини
+    # там, де потрібні секунди (заміряно 2026-09-18: профіль shell · 170 с,
+    # з них 53 незалежні тести по черзі). Вивід друкується в тому самому
+    # порядку, тому журнал не змішується.
+    local gate_tests_3
+    gate_tests_3="$(mktemp)"
+    cat > "$gate_tests_3" <<'GATE_TESTS'
+tests/model-client.sh
+tests/model-transports.sh
+tests/driver-loop.sh
+tests/tui.sh
+tests/tui-live.sh
+tests/watch-session.sh
+tests/gui-path.sh
+tests/run-stop.sh
+tests/mac-app-quit.sh
+tests/linux-desktop.sh
+tests/step-report.sh
+tests/glossary-provenance.sh
+tests/qa-scope.sh
+tests/row-attempts.sh
+tests/names-pass.sh
+tests/prompt-payload-contract.sh
+tests/step-times.sh
+tests/qa-gap-costs-rows.sh
+tests/terminology-excerpt.sh
+tests/terminology-chunks.sh
+GATE_TESTS
+    touched_run_tests "$gate_tests_3"
+    rm -f "$gate_tests_3"
 }
 
 check_runtime() { run ./bdo runtime; }

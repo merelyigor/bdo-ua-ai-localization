@@ -33,7 +33,7 @@ use RuntimeException;
  */
 final class Actions
 {
-    /** Режими прогону · рівно ті, що знає `run-spec.sh`. */
+    /** Режими прогону · рівно ті, що знає `RunSpec`. */
     public const MODES = ['patch', 'manual', 'proposal', 'improve'];
 
     /** Категорії рядків · рівно ті, що віддає `/taxonomy`. */

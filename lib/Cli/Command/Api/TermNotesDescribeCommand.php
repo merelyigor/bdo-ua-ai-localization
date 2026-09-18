@@ -102,7 +102,7 @@ final class TermNotesDescribeCommand implements Command, \Bdo\Translate\Cli\Comm
 
   ./bdo terms describe          # payload + envelope для наступного Task
 
-Черга наповнюється сама під час прогону (`cli/api/term-notes-queue.sh`) і
+Черга наповнюється сама під час прогону (`./bdo terms`) і
 містить ЛИШЕ терміни з доведено порожнім описом · тобто такі, де опис не може
 нічого перезаписати. Тут ми беремо найчастіші й будуємо для них payload.
 

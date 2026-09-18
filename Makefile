@@ -43,20 +43,20 @@ help:
 # Інтерфейс власника. `./bdo web` сам візьме вільний порт, надрукує посилання й
 # відкриє браузер; Ctrl-C зупиняє.
 web:
-	@. ./cli/system/gui-path.sh && ./bdo web
+	@./bdo web
 
 # Зупинка САМОГО інтерфейсу. `make stop` до нього не має стосунку: він про
 # роботу в сесії tmux, і після нього сервер сторінки лишався жити далі.
 web-stop:
-	@. ./cli/system/gui-path.sh && ./bdo web --stop
+	@./bdo web --stop
 
 # `exec` немає: make і так віддає термінал дочірньому процесу, а `attach`
 # мусить лишити власника всередині сесії, а не повернути в make.
 attach:
-	@. ./cli/system/gui-path.sh && tmux attach -t $(SESSION)
+	@tmux attach -t $(SESSION)
 
 screen:
-	@. ./cli/system/gui-path.sh && ./bdo watch --show
+	@./bdo watch --show
 
 stop:
-	@. ./cli/system/gui-path.sh && ./bdo watch --stop
+	@./bdo watch --stop

@@ -39,7 +39,7 @@ trap cleanup EXIT
 # Пісочниця та сама, що й у tests/tui.sh: справжній `./bdo` тут не викликається,
 # тому жодного звернення до API й жодного запису нікуди не буде.
 mkdir -p "$WORK/bin" "$WORK/state/batches/20260101_000001" "$WORK/cli/run"
-cp "$ROOT/bin/tui.sh" "$WORK/bin/tui.sh"
+cp "$ROOT/cli/bdo.php" "$WORK/cli/bdo.php"
 cp -R "$ROOT/lib" "$WORK/lib"
 cat > "$WORK/bdo" <<'SH'
 #!/usr/bin/env bash
@@ -74,7 +74,7 @@ printf '%s\n' '{"at":"2026-01-01T10:00:00+00:00","role":"translation-qa","model"
 # нова сесія в тому ж tmux успадковувала його: пісочниця тесту мовчки читала
 # РЕАЛЬНИЙ стан власника й перевіряла не те, що створила (спіймано 2026-09-05).
 tmux new-session -d -s "$SESSION" -x 110 -y 40 \
-    "cd '$WORK' && BDO_STATE_DIR='$WORK/state' bash bin/tui.sh; printf '\\n[EXIT=%s]\\n' \$?; sleep 120"
+    "cd '$WORK' && BDO_STATE_DIR='$WORK/state' php cli/bdo.php tui; printf '\\n[EXIT=%s]\\n' \$?; sleep 120"
 
 screen() { tmux capture-pane -t "$SESSION" -p; }
 # Чекаємо ПОЯВИ очікуваного тексту, а не «достатньо довго»: фіксована пауза або

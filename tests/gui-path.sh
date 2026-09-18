@@ -1,92 +1,63 @@
 #!/usr/bin/env bash
-# Набір мусить працювати, коли його запустили НЕ з термінала.
+# Клік по значку мусить знаходити php · навіть без термінального PATH.
 #
-# Значок у Dock стартує процес через LaunchServices, і той дає мінімальний
-# PATH: `/usr/bin:/bin:/usr/sbin:/sbin`. Homebrew ставить `php` у
-# `/opt/homebrew/bin`, тому набір, який ідеально працює в терміналі, з-під
-# значка вмирав написом «web: немає php» (виявлено власником 2026-09-06).
+# LaunchServices стартує `BDO.app` з голим PATH, і вхід набору (`cli/bdo.php`)
+# нічого з цим зробити не може: shebang розвʼязується ДО того, як виконається
+# хоч один наш рядок. Саме тому запуск зі значка вмирав написом «web: немає
+# php» (виявлено власником 2026-09-06).
 #
-# Перевірка самого PATH-helper лишається на справді обчищеному оточенні
-# (`env -i`). Вхід тепер PHP і не може виконати helper після shebang, тому
-# клікові callers перевіряються в місцях, де вони bootstrap-ять PATH.
+# Раніше це лагодив окремий shell-helper `cli/system/gui-path.sh`, який
+# доводилось SOURCE-ити в оболонку · через нього bash лишався на шляху запуску
+# застосунку. 2026-09-18 набір перейшов на PHP цілком, і PATH тепер задається
+# ОДНИМ РЯДКОМ у самому `.applescript`: AppleScript однаково вміє запускати
+# лише через `do shell script`, тож дешевше назвати теки там, ніж тримати
+# заради цього окремий скрипт.
+#
+# Тому цей тест перевіряє НЕ helper, а властивість: застосунок стартує php без
+# термінального PATH і не залежить від жодного `.sh`.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 fail() { printf 'FAIL: %s\n' "$1" >&2; exit 1; }
 
-MIN_PATH='/usr/bin:/bin:/usr/sbin:/sbin'
+APPLESCRIPT="$ROOT/cli/system/mac-app.applescript"
+test -f "$APPLESCRIPT" || fail 'немає cli/system/mac-app.applescript · клікового входу не існує'
 
-# Передумова тесту. Якщо php лежить у базовому PATH, тест нічого не доводить ·
-# він мусить сказати це вголос, а не тихо «пройти».
-if env -i PATH="$MIN_PATH" bash -c 'command -v php' >/dev/null 2>&1; then
-    printf 'gui path: SKIP · php у базовому PATH, кліковий запуск тут не ламався\n'
+# 1. Жодного shell-скрипта НА ШЛЯХУ ЗАПУСКУ. Дивимось саме виконувані рядки
+#    (`do shell script`), а не коментарі: згадка `scripts/build-mac-app.sh` у
+#    шапці пояснює, ЧИМ зібрано бандл, і запуску не стосується.
+if grep -E '^[^-]' "$APPLESCRIPT" | grep -qE '\.sh\b'; then
+    fail "клікових вхід знову кличе shell-скрипт: $(grep -E '^[^-]' "$APPLESCRIPT" | grep -nE '\.sh\b' | head -1)"
+fi
+
+# 2. PATH задається ЯВНО й містить типові теки Homebrew · без них `php` на
+#    свіжому Mac не знаходиться, і значок помре тим самим написом.
+grep -Fq 'PATH=' "$APPLESCRIPT" \
+    || fail 'клікових вхід не задає PATH · запуск зі значка знову впаде на «немає php»'
+for dir in /opt/homebrew/bin /usr/local/bin; do
+    grep -Fq "$dir" "$APPLESCRIPT" \
+        || fail "у PATH клікового входу немає $dir · Homebrew-встановлення php не знайдеться"
+done
+
+# 3. Виклик іде в PHP-вхід набору, а не в щось проміжне.
+grep -Fq 'cli/bdo.php' "$APPLESCRIPT" \
+    || fail 'клікових вхід не кличе cli/bdo.php'
+grep -Fq 'mac-app ' "$APPLESCRIPT" \
+    || fail 'клікових вхід не кличе команду mac-app'
+
+# 4. ГОЛОВНЕ · перевірка не читанням, а прогоном. Береться РІВНО той PATH, що
+#    стоїть у бандлі, і на ньому php мусить знайтися й відповісти.
+bundle_path="$(grep -o 'property bdoPath : "[^"]*"' "$APPLESCRIPT" | sed 's/.*"\(.*\)"/\1/')"
+test -n "$bundle_path" || fail 'у бандлі немає property bdoPath · PATH нема звідки взяти'
+env -i HOME="$HOME" PATH="$bundle_path" php "$ROOT/cli/bdo.php" mac-app alive >/dev/null 2>&1
+code=$?
+test "$code" -le 1 \
+    || fail "php не запустився з PATH бандла ($bundle_path) · код $code"
+
+# 5. Зворотний бік: на ГОЛОМУ PATH php справді недосяжний, інакше пункти 2-4
+#    нічого не доводять · вони проходили б і зі зламаним бандлом.
+if env -i PATH='/usr/bin:/bin:/usr/sbin:/sbin' bash -c 'command -v php' >/dev/null 2>&1; then
+    printf 'gui path: ПРОПУЩЕНО · php лежить у базовому PATH, перевірка нічого не доводить\n'
     exit 0
 fi
 
-cd "$ROOT"
-
-# 1. macOS click caller bootstraps PATH before it invokes the PHP entrypoint.
-grep -Fq '. "$SCRIPT_DIR/cli/system/gui-path.sh"' "$ROOT/cli/system/mac-app.sh" \
-    || fail 'mac-app.sh не підхоплює PATH до запуску ./bdo · значок у Dock помре на «немає php»'
-
-# 2. PhpStorm click caller робить те саме в кожному recipe, бо make запускає
-# окремий shell для кожної цілі.
-grep -Fq '. ./cli/system/gui-path.sh' "$ROOT/Makefile" \
-    || fail 'Makefile не підхоплює PATH до запуску ./bdo · кнопка PhpStorm помре на «немає php»'
-
-# 3. Профіль має право друкувати. `~/.zprofile` цілком законно пише щось на
-#    кшталт «nvm: середовище завантажено», і цей рядок НЕ сміє стати
-#    частиною PATH · саме для цього в обміні є маркер.
-#
-#    Друк навмисно ПОЧИНАЄТЬСЯ зі скісної риски. Балаканина, що починається з
-#    літери, відсіюється й без маркера (перевіркою `/*`), тому тест на ній
-#    доводив би нуль · саботаж це показав.
-#
-#    І дивимось ми на САМ PATH, а не на «`./bdo help` спрацював»: із отруєним
-#    PATH набір усе одно знаходить php через запасні теки, тому успіх команди
-#    отруєння не бачить взагалі.
-TMP="$(mktemp -d)"
-trap 'rm -rf "$TMP"' EXIT
-cat >"$TMP/noisy-shell" <<'SH'
-#!/usr/bin/env bash
-printf '/tmp/bdo-junk-note завантажено\n'
-exec /bin/bash -c "$2"
-SH
-chmod +x "$TMP/noisy-shell"
-got="$(env -i PATH="$MIN_PATH" HOME="$HOME" SHELL="$TMP/noisy-shell" \
-    bash -c '. "$1/cli/system/gui-path.sh"; printf %s "$PATH"' _ "$ROOT" 2>/dev/null)" \
-    || fail 'gui-path.sh упав під балакучим профілем'
-case "$got" in
-    *bdo-junk-note*) fail "друк профілю потрапив у PATH · маркер обміну не тримає межу: $got" ;;
-esac
-case "$got" in
-    *"
-"*) fail 'у PATH опинився перенос рядка · обмін із оболонкою не відфільтрований' ;;
-esac
-test -n "$got" || fail 'під балакучим профілем PATH став порожнім'
-
-# 4. У ТЕРМІНАЛІ ЦІНА НУЛЬ. Коли php уже видно, файл не має права чіпати PATH:
-#    інакше кожен виклик набору тягнув би за собою логін-оболонку.
-before="$PATH"
-# shellcheck source=../cli/system/gui-path.sh
-. "$ROOT/cli/system/gui-path.sh"
-test "$PATH" = "$before" \
-    || fail 'gui-path.sh змінює PATH там, де php уже знайдено · зайвий підпроцес на кожен виклик'
-
-# 5. КЛІКОВИЙ ЗАПУСК ДАЄ ІНШИЙ ІНТЕРПРЕТАТОР · головна частина (D106).
-#
-# PATH значка містить `/usr/local/bin` і `/bin`, тому `php` там знаходився, а
-# `bash` лишався `/bin/bash` 3.2.57 · і скрипти, які в терміналі йдуть у
-# bash 5, з-під значка виконувались старим bash. Пачка власника стала на
-# `qa_args[@]: unbound variable`, чого в bash 5 не буває взагалі.
-#
-# Тому перевіряємо саме ВЕРСІЮ bash, а не наявність php: наявності було не
-# досить, і перша редакція цього не ловила.
-CLICK_PATH='/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin'
-got="$(env -i PATH="$CLICK_PATH" HOME="$HOME" SHELL="${SHELL:-/bin/zsh}" \
-    bash -c '. "$1/cli/system/gui-path.sh"; printf %s "${BASH_VERSINFO[0]}.${BASH_VERSINFO[1]}:$(bash -c "printf %s \"\${BASH_VERSINFO[0]}\"")"' _ "$ROOT" 2>/dev/null)"
-child="${got##*:}"
-test -n "$child" || fail 'не вдалося дізнатись версію bash після відновлення PATH'
-test "$child" -ge 4 \
-    || fail "після відновлення PATH дочірній bash усе одно $child · кліковий запуск виконує скрипти старим інтерпретатором (D106)"
-
-printf 'gui path: OK · кліковий запуск бачить php і НОВИЙ bash, профіль не отруює PATH, у терміналі змін немає.\n'
+echo 'gui path: OK · клік по значку стартує php без термінального PATH і без жодного shell-скрипта'

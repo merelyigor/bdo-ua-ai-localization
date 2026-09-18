@@ -16,8 +16,10 @@ fail() { printf 'FAIL: %s\n' "$1" >&2; exit 1; }
 
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
-mkdir -p "$WORK/bin" "$WORK/state/batches/20260101_000001" "$WORK/cli/run"
-cp "$ROOT/bin/tui.sh" "$WORK/bin/tui.sh"
+mkdir -p "$WORK/state/batches/20260101_000001" "$WORK/cli/run"
+# Вікно тепер PHP-команда (перехід на PHP 2026-09-18), тому пісочниця несе
+# точку входу набору й бібліотеку, а не окремий скрипт.
+cp "$ROOT/cli/bdo.php" "$WORK/cli/bdo.php"
 # Вікно переводить час через `Bdo\Translate\Ui\Clock`, тому пісочниця несе бібліотеку.
 cp -R "$ROOT/lib" "$WORK/lib"
 # Вікно НЕ складає аргументи саме: воно просить план у спільного планувальника,
@@ -75,7 +77,7 @@ printf '%s\n' '{"at":"2026-01-01T10:00:00+00:00","role":"translation-qa","model"
     '{"at":"2026-01-01T10:01:00+00:00","role":"translation-worker","model":"m","verdict":"truncated","ms":900,"in":10,"out":0}' \
     > "$WORK/state/model-calls.jsonl"
 
-tui() { (cd "$WORK" && NO_COLOR=1 bash bin/tui.sh "$@" 2>&1); }
+tui() { (cd "$WORK" && NO_COLOR=1 php cli/bdo.php tui "$@" 2>&1); }
 
 # 1. Ціль читається зі stderr · саме там її друкує `./bdo env`.
 #
@@ -154,10 +156,14 @@ grep -q 'watch loop' "$WORK/state/calls.log" \
 #    Доки таких місць було два, вони розійшлися тихо · меню передало `патч`
 #    замість `patch` (D50). Тепер валідація й порядок аргументів живуть у
 #    `Bdo\Translate\Run\Actions`, і вікно лише виконує готовий план.
-grep -nE '(mode|watch)[[:space:]]+(start|loop)' "$ROOT/bin/tui.sh" | grep -v '^[0-9]*:#' \
-    && fail 'вікно складає команду прогону власним кодом замість спільного планувальника'
-grep -Fq 'cli/run/plan-args.php' "$ROOT/bin/tui.sh" \
-    || fail 'вікно не використовує спільний планувальник аргументів'
+#
+#    Після переносу на PHP ця перевірка йде у PHP-команду. Проверяем:
+#    1. Що план складається через спільний планувальник
+grep -Fq 'cli/run/plan-args.php' "$ROOT/lib/Cli/Command/System/TuiCommand.php" \
+    || fail 'TUI не використовує спільний планувальник аргументів'
+#    2. Що режим трансформується через modeKey (патч -> patch)
+grep -Fq "modeKey" "$ROOT/lib/Cli/Command/System/TuiCommand.php" \
+    || fail 'TUI не трансформує український режим на ключ'
 
 # 8. Основний інтерфейс названий у самому вікні: власник мусить бачити, куди
 #    йти, а не згадувати команду.
@@ -181,7 +187,7 @@ grep -q '^loop --batches 2$' "$WORK/state/calls.log" \
 #    в будь-якій локалі, а не лише в тій, що стоїть у розробника.
 for locale in C POSIX en_US.US-ASCII; do
     out="$(cd "$WORK" && LC_ALL="$locale" LC_CTYPE="$locale" NO_COLOR=1 \
-        bash bin/tui.sh --status 2>&1 < /dev/null)"
+        php cli/bdo.php tui --status 2>&1 < /dev/null)"
     grep -q 'illegal byte' <<<"$out" \
         && fail "локаль $locale ламає екран стану: $out"
     grep -q 'Ціль: PROD' <<<"$out" \
@@ -190,7 +196,7 @@ done
 
 # 9. Кириличних шаблонів у `sed`/`grep -E` не лишилось узагалі · це і є межа
 #    класу, а не окремого рядка.
-if grep -nE "sed -n .*[^\x00-\x7F]" "$ROOT/bin/tui.sh"; then
+if grep -nE "sed -n .*[^\x00-\x7F]" "$ROOT/lib/Cli/Command/System/TuiCommand.php"; then
     fail 'у TUI знову зʼявився sed із не-ASCII шаблоном'
 fi
 
@@ -202,7 +208,7 @@ fi
 #     `date.timezone=UTC`. Розрив у три години читається як «прогін стоїть».
 printf '%s\n' '{"at":"2026-01-01T10:00:00+00:00","role":"translation-qa","model":"m","verdict":"ok","ms":1500,"in":10,"out":20}' \
     > "$WORK/state/model-calls.jsonl"
-out="$(cd "$WORK" && BDO_TZ=Europe/Kiev NO_COLOR=1 bash bin/tui.sh --status < /dev/null 2>&1)"
+out="$(cd "$WORK" && BDO_TZ=Europe/Kiev NO_COLOR=1 php cli/bdo.php tui --status < /dev/null 2>&1)"
 grep -q '12:00:00' <<<"$out" \
     || fail "екран стану не перевів UTC 10:00 у київські 12:00: $out"
 grep -q '10:00:00' <<<"$out" \
@@ -211,7 +217,7 @@ grep -q 'останній рух' <<<"$out" \
     || fail "екран стану не показав вік останнього руху пачки: $out"
 
 # Пояс беремо саме з оточення, тому UTC мусить лишатись UTC.
-out="$(cd "$WORK" && BDO_TZ=UTC NO_COLOR=1 bash bin/tui.sh --status < /dev/null 2>&1)"
+out="$(cd "$WORK" && BDO_TZ=UTC NO_COLOR=1 php cli/bdo.php tui --status < /dev/null 2>&1)"
 grep -q '10:00:00' <<<"$out" || fail "з BDO_TZ=UTC екран мусив показати 10:00:00: $out"
 
 # 11. Межа класу: жодне місце більше не друкує `at` підрядком.
@@ -304,7 +310,7 @@ if ($target === null) {
     exit(1);
 }
 ' "$ROOT/lib/autoload.php" "$cmd" \
-        || fail "bin/tui.sh кличе маршрут, якого немає в Router: «${cmd}»"
-done < <(grep -oE '"\$BDO" [a-z][a-z-]*' "$ROOT/bin/tui.sh" | awk '{print $2}' | sort -u)
+        || fail "вікно кличе маршрут, якого немає в Router: «${cmd}»"
+done < <(grep -oE "'bdo', '[a-z][a-z-]*'" "$ROOT/lib/Cli/Command/System/TuiCommand.php" | sed "s/.*'bdo', '\\([a-z-]*\\)'/\\1/" | sort -u)
 
 echo "OK: TUI показує факти українською, фільтрує ввід, не залежить від локалі й показує час власника."

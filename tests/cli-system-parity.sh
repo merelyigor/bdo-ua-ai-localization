@@ -117,7 +117,7 @@ kernel_code=0
 php "$ROOT/cli/bdo.php" session-timer bogus >"$TMP/kernel.out" 2>&1 || kernel_code=$?
 test "$kernel_code" = 2 \
     || fail "ядро на невідомій дії дало код $kernel_code замість 2"
-grep -q 'Використання: session-timer.sh' "$TMP/kernel.out" \
+grep -q 'Використання: ./bdo timer' "$TMP/kernel.out" \
     || fail 'ядро не знає команду session-timer'
 printf '   %-22s ядро відповідає напряму\n' 'реєстрація-в-ядрі'
 

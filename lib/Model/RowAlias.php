@@ -23,7 +23,7 @@ use RuntimeException;
  *
  * Межі безпеки лишаються в коді: невідомий `id` у відповіді · відмова з
  * причиною, а не здогад; повнота й унікальність далі перевіряються тими самими
- * гейтами (`build-items.sh --require-all`, `VerdictSet::assertCoverage`).
+ * гейтами (`./bdo items --require-all`, `VerdictSet::assertCoverage`).
  */
 final class RowAlias
 {

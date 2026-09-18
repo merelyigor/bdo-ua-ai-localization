@@ -9,13 +9,21 @@
 -- `!cgsConnection` у скриптового й не показує в applet. Applet · справжній
 -- застосунок: реєструється, стоїть у Dock, приймає «Завершити» й Cmd+Q.
 --
--- ЛОГІКИ ТУТ НЕМАЄ Й БУТИ НЕ МАЄ. Усе робить `cli/system/mac-app.sh`, де його
--- бачать `bash -n`, ShellCheck, gate і тест. Тут лише три звертання до нього.
+-- ЛОГІКИ ТУТ НЕМАЄ Й БУТИ НЕ МАЄ. Усе робить PHP-команда `mac-app`; тут лише
+-- три звертання до неї.
+--
+-- PATH ЗАДАЄТЬСЯ ПРЯМО В РЯДКУ, А НЕ ОКРЕМИМ СКРИПТОМ. LaunchServices стартує
+-- бандл без термінального PATH, і `php` тоді не знаходиться. Раніше це лагодив
+-- `cli/system/gui-path.sh`, який доводилось SOURCE-ити в оболонку · саме через
+-- нього bash лишався на шляху запуску застосунку. AppleScript однаково вміє
+-- запускати лише через `do shell script`, тому дешевше назвати типові теки
+-- Homebrew тут одним рядком, ніж тримати заради цього окремий скрипт.
 
 property repoRoot : ""
+property bdoPath : "/opt/homebrew/bin:/usr/local/bin:/opt/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
 
 on bdo(action)
-	do shell script quoted form of (repoRoot & "/cli/system/mac-app.sh") & " " & action
+	do shell script "PATH=" & quoted form of bdoPath & " exec php " & quoted form of (repoRoot & "/cli/bdo.php") & " mac-app " & action
 end bdo
 
 -- Тека набору береться від розташування САМОГО бандла, тому `BDO.app` мусить

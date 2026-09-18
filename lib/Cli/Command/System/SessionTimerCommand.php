@@ -131,7 +131,7 @@ final class SessionTimerCommand implements Command
 
     private function usage(Output $output): int
     {
-        $output->stderr("Використання: session-timer.sh [start [ISO-час] | status | check]\n");
+        $output->stderr("Використання: ./bdo timer [start [ISO-час] | status | check]\n");
 
         return 2;
     }

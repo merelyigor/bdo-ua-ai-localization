@@ -14,7 +14,7 @@ use RuntimeException;
 /**
  * Завантажує пачку рядків сторінками й зберігає її у output.
  *
- * Шлях до файла є машинним контрактом run-mode.sh, тому формат імені та
+ * Шлях до файла є машинним контрактом команди `run mode`, тому формат імені та
  * фінальний рядок лишаються такими самими, як у старому shell-виклику.
  */
 final class FetchRowsCommand implements Command, \Bdo\Translate\Cli\CommandHelp

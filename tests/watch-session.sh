@@ -111,17 +111,19 @@ watch --stop | grep -Fq 'прибирати нічого' || fail 'повтор�
 watch --show >/dev/null 2>&1 && fail '--show на відсутній сесії мусить відмовити з причиною'
 
 # 6. Запис екрана: без vhs · названа причина й інструкція, а не порожній файл.
-GIF="$ROOT/cli/system/tui-gif.sh"
-test -x "$GIF" || fail 'немає cli/system/tui-gif.sh'
-bash "$GIF" --tape | grep -Fq 'Output' || fail 'сценарій vhs не називає файл виводу'
+GIF="$ROOT/lib/Cli/Command/System/TuiGifCommand.php"
+test -f "$GIF" || fail 'немає команди gif'
+# Команда кличеться через єдиний вхід · тим самим шляхом, що й у власника.
+gif() { "$ROOT/bdo" gif "$@"; }
+gif --tape | grep -Fq 'Output' || fail 'сценарій vhs не називає файл виводу'
 # Після звуження вікна (2026-09-05) безпечні пункти · 1 (стан) і 2 (журнал);
 # прогін запускають 5-8, і в записі вони не натискаються НІКОЛИ: GIF робиться
 # на живому наборі, тому один зайвий пункт означав би запис у PROD заради
 # картинки.
-bash "$GIF" --tape | grep -qE '^Type "1"$' || fail 'сценарій не натискає безпечний пункт «стан»'
-bash "$GIF" --tape | grep -qE '^Type "[3-8]"$' && fail 'сценарій натискає пункт, який запускає прогін або сервер'
+gif --tape | grep -qE '^Type "1"$' || fail 'сценарій не натискає безпечний пункт «стан»'
+gif --tape | grep -qE '^Type "[3-8]"$' && fail 'сценарій натискає пункт, який запускає прогін або сервер'
 if ! command -v vhs >/dev/null 2>&1; then
-    out="$(bash "$GIF" 2>&1 || true)"
+    out="$(gif 2>&1 || true)"
     grep -Fq 'brew install vhs' <<<"$out" \
         || fail "без vhs скрипт мусить давати інструкцію: $out"
     test ! -e "$ROOT/docs/assets/tui-status.gif" \

@@ -228,7 +228,7 @@ final class BatchCommitCommand implements Command, \Bdo\Translate\Cli\CommandHel
             $blocked = null;
             if ($doWrite) {
                 if ($runTarget === '') {
-                    $blocked = 'no_run:запусти cli/run/run-start.sh';
+                    $blocked = 'no_run:запусти ./bdo run start';
                 } elseif ($runTarget !== $environment['environment']) {
                     $blocked = 'env_mismatch:прогін='.$runTarget.',команда='.$environment['environment'];
                 } elseif (count($pass) > $remaining) {
@@ -477,7 +477,7 @@ issue, fix.
 режим за замовчуванням і саме він безпечний.
 
 З --write записуються ЛИШЕ рядки зі status=PASS, і лише якщо:
-  1) прогін розпочато через cli/run/run-start.sh (є state/run-target);
+  1) прогін розпочато через ./bdo run start (є state/run-target);
   2) зафіксована ціль прогону збігається з поточним BDO_API_ENV;
   3) денної квоти вистачає на цю пачку.
 Інакше пачка йде в карантин як no_run/env_mismatch/quota, і процес НЕ падає.

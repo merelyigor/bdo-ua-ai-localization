@@ -331,7 +331,7 @@ final class WorkerPayloadCommand implements Command, \Bdo\Translate\Cli\CommandH
 
 --with-current додає поточний machine-переклад рядка як поле "current". Для
 переперекладу: модель бачить наявний текст і може вирішити, чи варто його
-змінювати. Працює лише якщо rows.json містить поля layers (cli/api/fetch-rows.sh з
+змінювати. Працює лише якщо rows.json містить поля layers (`./bdo fetch` з
 fields=...,layers).
 
 Друкує в stdout мінімальний JSON-масив: identity_hash, source_text,

@@ -63,14 +63,14 @@ php -r 'require "lib/autoload.php"; exit(Bdo\Translate\Cli\Router::targetFor(["r
 grep -Fq 'DEFECTS.md' "$ROOT/AGENTS.md" || fail 'AGENTS.md не вимагає вести реєстр дефектів'
 
 # 7. Інспекції IDE · окрема команда й окреме правило, бо gate типів не бачить.
-test -x "$ROOT/cli/system/ide-inspect.sh" || fail 'немає cli/system/ide-inspect.sh'
+test -f "$ROOT/lib/Cli/Command/System/IdeInspectCommand.php" || fail 'немає команди inspect'
 grep -Fq '"inspect ' "$ROOT/cli/command-registry.json" || fail 'команда inspect не в реєстрі'
-php -r 'require "lib/autoload.php"; exit(Bdo\Translate\Cli\Router::targetFor(["inspect"]) === "bash:cli/system/ide-inspect.sh" ? 0 : 1);' \
+php -r 'require "lib/autoload.php"; exit(Bdo\Translate\Cli\Router::targetFor(["inspect"]) === "php:ide-inspect" ? 0 : 1);' \
     || fail 'dispatcher не знає команди inspect'
 # Недоступність мусить бути ГОЛОСНОЮ: мовчазний пропуск читався б як «чисто».
-grep -Fq 'Only one instance' "$ROOT/cli/system/ide-inspect.sh" \
+grep -Fq 'Only one instance' "$ROOT/lib/Cli/Command/System/IdeInspectCommand.php" \
     || fail 'inspect не пояснює, чому headless не запускається при відкритій IDE'
-grep -Fq 'exit 2' "$ROOT/cli/system/ide-inspect.sh" || fail 'inspect мовчки завершується успіхом при недоступності'
+grep -Fq 'return 2' "$ROOT/lib/Cli/Command/System/IdeInspectCommand.php" || fail 'inspect мовчки завершується успіхом при недоступності'
 
 # Порожня тека `active/` є НОРМАЛЬНИМ станом: усі плани можуть бути закриті.
 #

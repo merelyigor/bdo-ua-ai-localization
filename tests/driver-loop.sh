@@ -11,7 +11,7 @@ trap 'rm -rf "$WORK"' EXIT
 setup_side() {
     local base="$WORK/$1"
     mkdir -p "$base/cli/run" "$base/cli/model" "$base/cli/system" "$base/state" "$base/lib"
-    cp "$ROOT/cli/system/timed.sh" "$base/cli/system/timed.sh"
+    # TimedCommand PHP клас копіюється разом із lib/ (рядок нижче)
     cp -R "$ROOT/lib/." "$base/lib/"
     cp "$ROOT/cli/command-registry.json" "$base/cli/command-registry.json"
     # Пісочниця більше не роздвоюється: гілка bash тут була другим боком

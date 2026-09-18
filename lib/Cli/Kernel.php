@@ -7,8 +7,15 @@ namespace Bdo\Translate\Cli;
 use Bdo\Translate\Cli\Command\Api\PatchesOverviewCommand;
 use Bdo\Translate\Cli\Command\Audit\GlossarySuspectsCommand;
 use Bdo\Translate\Cli\Command\Runtime\CheckRuntimeCommand;
+use Bdo\Translate\Cli\Command\Runtime\EnvSyncCommand;
 use Bdo\Translate\Cli\Command\System\BrowserCheckCommand;
 use Bdo\Translate\Cli\Command\System\CheckPlatformCommand;
+use Bdo\Translate\Cli\Command\System\GuiPathCommand;
+use Bdo\Translate\Cli\Command\System\IdeInspectCommand;
+use Bdo\Translate\Cli\Command\System\MacAppLauncherCommand;
+use Bdo\Translate\Cli\Command\System\TimedCommand;
+use Bdo\Translate\Cli\Command\System\TuiCommand;
+use Bdo\Translate\Cli\Command\System\TuiGifCommand;
 use Bdo\Translate\Cli\Command\Audit\JudgeReportCommand;
 use Bdo\Translate\Cli\Command\Audit\ModelBenchCommand;
 use Bdo\Translate\Cli\Command\Audit\ModelIncidentsCommand;
@@ -207,6 +214,13 @@ final class Kernel
             'check-platform' => new CheckPlatformCommand(),
             'check-runtime' => new CheckRuntimeCommand(),
             'browser-check' => new BrowserCheckCommand(),
+            'env-sync' => new EnvSyncCommand(),
+            'ide-inspect' => new IdeInspectCommand(),
+            'tui-gif' => new TuiGifCommand(),
+            'timed' => new TimedCommand(),
+            'tui' => new TuiCommand(),
+            'gui-path' => new GuiPathCommand(),
+            'mac-app-launcher' => new MacAppLauncherCommand(),
             default => null,
         };
     }

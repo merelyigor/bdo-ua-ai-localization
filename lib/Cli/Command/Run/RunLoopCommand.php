@@ -295,7 +295,7 @@ final class RunLoopCommand implements Command, \Bdo\Translate\Cli\CommandHelp
         if (getenv('BDO_STEP_REPORT') === '0') {
             return;
         }
-        // Підетап 7.2: звіт кроку · PHP-команда, а не `bash step-report.sh`.
+        // Підетап 7.2: звіт кроку · PHP-команда, а не окремий скрипт.
         // Підпроцес лишається навмисно: звіт читає розмір керуючого термінала й
         // друкує багато рядків, а драйвер мусить узяти його stdout ЦІЛКОМ і
         // покласти в транскрипт. Виклик у тому самому процесі змішав би два
@@ -550,7 +550,7 @@ final class RunLoopCommand implements Command, \Bdo\Translate\Cli\CommandHelp
         try {
             (new StepTimes($this->stateDir))->record($step, $ms, $code);
         } catch (\Throwable) {
-            // Timing telemetry is non-gating, matching cli/system/timed.sh.
+            // Мітка часу не гейтить крок · так само, як у команді `timed`.
         }
     }
     /** Повернути дослівну довідку legacy-маршруту. */
