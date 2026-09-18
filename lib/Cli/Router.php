@@ -57,6 +57,7 @@ final class Router
             'heal' => ['kind' => 'php', 'command' => 'heal-plan', 'help' => 'heal-plan'],
             'qa-fixes' => ['kind' => 'php', 'command' => 'qa-fixes', 'help' => 'qa-fixes'],
             'merge' => ['kind' => 'php', 'command' => 'merge-items', 'help' => 'merge-items'],
+            'names-apply' => ['kind' => 'php', 'command' => 'names-apply', 'help' => 'names-apply'],
             'commit' => ['kind' => 'php', 'command' => 'commit', 'help' => 'commit'],
             'write' => ['kind' => 'php', 'command' => 'write', 'help' => 'write'],
             'moderation' => ['kind' => 'php', 'command' => 'moderation', 'help' => 'moderation'],

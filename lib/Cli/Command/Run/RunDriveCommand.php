@@ -30,6 +30,7 @@ use Bdo\Translate\Cli\Command\Prepare\WorkerPayloadCommand;
 use Bdo\Translate\Cli\Command\Quality\BuildItemsCommand;
 use Bdo\Translate\Cli\Command\Quality\CheckRussianismsCommand;
 use Bdo\Translate\Cli\Command\Quality\MechanicalSplitCommand;
+use Bdo\Translate\Cli\Command\Quality\ApplyNameEditsCommand;
 use Bdo\Translate\Cli\Command\Quality\MergeItemsCommand;
 use Bdo\Translate\Cli\Command\Quality\NormalizeCandidateCommand;
 use Bdo\Translate\Cli\Command\Quality\QaCoverageFillCommand;
@@ -656,7 +657,7 @@ final class RunDriveCommand implements Command, \Bdo\Translate\Cli\CommandHelp
             if (Items::count($this->workspace->path('names-payload.json')) > 0) {
                 $hashes = Items::hashes($this->workspace->path('names-payload.json'));
                 $this->call(new SubsetRowsCommand(), [$this->workspace->path('rows.json'), implode(',', $hashes), $this->workspace->path('names-subset.json')]);
-                $this->call(new BuildSchemaCommand(), [$this->workspace->path('names-subset.json')]);
+                $this->call(new BuildSchemaCommand(), ['--names', $this->workspace->path('names-subset.json')]);
                 $this->write($this->workspace->path('names-pass.done'), "\n");
                 $this->transition('names_pass');
                 return $this->child($output, 'names_pass', 'translation-names', $this->workspace->path('names-payload.json'), $this->workspace->path('names-fixes.json'));
@@ -702,16 +703,18 @@ final class RunDriveCommand implements Command, \Bdo\Translate\Cli\CommandHelp
             $retry = $this->retryExceeded('names_pass', $output);
             if ($retry === null) return 1;
             if ($retry === 'exhausted') { $this->transition('ready_to_commit'); return $this->emit($output, true, 'ready_to_commit', ['kind' => 'continue', 'reason' => 'names_pass_retry_exhausted']); }
-            $this->call(new BuildSchemaCommand(), [$this->workspace->path('names-subset.json')]);
+            $this->call(new BuildSchemaCommand(), ['--names', $this->workspace->path('names-subset.json')]);
             return $this->child($output, 'names_pass', 'translation-names', $this->workspace->path('names-payload.json'), $fixes);
         }
-        try { $this->call(new MergeItemsCommand(), [$this->workspace->path('final-candidate.json'), $fixes, $this->workspace->path('final-candidate.named.json')]); }
+        // АДРЕСА ПРАВКИ, А НЕ ТЕКСТ · `merge` тут більше не підходить: роль
+        // віддає `find`/`replace`, і заміну робить код (див. ApplyNameEditsCommand).
+        try { $this->call(new ApplyNameEditsCommand(), [$this->workspace->path('final-candidate.json'), $fixes, $this->workspace->path('final-candidate.named.json')]); }
         catch (\Throwable) {
             @rename($fixes, $this->workspace->path('names-fixes.invalid.'.time().'.json'));
             $retry = $this->retryExceeded('names_pass', $output);
             if ($retry === null) return 1;
             if ($retry === 'exhausted') { $this->transition('ready_to_commit'); return $this->emit($output, true, 'ready_to_commit', ['kind' => 'continue', 'reason' => 'names_pass_answer_invalid']); }
-            $this->call(new BuildSchemaCommand(), [$this->workspace->path('names-subset.json')]);
+            $this->call(new BuildSchemaCommand(), ['--names', $this->workspace->path('names-subset.json')]);
             return $this->child($output, 'names_pass', 'translation-names', $this->workspace->path('names-payload.json'), $fixes);
         }
         rename($this->workspace->path('final-candidate.named.json'), $this->workspace->path('final-candidate.json'));

@@ -57,6 +57,11 @@ final class BuildSchemaCommand implements Command, \Bdo\Translate\Cli\CommandHel
                 $index++;
                 continue;
             }
+            if ($argument === '--names') {
+                $mode = 'names';
+                $index++;
+                continue;
+            }
             if ($argument === '--out') {
                 $outFile = (string) ($arguments[$index + 1] ?? '');
                 if ($outFile === '') {
@@ -93,6 +98,24 @@ final class BuildSchemaCommand implements Command, \Bdo\Translate\Cli\CommandHel
                 'fix' => ['type' => 'string'],
             ];
             $required = ['identity_hash', 'status', 'severity', 'issue', 'fix'];
+        } elseif ($mode === 'names') {
+            // РОЛЬ НАЗВ ВІДДАЄ АДРЕСУ ПРАВКИ, А НЕ ТЕКСТ.
+            //
+            // Заміряно на живому payload: поле `current` займало 54.5% запиту, а
+            // модель ПЕРЕДРУКОВУВАЛА весь рядок заради однієї назви · 1 626
+            // вихідних токенів на три рядки (вимір 2026-09-05). Дорого не те,
+            // що ми шлемо, а те, що вона віддає.
+            //
+            // Головне тут навіть не ціна: поки роль повертала повний текст,
+            // плейсхолдери, PA markup і довжину доводилось ДОВІРЯТИ моделі й
+            // перевіряти після неї. З адресою правки зіпсувати решту рядка
+            // неможливо за побудовою · код міняє рівно названий шматок.
+            $properties = [
+                'identity_hash' => ['type' => 'string', 'enum' => $hashes],
+                'find' => ['type' => 'string'],
+                'replace' => ['type' => 'string'],
+            ];
+            $required = ['identity_hash', 'find', 'replace'];
         } else {
             $properties = [
                 'identity_hash' => ['type' => 'string', 'enum' => $hashes],

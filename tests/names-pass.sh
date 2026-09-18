@@ -136,9 +136,17 @@ grep -q '"child_dispatch:translation-names:1"' "$B/journal.jsonl" || fail 'жу�
 # Схема під ПІДМНОЖИНУ: один рядок, а не вся пачка.
 test "$(jq '.properties.items.items.properties.identity_hash.enum | length' "$STATE/current-response-schema.json")" = 1 \
     || fail 'схема repair побудована не під підмножину проходу'
+# ФОРМА ВІДПОВІДІ · АДРЕСА ПРАВКИ. Поки роль віддавала повний текст, вона
+# передруковувала весь рядок заради однієї назви (54.5% запиту · поле `current`,
+# 1 626 вихідних токенів на три рядки) і могла зіпсувати будь-що поза назвою.
+# САБОТАЖ: прибрати `--names` у виклику BuildSchemaCommand · схема знову стане
+# текстовою, і цей блок почервоніє.
+jq -e '.properties.items.items.properties | has("find") and has("replace") and (has("text") | not)' \
+    "$STATE/current-response-schema.json" >/dev/null \
+    || fail 'схема проходу по назвах не вимагає адреси правки (find/replace)'
 
 # 4. Відповідь repair зливається у фінальний текст, пачка повертається до запису.
-php -r 'file_put_contents($argv[1], json_encode([["identity_hash" => $argv[2], "text" => "Переміщення"]], JSON_THROW_ON_ERROR));' "$B/names-fixes.json" "$H1"
+php -r 'file_put_contents($argv[1], json_encode([["identity_hash" => $argv[2], "find" => "Рух", "replace" => "Переміщення"]], JSON_THROW_ON_ERROR));' "$B/names-fixes.json" "$H1"
 out="$(drive)"
 jq -e '.state == "ready_to_commit" and .next.reason == "names_fixed"' <<<"$out" >/dev/null \
     || fail "після відповіді repair пачка не повернулась до запису: $out"
@@ -168,5 +176,45 @@ machine_payload="$(php "$ROOT/cli/bdo.php" names-payload "$STATE/rows.json" "$ST
     || fail 'прохід по назвах упав на машинному походженні'
 test "$(jq '.items | length' <<<"$machine_payload")" = 0 \
     || fail 'машинна назва потрапила в наказ проходу по назвах'
+
+# 7. МЕЖІ ПІДСТАНОВКИ ЗА АДРЕСОЮ · перевіряємо саму команду на справжніх файлах.
+#
+# Тут три випадки, і кожен колись коштував би зіпсованого рядка:
+# а) звичайна заміна міняє РІВНО названий шматок;
+# б) `find`, якого в тексті немає · рядок лишається цілим, випадок названо;
+# в) чужий identity_hash зупиняє команду, а не псує сусідню пачку.
+apply_dir="$TMP/apply"
+mkdir -p "$apply_dir"
+php -r 'file_put_contents($argv[1], json_encode([
+    ["identity_hash" => $argv[2], "text" => "Обмін «всякиєї всячини» у зоні."],
+    ["identity_hash" => $argv[3], "text" => "Залізний меч"],
+], JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR));' "$apply_dir/base.json" "$H1" "$H2"
+php -r 'file_put_contents($argv[1], json_encode([
+    ["identity_hash" => $argv[2], "find" => "всякиєї всячини", "replace" => "Всяка всячина"],
+    ["identity_hash" => $argv[3], "find" => "ЦЬОГО НЕМАЄ", "replace" => "байдуже"],
+], JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR));' "$apply_dir/edits.json" "$H1" "$H2"
+apply_out="$(php "$ROOT/cli/bdo.php" names-apply "$apply_dir/base.json" "$apply_dir/edits.json" "$apply_dir/out.json" 2>"$apply_dir/err.txt")" \
+    || fail "підстановка назв упала: $(cat "$apply_dir/err.txt")"
+grep -Fq 'Підставлено назв: 1' <<<"$apply_out" \
+    || fail "команда не підставила назву: $apply_out"
+grep -Fq 'не знайдено місця: 1' <<<"$apply_out" \
+    || fail "ненайдене місце не враховано: $apply_out"
+grep -Fq 'ЦЬОГО НЕМАЄ' "$apply_dir/err.txt" \
+    || fail 'ненайдене місце не названо в stderr · тиха втрата (§12)'
+jq -e --arg h "$H1" '.[] | select(.identity_hash == $h) | .text == "Обмін «Всяка всячина» у зоні."' "$apply_dir/out.json" >/dev/null \
+    || fail 'заміна за адресою змінила не те, що названо'
+jq -e --arg h "$H2" '.[] | select(.identity_hash == $h) | .text == "Залізний меч"' "$apply_dir/out.json" >/dev/null \
+    || fail 'рядок без знайденої адреси зіпсовано'
+# Чужий рядок · зупинка, а не мовчазне ігнорування.
+php -r 'file_put_contents($argv[1], json_encode([["identity_hash" => str_repeat("f", 64), "find" => "а", "replace" => "б"]], JSON_THROW_ON_ERROR));' "$apply_dir/alien.json"
+if php "$ROOT/cli/bdo.php" names-apply "$apply_dir/base.json" "$apply_dir/alien.json" "$apply_dir/alien-out.json" >/dev/null 2>&1; then
+    fail 'чужий identity_hash у правці назв не зупинив команду'
+fi
+# Промпт мусить вимагати саме адресу · інакше модель повернеться до передруку.
+grep -Fq '"find"' "$ROOT/roles/translation-names.md" \
+    || fail 'промпт ролі назв не вимагає find/replace · модель знову передруковуватиме рядок'
+if grep -Fq '"text":"повний текст' "$ROOT/roles/translation-names.md"; then
+    fail 'промпт ролі назв знову просить повний текст'
+fi
 
 echo 'names pass: OK · один прохід по назвах перед записом, без повтору.'
