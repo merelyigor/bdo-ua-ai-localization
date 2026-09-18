@@ -75,7 +75,15 @@
         <div class="start-patch-filters">
           <label class="empty" for="domain">категорія</label>
           <select id="domain"><option value="">усі</option></select>
-          <label class="empty" for="batches">пачок</label>
+          <!-- ОБСЯГ · або число пачок, або повний автономний переклад патча.
+               Вгадувати кількість пачок власник не має: цикл і так спиняється
+               сам, коли рядків за фільтром більше немає (`goal_complete`), тому
+               «перекласти все» це просто прогін без стелі. -->
+          <label class="empty" for="scope">обсяг</label>
+          <select id="scope">
+            <option value="count">пачок</option>
+            <option value="all">перекласти все</option>
+          </select>
           <input id="batches" type="number" min="1" max="200" value="1">
         </div>
         <div class="empty start-patch-hint" id="patchHint"></div>
@@ -245,17 +253,40 @@
     }
     var left = Number(found.missing_machine) || 0;
     var batches = Math.max(1, Math.ceil(left / 50));
+    // У режимі «усе» число пачок не є вибором власника · його визначає сам
+    // залишок, тому й у підказці стоїть не «приблизно скільки взяти», а
+    // «стільки буде зроблено, і зупиниться воно саме».
+    var scope = allScope()
+      ? ' рядків без ШІ-шару · прогін візьме їх УСІ, пачками по 50, і спиниться сам, коли робота скінчиться'
+      : ' рядків без ШІ-шару · це приблизно ' + B.num(batches) + ' пачок по 50';
     B.el('patchHint').textContent = (value === 'active' ? 'в активному патчі ' : 'у патчі ')
-      + found.patch + ' лишилось ' + B.num(left)
-      + ' рядків без ШІ-шару · це приблизно ' + B.num(batches) + ' пачок по 50'
+      + found.patch + ' лишилось ' + B.num(left) + scope
       + (patchesFromCache ? ' · числа з кешу, оновлюються раз на 5 хв' : ' · числа щойно з API');
+  }
+
+  // Обсяг роботи: рахуємо пачки чи беремо все, що лишилось у патчі.
+  function allScope() {
+    var scope = B.el('scope');
+    return !!scope && scope.value === 'all';
+  }
+
+  // Поле числа не зникає, а глухне: власник бачить, що саме воно вимкнене, і
+  // куди повернеться, коли перемкне назад.
+  function syncScope() {
+    var box = B.el('batches');
+    if (!box) { return; }
+    box.disabled = allScope();
+    box.title = box.disabled ? 'у режимі «перекласти все» кількість пачок не потрібна · обсяг визначає сам патч' : '';
   }
 
   function payload() {
     var p = { mode: mode, patch: selectedPatch() };
     var domain = B.el('domain').value;
     if (domain) { p.domain = domain; }
-    var batches = B.el('batches').value;
+    // «ПЕРЕКЛАСТИ ВСЕ» · це відсутність стелі, а не велике число. Цикл без
+    // `--batches` веде ціль до кінця й спиняється сам, коли рядків за фільтром
+    // не лишилось. Тому в режимі «усе» ключ `batches` у план просто не йде.
+    var batches = allScope() ? '' : B.el('batches').value;
     if (batches) { p.batches = batches; }
     return p;
   }
@@ -288,6 +319,9 @@
 
   var previewTimer = null;
   function refresh() {
+    // Стан поля числа й підказка залежать від перемикача обсягу · тому вони
+    // перемальовуються разом, а не кожен за своєю подією.
+    syncScope();
     patchHint();
     if (previewTimer) { clearTimeout(previewTimer); }
     previewTimer = setTimeout(function () {
@@ -310,22 +344,25 @@
 
   // Відновлюємо збережене ДО першого показу команди, інакше перший рендер
   // покаже одне, а памʼять · інше.
-  ['domain', 'batches'].forEach(function (id) {
+  ['domain', 'batches', 'scope'].forEach(function (id) {
     var node = B.el(id);
     var saved = P.get(id, null);
     if (saved === null) { return; }
     if (node.type === 'checkbox') { node.checked = !!saved; } else { node.value = saved; }
   });
-  ['domain', 'batches'].forEach(function (id) {
+  ['domain', 'batches', 'scope'].forEach(function (id) {
     var node = B.el(id);
     node.addEventListener('change', function () {
       P.set(id, node.type === 'checkbox' ? node.checked : node.value);
     });
   });
-  ['domain', 'batches'].forEach(function (id) {
+  ['domain', 'batches', 'scope'].forEach(function (id) {
     B.el(id).onchange = refresh;
     B.el(id).oninput = refresh;
   });
+  // Стан поля числа мусить відповідати перемикачу ще ДО першого показу плану,
+  // інакше відновлений із памʼяті режим «усе» лишив би поле живим.
+  syncScope();
 
   B.get('/api/actions').then(function (d) {
     B.el('domain').innerHTML = '<option value="">усі</option>'

@@ -381,4 +381,44 @@ if (($other["cached"] ?? false) === true && count($other["rows"]) === 20) {
 ' "$ROOT/lib/autoload.php" "$BDO_STATE_DIR" "$ROOT" || fail 'кеш черги ігнорує ліміт'
 rm -f "$BDO_STATE_DIR/web-moderation.json"
 
+# ПОВНИЙ ПЕРЕКЛАД ПАТЧА · план без стелі пачок (вимога власника 2026-09-18).
+#
+# Власник не має вгадувати, скільки це пачок: цикл і так спиняється сам, коли
+# рядків за фільтром не лишилось (`goal_complete`). Тому режим «перекласти все»
+# це ВІДСУТНІСТЬ `--batches`, а не велике число · і план мусить це і робити, і
+# казати людською мовою.
+# САБОТАЖ: почати слати `batches` у цьому режимі · рядок про `--batches` нижче
+# почервоніє.
+php -r '
+require $argv[1];
+use Bdo\Translate\Run\Actions;
+$plan = Actions::plan("run.start", ["mode" => "patch", "patch" => "9"]);
+$loop = "";
+foreach ($plan["steps"] as $step) {
+    if (in_array("loop", $step, true)) { $loop = implode(" ", $step); }
+}
+if ($loop === "") { fwrite(STDERR, "FAIL: у плані немає кроку циклу\n"); exit(1); }
+if (str_contains($loop, "--batches")) {
+    fwrite(STDERR, "FAIL: повний переклад отримав стелю пачок: $loop\n"); exit(1);
+}
+$explain = implode(" | ", Actions::explain("run.start", ["mode" => "patch", "patch" => "9"]));
+if (! str_contains($explain, "доки в патчі є робота")) {
+    fwrite(STDERR, "FAIL: план не каже, що прогін іде до кінця патча: $explain\n"); exit(1);
+}
+$counted = Actions::plan("run.start", ["mode" => "patch", "patch" => "9", "batches" => 3]);
+$loop2 = "";
+foreach ($counted["steps"] as $step) {
+    if (in_array("loop", $step, true)) { $loop2 = implode(" ", $step); }
+}
+if (! str_contains($loop2, "--batches 3")) {
+    fwrite(STDERR, "FAIL: названа кількість пачок не дійшла до циклу: $loop2\n"); exit(1);
+}
+' "$ROOT/lib/autoload.php" || fail 'план повного перекладу патча не збігається з обіцянкою сторінки'
+
+# Сторінка мусить мати сам перемикач і не слати кількість у режимі «усе».
+grep -Fq 'id="scope"' "$ROOT/web/start.html" \
+    || fail 'на сторінці старту немає перемикача обсягу · власник знову вгадуватиме кількість пачок'
+grep -Fq "allScope() ? ''" "$ROOT/web/start.html" \
+    || fail 'сторінка шле кількість пачок навіть у режимі «перекласти все»'
+
 echo 'web actions: OK · кожна дія є командою з реєстру, POST зі своєю Origin, PROD вимагає підтвердження, рядок із браузера не стає командою, помилка сторінки лишає слід у файлі.'
