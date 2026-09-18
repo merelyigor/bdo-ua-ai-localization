@@ -266,6 +266,17 @@ switch ($path) {
 
         return;
 
+    case '/api/model':
+        // ЧИННІ ПАРАМЕТРИ МОДЕЛІ · окремо й ДЕШЕВО.
+        //
+        // Хедер показує їх на КОЖНОМУ екрані (вимога власника 2026-09-18), але
+        // тягти заради шести чисел повний знімок не можна: `/api/state` важить
+        // 66 КБ, а цей шматок · частки кілобайта. Джерело те саме, тому
+        // розійтися з екраном прогону він не може за побудовою.
+        $json($snapshot->toArray()['model'] ?? []);
+
+        return;
+
     case '/api/state':
         // Опитування · запасний шлях, і саме тоді сторінці потрібен ПОВНИЙ
         // текст ролі: живого потоку немає, а зшивати хвіст здогадом заборонено.
@@ -573,7 +584,7 @@ switch ($path) {
         return;
 
     default:
-        $fail(404, 'unknown_path', 'сервер віддає лише екрани /, /queue, /sessions, /start, /models, /call, статику /app.css, /app.js і /assets/bdo-background.webp, а з даних · /api/ping, /api/health, /api/state, /api/work, /api/sessions, /api/stream, /api/call, /api/models, /api/actions, /api/plan, а дії · POST на /api/action і /api/client-error');
+        $fail(404, 'unknown_path', 'сервер віддає лише екрани /, /queue, /sessions, /start, /models, /call, статику /app.css, /app.js і /assets/bdo-background.webp, а з даних · /api/ping, /api/health, /api/state, /api/model, /api/work, /api/sessions, /api/stream, /api/call, /api/models, /api/actions, /api/plan, а дії · POST на /api/action і /api/client-error');
 
         return;
 }
