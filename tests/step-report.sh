@@ -183,4 +183,9 @@ golden after-qa      --after translation-qa "$F/payload.json" "$F/verdicts.json"
 golden after-judge   --after translation-judge "$F/payload.json" "$F/judge.json"
 golden after-terms   --after translation-terminology "$F/terms-payload.json" "$F/terms.json"
 golden after-empty   --after translation-worker "$F/payload.json" "$F/empty.json"
-printf 'step-report: 7 золотих еталонів збігаються побайтово\n'
+# АДРЕСНА ПРАВКА мусить бути ВИДНОЮ. Ремонт і назви віддають `find`/`replace`, і
+# без власної гілки звіт друкував «ремонтник повернув 3 рядки» й порожнечу під
+# ними (побачено на живій пачці 20260918_233227). Саме ці два рядки й потрібні
+# власнику: що саме змінили в тексті.
+golden after-edits   --after translation-repair "$F/payload.json" "$F/edits.json"
+printf 'step-report: 8 золотих еталонів збігаються побайтово\n'

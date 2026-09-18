@@ -239,6 +239,34 @@ grep -Fq 'visibilitychange' "$ROOT/web/app.js" \
 grep -Fq 'pagehide' "$ROOT/web/app.js" \
     || fail 'закрита вкладка не відпускає SSE'
 
+# --- Потік живе стільки, скільки сам собі відміряв ---------------------------
+# `max_execution_time` вбудованого сервера (30 с) убивав SSE ФАТАЛЬНОЮ помилкою
+# посеред прогону: подія `bye` не приходила ніколи, а `BDO_WEB_STREAM_SECONDS`
+# був мертвим числом. Видно це було лише в `state/web.log` · сторінка мовчки
+# перепідключалась, тому знімок і зелений тест нічого не показували (помічено на
+# живій пачці 20260918_233227).
+#
+# Перевіряємо тим самим шляхом, але з КОРОТКОЮ стелею php: якщо функція не
+# піднімає ліміт сама, потік помре на другій секунді замість пʼятої.
+stream_port=$(( BASE_PORT + 900 ))
+stream_log="$TMP/stream-server.log"
+BDO_WEB_TOKEN="$TOKEN" BDO_WEB_STREAM_SECONDS=5 php -d max_execution_time=2 \
+    -S "127.0.0.1:$stream_port" -t "$ROOT/web" "$ROOT/cli/system/web-router.php" \
+    >"$stream_log" 2>&1 &
+STREAM_PID=$!
+for _ in 1 2 3 4 5 6 7 8 9 10; do
+    test "$(code "http://127.0.0.1:$stream_port/api/ping")" = 200 && break
+    sleep 0.3
+done
+stream_body="$(curl -s -m 12 -N "http://127.0.0.1:$stream_port/api/stream?t=$TOKEN" 2>/dev/null || true)"
+kill "$STREAM_PID" 2>/dev/null || true
+wait "$STREAM_PID" 2>/dev/null || true
+grep -Fq 'event: bye' <<<"$stream_body" \
+    || fail 'потік обірвався без події bye · стелю виконання тримає php, а не сама функція'
+if grep -Fq 'Maximum execution time' "$stream_log"; then
+    fail 'SSE падає фатальною помилкою часу виконання · у журналі сервера сміття, а сторінка мовчки перепідключається'
+fi
+
 # --- Скрипт сторінки мусить бути синтаксично цілим -------------------------
 # Зламаний JavaScript не видно ні в HTTP-коді (сторінка віддається як завжди),
 # ні на скріншоті (розмітка малюється). Видно лише те, що кнопки мертві ·

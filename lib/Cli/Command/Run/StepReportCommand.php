@@ -171,6 +171,20 @@ final class StepReportCommand implements Command
                     $output->stdout(sprintf("  │  %2d. %s\n", ++$shown, $source !== '' ? $source : substr($hash, 0, 12)));
                     $output->stdout(sprintf("  │      → %s\n", $one($answer['text'], $width)));
                 }
+            } elseif (isset($answer['find'], $answer['replace'])) {
+                // АДРЕСНА ПРАВКА · ремонт і назви. Без цієї гілки екран друкував
+                // «ремонтник повернув 3 рядки» і НІ ОДНОГО рядка під ним:
+                // роль давно віддає `find`/`replace`, а звіт шукав `text`
+                // (побачено на живій пачці 20260918_233227). Власник тоді не
+                // бачить, ЩО саме змінив ремонт · тобто найважливіше.
+                $counts[$answer['find'] === $answer['replace'] ? 'без зміни' : 'правок'] =
+                    ($counts[$answer['find'] === $answer['replace'] ? 'без зміни' : 'правок'] ?? 0) + 1;
+                if ($shown < $limit) {
+                    $output->stdout(sprintf("  │  %2d. %s\n", ++$shown, $source !== '' ? $source : substr($hash, 0, 12)));
+                    $output->stdout(sprintf("  │      «%s» → «%s»\n",
+                        $one((string) $answer['find'], (int) ($width / 2)),
+                        $one((string) $answer['replace'], (int) ($width / 2))));
+                }
             } elseif (isset($answer['status'], $answer['severity'])) {
                 $key = $answer['status'].'/'.$answer['severity'];
                 $counts[$key] = ($counts[$key] ?? 0) + 1;

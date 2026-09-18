@@ -95,13 +95,14 @@ changed_files() {
 # мовчазним. Профіль `full` є безпечним fallback для механізму gate і невідомих
 # шляхів; окремі тести названі там, де вони стережуть конкретний шар.
 touched_map() {
-    local path="$1"
+    local path="$1" fixture_owner
     # Змінений сценарій · спершу ЛІНТЕР, і лише потім те, що він стереже.
     # Виміряно 2026-09-14: `gate touched` обрав правильні тести для нового
     # `tests/command-help.sh`, тести пройшли, а CI упав на `shellcheck`
     # (SC2034, мертве присвоєння). Карта обирала, ЩО запустити, і не обирала,
     # ЧИМ перевірити сам сценарій.
     case "$path" in
+        tests/fixtures/*) : ;;   # ДАНІ, А НЕ СЦЕНАРІЙ · див. гілку tests/fixtures нижче
         *.sh|.githooks/*)
             printf 'lint|%s|синтаксис і shellcheck зміненого сценарію\n' "$path" ;;
     esac
@@ -124,8 +125,19 @@ touched_map() {
             printf 'test|tests/web-call-view.sh|перегляд виклику\n' ;;
         tests/*.sh|tests/*.php|tests/*.ps1)
             printf 'test|%s|запущений саме змінений тест\n' "$path" ;;
+        tests/fixtures/*)
+            # ЕТАЛОН · ЦЕ ДАНІ. Shellcheck на них давав завідомо хибний вирок:
+            # новий `tests/fixtures/step-report/after-edits.golden` упав на
+            # SC2148 «немає shebang», хоча це вивід команди, а не сценарій.
+            # Власника тек fixture має один тест · його й ганяємо.
+            fixture_owner="tests/$(printf '%s' "$path" | cut -d/ -f3).sh"
+            if [ -f "$ROOT/$fixture_owner" ]; then
+                printf 'test|%s|тест, якому належить еталон\n' "$fixture_owner"
+            else
+                printf 'profile|full|еталон без власного тесту · невідомо, хто його читає\n'
+            fi ;;
         tests/*)
-            # Fixture зачіпає невідомо які тести · локально не вгадуємо, а
+            # Support-файл зачіпає невідомо які тести · локально не вгадуємо, а
             # віддаємо це CI. Вгадування коштувало повного прогону щоразу.
             printf 'lint|%s|синтаксис зміненого support-файла\n' "$path" ;;
         roles/*|config/*)
@@ -1987,7 +1999,12 @@ profile="${1:-}"
 # інакше довідка про стан ставала б недоступною саме тоді, коли йде прогін.
 case "$profile" in
     preflight) ;;
-    touched|docs|shell|agents|runtime|api|full) gate_lock_take "$profile" ;;
+    # ПЛАН · ЦЕ ТЕЖ ЧИТАННЯ. `BDO_GATE_TOUCHED_PLAN_ONLY=1` друкує карту й не
+    # запускає жодної перевірки, тобто спільних `output/` і `state/` не чіпає.
+    # Із замком тест карти було неможливо запустити ЗСЕРЕДИНИ гейта: він падав
+    # на «гейт уже працює в цьому дереві» щоразу, коли сам себе й перевіряв.
+    touched|docs|shell|agents|runtime|api|full)
+        [ "${BDO_GATE_TOUCHED_PLAN_ONLY:-0}" = 1 ] || gate_lock_take "$profile" ;;
 esac
 
 case "$profile" in

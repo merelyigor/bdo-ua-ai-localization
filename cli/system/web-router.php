@@ -609,6 +609,13 @@ function stream(Snapshot $snapshot): void
     }
 
     $maxSeconds = (int) (getenv('BDO_WEB_STREAM_SECONDS') ?: 300);
+    // ЧАС ЗʼЄДНАННЯ ТРИМАЄ ЦЯ ФУНКЦІЯ, А НЕ php.ini. Без цього рядка
+    // `max_execution_time` (30 с у вбудованого сервера) убивав потік ФАТАЛЬНОЮ
+    // помилкою: у `state/web.log` лягало «Maximum execution time of 30 seconds
+    // exceeded ... on line 708», подія `bye` не відправлялась ніколи, а
+    // `$maxSeconds` був мертвим числом. Помічено на живій пачці
+    // 20260918_233227: пʼять фаталів за три хвилини прогону.
+    set_time_limit($maxSeconds + 30);
     $offset = $snapshot->streamSize();
     $lastState = '';
     $started = time();
