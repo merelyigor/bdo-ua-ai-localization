@@ -159,6 +159,7 @@ touched_map() {
             printf 'test|tests/terminology-excerpt.sh|excerpt термінології\n'
             printf 'test|tests/terminology-chunks.sh|chunks термінології\n' ;;
         lib/Pipeline/*)
+            printf 'test|tests/lineage.sh|слід рядка\n'
             printf 'test|tests/pipeline-unit.php|unit-контракти pipeline\n'
             printf 'test|tests/pipeline-faults.php|відмови pipeline\n'
             printf 'test|tests/qa-scope.sh|scope QA\n'
@@ -169,6 +170,7 @@ touched_map() {
             printf 'test|tests/mechanical-before-qa.sh|порядок mechanical перед QA\n'
             printf 'test|tests/mechanical-final-check.sh|фінальна mechanical-перевірка\n'
             printf 'test|tests/hallucinated-tokens.sh|вигадані токени\n'
+            printf 'test|tests/lineage.sh|слід рядка\n'
             printf 'test|tests/qa-memory-only.sh|memory-only QA\n'
             printf 'test|tests/names-pass.sh|перевірка імен\n' ;;
         lib/Run/*)
@@ -1780,6 +1782,7 @@ tests/worker-reference.sh
 tests/schema-provider-compat.sh
 tests/mechanical-final-check.sh
 tests/hallucinated-tokens.sh
+tests/lineage.sh
 tests/domain-filter.sh
 tests/audit-response-shape.sh
 tests/mechanical-before-qa.sh

@@ -13,6 +13,7 @@ use Bdo\Translate\Cli\Command;
 use Bdo\Translate\Cli\Command\Api\ApiEnvironment;
 use Bdo\Translate\Cli\Output;
 use Bdo\Translate\Pipeline\ChannelRouter;
+use Bdo\Translate\Pipeline\Lineage;
 use Bdo\Translate\Pipeline\JudgeDecisions;
 use Bdo\Translate\Pipeline\JudgePolicy;
 use Bdo\Translate\Pipeline\RowAttempts;
@@ -149,6 +150,10 @@ final class BatchCommitCommand implements Command, \Bdo\Translate\Cli\CommandHel
             $mechanicalLog = [];
             $judgeLog = [];
             $judgeCounts = [];
+            // СЛІД РЯДКА · пишемо тут, бо саме тут відомо все: вирок QA, робота
+            // ремонту, рішення судді й кінцевий маршрут. Реконструювати це
+            // потім із шести файлів теки пачки доводилось руками.
+            $lineage = Lineage::forBatch(dirname($candidateFile));
 
             foreach ($verdicts as $verdict) {
                 $hash = (string) ($verdict['identity_hash'] ?? '');
@@ -191,6 +196,14 @@ final class BatchCommitCommand implements Command, \Bdo\Translate\Cli\CommandHel
                     $route = $destination === JudgePolicy::AI_LAYER ? ChannelRouter::PASS : ChannelRouter::PROPOSAL;
                     $judgeCounts[$destination] = ($judgeCounts[$destination] ?? 0) + 1;
                 }
+                $lineage->add(
+                    $hash,
+                    (string) ($rowByHash[$hash]['source_hash'] ?? ''),
+                    $verdict,
+                    $judge->has($hash) ? ($judge->get($hash) ?? []) : null,
+                    $mechanical,
+                    $route,
+                );
                 if ($route === ChannelRouter::PASS) {
                     $item = [
                         'identity_hash' => $hash,
@@ -297,6 +310,7 @@ final class BatchCommitCommand implements Command, \Bdo\Translate\Cli\CommandHel
             $quarantine = $stateDir.'/quarantine.jsonl';
             $quarantineLines = is_file($quarantine) ? count(file($quarantine, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) ?: []) : 0;
             $output->stdout(sprintf("Карантин: %s (%d рядків усього)\n", $quarantine, $quarantineLines));
+            $lineage->write($currentWorkspace?->dir() ?? dirname($candidateFile));
             if ($doWrite) {
                 $batchDir = $currentWorkspace?->dir() ?? dirname($candidateFile);
                 $summary = [
