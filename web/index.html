@@ -78,6 +78,10 @@
            лише вміст `#verdicts` і числа в підсумку. -->
       <details class="verdict-box" id="verdictBox">
       <summary class="verdict-summary">
+        <!-- Стрілка · та сама іконка, що й решта інтерфейсу, і РОЗМІРОМ з
+             елемент керування: символ «▸» у 11 пікселів власник просто не
+             бачив (2026-09-18). Малюється скриптом, бо набір іконок один. -->
+        <span class="verdict-caret" id="verdictCaret"></span>
         <span class="verdict-title">вердикти</span>
         <span class="verdict-counts" id="verdictCounts"></span>
       </summary>
@@ -114,6 +118,8 @@
   'use strict';
   var B = window.BDO;
   B.renderNav('/');
+  // Стрілку згортання малюємо один раз: вона не залежить від даних.
+  B.el('verdictCaret').innerHTML = B.icon('chevron');
   if (!B.ensureToken()) { return; }
   B.el('app').style.display = 'block';
 

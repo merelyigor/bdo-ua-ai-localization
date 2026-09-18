@@ -1000,8 +1000,16 @@ body{
 .verdict-summary{display:flex;align-items:center;gap:12px;cursor:pointer;list-style:none;
   padding:2px 0;font-size:13px;color:var(--tp)}
 .verdict-summary::-webkit-details-marker{display:none}
-.verdict-summary::before{content:"▸";flex:0 0 auto;color:var(--tm);font-size:11px;transition:transform .12s}
-.verdict-box[open]>.verdict-summary::before{transform:rotate(90deg)}
+/* СТРІЛКА Є ЕЛЕМЕНТОМ КЕРУВАННЯ, А НЕ ЗНАЧКОМ У ТЕКСТІ. Перша редакція малювала
+   «▸» в 11 пікселів · власник його просто не побачив і сказав про це прямо
+   (2026-09-18). Тепер це іконка набору у власній круглій площадці 26×26: у неї
+   видно куди тиснути, і вона підсвічується разом із рядком. */
+.verdict-caret{flex:0 0 auto;display:inline-flex;align-items:center;justify-content:center;
+  width:26px;height:26px;border:1px solid var(--bd);border-radius:50%;color:var(--ts);
+  background:var(--s1);transition:transform .12s,border-color .12s,color .12s}
+.verdict-caret .icon{width:16px;height:16px}
+.verdict-box[open]>.verdict-summary .verdict-caret{transform:rotate(90deg)}
+.verdict-summary:hover .verdict-caret{border-color:var(--bda);color:var(--acc-tx)}
 .verdict-box[open]>.verdict-summary{margin-bottom:10px}
 .verdict-title{font-weight:500}
 .verdict-counts{color:var(--ts);font-size:12px}

@@ -145,6 +145,7 @@
     circle: '<circle cx="12" cy="12" r="7.5"/>',
     info: '<circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/>',
     dot: '<circle cx="12" cy="12" r="4"/>',
+    chevron: '<path d="m9 5 7 7-7 7"/>',
     pass: '<path d="m5 12 4.2 4.2L19 6.5"/>',
     review: '<path d="M12 7v6M12 17h.01"/>',
     reject: '<path d="m7 7 10 10M17 7 7 17"/>'
