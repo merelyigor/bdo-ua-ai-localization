@@ -249,7 +249,10 @@
         if (d.rows) { bits.push(B.num(d.rows) + ' ' + d.unit); }
         if (d.in || d.out) { bits.push(B.num(d.in) + '→' + B.num(d.out) + ' ток.'); }
         if (d.ms) { bits.push(B.secs(d.ms)); }
-        if (d.state_label) { bits.push(d.state_label); }
+        // СТАН ТУТ ІСТОРИЧНИЙ. Це крок, на якому пачка стояла В МОМЕНТ цього
+        // виклику, а не те, чого вона чекає зараз: рядок «чекає на терміни» на
+        // давно закритій пачці читався як теперішній (власник 2026-09-18).
+        if (d.state_label) { bits.push('на цьому кроці: ' + d.state_label); }
         if (d.batch) { bits.push('пачка ' + d.batch); }
         if (d.model) { bits.push(d.model); }
         bits.push('вирок ' + (d.verdict || '—'));

@@ -213,7 +213,18 @@ final class RuntimeModels
                 $models[] = [
                     'runtime' => $runtime,
                     'model' => $name,
-                    'size' => $this->formatBytes((int) ($entry['size'] ?? 0)),
+                    // ХМАРНА МОДЕЛЬ НЕ МАЄ ВАГИ НА ЦІЙ МАШИНІ.
+                    //
+                    // `/api/tags` віддає для неї `size` заглушки · 345 і 384
+                    // байти, і на екрані каталогу це виглядало як «345 B»:
+                    // число точне на вигляд і беззмістовне по суті (власник
+                    // побачив це 2026-09-18). Сам `ollama list` друкує там
+                    // прочерк. Ознаку беремо не з імені `:cloud`, а з того, що
+                    // каже рантайм · `remote_host` є лише в моделей, які
+                    // рахуються на чужій машині.
+                    'size' => trim((string) ($entry['remote_host'] ?? '')) !== ''
+                        ? 'на сервері'
+                        : $this->formatBytes((int) ($entry['size'] ?? 0)),
                     'revision' => (string) ($entry['digest'] ?? $entry['modified_at'] ?? ''),
                     'loaded' => isset($loaded[$name]) ? 'так' : 'ні',
                     ...($includeCapabilities ? [
