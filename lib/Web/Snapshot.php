@@ -75,6 +75,10 @@ final class Snapshot
             'stream' => $this->stream($fullStream),
             'run' => $this->run(),
             'running' => $this->running(),
+            // ПАУЗА · окремий факт, а не різновид «не йде». Прогін на паузі
+            // стоїть НАВМИСНО, пачка ціла, і продовження веде її далі · плутати
+            // це із зупинкою або збоєм не можна.
+            'paused' => $this->paused(),
             'model' => $this->modelParams(),
         ];
     }
@@ -296,6 +300,29 @@ final class Snapshot
         $rows = $data['data']['rows'] ?? ($data['rows'] ?? null);
 
         return is_array($rows) ? array_values(array_filter($rows, 'is_array')) : [];
+    }
+
+    /**
+     * Чи стоїть прогін на паузі · причина або `null`.
+     *
+     * Прапорець кладе `./bdo run pause`, а читає його цикл ПЕРЕД наступним
+     * кроком. Сторінці він потрібен, щоб не називати паузу зупинкою: пачка при
+     * ній ціла, і «продовжити пачку» веде її далі з того самого місця.
+     *
+     * @return array{reason:string,at:string}|null
+     */
+    private function paused(): ?array
+    {
+        $path = $this->path('run-pause');
+        if (! is_file($path)) {
+            return null;
+        }
+        $data = json_decode((string) file_get_contents($path), true);
+
+        return [
+            'reason' => is_array($data) ? (string) ($data['reason'] ?? '') : '',
+            'at' => is_array($data) ? (string) ($data['at'] ?? '') : '',
+        ];
     }
 
     /**

@@ -40,6 +40,10 @@
         <span class="mono" id="batch" style="color:var(--ts)"></span>
         <span class="pill" id="statePhrase" style="background:var(--acc-bg);color:var(--acc-tx)" aria-live="polite">пачки немає</span>
         <span class="empty" id="elapsed" style="margin-left:auto"></span>
+        <!-- ПАУЗА ПОРУЧ ЗІ СТОПОМ · як у макеті 01. Різниця між ними не
+             косметична: «зупинити» вбиває сесію разом із живим викликом ролі,
+             а пауза дає крокові дописати результат і виходить між ролями. -->
+        <button id="pauseBtn" type="button">пауза</button>
         <button id="stopBtn" class="btn-danger">зупинити</button>
         <!-- ПРОДОВЖИТИ · дія прямо тут, а не перехід на форму: власник
              натиснув «продовжити пачку» й опинився на виборі режиму, де вибір
@@ -635,12 +639,23 @@
     }
 
     var meta = [];
-    meta.push(s.running ? 'прогін іде' : 'прогін не йде');
+    // ПАУЗА НЕ Є ЗУПИНКОЮ, і рядок стану мусить це казати. Інакше власник
+    // бачить «прогін не йде» і не розуміє, він спинився сам чи стоїть тому, що
+    // його поставили на паузу · пачка ж при цьому ціла.
+    meta.push(s.paused ? 'на паузі' : (s.running ? 'прогін іде' : 'прогін не йде'));
+    if (s.paused && s.paused.reason) { meta.push(s.paused.reason); }
     if (b.updated_ago) { meta.push('останній рух ' + b.updated_ago); }
     if (s.session && s.session.id) { meta.push('сесія ' + s.session.id + ' · пачок ' + B.num(s.session.batches)); }
     if (s.remaining !== null && s.remaining !== undefined) { meta.push('лишилось рядків ' + B.num(s.remaining)); }
     B.el('meta').textContent = meta.join(' | ');
     B.el('stopBtn').disabled = !s.running;
+    // Кнопка паузи має сенс лише поки цикл іде: на зупиненому прогоні вона
+    // поклала б прапорець, який нікому читати, і власник вирішив би, що набір
+    // його не послухав.
+    B.el('pauseBtn').disabled = !s.running || !!s.paused;
+    B.el('pauseBtn').title = s.paused
+      ? 'прогін уже на паузі · «продовжити пачку» зніме її'
+      : 'дати поточному кроку дописати результат і спинитись між ролями';
 
     // ПАЧКА, ЩО СТОЇТЬ, МУСИТЬ СКАЗАТИ ЦЕ ВГОЛОС І НАЗВАТИ ВИХІД.
     //
@@ -891,6 +906,19 @@
 
   B.live(render, function (d) { feed.delta(d); });
   bindRunContext();
+
+  B.el('pauseBtn').onclick = function () {
+    var msg = B.el('actionMsg');
+    msg.style.color = '';
+    msg.textContent = 'ставлю на паузу…';
+    B.post('/api/action', { action: 'run.pause', confirm: true }).then(function (res) {
+      var ok = res.status === 200 && (res.body || {}).ok !== false;
+      msg.style.color = ok ? '' : 'var(--dn-tx)';
+      msg.textContent = ok
+        ? 'пауза буде після поточного кроку · пачка лишиться на місці'
+        : 'не вдалося поставити паузу';
+    });
+  };
 
   B.el('continueBtn').onclick = function () {
     if (this.disabled) { return; }

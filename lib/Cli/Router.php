@@ -90,6 +90,7 @@ final class Router
                 'end' => ['command' => 'run-start', 'help' => 'run-start'],
                 'drive' => ['command' => 'run-drive', 'help' => 'run-drive'],
                 'stop' => ['command' => 'run-stop', 'help' => 'run-stop'],
+                'pause' => ['command' => 'run-pause', 'help' => 'run-pause'],
             ],
             'mode' => [
                 'status' => ['command' => 'run-spec', 'help' => 'run-spec'],
@@ -237,7 +238,8 @@ final class Router
             'end' => $this->nestedPhp('run', 'end', ['--end']),
             'drive' => $this->nestedPhp('run', 'drive', $rest),
             'stop' => $this->nestedPhp('run', 'stop', $rest),
-            default => $this->error('run: потрібно start, show, end, drive або stop'),
+            'pause' => $this->nestedPhp('run', 'pause', $rest),
+            default => $this->error('run: потрібно start, show, end, drive, stop або pause'),
         };
     }
 

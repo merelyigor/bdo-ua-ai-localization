@@ -54,7 +54,7 @@ final class Actions
      */
     public static function names(): array
     {
-        return ['run.start', 'run.stop', 'session.new', 'session.close', 'session.journals.drop',
+        return ['run.start', 'run.stop', 'run.pause', 'session.new', 'session.close', 'session.journals.drop',
             'session.delete', 'moderation.approve', 'moderation.reject',
             'models.refresh', 'models.select', 'models.select.role', 'models.clear',
             'models.clear.role', 'models.load', 'models.unload', 'models.probe', 'models.settings'];
@@ -136,6 +136,12 @@ final class Actions
                 // (D72). Живий прогін цим не зачепиш: `Runner` відмовляє ще до
                 // плану, якщо робота йде.
                 $steps = $foreground ? [] : [['./bdo', 'watch', '--stop']];
+                // ПАУЗА ЗНІМАЄТЬСЯ ДО СТАРТУ ЦИКЛУ. Прапорець сам не зникає, і
+                // без цього власник натиснув би «почати прогін», а цикл вийшов
+                // би на першій же перевірці · мовчки й без видимої причини.
+                // Місце саме тут, а не першим кроком: перший належить
+                // `watch --stop` (D72), і сперечатись за нього пауза не має.
+                $steps[] = ['./bdo', 'run', 'pause', '--clear'];
                 if (isset($payload['batches']) && (string) $payload['batches'] !== '') {
                     $loop[] = '--batches';
                     $loop[] = (string) self::count('batches', $payload['batches'], self::MAX_BATCHES);
@@ -184,6 +190,9 @@ final class Actions
                         // видно останній екран), тому без цього наступний
                         // старт падав би на «сесія bdo уже існує» (D72).
                         ['./bdo', 'watch', '--stop'],
+                        // Пауза знімається тут само: «продовжити пачку» після
+                        // паузи мусить справді продовжити, а не спинитись знову.
+                        ['./bdo', 'run', 'pause', '--clear'],
                         ['./bdo', 'watch', 'loop', '--batches', '1'],
                     ],
                     'env' => self::runEnv($payload),
@@ -192,6 +201,19 @@ final class Actions
                     'label' => ($payload['dry_run'] ?? false) === true
                         ? 'продовжити пачку без запису'
                         : 'продовжити пачку',
+                ];
+
+            case 'run.pause':
+                // ПАУЗА, А НЕ ЗУПИНКА. `run stop` убиває сесію разом із живим
+                // викликом ролі · відповідь моделі пропадає. Пауза лише кладе
+                // прапорець, і цикл виходить САМ, коли поточний крок дописав
+                // свій результат у теку пачки.
+                return [
+                    'steps' => [['./bdo', 'run', 'pause', 'натиснуто «пауза» на сторінці']],
+                    'env' => [],
+                    'detached' => false,
+                    'needs_confirm' => false,
+                    'label' => 'поставити на паузу',
                 ];
 
             case 'run.stop':

@@ -311,6 +311,7 @@
     "^\\./bdo models-run( [0-9]+)?$",
     "^\\./bdo timer( (start|status|check))?$",
     "^\\./bdo run stop( .{1,120})?$",
+    "^\\./bdo run pause( --show| --clear| .{1,120})?$",
     "^\\./bdo browser$"
   ],
   "flow_commands": [

@@ -95,6 +95,22 @@ final class RunLoopCommand implements Command, \Bdo\Translate\Cli\CommandHelp
         $lastState = '';
 
         while (true) {
+            // ПАУЗА ЧИТАЄТЬСЯ ПЕРЕД КРОКОМ, А НЕ ПОСЕРЕД НЬОГО. Саме тому вона
+            // й відрізняється від `run stop`: той убиває сесію разом із живим
+            // викликом ролі, і відповідь моделі пропадає. Тут поточний крок уже
+            // завершився й записав своє в теку пачки, а наступний просто не
+            // починається. Пачка лишається незакритою · «продовжити пачку»
+            // веде її далі з того самого місця (макет 01, беклог 2026-09-05).
+            $pause = rtrim($this->stateDir, '/').'/'.RunPauseCommand::FILE;
+            if (is_file($pause)) {
+                $why = json_decode((string) file_get_contents($pause), true);
+                $output->stdout(sprintf(
+                    "ПАУЗА: %s · пачка лишилась на місці, «продовжити пачку» веде її далі.\n",
+                    is_array($why) ? (string) ($why['reason'] ?? 'без причини') : 'без причини',
+                ));
+
+                return 0;
+            }
             $drive = $this->timedProcess('drive', [PHP_BINARY, $this->root.'/cli/bdo.php', 'run-drive']);
             if ($drive['stderr'] !== '') {
                 $output->stderr($drive['stderr']);

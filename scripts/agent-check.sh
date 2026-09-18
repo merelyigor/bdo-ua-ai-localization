@@ -174,6 +174,7 @@ touched_map() {
             printf 'test|tests/qa-memory-only.sh|memory-only QA\n'
             printf 'test|tests/names-pass.sh|перевірка імен\n' ;;
         lib/Run/*)
+            printf 'test|tests/run-pause.sh|пауза прогону\n'
             printf 'test|tests/cli-run-foundation-parity.sh|парність run foundation\n'
             printf 'test|tests/cli-run-mode-parity.sh|парність run mode\n'
             printf 'test|tests/cli-run-drive-parity.sh|парність run drive\n'
@@ -1783,6 +1784,7 @@ tests/schema-provider-compat.sh
 tests/mechanical-final-check.sh
 tests/hallucinated-tokens.sh
 tests/lineage.sh
+tests/run-pause.sh
 tests/domain-filter.sh
 tests/audit-response-shape.sh
 tests/mechanical-before-qa.sh
