@@ -28,7 +28,7 @@ identity.
 
 ```
 сторінка (web/**) ─┐
-bin/tui.sh ────────┴─► lib/Run/Actions.php ─► RunLoopCommand ─► RunDriveCommand ─► StateMachine
+./bdo tui ────────┴─► lib/Run/Actions.php ─► RunLoopCommand ─► RunDriveCommand ─► StateMachine
   дві поверхні          кнопка → команда        драйвер            рушій           дозволені
                                                     │                               переходи
                                                     └──► cli/model/client.php ──► Ollama (роль + схема)
@@ -50,7 +50,7 @@ bin/tui.sh ────────┴─► lib/Run/Actions.php ─► RunLoopC
 | `web/**` + `cli/system/web-router.php` | основна поверхня: екрани прогону, черги, сесій, старту, моделей |
 | `lib/Web/` | читання `state/**` для сторінки (`Snapshot`) і виконання дій (`Runner`) |
 | `lib/Run/Actions.php` | кнопка → команда набору; одна для сторінки й для вікна |
-| `bin/tui.sh` | вікно в терміналі: меню, екрани стану й журналу |
+| `./bdo tui` | вікно в терміналі: меню, екрани стану й журналу |
 | `RunLoopCommand` | виконання конверта рушія, перехід між пачками |
 | `cli/model/` | виклик локальної моделі, розгортання відповіді, журнал |
 | `lib/Cli/Command/**` | реалізація підкоманд: API, пачка, підготовка, якість, лікування, запис |

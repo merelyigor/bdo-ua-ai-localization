@@ -43,7 +43,7 @@
    `bash tests/web-server.sh` і `bash tests/web-actions.sh`. Живу сторінку
    перевіряй СТАНОМ DOM, а не скріншотами (§14.6), а помилки JavaScript шукай
    у `state/web-client.log`.
-8. Змінився `bin/tui.sh` · `bash tests/tui-live.sh`: справжній PTY у tmux,
+8. Змінився `./bdo tui` · `bash tests/tui-live.sh`: справжній PTY у tmux,
    натискання 6/Enter/7/q і код виходу. Текстовий тест `tests/tui.sh` перевіряє
    ВМІСТ, але не термінал: поза PTY не працюють ні `clear`, ні кольори, ні
    `read` на клавіатурі, і саме в цій щілині жив D62 · екран малювався й вікно

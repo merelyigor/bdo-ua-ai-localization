@@ -590,7 +590,7 @@ repair її будує рушій під рядки пачки, для решт�
 bdo                         єдиний вхід: ./bdo · сторінка, ./bdo help · дерево команд
 cli/bdo.php                 диспетчер команд: реєстр, маршрутизація, коди виходу
 cli/command-registry.json   ЄДИНЕ джерело дерева команд, описів і guard allowlist
-bin/tui.sh                  вікно-монітор у терміналі (./bdo tui)
+./bdo tui                  вікно-монітор у терміналі (./bdo tui)
 web/index.html              прогін як чат; поруч queue, sessions, start, models, call
 web/app.js, web/app.css     спільний скрипт і дизайн-токени всіх екранів
 cli/system/web-router.php   межа читання й дій: лише GET, дії лише POST
@@ -600,7 +600,7 @@ bdo.bat                     нативний запуск інтерфейсу �
 BDO.app                     значок для Dock на macOS · applet, збирає scripts/build-mac-app.sh
 lib/Cli/Command/System/DesktopCommand.php
                             встановлення Linux `.desktop`-ярлика в меню програм
-cli/system/mac-app.sh       тонкий Dock-вхід: PATH bootstrap і передача в PHP-команду
+./bdo mac-app       тонкий Dock-вхід: PATH bootstrap і передача в PHP-команду
 cli/system/mac-app.applescript  джерело значка · бандл є applet, інакше Dock стрибає вічно
 bdo.ico                     значок для ярлика Windows · сам .bat його не несе
 roles/translation-*.md      промпт кожної ролі · самодостатній, без include
