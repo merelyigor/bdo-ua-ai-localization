@@ -383,8 +383,19 @@
     };
     host.innerHTML = rows.map(function (p) {
       var value = /^\d{4,}$/.test(p.value) ? Math.round(Number(p.value) / 1024) + 'k' : p.value;
-      return '<span class="nav-param" title="' + esc(p.key + ' = ' + p.value + ' · джерело: ' + p.source) + '">'
-        + '<b>' + esc(SHORT[p.key] || p.key) + '</b> ' + esc(value) + '</span>';
+      // ПЕРЕКРИТЕ ЗНАЧЕННЯ ПОЗНАЧАЄМО ОКОМ, А НЕ ЛИШЕ ПІДКАЗКОЮ. Власник
+      // 2026-09-19 звірив хедер із рантаймом і побачив розбіжність: модель
+      // каже temperature 0.6, хедер · temp 1. Обидва правдиві (температуру
+      // перекриває роль перекладача), але джерело жило в title, тобто для
+      // того, хто не веде мишу до числа, його не існувало.
+      var ours = p.source && p.source !== 'модель';
+      var hint = ours
+        ? p.key + ' = ' + p.value + ' · ставить ' + p.source
+          + (p.base ? ' · сама модель: ' + p.base : '')
+        : p.key + ' = ' + p.value + ' · значення самої моделі';
+      return '<span class="nav-param' + (ours ? ' nav-param-ours' : '') + '" title="' + esc(hint) + '">'
+        + '<b>' + esc(SHORT[p.key] || p.key) + '</b> ' + esc(value)
+        + (ours ? '<i class="nav-param-mark">*</i>' : '') + '</span>';
     }).join('');
     host.title = (model.name || '') + (model.runtime ? ' · ' + model.runtime : '');
   }

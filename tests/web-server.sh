@@ -267,6 +267,46 @@ if grep -Fq 'Maximum execution time' "$stream_log"; then
     fail 'SSE падає фатальною помилкою часу виконання · у журналі сервера сміття, а сторінка мовчки перепідключається'
 fi
 
+# --- Токени їдуть у ТЕМПІ моделі, а не пачками раз на секунду ----------------
+# `filesize()` кешується В МЕЖАХ ЗАПИТУ, а запит потоку живе хвилинами: цикл
+# питає розмір 30 разів на секунду й отримує те саме старе число. Заміряно
+# 2026-09-19 на живій пачці · модель друкувала ~100 символів/с, а сторінка
+# отримувала їх двома подіями по ~70, тобто «ривками по цілому рядку».
+# САБОТАЖ: прибрати clearstatcache зі Snapshot · подій знову стане одиниці.
+stream2_port=$(( BASE_PORT + 901 ))
+stream2_state="$TMP/tempo-state"
+mkdir -p "$stream2_state"
+: > "$stream2_state/run-stream.log"
+BDO_STATE_DIR="$stream2_state" BDO_WEB_TOKEN="$TOKEN" BDO_WEB_STREAM_SECONDS=8 \
+    php -S "127.0.0.1:$stream2_port" -t "$ROOT/web" "$ROOT/cli/system/web-router.php" \
+    >"$TMP/tempo-server.log" 2>&1 &
+TEMPO_PID=$!
+for _ in 1 2 3 4 5 6 7 8 9 10; do
+    test "$(code "http://127.0.0.1:$stream2_port/api/ping")" = 200 && break
+    sleep 0.3
+done
+# Пишемо 20 «токенів» на секунду · так друкує локальна модель.
+( for i in $(seq 1 80); do
+      printf '{"content":"слово%s "}\n' "$i" >> "$stream2_state/run-stream.log"
+      sleep 0.05
+  done ) &
+WRITER_PID=$!
+tempo_events="$(curl -s -m 5 -N "http://127.0.0.1:$stream2_port/api/stream?t=$TOKEN" 2>/dev/null \
+    | grep -c '^event: tokens' || true)"
+kill "$WRITER_PID" "$TEMPO_PID" 2>/dev/null || true
+wait "$WRITER_PID" "$TEMPO_PID" 2>/dev/null || true
+test "${tempo_events:-0}" -ge 15 \
+    || fail "за 4 секунди друку прийшло лише ${tempo_events:-0} подій потоку · сторінка друкуватиме ривками"
+
+# КЛАС, А НЕ ОДИН РЯДОК. Кеш stat живе стільки ж, скільки запит, тому кожне
+# читання розміру або часу файла ВСЕРЕДИНІ довгого потоку мусить його скидати.
+# Без цього «прогін іде» й вік останнього руху завмирали б на значеннях,
+# знятих у мить підключення вкладки.
+stat_reads="$(grep -cE 'file(size|mtime)\(' "$ROOT/lib/Web/Snapshot.php")"
+stat_clears="$(grep -c 'clearstatcache' "$ROOT/lib/Web/Snapshot.php")"
+test "$stat_clears" -ge 3 \
+    || fail "у знімку ${stat_reads} читань stat і лише ${stat_clears} скидань кешу · довгий потік бачитиме старі числа"
+
 # --- Скрипт сторінки мусить бути синтаксично цілим -------------------------
 # Зламаний JavaScript не видно ні в HTTP-коді (сторінка віддається як завжди),
 # ні на скріншоті (розмітка малюється). Видно лише те, що кнопки мертві ·

@@ -131,23 +131,41 @@ final class Snapshot
         $config = json_decode((string) @file_get_contents(dirname(__DIR__, 2).'/config/roles.json'), true);
         if (is_array($config)) {
             $ours = [];
+            $whose = [];
             foreach (['temperature', 'num_ctx', 'num_predict'] as $key) {
-                $value = $config['roles']['translation-worker'][$key] ?? $config[$key] ?? null;
+                // ЧИЄ ЦЕ ЧИСЛО · частина перекриттів належить ОДНІЙ ролі, а не
+                // всьому набору: `temperature` для перекладача, наприклад. Без
+                // цього хедер видавав значення однієї ролі за спільне.
+                $roleValue = $config['roles']['translation-worker'][$key] ?? null;
+                $value = $roleValue ?? $config[$key] ?? null;
                 if ($value !== null) {
                     $ours[$key] = (string) $value;
+                    $whose[$key] = $roleValue !== null ? 'роль перекладача' : 'набір';
                 }
             }
             foreach ($ours as $key => $value) {
                 $found = false;
                 foreach ($params as $index => $row) {
                     if ($row['key'] === $key) {
-                        $params[$index] = ['key' => $key, 'value' => $value, 'source' => 'набір'];
+                        // ВЛАСНЕ ЗНАЧЕННЯ МОДЕЛІ НЕ ЗАТИРАЄМО · воно потрібне
+                        // саме тут. 2026-09-19 власник звірив хедер із
+                        // `ollama show` і побачив розбіжність: рантайм каже
+                        // `temperature 0.6`, хедер · `temp 1`. Обидва числа
+                        // правдиві (набір перекриває температуру для ролі
+                        // перекладача), але видно було ЛИШЕ одне, і виглядало
+                        // це як брехня сторінки.
+                        $params[$index] = [
+                            'key' => $key,
+                            'value' => $value,
+                            'source' => $whose[$key] ?? 'набір',
+                            'base' => (string) $row['value'],
+                        ];
                         $found = true;
                         break;
                     }
                 }
                 if (! $found) {
-                    $params[] = ['key' => $key, 'value' => $value, 'source' => 'набір'];
+                    $params[] = ['key' => $key, 'value' => $value, 'source' => $whose[$key] ?? 'набір', 'base' => ''];
                 }
             }
         }
@@ -440,6 +458,11 @@ final class Snapshot
         $now = time();
         foreach (['run-stream.log', 'run-transcript.log'] as $name) {
             $path = $this->path($name);
+            // ТОЙ САМИЙ КЛАС, ЩО Й `streamSize()`: `filemtime` кешується в
+            // межах запиту, а знімок будується 300 разів за одне зʼєднання
+            // потоку. Зі старим часом «прогін іде» завмирало б на тому
+            // значенні, яке було на момент підключення вкладки.
+            clearstatcache(true, $path);
             if (is_file($path) && ($now - (int) @filemtime($path)) <= $seconds) {
                 return true;
             }
@@ -516,6 +539,15 @@ final class Snapshot
     public function streamSize(): int
     {
         $path = $this->path('run-stream.log');
+        // РОЗМІР ЧИТАЄМО З ДИСКА, А НЕ З КЕШУ PHP.
+        //
+        // `filesize()` кешується В МЕЖАХ ЗАПИТУ, а запит потоку живе хвилинами:
+        // цикл питає розмір 30 разів на секунду й отримує ТЕ САМЕ старе число,
+        // тому нові токени лежать на диску, поки кеш випадково не оновиться на
+        // читанні. Заміряно на живій пачці 2026-09-19: модель друкувала ~100
+        // символів на секунду, а сторінка отримувала їх 2 подіями по ~70 ·
+        // саме це власник бачив як друк «ривками по цілому рядку».
+        clearstatcache(true, $path);
 
         return is_file($path) ? (int) filesize($path) : 0;
     }
@@ -524,6 +556,9 @@ final class Snapshot
     public function streamFrom(int $offset): string
     {
         $path = $this->path('run-stream.log');
+        // Той самий кеш stat, що й у `streamSize()`: без скидання довгий запит
+        // потоку читає старий розмір і не бачить щойно дописаних токенів.
+        clearstatcache(true, $path);
         if (! is_file($path)) {
             return '';
         }

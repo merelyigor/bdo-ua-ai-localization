@@ -190,4 +190,15 @@ grep -Fq 'renderSessionCalls(d.calls)' "$ROOT/web/call.html" \
 grep -Fq 'class="as-button" target="_blank"' "$ROOT/web/call.html" \
     || fail 'посилання повного виклику не має читабельного оформлення'
 
+# РОБОТА РОЛІ ВСЮДИ ВИГЛЯДАЄ ОДНАКОВО. Живий «Запит» ставив сирий `payload.text`
+# від 7.8.3, тому payload у картці прогону був суцільним рядком JSON, а та сама
+# робота в «розгорнути роботу» й на екрані виклику · розкладеною відступами.
+# Власник помітив розбіжність 2026-09-19. Формат лишається лише показом:
+# `prettyWorkText` не переписує даних, він їх розставляє.
+grep -Fq 'B.prettyWorkText(text)' "$ROOT/web/index.html" \
+    || fail 'живий запит показується повз prettyWorkText · payload знову буде суцільним рядком'
+if grep -nE '(textContent|innerHTML) *= *\(d && d\.payload && d\.payload\.text\)' "$ROOT/web/index.html"; then
+    fail 'payload ролі виводиться сирим · два різні вигляди однієї роботи'
+fi
+
 echo 'web call view: OK · роботу завершеного виклику видно цілком, чужий файл недосяжний, ключ перевіряється.'

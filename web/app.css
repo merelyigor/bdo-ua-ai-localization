@@ -352,6 +352,9 @@ td.num,th.num{text-align:right;font-family:var(--mono)}
 .nav-param{flex:0 0 auto}
 
 .nav-param b{font-weight:500;color:var(--ts)}
+/* Зірочка = значення ставить НАБІР, а не модель. Без неї хедер не відрізнявся
+   від виводу рантайму, і звірка з `ollama show` виглядала як розбіжність. */
+.nav-param-mark{font-style:normal;color:var(--acc-tx);margin-left:1px}
 .nav .badge{margin-left:6px;font-size:11px;opacity:.85}
 
 /* Заголовок екрана: назва зліва, підказка поруч · щоб було видно, де ти. */
