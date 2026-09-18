@@ -75,16 +75,18 @@
         <div class="start-patch-filters">
           <label class="empty" for="domain">категорія</label>
           <select id="domain"><option value="">усі</option></select>
-          <!-- ОБСЯГ · або число пачок, або повний автономний переклад патча.
-               Вгадувати кількість пачок власник не має: цикл і так спиняється
-               сам, коли рядків за фільтром більше немає (`goal_complete`), тому
-               «перекласти все» це просто прогін без стелі. -->
-          <label class="empty" for="scope">обсяг</label>
-          <select id="scope">
-            <option value="count">пачок</option>
-            <option value="all">перекласти все</option>
-          </select>
+          <label class="empty" for="batches">пачок</label>
           <input id="batches" type="number" min="1" max="200" value="1">
+          <!-- ПОВНИЙ ПРОГІН · ОКРЕМИЙ ПЕРЕМИКАЧ, а не третій стан поля числа.
+               Перша редакція зробила з цього випадайку «обсяг», і поле числа
+               лишалось на екрані мертвим · власник сказав прямо, що так
+               незручно. Вгадувати кількість пачок не треба: цикл спиняється сам
+               на `goal_complete`, коли рядків за фільтром не лишилось, тому
+               «перекласти все» це просто прогін без стелі. -->
+          <label class="sw start-scope-all">
+            <input type="checkbox" id="scopeAll"><span class="track"></span>
+            <span>перекласти все</span>
+          </label>
         </div>
         <div class="empty start-patch-hint" id="patchHint"></div>
       </section>
@@ -266,8 +268,8 @@
 
   // Обсяг роботи: рахуємо пачки чи беремо все, що лишилось у патчі.
   function allScope() {
-    var scope = B.el('scope');
-    return !!scope && scope.value === 'all';
+    var scope = B.el('scopeAll');
+    return !!scope && scope.checked;
   }
 
   // Поле числа не зникає, а глухне: власник бачить, що саме воно вимкнене, і
@@ -344,19 +346,19 @@
 
   // Відновлюємо збережене ДО першого показу команди, інакше перший рендер
   // покаже одне, а памʼять · інше.
-  ['domain', 'batches', 'scope'].forEach(function (id) {
+  ['domain', 'batches', 'scopeAll'].forEach(function (id) {
     var node = B.el(id);
     var saved = P.get(id, null);
     if (saved === null) { return; }
     if (node.type === 'checkbox') { node.checked = !!saved; } else { node.value = saved; }
   });
-  ['domain', 'batches', 'scope'].forEach(function (id) {
+  ['domain', 'batches', 'scopeAll'].forEach(function (id) {
     var node = B.el(id);
     node.addEventListener('change', function () {
       P.set(id, node.type === 'checkbox' ? node.checked : node.value);
     });
   });
-  ['domain', 'batches', 'scope'].forEach(function (id) {
+  ['domain', 'batches', 'scopeAll'].forEach(function (id) {
     B.el(id).onchange = refresh;
     B.el(id).oninput = refresh;
   });

@@ -815,6 +815,11 @@ a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,te
 .start-patch-filters{display:flex;align-items:center;gap:9px;flex-wrap:wrap;margin-top:12px}
 .start-patch-filters select{width:auto;min-width:170px}
 .start-patch-filters input{width:78px!important}
+/* Перемикач повного прогону живе в тому самому рядку, що й поле числа, тому
+   ширина «78px» для `input` цього блоку не має розтягувати схований чекбокс:
+   він лежить під написом і перехоплював би клік по ньому. */
+.start-patch-filters .sw input{width:0!important}
+.start-scope-all{margin-left:6px}
 .start-patch-hint{margin-top:8px;font-size:11px;line-height:1.4}
 .start-run-grid{display:grid;grid-template-columns:minmax(0,1.6fr) minmax(260px,.75fr);gap:18px;align-items:start;margin-top:22px}
 .start-preview-section,.start-confirm{min-width:0}
