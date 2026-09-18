@@ -77,7 +77,7 @@ final class JudgePayloadCommand implements Command, \Bdo\Translate\Cli\CommandHe
             if (! JudgePolicy::isDisputed($status, $severity, $mechanical, $identical)) {
                 continue;
             }
-            $item = ['identity_hash' => $hash, 'source_text' => $row->sourceText(), 'candidate' => $text];
+            $item = ['identity_hash' => $hash, 'source_text' => $this->source($row->sourceText()), 'candidate' => $text];
             if ($row->semanticType() !== null) {
                 $item['semantic_type'] = $row->semanticType();
             }
@@ -164,4 +164,31 @@ decoding), тому все потрібне для рішення кладеть
 BDO_HELP_TEXT;
     }
 
+    /**
+     * Англійське джерело для судді · ціле або обрізане, за рішенням власника.
+     *
+     * ЧОМУ ЦЕ ПИТАННЯ ВЗАГАЛІ СТОЇТЬ. Payload судді найважчий на рядок у всьому
+     * флоу. Заміряно 2026-09-18 на семи пачках: 0.9-3.2 КБ на рядок, з них
+     * джерело · 12-25%, кандидат · 22-36%. Суддя при цьому вирішує МАРШРУТ
+     * (шар чи людина), а не текст, і повне джерело йому потрібне не завжди.
+     *
+     * ПЕРЕМИКАЧ, А НЕ РІШЕННЯ. Обрізати мовчки не можна: це зміна того, що
+     * бачить модель, а такі зміни в цьому наборі роблять ЛИШЕ після виміру на
+     * живих пачках. Тому за замовчуванням джерело йде цілим, а `BDO_JUDGE_SOURCE_CHARS`
+     * дозволяє провести дослід: одна пачка з обрізаним джерелом проти однієї з
+     * повним, і порівняти розподіл вироків та `moderation_written`.
+     *
+     * Обрізане джерело ПОЗНАЧАЄТЬСЯ. Модель мусить бачити, що текст неповний,
+     * інакше вона судитиме обрубок як ціле речення · і це буде не економія, а
+     * тихе псування вхідних даних.
+     */
+    private function source(string $text): string
+    {
+        $limit = (int) (getenv('BDO_JUDGE_SOURCE_CHARS') ?: 0);
+        if ($limit <= 0 || mb_strlen($text) <= $limit) {
+            return $text;
+        }
+
+        return mb_substr($text, 0, $limit).' […обрізано]';
+    }
 }

@@ -151,4 +151,37 @@ foreach ([false, "true", 1] as $bad) {
 }
 ' "$ROOT/lib/autoload.php"
 
+# ДЖЕРЕЛО ДЛЯ СУДДІ · ЦІЛЕ ЗА ЗАМОВЧУВАННЯМ, ОБРІЗАНЕ ЛИШЕ НА ДОСЛІД.
+#
+# Payload судді найважчий на рядок у всьому флоу, і джерело в ньому займає
+# 26% (замір 2026-09-18 на пачці `20260918_044220`: кандидат 40%, джерело 26%,
+# глосарій 12%). Обрізання джерела до 300 символів дає 22.2 → 19.6 КБ, тобто
+# 12% · це ДОСЛІД, а не рішення: суддя вирішує маршрут, і чи вистачить йому
+# обрубка, без A/B на живій пачці невідомо.
+# Тому перевіряємо дві речі: типово джерело ціле, а обрізане · позначене.
+# САБОТАЖ: прибрати умову `$limit <= 0` · типова поведінка зміниться мовчки.
+php -r '
+require $argv[1];
+$m = new ReflectionMethod(Bdo\Translate\Cli\Command\Prepare\JudgePayloadCommand::class, "source");
+$c = (new ReflectionClass(Bdo\Translate\Cli\Command\Prepare\JudgePayloadCommand::class))->newInstanceWithoutConstructor();
+$long = str_repeat("Опис предмета. ", 60);
+putenv("BDO_JUDGE_SOURCE_CHARS");
+if ($m->invoke($c, $long) !== $long) {
+    fwrite(STDERR, "FAIL: типово джерело судді вже обрізається · це зміна того, що бачить модель, без виміру\n");
+    exit(1);
+}
+putenv("BDO_JUDGE_SOURCE_CHARS=300");
+$cut = $m->invoke($c, $long);
+if (mb_strlen($cut) >= mb_strlen($long)) {
+    fwrite(STDERR, "FAIL: перемикач досліду не обрізає джерела\n"); exit(1);
+}
+if (! str_contains($cut, "обрізано")) {
+    fwrite(STDERR, "FAIL: обрізане джерело не позначене · модель судитиме обрубок як ціле речення\n"); exit(1);
+}
+if ($m->invoke($c, "Коротке джерело") !== "Коротке джерело") {
+    fwrite(STDERR, "FAIL: короткий рядок зіпсовано позначкою обрізання\n"); exit(1);
+}
+putenv("BDO_JUDGE_SOURCE_CHARS");
+' "$ROOT/lib/autoload.php" || fail 'джерело для судді поводиться не так, як домовлено'
+
 echo 'judge flow: OK'
