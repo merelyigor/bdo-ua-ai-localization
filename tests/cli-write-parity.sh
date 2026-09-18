@@ -404,7 +404,7 @@ assert_php_capture "mixed-$blocker"
     test "$(grep -c '"method":"POST"' "$TMP/mixed-$blocker.sh.log" || true)" -eq 0 || fail "mixed $blocker shell POST"
     test "$(grep -c '"method":"POST"' "$TMP/mixed-$blocker.php.log" || true)" -eq 0 || fail "mixed $blocker PHP POST"
     case "$blocker" in
-        no-run) expected_reason='no_run:запусти cli/run/run-start.sh' ;;
+        no-run) expected_reason='no_run:запусти ./bdo run start' ;;
         quota) expected_reason='quota:0_left' ;;
         *) expected_reason='env_mismatch:прогін=PROD,команда=local' ;;
     esac
