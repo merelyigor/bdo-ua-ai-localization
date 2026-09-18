@@ -68,8 +68,20 @@
          показував, скільки секунд працювала роль, але не показував ЖОДНОГО
          перекладеного рядка. Блок є в прототипі 01 від початку. -->
     <div class="panel" id="verdictPanel" style="display:none">
+      <!-- ЗГОРНУТО ЗА ЗАМОВЧУВАННЯМ (вимога власника 2026-09-18). Розгорнутий
+           список із пʼятдесяти рядків розтягував сторінку прогону на сім тисяч
+           пікселів, і журнал кроків опинявся десь далеко внизу. Власник читає
+           вироки всі, тому список нікуди не дівся · він за одним кліком, а в
+           згорнутому вигляді видно головні числа з підписами.
+           `<details>` навмисно: стан «розгорнуто» тримає сам браузер, і
+           перемальовка знімка раз на секунду його не скидає, бо ми переписуємо
+           лише вміст `#verdicts` і числа в підсумку. -->
+      <details class="verdict-box" id="verdictBox">
+      <summary class="verdict-summary">
+        <span class="verdict-title">вердикти</span>
+        <span class="verdict-counts" id="verdictCounts"></span>
+      </summary>
       <div class="bar" style="margin-bottom:8px">
-        <span style="font-size:13px;font-weight:500">вердикти</span>
         <button class="chip" data-f="all" aria-pressed="true">усі</button>
         <button class="chip" data-f="pass">пройшло</button>
         <button class="chip" data-f="review">на перегляд</button>
@@ -78,6 +90,7 @@
         <span class="empty" id="verdictMeta" style="margin-left:auto"></span>
       </div>
       <div id="verdicts"></div>
+      </details>
     </div>
 
     <!-- Підсумок ПІД роботою · у прототипі він унизу, і це правильний порядок:
@@ -375,6 +388,19 @@
     var key = v.total + '|' + v.pass + '|' + v.review + '|' + v.reject + '|' + items.length;
     if (key !== lastVerdictKey) {
       lastVerdictKey = key;
+      // ЧИСЛА ВИДНО Й ЗГОРНУТИМ · це весь сенс згортання: не «щось там є», а
+      // скільки саме пройшло, скільки на перегляд і скільки відхилено, з
+      // підписом біля кожного числа. Пишемо ПІД тим самим сторожем, що й
+      // список: перша редакція оновлювала підсумок на кожному знімку, і
+      // `web-inner-html-guard` спіймав це першим же прогоном · щосекундний
+      // перезапис вузла без жодної зміни є рівно тим класом, проти якого той
+      // сторож і стоїть.
+      B.el('verdictCounts').innerHTML =
+        'усі <b>' + B.num(v.total) + '</b>'
+        + ' · пройшло <b style="color:var(--ok-tx)">' + B.num(v.pass) + '</b>'
+        + ' · на перегляд <b style="color:var(--wr-tx)">' + B.num(v.review) + '</b>'
+        + ' · відхилено <b style="color:' + (Number(v.reject) ? 'var(--dn-tx)' : 'inherit') + '">'
+        + B.num(v.reject) + '</b>';
       // Кнопка збереженого фільтра мусить виглядати натиснутою, інакше показ
       // і підпис розійдуться.
       Array.prototype.forEach.call(document.querySelectorAll('#verdictPanel .chip'), function (c) {

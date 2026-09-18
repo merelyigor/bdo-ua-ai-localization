@@ -338,21 +338,19 @@ td.num,th.num{text-align:right;font-family:var(--mono)}
    і його зрізало, щойно індикатор мінявся на довший жовтий «оновлюється раз на
    секунду». Сітка з двома рядками й колонковим потоком удвічі вужча, а висота
    двох рядків по 11px менша за висоту назви, тому шапка не росте. */
-.nav-model{display:grid;grid-template-rows:repeat(2,auto);grid-auto-flow:column;
-  gap:1px 8px;font-size:11px;line-height:1.35;color:var(--tm);align-content:center;justify-content:end;
-  /* РОСТЕ, ЩОБ ТРИМАТИ ПРАВИЙ КРАЙ. На вузькому вікні блок переходить у другий
-     рядок, і без росту він ліпився б до лівого краю під брендом · тому займає
-     рядок цілком, а власні параметри тримає праворуч (`justify-content:end`). */
-  flex:1 1 auto;min-width:0;overflow:hidden;white-space:nowrap}
+/* ПРАВИЙ СТОВПЧИК ШАПКИ · стан звʼязку над параметрами моделі. Один блок
+   замість двох сусідів: переносити нема чого, і права кромка тримається сама.
+   Висота шапки від цього не росте · рядок стану й рядок параметрів разом
+   нижчі за дворядкову назву зліва. */
+.nav-side{margin-left:auto;display:grid;gap:2px;justify-items:end;align-content:center;min-width:0}
+.nav-side .sp{margin-left:0}
+/* У СТОВПЧИКУ ПАРАМЕТРИ ЙДУТЬ В ОДИН РЯДОК. Два рядки потрібні були тоді, коли
+   блок ділив рядок із навігацією й мусив бути вдвічі вужчим; тут ширини
+   вистачає, а другий рядок додав би шапці висоти. */
+.nav-model{display:flex;flex-wrap:nowrap;gap:8px;font-size:11px;line-height:1.35;
+  color:var(--tm);align-items:center;justify-content:end;min-width:0;white-space:nowrap}
 .nav-param{flex:0 0 auto}
-/* ДВА `margin-left:auto` ПОСПІЛЬ РОЗПИХАЮТЬ, тому правий край тримає ОДИН
-   елемент · індикатор звʼязку, і параметри йдуть одразу за ним звичайним
-   відступом. Порядок саме такий (спершу індикатор, потім параметри) не заради
-   вигляду: шапка переноситься по словах, і вниз іде ОСТАННІЙ елемент. Поки
-   останнім був індикатор, при вужчому вікні він падав сам-один під бренд
-   (власник показав 2026-09-18). Тепер за потреби переходять параметри · вони
-   довші й менш потрібні в першому рядку. */
-.sp + .nav-model{margin-left:8px}
+
 .nav-param b{font-weight:500;color:var(--ts)}
 .nav .badge{margin-left:6px;font-size:11px;opacity:.85}
 
@@ -993,3 +991,19 @@ body{
 .model-actions button .icon,.model-actions button span{pointer-events:none}
 .model-actions button:hover{transform:none;filter:none}
 .model-actions button:disabled{cursor:not-allowed}
+
+/* ВЕРДИКТИ ЗГОРТАЮТЬСЯ · вимога власника 2026-09-18. Розгорнутий список із
+   пʼятдесяти рядків розтягував екран прогону на сім тисяч пікселів, і журнал
+   кроків опинявся далеко внизу. Згорнутий блок показує головні числа з
+   підписами, а список · за одним кліком. Стан тримає сам `<details>`, тому
+   перемальовка знімка раз на секунду його не скидає. */
+.verdict-summary{display:flex;align-items:center;gap:12px;cursor:pointer;list-style:none;
+  padding:2px 0;font-size:13px;color:var(--tp)}
+.verdict-summary::-webkit-details-marker{display:none}
+.verdict-summary::before{content:"▸";flex:0 0 auto;color:var(--tm);font-size:11px;transition:transform .12s}
+.verdict-box[open]>.verdict-summary::before{transform:rotate(90deg)}
+.verdict-box[open]>.verdict-summary{margin-bottom:10px}
+.verdict-title{font-weight:500}
+.verdict-counts{color:var(--ts);font-size:12px}
+.verdict-counts b{font-weight:500;color:var(--tp)}
+.verdict-summary:hover .verdict-title{color:var(--acc-tx)}
