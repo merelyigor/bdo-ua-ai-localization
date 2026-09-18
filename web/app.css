@@ -790,24 +790,24 @@ a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,te
 .start-title{margin:28px 0 18px}
 .start-title h1{font-size:30px;letter-spacing:-.03em}
 .start-title .hint{font-size:13px;color:var(--ts)}
-.start-panel{padding:18px 20px 20px;background:var(--panel-fill)}
-.start-setup-grid{display:grid;grid-template-columns:minmax(180px,.72fr) minmax(380px,1.55fr) minmax(260px,1fr);gap:10px;margin:-2px 0 18px;border-bottom:0}
-.start-field{display:flex;flex-direction:column;gap:9px;min-width:0;padding:14px 16px 15px;border:1px solid var(--line-soft);border-radius:var(--panel-radius);background:var(--surface-alpha);box-shadow:var(--shadow)}
-.start-field:first-child,.start-field:last-child{padding-left:16px;padding-right:16px}
+.start-panel{padding:13px 16px 15px;background:var(--panel-fill)}
+.start-setup-grid{display:grid;grid-template-columns:minmax(180px,.72fr) minmax(380px,1.55fr) minmax(260px,1fr);gap:8px;margin:-2px 0 12px;border-bottom:0}
+.start-field{display:flex;flex-direction:column;gap:6px;min-width:0;padding:10px 12px 11px;border:1px solid var(--line-soft);border-radius:var(--panel-radius);background:var(--surface-alpha);box-shadow:var(--shadow)}
+.start-field:first-child,.start-field:last-child{padding-left:12px;padding-right:12px}
 .start-field + .start-field{border-left:1px solid var(--line-soft)}
 .start-field .lbl{font-size:11px;color:var(--tm);font-weight:600;text-transform:uppercase;letter-spacing:.08em}
 .start-env-value,.start-model-controls,.start-thinking-value{display:flex;align-items:center;gap:8px;min-width:0;flex-wrap:wrap}
-.start-env-value .pill{font-size:13px;min-height:34px;padding:7px 16px;border-radius:9px;font-weight:700;letter-spacing:.04em;box-shadow:0 0 0 1px var(--dn-bg)}
+.start-env-value .pill{font-size:13px;min-height:30px;padding:5px 12px;border-radius:8px;font-weight:700;letter-spacing:.04em;box-shadow:0 0 0 1px var(--dn-bg)}
 .start-env-field .start-field-note,.start-thinking-field .start-field-note{margin-top:auto}
-.start-field-note{font-size:11px;color:var(--tm);line-height:1.35}
+.start-field-note{font-size:11px;color:var(--tm);line-height:1.2}
 .start-model-controls{align-items:stretch}
 .start-model-controls select{flex:1 1 260px;min-width:0}
-.start-model-controls .as-button{white-space:nowrap}
+.start-model-controls .as-button{min-height:30px;padding:4px 8px;font-size:12px;line-height:1.2;white-space:nowrap}
 .start-model-field #modelNote{font-size:11px;line-height:1.35}
 .start-thinking-value #think{flex:1 1 150px;min-width:0}
-.start-thinking-value .as-button{white-space:nowrap}
+.start-thinking-value .as-button{min-height:30px;padding:4px 8px;font-size:12px;line-height:1.2;white-space:nowrap}
 .start-thinking-value{align-items:flex-start;justify-content:space-between}
-.start-thinking-value #think{line-height:1.45}
+.start-thinking-value #think{font-size:12px;line-height:1.25}
 .start-section{min-width:0}
 .start-section-heading{display:flex;align-items:center;margin:0 0 10px}
 .start-section-heading .lbl{font-size:13px;color:var(--tp);font-weight:600;text-transform:none;letter-spacing:.01em}
