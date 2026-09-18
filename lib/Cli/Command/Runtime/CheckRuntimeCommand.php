@@ -134,6 +134,13 @@ final class CheckRuntimeCommand implements Command, CommandHelp
             file_put_contents($probeDir . '/schema.json', json_encode($schema, JSON_UNESCAPED_UNICODE));
             file_put_contents($probeDir . '/hashes.json', json_encode($hashes, JSON_UNESCAPED_UNICODE));
 
+            // ПРОБА НЕ ПИШЕ В ЖУРНАЛ ВЛАСНИКА. Клієнт моделі бере номер пачки
+            // з `state/current-batch`, тому кожен `./bdo runtime` дописував
+            // свій службовий виклик у журнал ОСТАННЬОЇ пачки: власник
+            // 2026-09-18 бачив на сторінці 12 викликів замість 7, і шість із
+            // них були діагностичними. Тому проба отримує власну теку стану ·
+            // її журнал живе рівно стільки, скільки сама проба.
+            //
             // Клієнт моделі запускається МАСИВОМ аргументів, а не рядком в
             // оболонці. Раніше тут стояв `system($cmd)` зі склеєним рядком:
             // формально це PHP, фактично · той самий `/bin/sh` і той самий
@@ -146,7 +153,7 @@ final class CheckRuntimeCommand implements Command, CommandHelp
                 $probeDir.'/response.json',
                 '--schema',
                 $probeDir.'/schema.json',
-            ], $rootDir);
+            ], $rootDir, null, ['BDO_STATE_DIR' => $probeDir]);
 
             if ($probe['code'] !== 0) {
                 $output->stdout("FAIL\n");

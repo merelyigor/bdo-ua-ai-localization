@@ -79,16 +79,21 @@ final class Program
      * якого стоїть §12. Програми немає на машині · код 127, як у shell, і
      * порожній вивід: викликач мусить розрізняти «немає» і «повернула порожнє».
      *
+     * Оточення ДОПОВНЮЄТЬСЯ, а не замінюється: `proc_open` із масивом віддає
+     * процесу рівно цей масив, і підпроцес лишився б без `PATH` та `HOME`.
+     *
      * @param  list<string>  $argv
+     * @param  array<string,string>|null  $environment
      * @return array{code:int,out:string,err:string}
      */
-    public static function run(array $argv, ?string $cwd = null, ?int $timeout = null): array
+    public static function run(array $argv, ?string $cwd = null, ?int $timeout = null, ?array $environment = null): array
     {
         if ($argv === [] || self::path((string) $argv[0]) === null) {
             return ['code' => 127, 'out' => '', 'err' => ''];
         }
         $descriptors = [1 => ['pipe', 'w'], 2 => ['pipe', 'w']];
-        $process = @proc_open($argv, $descriptors, $pipes, $cwd, null, ['bypass_shell' => true]);
+        $merged = $environment === null ? null : array_merge(getenv(), $environment);
+        $process = @proc_open($argv, $descriptors, $pipes, $cwd, $merged, ['bypass_shell' => true]);
         if (! is_resource($process)) {
             return ['code' => 127, 'out' => '', 'err' => ''];
         }
