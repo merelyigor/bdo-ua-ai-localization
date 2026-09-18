@@ -19,6 +19,14 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 fail() { printf 'FAIL: %s\n' "$1" >&2; exit 1; }
 
+# БАНДЛ Є АРТЕФАКТОМ macOS. На Linux немає ні AppleScript, ні тек Homebrew з
+# цього переліку, тому прогін там нічого не доводить · чесніше сказати про
+# пропуск, ніж вигадати вирок (CI ходить на ubuntu-runner).
+if [ "$(uname -s)" != Darwin ]; then
+    printf 'gui path: ПРОПУЩЕНО · кліковий вхід є артефактом macOS, а тут %s\n' "$(uname -s)"
+    exit 0
+fi
+
 APPLESCRIPT="$ROOT/cli/system/mac-app.applescript"
 test -f "$APPLESCRIPT" || fail 'немає cli/system/mac-app.applescript · клікового входу не існує'
 
