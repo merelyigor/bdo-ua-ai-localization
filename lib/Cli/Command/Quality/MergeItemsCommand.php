@@ -36,6 +36,7 @@ final class MergeItemsCommand implements Command, \Bdo\Translate\Cli\CommandHelp
         }
         $seen = [];
         $replaced = 0;
+        $similarities = [];
         foreach ($fixes as $fix) {
             $hash = $fix['identity_hash'] ?? '';
             $text = $fix['text'] ?? null;
@@ -49,6 +50,11 @@ final class MergeItemsCommand implements Command, \Bdo\Translate\Cli\CommandHelp
                 throw new RuntimeException("Порожній text у виправленні {$hash}");
             }
             $seen[$hash] = true;
+            $current = $base[$index[$hash]]['text'] ?? '';
+            if ($current !== '') {
+                similar_text(mb_strtolower((string) $current), mb_strtolower($text), $percent);
+                $similarities[] = $percent;
+            }
             $base[$index[$hash]]['text'] = $text;
             $replaced++;
         }
@@ -57,8 +63,60 @@ final class MergeItemsCommand implements Command, \Bdo\Translate\Cli\CommandHelp
         }
         file_put_contents($outputFile, json_encode($base, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT | JSON_THROW_ON_ERROR));
         $output->stdout("Замінено {$replaced} рядків із ".count($base)."\n");
+        $this->writePolicyLog($replaced, $similarities);
 
         return 0;
+    }
+
+    /** @param list<float> $similarities */
+    private function writePolicyLog(int $items, array $similarities): void
+    {
+        $stateDir = getenv('BDO_STATE_DIR') ?: dirname(__DIR__, 4).'/state';
+        if (! is_dir($stateDir)) {
+            return;
+        }
+        // НЕЧОГО МІРЯТИ · НЕЧОГО ПИСАТИ. Рядок із `items:0` не несе виміру, а
+        // журнал, у якому більшість рядків порожні, перестають читати.
+        if ($similarities === []) {
+            return;
+        }
+        $belowMin = 0;
+        foreach ($similarities as $sim) {
+            if ($sim < \Bdo\Translate\Quality\FixPolicy::SIMILARITY_MIN) {
+                $belowMin++;
+            }
+        }
+        $similarityMin = $similarities !== [] ? min($similarities) : null;
+        $similarityMedian = $this->median($similarities);
+        $result = [
+            'at' => gmdate('c'),
+            'source' => 'merge',
+            'items' => $items,
+            'below_min' => $belowMin,
+            'similarity_min' => \Bdo\Translate\Quality\FixPolicy::SIMILARITY_MIN,
+        ];
+        if ($similarityMin !== null) {
+            $result['similarity_min_value'] = round($similarityMin, 1);
+        }
+        if ($similarityMedian !== null) {
+            $result['similarity_median'] = round($similarityMedian, 1);
+        }
+        if (@file_put_contents($stateDir.'/fix-policy.jsonl', json_encode($result, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)."\n", FILE_APPEND) === false) {
+            fwrite(STDERR, "Помилка запису fix-policy.jsonl\n");
+        }
+    }
+
+    /** @param list<float> $values */
+    private function median(array $values): ?float
+    {
+        if ($values === []) {
+            return null;
+        }
+        sort($values);
+        $count = count($values);
+        $mid = intdiv($count, 2);
+
+        return $count % 2 === 0 ? ($values[$mid - 1] + $values[$mid]) / 2 : $values[$mid];
     }
 
     private function required(array $arguments, int $index, string $message): string

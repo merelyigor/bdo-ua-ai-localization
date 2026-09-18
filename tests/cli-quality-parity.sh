@@ -50,7 +50,7 @@ run_one() {
     if [ "$name" = qa-coverage-fill ]; then
         cp "$TMP/coverage.json" "$run_root/verdicts.json"
     fi
-    if [ "$name" = qa-fixes ]; then
+    if [ "$name" = qa-fixes ] || [ "$name" = merge-items ]; then
         state_dir="$run_root/no-state"
     fi
     local -a command_args

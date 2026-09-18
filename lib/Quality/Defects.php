@@ -49,6 +49,9 @@ final class Defects
         foreach ($row->tokenViolations($text) as $violation) {
             $defects[] = $violation;
         }
+        foreach (HallucinatedTokens::find($text, $row->sourceText(), $row->cosmeticTokens()) as $token) {
+            $defects[] = 'вигаданий токен: '.$token;
+        }
         foreach ($row->lengthViolations($text) as $violation) {
             $defects[] = $violation;
         }

@@ -167,6 +167,7 @@ touched_map() {
             printf 'test|tests/cli-quality-parity.sh|парність quality\n'
             printf 'test|tests/mechanical-before-qa.sh|порядок mechanical перед QA\n'
             printf 'test|tests/mechanical-final-check.sh|фінальна mechanical-перевірка\n'
+            printf 'test|tests/hallucinated-tokens.sh|вигадані токени\n'
             printf 'test|tests/qa-memory-only.sh|memory-only QA\n'
             printf 'test|tests/names-pass.sh|перевірка імен\n' ;;
         lib/Run/*)
@@ -1762,6 +1763,7 @@ tests/quarantine-recovery.sh
 tests/worker-reference.sh
 tests/schema-provider-compat.sh
 tests/mechanical-final-check.sh
+tests/hallucinated-tokens.sh
 tests/domain-filter.sh
 tests/audit-response-shape.sh
 tests/mechanical-before-qa.sh
@@ -1804,6 +1806,22 @@ check_agents() {
         # локалізацію, і саме звідти беруться русизми.
         grep -Fq 'Black Desert Online' "roles/$role.md" \
             || fail "промпт $role втратив рамку «офіційна українська локалізація Black Desert Online»"
+    done
+    # ПЕРЕНОС РЯДКА · D171. Пачка `20260916_004005`, патч 9: 30 відхилень із 50,
+    # і ВСІ 30 · одна причина «переносів рядка N замість N», бо модель віддавала
+    # рівно 0 переносів при 2-23 в оригіналі. `Row::newlineViolations()` вимагає
+    # побайтового збігу (API інакше відповідає `save_failed`), а промпти про
+    # перенос не казали НІЧОГО. Правило додано в дві ролі, які ПИШУТЬ текст, і
+    # `tests/pipeline-unit.php` стереже сам токен у payload · але не текст
+    # правила. Саме тому тут grep: приберуть речення з промпта, і payload-тест
+    # цього не побачить, бо токен у `keep` лишиться на місці.
+    # САБОТАЖ: прибрати рядок про `{BDO_NL}` з roles/translation-worker.md.
+    local writer
+    for writer in translation-worker translation-repair; do
+        grep -Fq '{BDO_NL}' "roles/$writer.md" \
+            || fail "промпт $writer не називає токен переносу рядка {BDO_NL} · модель знову віддасть 0 переносів (D171)"
+        grep -Fq 'стільки ж разів' "roles/$writer.md" \
+            || fail "промпт $writer не вимагає ЗБЕРЕГТИ перенос стільки ж разів · самої назви токена мало (D171)"
     done
     note "ролей: $(jq -r '.roles | length' config/roles.json), у кожної є промпт і схема"
     # Кожна роль, яку вміє віддати рушій, мусить бути в реєстрі · інакше драйвер
