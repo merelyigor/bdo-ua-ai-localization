@@ -252,6 +252,23 @@ try {
 }
 ' "$ROOT/lib/autoload.php" "$BDO_STATE_DIR" "$ROOT" || fail 'замок дій не тримає одночасні виклики'
 
+# --- Кожна дія лишає слід ----------------------------------------------------
+# 2026-09-19 прогін спинився посеред виклику ролі (Ollama записала
+# `context canceled`, тобто клієнта хтось убив), і відповісти «хто натиснув»
+# було НІЧИМ: дії сторінки не лишали жодного рядка. А кожна з них може вбити
+# живу роботу · `watch --stop` є першим кроком старту (D72).
+rm -f "$BDO_STATE_DIR/web-actions.jsonl"
+php -r '
+require $argv[1];
+$runner = new Bdo\Translate\Web\Runner($argv[3], $argv[2]);
+$runner->execute("session.new", [], false);
+' "$ROOT/lib/autoload.php" "$BDO_STATE_DIR" "$ROOT" >/dev/null 2>&1 || true
+test -s "$BDO_STATE_DIR/web-actions.jsonl" \
+    || fail 'дія сторінки не лишила сліду · наступного разу «хто зупинив прогін» знову буде без відповіді'
+jq -e 'select(.action == "session.new") | has("at") and has("ok") and has("steps")' \
+    "$BDO_STATE_DIR/web-actions.jsonl" >/dev/null \
+    || fail 'у сліді дії немає часу, результату або кроків'
+
 # --- Завершена сесія tmux не має блокувати наступний старт (D72) -----------
 # `watch` навмисно лишає pane після роботи, щоб було видно останній екран. Через
 # це другий старт зі сторінки падав на «сесія bdo уже існує», і власник бачив

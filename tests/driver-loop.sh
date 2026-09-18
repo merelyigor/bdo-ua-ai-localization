@@ -166,6 +166,13 @@ scenario_both '{"ok":true,"state":"awaiting_worker","next":{"kind":"stop"}}'; FA
 { for _ in $(seq 1 20); do printf '%s\n' '{"ok":true,"state":"awaiting_qa","next":{"kind":"retry","reason":"context_unavailable"}}'; done; } > "$WORK/php/state/scenario"
 BDO_LOOP_SPIN_LIMIT=3 run_both; expect_codes 1; expect_each 'не рухається'
 scenario_both '{"ok":true,"state":"awaiting_worker","next":{"kind":"child","role":"translation-worker","payload_path":"p","response_path":"r"}}'; FAKE_CHILD_FAILS=1 run_both; unset FAKE_CHILD_FAILS; expect_codes 1; expect_each 'не дала відповіді'
+# ПРИЧИНА ЗУПИНКИ МУСИТЬ БУТИ В ЖУРНАЛІ, а не лише в stderr. Цикл працює у
+# відчепленому процесі (tmux), його stderr не читає ніхто: сторінка бере
+# `run-transcript.log`. Поки причина йшла лише в stderr, зупинений прогін
+# виглядав як робочий · пачка стоїть на кроці, нуль викликів, жодного слова
+# чому (спіймано 2026-09-19 на пачці 20260919_011019).
+grep -Fq 'ЗУПИНКА · роль translation-worker не дала відповіді' "$WORK/php/state/run-transcript.log" \
+    || fail 'причини зупинки немає в журналі прогону · сторінка мовчатиме про мертвий прогін'
 scenario_both 'без конверта'; FAKE_DRIVE_SIGNAL=130 run_both; unset FAKE_DRIVE_SIGNAL; expect_codes 1; expect_each 'перервано ззовні'
 scenario_both 'без конверта'; FAKE_DRIVE_SIGNAL=143 run_both; unset FAKE_DRIVE_SIGNAL; expect_codes 1; expect_each 'перервано ззовні'
 

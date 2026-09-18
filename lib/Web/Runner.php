@@ -99,10 +99,38 @@ final class Runner
                 }
             }
 
+            $this->journal($action, $plan['label'], $ok, $steps);
+
             return ['ok' => $ok, 'label' => $plan['label'], 'steps' => $steps];
         } finally {
             $this->releaseLock($lock);
         }
+    }
+
+    /**
+     * Слід КОЖНОЇ дії сторінки · один рядок, назавжди.
+     *
+     * Питання «чому прогін спинився» 2026-09-19 лишилось без відповіді саме
+     * тут: пачка `20260919_011019` стала посеред виклику ролі, Ollama записала
+     * `context canceled` (тобто клієнта хтось убив), а хто саме натиснув · не
+     * знав ніхто. Дії сторінки не лишали ЖОДНОГО сліду, хоча кожна з них може
+     * зупинити живу роботу (`watch --stop` є першим кроком старту, D72).
+     *
+     * Пишемо рівно ім'я дії, підпис і результат: payload може містити цілі й
+     * ключі, і він тут не потрібен.
+     *
+     * @param list<array{command:string,code:int,output:string}> $steps
+     */
+    private function journal(string $action, string $label, bool $ok, array $steps): void
+    {
+        $line = json_encode([
+            'at' => gmdate('c'),
+            'action' => $action,
+            'label' => $label,
+            'ok' => $ok,
+            'steps' => array_map(static fn (array $step): string => $step['command'].' → '.$step['code'], $steps),
+        ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        @file_put_contents(rtrim($this->stateDir, '/').'/web-actions.jsonl', $line."\n", FILE_APPEND | LOCK_EX);
     }
 
     /**

@@ -118,15 +118,15 @@ final class RunLoopCommand implements Command, \Bdo\Translate\Cli\CommandHelp
             $envelope = $this->lastEnvelope($drive['stdout']);
             if ($envelope === null) {
                 if ($drive['code'] === 130 || $drive['code'] === 143) {
-                    $output->stderr("ЗУПИНЕНО: прогін перервано ззовні (сигнал, код {$drive['code']}).\n");
+                    $this->stop("прогін перервано ззовні (сигнал, код {$drive['code']})", $output);
                 } else {
                     if ($drive['stdout'] !== '') {
                         $output->stderr("ЗУПИНКА: у виводі run drive немає конверта. Останні рядки:\n");
                         $lines = preg_split('/\R/', trim($drive['stdout'])) ?: [];
                         $output->stderr(implode("\n", array_slice($lines, -3))."\n");
-                        $output->stderr("ЗУПИНКА: конверт run drive не розібрано (див. причину вище).\n");
+                        $this->stop("конверт run drive не розібрано (див. причину вище)", $output);
                     } else {
-                        $output->stderr("ЗУПИНКА: ./bdo run drive не віддав конверт (код {$drive['code']}).\n");
+                        $this->stop("./bdo run drive не віддав конверт (код {$drive['code']})", $output);
                     }
                     if ($drive['stdout'] === '' && $drive['stderr'] !== '') {
                         $output->stderr("Останнє, що сказав run drive:\n");
@@ -144,7 +144,7 @@ final class RunLoopCommand implements Command, \Bdo\Translate\Cli\CommandHelp
             $next = is_array($envelope['next'] ?? null) ? $envelope['next'] : [];
             $kind = (string) ($next['kind'] ?? '');
             if ($kind === '') {
-                $output->stderr("ЗУПИНКА: конверт run drive не розібрано.\n");
+                $this->stop("конверт run drive не розібрано", $output);
 
                 return 1;
             }
@@ -186,7 +186,7 @@ final class RunLoopCommand implements Command, \Bdo\Translate\Cli\CommandHelp
         $this->report(['--before', $role, $payload], $output);
         $result = $this->timedProcess('model.'.$role, [PHP_BINARY, $this->root.'/cli/model/client.php', $role, $payload, $response], true, ['BDO_RUN_STATE' => $state]);
         if ($result['code'] !== 0) {
-            $output->stderr("ЗУПИНКА: роль {$role} не дала відповіді (причина вище).\n");
+            $this->stop("роль {$role} не дала відповіді (причина вище)", $output);
 
             return ['code' => 1, 'stop' => true, 'spin' => 0];
         }
@@ -210,7 +210,7 @@ final class RunLoopCommand implements Command, \Bdo\Translate\Cli\CommandHelp
         $spin++;
         $reason = (string) ($next['reason'] ?? '');
         if ($spin >= $spinLimit) {
-            $output->stderr("ЗУПИНКА: стан {$state} не рухається після {$spin} спроб (причина: {$reason}).\n");
+            $this->stop("стан {$state} не рухається після {$spin} спроб (причина: {$reason})", $output);
 
             return ['code' => 1, 'stop' => true, 'spin' => $spin];
         }
@@ -262,7 +262,7 @@ final class RunLoopCommand implements Command, \Bdo\Translate\Cli\CommandHelp
             $output->stderr($result['stderr']);
         }
         if ($result['code'] !== 0) {
-            $output->stderr("ЗУПИНКА: не вдалося почати наступну пачку.\n");
+            $this->stop("не вдалося почати наступну пачку", $output);
 
             return ['code' => 1, 'stop' => true, 'spin' => 0];
         }
@@ -274,7 +274,7 @@ final class RunLoopCommand implements Command, \Bdo\Translate\Cli\CommandHelp
     private function blocked(string $state, array $next, Output $output): array
     {
         $reason = (string) ($next['reason'] ?? '');
-        $output->stderr("ЗУПИНКА: {$state} · {$reason}\n");
+        $this->stop("{$state} · {$reason}", $output);
 
         return ['code' => 1, 'stop' => true, 'spin' => 0];
     }
@@ -282,7 +282,7 @@ final class RunLoopCommand implements Command, \Bdo\Translate\Cli\CommandHelp
     /** @return array{code:int,stop:bool,spin:int} */
     private function unknown(string $state, string $kind, Output $output): array
     {
-        $output->stderr("ЗУПИНКА: невідомий крок «{$kind}» у стані {$state}.\n");
+        $this->stop("невідомий крок «{$kind}» у стані {$state}", $output);
 
         return ['code' => 1, 'stop' => true, 'spin' => 0];
     }
@@ -336,6 +336,22 @@ final class RunLoopCommand implements Command, \Bdo\Translate\Cli\CommandHelp
         $line = '['.date('H:i:s').'] '.$message."\n";
         $output->stdout($line);
         $this->appendTranscript($line);
+    }
+
+    /**
+     * Причина зупинки · У ЖУРНАЛ, а не лише в stderr.
+     *
+     * Цикл живе у ВІДЧЕПЛЕНОМУ процесі (`watch loop` у tmux), і його stderr не
+     * бачить ніхто: сторінка читає `run-transcript.log`, а pane власник не
+     * відкриває. Через це прогін, який спинився, виглядав однаково з прогоном,
+     * який іде · «пачка чекає на терміни», нуль викликів і жодного слова чому.
+     * Спіймано 2026-09-19 на пачці `20260919_011019`: роль термінолога не дала
+     * відповіді, цикл вийшов, і в журналі не лишилось НІЧОГО.
+     */
+    private function stop(string $message, Output $output): void
+    {
+        $output->stderr('ЗУПИНКА: '.$message."\n");
+        $this->log('ЗУПИНКА · '.$message, $output);
     }
 
     private function appendTranscript(string $text): void
