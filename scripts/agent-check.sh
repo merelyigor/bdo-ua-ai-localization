@@ -1828,6 +1828,31 @@ check_agents() {
         grep -Fq 'Black Desert Online' "roles/$role.md" \
             || fail "промпт $role втратив рамку «офіційна українська локалізація Black Desert Online»"
     done
+    # ПРАВИЛО ПРОМПТА, ЗА ЯКИМ СТОЇТЬ ДЕТЕКТОР, НЕ МАЄ ПРАВА ЗНИКНУТИ.
+    #
+    # Клас той самий, що й D171, і він ширший за один токен. У `lib/Quality/**`
+    # є код, який ЛОВИТЬ порушення: `Row::tokenViolations` (keep, placeholders,
+    # PA markup), `Row::lengthViolations` (`limits`), `ForeignScript` (чужа
+    # писемність). Але ловити · це не те саме, що просити: якщо прохання зникне
+    # з промпта, локальна модель почне порушувати правило системно, і кожна
+    # пачка ходитиме зайве коло «зламав · спіймали · ремонт».
+    #
+    # Тому текст правила стережеться окремо в РОЛЯХ, ЯКІ ПИШУТЬ ТЕКСТ. Роль
+    # `translation-names` віддає лише адресу правки, тому `limits` їй не
+    # адресують · її перелік коротший, і це навмисно.
+    # САБОТАЖ: прибрати рядок про `keep` з roles/translation-worker.md.
+    local writer_rule
+    for writer in translation-worker translation-repair translation-names; do
+        for writer_rule in 'keep' 'PA markup' 'кирилицею'; do
+            grep -Fq "$writer_rule" "roles/$writer.md" \
+                || fail "промпт ${writer} втратив правило «${writer_rule}» · детектор ловитиме те, чого модель більше не просять"
+        done
+    done
+    for writer in translation-worker translation-repair; do
+        grep -Fq 'limits' "roles/$writer.md" \
+            || fail "промпт ${writer} більше не згадує limits · довжину ловить лише перевірка після моделі"
+    done
+
     # ПЕРЕНОС РЯДКА · D171. Пачка `20260916_004005`, патч 9: 30 відхилень із 50,
     # і ВСІ 30 · одна причина «переносів рядка N замість N», бо модель віддавала
     # рівно 0 переносів при 2-23 в оригіналі. `Row::newlineViolations()` вимагає
