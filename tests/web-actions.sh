@@ -92,6 +92,33 @@ printf("планів звірено з реєстром: %d\n", $checked);
 ' "$ROOT/lib/autoload.php" "$ROOT/cli/command-registry.json" >/dev/null \
     || fail 'план дії не відповідає дозволеним командам реєстру'
 
+# ДОЗВІЛ НА ЗАПИС МУСИТЬ ДІЙТИ ДО КРОКУ, ЯКИЙ СТВОРЮЄ ПАЧКУ.
+#
+# Дозвіл осідає в маніфесті в момент створення (`Workspace::create` читає
+# `BDO_WRITE`), а пачку створює крок `mode start`. Раніше `Runner` віддавав
+# оточення лише кроку з `loop`, і 2026-09-18 це дало ТИХУ ВІДМОВУ: власник
+# увімкнув «Запис піде в PROD», натиснув «почати прогін», а пачка народилась
+# із `write:false` і не записала нічого.
+# САБОТАЖ: повернути вибірковість по `loop` · цей блок червоніє.
+grep -Fq 'env = $plan[' "$ROOT/lib/Web/Runner.php" \
+    || fail 'Runner не віддає оточення плану крокам'
+if grep -Fq "in_array('loop', \$argv, true) ? (\$plan" "$ROOT/lib/Web/Runner.php"; then
+    fail 'оточення плану знову йде лише кроку циклу · дозвіл на запис не дійде до створення пачки'
+fi
+php -r '
+require $argv[1];
+$plan = Bdo\Translate\Run\Actions::plan("run.start", ["mode" => "patch", "patch" => "9"]);
+if (($plan["env"]["BDO_WRITE"] ?? "") !== "1") {
+    fwrite(STDERR, "бойовий старт не проговорює BDO_WRITE\n"); exit(1);
+}
+$create = false;
+foreach ($plan["steps"] as $step) {
+    if (in_array("mode", $step, true) && in_array("start", $step, true)) { $create = true; }
+}
+if (! $create) { fwrite(STDERR, "у плані немає кроку створення пачки\n"); exit(1); }
+' "$ROOT/lib/autoload.php" || fail 'план бойового старту не несе дозволу на запис до створення пачки'
+
+
 # --- 4. Відмови валідації (без сервера, чистою логікою) ---------------------
 php -r '
 require $argv[1];
