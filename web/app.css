@@ -1015,3 +1015,6 @@ body{
 .verdict-counts{color:var(--ts);font-size:12px}
 .verdict-counts b{font-weight:500;color:var(--tp)}
 .verdict-summary:hover .verdict-title{color:var(--acc-tx)}
+
+/* Пояснення під картками підсумку · чому на тестовому прогоні там риски. */
+.cards-note{grid-column:1/-1;margin-top:-4px;font-size:11px}

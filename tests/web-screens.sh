@@ -1070,4 +1070,42 @@ fi
 grep -Fq "B.icon('chevron')" "$RUN" \
     || fail 'стрілка згортання не з набору іконок'
 
+# НУЛІ ТЕСТОВОГО ПРОГОНУ · ЦЕ РЕЖИМ, А НЕ РЕЗУЛЬТАТ (власник 2026-09-18).
+#
+# Пачка без дозволу на запис фізично не може нічого записати, тому «у шар 0 ·
+# до людини 0» після завершеної тестової пачки читалось як поломка · власник
+# так і спитав, що зламалось. Тепер там риска й пояснення словами.
+# САБОТАЖ: прибрати `b.write === false` з екрана прогону · блок червоніє.
+grep -Fq 'var dry = b.write === false;' "$RUN" \
+    || fail 'екран прогону не відрізняє тестову пачку · нулі знову читатимуться як результат'
+grep -Fq 'тестовий прогін · на сервер не йшло нічого' "$RUN" \
+    || fail 'нулі тестового прогону не пояснені словами'
+php -r '
+require $argv[1];
+use Bdo\Translate\Web\Snapshot;
+$dir = $argv[2];
+// Ідентифікатор пачки має бути СПРАВЖНЬОЇ форми: `Workspace::current()`
+// перевіряє її, і на «B1» знімок просто не знайде манифеста.
+$id = "20260905_010101_abcdef0123456789";
+@mkdir($dir."/batches/".$id, 0777, true);
+file_put_contents($dir."/current-batch", $id);
+foreach ([true, false] as $write) {
+    file_put_contents($dir."/batches/".$id."/manifest.json", json_encode([
+        "id" => $id, "rows" => 50, "state" => "verified", "write" => $write,
+    ]));
+    $batch = (new Snapshot($dir))->toArray()["batch"] ?? [];
+    if (! array_key_exists("write", $batch)) {
+        fwrite(STDERR, "FAIL: знімок не каже, чи мала пачка право писати\n"); exit(1);
+    }
+    if ($batch["write"] !== $write) {
+        fwrite(STDERR, "FAIL: знімок переплутав дозвіл на запис\n"); exit(1);
+    }
+}
+// Пачка без поля · «невідомо», а не «тест».
+file_put_contents($dir."/batches/".$id."/manifest.json", json_encode(["id" => $id, "rows" => 50, "state" => "verified"]));
+if ((new Snapshot($dir))->toArray()["batch"]["write"] !== null) {
+    fwrite(STDERR, "FAIL: стара пачка без поля виглядає тестовою\n"); exit(1);
+}
+' "$ROOT/lib/autoload.php" "$(mktemp -d)" || fail 'знімок не віддає дозволу на запис пачки'
+
 echo 'web screens: OK · пʼять окремих екранів зі спільною навігацією, каталог моделей читається зі state, вік і дії перевірено.'

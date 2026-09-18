@@ -622,10 +622,16 @@
     var sum = s.summary || {};
     var callsView = s.calls || { scope: 'session', items: [] };
     var calls = callsView.items || [];
+    // ТЕСТОВИЙ ПРОГІН НЕ МАЄ ПОКАЗУВАТИ НУЛІ ЯК РЕЗУЛЬТАТ. Пачка без дозволу на
+    // запис фізично не може нічого записати, тому «у шар 0 · до людини 0» тут
+    // не результат роботи, а наслідок режиму · власник побачив ці нулі після
+    // завершеної тестової пачки й спитав, що зламалось (2026-09-18). Ставимо
+    // риску (наш знак «не застосовується») і пояснюємо словами під картками.
+    var dry = b.write === false;
     var cards = [
-      ['у шар', sum.to_layer, 'var(--ok-tx)'],
-      ['до людини', sum.to_human, ''],
-      ['карантин', sum.quarantine, (sum.quarantine ? 'var(--dn-tx)' : '')],
+      ['у шар', dry ? null : sum.to_layer, 'var(--ok-tx)'],
+      ['до людини', dry ? null : sum.to_human, ''],
+      ['карантин', dry ? null : sum.quarantine, (!dry && sum.quarantine ? 'var(--dn-tx)' : '')],
       ['викликів моделі', calls.length, '']
     ];
     var cardsKey = JSON.stringify(cards);
@@ -635,7 +641,11 @@
         var v = (c[1] === undefined || c[1] === null) ? '—' : B.num(c[1]);
         return '<div class="card"><div class="l">' + B.esc(c[0]) + '</div>'
           + '<div class="v"' + (c[2] ? ' style="color:' + c[2] + '"' : '') + '>' + v + '</div></div>';
-      }).join('');
+      }).join('')
+        + (dry
+          ? '<div class="empty cards-note">тестовий прогін · на сервер не йшло нічого, тому записаних рядків тут немає'
+            + ' · вироки ролей нижче справжні</div>'
+          : '');
     }
 
     var meta = [];
