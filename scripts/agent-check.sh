@@ -119,6 +119,7 @@ touched_map() {
             printf 'test|tests/web-steps.sh|кроки сторінки\n'
             printf 'test|tests/web-screens.sh|екрани сторінки\n'
             printf 'test|tests/web-live-typing.sh|живий друк\n'
+            printf 'test|tests/web-stream-fallback.sh|відкат потоку й лічильник\n'
             printf 'test|tests/web-inner-html-guard.sh|сторож innerHTML блоків\n'
             printf 'test|tests/web-call-view.sh|перегляд виклику\n' ;;
         tests/*.sh|tests/*.php|tests/*.ps1)
@@ -1755,6 +1756,7 @@ tests/web-actions.sh
 tests/web-steps.sh
 tests/web-screens.sh
 tests/web-live-typing.sh
+tests/web-stream-fallback.sh
 tests/web-inner-html-guard.sh
 tests/web-call-view.sh
 tests/qa-memory-only.sh

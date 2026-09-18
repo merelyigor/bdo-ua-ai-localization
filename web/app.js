@@ -391,12 +391,66 @@
   // Одне SSE-зʼєднання займає один воркер сервера, тому схована вкладка його
   // ВІДПУСКАЄ: чотири відкриті вкладки колись вибрали всі воркери, і звичайний
   // запит чекав 10.5 с (D76).
+  // --- лічильник прогону веде САМА сторінка -------------------------------
+  //
+  // Цифра «скільки триває прогін» цокає щосекунди. Поки її привозив сервер,
+  // знімок стану щоразу мав інший хеш · і перевірка «шлемо лише коли справді
+  // змінилось» не спрацьовувала ЖОДНОГО разу: 4 с потоку на порожній сторінці
+  // важили 335 КБ чотирма однаковими кадрами (заміряно 2026-09-18, D168).
+  //
+  // Тому тут рівно одне джерело часу · `run.started_at` із знімка, і власний
+  // такт сторінки. `elapsed` із сервера лишається запасним значенням для
+  // першого кадру, поки такт ще не зробив жодного оберту.
+  var clockTimer = null;
+  function runClock(run) {
+    var box = el('elapsed');
+    if (!box) { return; }
+    if (clockTimer) { clearInterval(clockTimer); clockTimer = null; }
+    var started = run && run.started_at ? Date.parse(run.started_at) : NaN;
+    if (!run || isNaN(started)) {
+      // ЗУПИНЕНИЙ ПРОГІН НЕ МАЄ ЛІЧИЛЬНИКА. Цифра, що біжить над завершеним,
+      // каже неправду · саме тому порожньо, а не остання відома тривалість.
+      box.textContent = run && run.elapsed ? run.elapsed : '';
+      return;
+    }
+    var paint = function () {
+      var seconds = Math.max(0, Math.round((Date.now() - started) / 1000));
+      var h = Math.floor(seconds / 3600);
+      var m = Math.floor((seconds % 3600) / 60);
+      var s = seconds % 60;
+      box.textContent = h > 0
+        ? h + ':' + (m < 10 ? '0' : '') + m + ':' + (s < 10 ? '0' : '') + s
+        : m + ':' + (s < 10 ? '0' : '') + s;
+    };
+    paint();
+    clockTimer = setInterval(paint, 1000);
+  }
+
   function live(onState, onTokens) {
     var source = null;
     var polling = null;
 
+    // ПРИЧИНА ВІДКОТУ МУСИТЬ ЛИШИТИ СЛІД. 2026-09-14 живий потік не піднявся,
+    // сторінка чесно перейшла на опитування раз на секунду · і причина не
+    // потрапила НІКУДИ, крім підпису звʼязку в кутку (D169). Тому кожен відкат
+    // іде в `state/web-client.log` тим самим шляхом, що й помилки сторінки.
+    // Один раз на причину: перепідключення не має права залити журнал.
+    var reportedFallback = {};
+    function reportFallback(reason) {
+      var key = String(reason || 'без причини');
+      if (reportedFallback[key]) { return; }
+      reportedFallback[key] = true;
+      report({
+        message: 'живий потік не піднявся: ' + key,
+        source: global.location.pathname,
+        line: 0,
+        stack: 'readyState=' + (source ? source.readyState : 'немає') + ' url=' + api('/api/stream')
+      });
+    }
+
     function startPolling(reason) {
       if (polling) { return; }
+      reportFallback(reason);
       setLink('poll', reason || '');
       var tick = function () {
         get('/api/state').then(function (s) { onState(s, true); }).catch(function (e) {
@@ -1028,6 +1082,7 @@
     typer: typer,
     prettyIfJson: prettyIfJson,
     thinkingLabel: thinkingLabel,
+    runClock: runClock,
     streamFeed: streamFeed,
     loadingHtml: loadingHtml,
     busy: busy,

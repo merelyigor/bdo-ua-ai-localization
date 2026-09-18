@@ -612,9 +612,32 @@ function stream(Snapshot $snapshot): void
         flush();
     };
 
+    // ЧИМ ПОРІВНЮЄМО ЗНІМКИ · одне місце на весь потік.
+    //
+    // Порівняння свідомо НЕ бачить трьох речей: часу знімка, тексту потоку
+    // (його веде подія `tokens`) і лічильника прогону. Лічильник цокає
+    // щосекунди, тому з ним «шлемо лише коли змінилось» не спрацьовувало
+    // жодного разу · сервер відправляв повні 65 КБ щосекунди навіть на
+    // порожній сторінці (D168, заміряно 2026-09-18). Сторінка веде цей
+    // лічильник сама від `run.started_at`.
+    $fingerprint = static function (array $state): string {
+        unset($state['at']);
+        $state['stream']['text'] = null;
+        $state['stream']['complete'] = false;
+        if (isset($state['run']) && is_array($state['run'])) {
+            $state['run']['elapsed'] = '';
+        }
+
+        return md5((string) json_encode($state, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
+    };
+
     // ПЕРШИЙ знімок · із ПОВНИМ текстом поточного виклику: сторінку могли
     // відкрити посеред довгої відповіді, і початок вона взяти більше нізвідки.
     $send('state', (string) json_encode($snapshot->toArray(true), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
+    // Перший знімок уже поїхав · його відбиток стає базою. Без цього рівно
+    // той самий стан летів удруге на першому ж такті циклу: ще 65 КБ на кожне
+    // підключення без жодної зміни.
+    $lastState = $fingerprint($snapshot->toArray());
 
     while (time() - $started < $maxSeconds) {
         if (connection_aborted() === 1) {
@@ -658,7 +681,9 @@ function stream(Snapshot $snapshot): void
             $state['stream']['text'] = null;
             $state['stream']['complete'] = false;
             $encoded = (string) json_encode($state, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
-            $hash = md5($encoded);
+            // Значення лічильника лишається В ПАВЛОАДІ · воно потрібне тому,
+            // хто щойно підключився. З ПОРІВНЯННЯ його прибирає `$fingerprint`.
+            $hash = $fingerprint($state);
             if ($hash !== $lastState) {
                 $lastState = $hash;
                 $send('state', $encoded);
