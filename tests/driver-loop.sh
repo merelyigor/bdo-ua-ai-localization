@@ -173,6 +173,15 @@ scenario_both '{"ok":true,"state":"awaiting_worker","next":{"kind":"child","role
 # чому (спіймано 2026-09-19 на пачці 20260919_011019).
 grep -Fq 'ЗУПИНКА · роль translation-worker не дала відповіді' "$WORK/php/state/run-transcript.log" \
     || fail 'причини зупинки немає в журналі прогону · сторінка мовчатиме про мертвий прогін'
+# ВИРОК І МОДЕЛЬ · у тому самому рядку. Питання після кожного збою одне: це
+# модель чи набір. 2026-09-19 відповідь довелось збирати порівнянням журналу
+# вручну (одна модель зробила крок 12 разів, друга провалила 3 з 3).
+printf '%s\n' '{"at":"2026-01-01T00:00:00+00:00","role":"translation-worker","verdict":"not_json","model":"тест-модель","ms":2000,"out":99}' \
+    > "$WORK/php/state/model-calls.jsonl"
+scenario_both '{"ok":true,"state":"awaiting_worker","next":{"kind":"child","role":"translation-worker","payload_path":"p","response_path":"r"}}'
+FAKE_CHILD_FAILS=1 run_both; unset FAKE_CHILD_FAILS
+grep -Fq 'вирок not_json · модель тест-модель' "$WORK/php/state/run-transcript.log" \
+    || fail 'зупинка не називає вироку й моделі · «модель чи набір» знову доведеться з'"'"'ясовувати руками'
 scenario_both 'без конверта'; FAKE_DRIVE_SIGNAL=130 run_both; unset FAKE_DRIVE_SIGNAL; expect_codes 1; expect_each 'перервано ззовні'
 scenario_both 'без конверта'; FAKE_DRIVE_SIGNAL=143 run_both; unset FAKE_DRIVE_SIGNAL; expect_codes 1; expect_each 'перервано ззовні'
 

@@ -186,7 +186,7 @@ final class RunLoopCommand implements Command, \Bdo\Translate\Cli\CommandHelp
         $this->report(['--before', $role, $payload], $output);
         $result = $this->timedProcess('model.'.$role, [PHP_BINARY, $this->root.'/cli/model/client.php', $role, $payload, $response], true, ['BDO_RUN_STATE' => $state]);
         if ($result['code'] !== 0) {
-            $this->stop("роль {$role} не дала відповіді (причина вище)", $output);
+            $this->stop("роль {$role} не дала відповіді · ".$this->lastCallVerdict($role), $output);
 
             return ['code' => 1, 'stop' => true, 'spin' => 0];
         }
@@ -336,6 +336,43 @@ final class RunLoopCommand implements Command, \Bdo\Translate\Cli\CommandHelp
         $line = '['.date('H:i:s').'] '.$message."\n";
         $output->stdout($line);
         $this->appendTranscript($line);
+    }
+
+    /**
+     * ВИРОК І МОДЕЛЬ із журналу викликів · одним рядком для людини.
+     *
+     * «Причина вище» відсилала до stderr відчепленого процесу, якого не бачить
+     * ніхто. А питання після кожного збою те саме: це модель чи набір. Ніч
+     * 2026-09-19 відповіла на нього лише порівнянням журналу вручну: одна
+     * модель зробила той самий крок 12 разів, друга провалила 3 з 3. Тепер
+     * рядок сам називає вирок (`not_json`, `thinking_loop`, …) і модель.
+     */
+    private function lastCallVerdict(string $role): string
+    {
+        $path = rtrim($this->stateDir, '/').'/model-calls.jsonl';
+        if (! is_file($path)) {
+            return 'журналу викликів немає';
+        }
+        $lines = @file($path, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) ?: [];
+        for ($index = count($lines) - 1; $index >= 0; $index--) {
+            $record = json_decode($lines[$index], true);
+            if (! is_array($record) || (string) ($record['role'] ?? '') !== $role) {
+                continue;
+            }
+            $verdict = (string) ($record['verdict'] ?? '');
+            $model = (string) ($record['model'] ?? '');
+            $seconds = (int) round(((int) ($record['ms'] ?? 0)) / 1000);
+
+            return sprintf(
+                'вирок %s · модель %s · %d с · вихідних токенів %d',
+                $verdict !== '' ? $verdict : 'без вироку',
+                $model !== '' ? $model : 'невідома',
+                $seconds,
+                (int) ($record['out'] ?? 0),
+            );
+        }
+
+        return 'у журналі викликів немає запису про цю роль';
     }
 
     /**
