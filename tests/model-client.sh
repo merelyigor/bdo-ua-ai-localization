@@ -188,6 +188,21 @@ if grep -q 'num_predict' "$SCENARIO_FILE.request"; then
     fail "стеля надіслана в рантайм, хоча її не задано: $(cat "$SCENARIO_FILE.request")"
 fi
 
+# 1в. МЕЖІ ДУМАННЯ НЕМАЄ ЙОГО ВЗАГАЛІ · рішення власника 2026-09-19.
+#     `timeout_seconds` у контексті `http` є межею ТИШІ, а не довжини роздумів,
+#     але 900 с тиші таки обірвали живий виклик, тому в конфігурації стоїть 0 ·
+#     «не обривати». Нуль НЕ можна передавати в рантайм як є: для PHP це
+#     означало б `default_socket_timeout`, тобто 60 с · ЖОРСТКІШУ межу, ніж
+#     була. САБОТАЖ: повернути число в config/roles.json · рядок почервоніє.
+config_timeout="$(php -r '$c = json_decode(file_get_contents($argv[1]), true); echo (int) ($c["timeout_seconds"] ?? -1);' "$ROOT/config/roles.json")"
+test "$config_timeout" = 0 \
+    || fail "у config/roles.json знову стоїть межа виклику ${config_timeout} с · модель мусить думати стільки, скільки їй треба"
+resolved_timeout="$(php -r '$c = ["timeout_seconds" => 0]; $t = (int) ($c["timeout_seconds"] ?? 0); echo $t > 0 ? $t : 365 * 24 * 3600;')"
+test "$resolved_timeout" -ge 86400 \
+    || fail "нуль у конфігурації перетворюється на ${resolved_timeout} с замість «не обривати»"
+grep -Fq '365 * 24 * 3600' "$ROOT/cli/model/client.php" \
+    || fail "клієнт більше не перекладає 0 у «без межі» · нуль стане 60-секундним таймаутом сокета"
+
 # 2. Голий масив без конверта теж приймається: схема ролі може бути й такою.
 run envelopeless
 test "$CODE" = 0 || fail "голий масив відхилено: $STDERR"

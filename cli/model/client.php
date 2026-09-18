@@ -102,9 +102,20 @@ $numCtx = (int) ($roleConfig['num_ctx'] ?? $config['num_ctx']);
 // тоді, коли його свідомо задали в конфігурації ролі або провайдера.
 $configuredPredict = $roleConfig['num_predict'] ?? $config['num_predict'] ?? null;
 $numPredict = $configuredPredict === null ? null : max(1, (int) $configuredPredict);
-// Це не бюджет якості: щедрий `timeout_seconds` — останній аварійний рубіж
-// для різних роздумів, які ніколи не дійшли до відповіді.
-$timeout = max(1, (int) ($config['timeout_seconds'] ?? 900));
+// МЕЖІ ДУМАННЯ НЕМАЄ ЗОВСІМ · рішення власника, підтверджене 2026-09-19.
+//
+// `timeout_seconds` ніколи не був бюджетом якості: у контексті `http` це
+// таймаут ЧИТАННЯ, тобто межа ТИШІ в зʼєднанні, а не довжини роздумів · поки
+// рантайм шле байти, він не наближається. Але 900 с тиші таки обірвали виклик
+// (спроба о 01:28: модель думала ~157 с, потім рантайм замовк, і на 1057-й
+// секунді читання завершилось), а власник вимагає, щоб модель думала стільки,
+// скільки їй треба, і спиняв її ЛИШЕ детектор повторів.
+//
+// Тому `0` означає «не обривати взагалі». Технічно нуль у контексті `http`
+// дорівнював би `default_socket_timeout` (60 с), тобто ЖОРСТКІШІЙ межі, ніж
+// була · саме тому нуль перекладається у велике число, а не передається як є.
+$configuredTimeout = (int) ($config['timeout_seconds'] ?? 0);
+$timeout = $configuredTimeout > 0 ? $configuredTimeout : 365 * 24 * 3600;
 try {
     $settings = \Bdo\Translate\Model\ModelSettings::resolve($stateDir, $config, $roleConfig);
 } catch (\Bdo\Translate\Model\ModelRuntimeError $e) {

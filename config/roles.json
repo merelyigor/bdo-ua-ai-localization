@@ -23,7 +23,7 @@
   },
   "default_model": "huihui_ai/Qwen3.6-abliterated:35b-Claude-4.7-q4_K",
   "num_ctx": 131072,
-  "timeout_seconds": 900,
+  "timeout_seconds": 0,
   "roles": {
     "translation-terminology": {
       "schema": "file:roles/schema/translation-terminology.json",
