@@ -632,10 +632,24 @@ check_rules() {
         || fail 'AGENTS.md не вимагає самодостатніх runtime prompts'
     # 2026-08-27: власник зафіксував курс на локальні моделі. Еталон мусить бути
     # НАЗВАНИЙ, інакше «найслабша модель» щоразу означає ту, яка зараз під рукою.
-    grep -Fq 'config/roles.json`, типова `qwen3.6:35b-a3b-mtp-q4_K_M`' AGENTS.md \
-        || fail 'AGENTS.md не називає еталонну локальну модель для промптів'
+    #
+    # ТЕГ БЕРЕТЬСЯ З КОНФІГУ, А НЕ З ЛІТЕРАЛА. Тут стояв зашитий
+    # `qwen3.6:35b-a3b-mtp-q4_K_M`, і 2026-09-18 це обернулось на пастку:
+    # робоча модель змінилась ще 2026-09-14 (`default_model` у
+    # `config/roles.json`, на ній зняті D163, D172, D173), старого тега немає
+    # навіть у `ollama list` · а гейт ВИМАГАВ саме застарілий рядок і падав на
+    # спробі виправити правило. Перевірка, яка тримає документацію в минулому,
+    # гірша за її відсутність. Тепер джерело правди одне · конфіг.
+    local reference_model
+    reference_model="$(php -r 'echo json_decode((string) file_get_contents("config/roles.json"), true)["default_model"] ?? "";')"
+    test -n "$reference_model" \
+        || fail 'config/roles.json не називає default_model · еталон промптів нізвідки взяти'
+    grep -Fq "config/roles.json\`, типова \`${reference_model}\`" AGENTS.md \
+        || fail "карта правил називає не ту еталонну модель · у config/roles.json зараз ${reference_model}"
     grep -Fq '§8.13 Еталонна «найслабша модель» названа' docs/AI_AGENT_RULES_REFERENCE.md \
         || fail 'норматив не фіксує еталонну модель промптів'
+    grep -Fq "\`${reference_model}\`" docs/AI_AGENT_RULES_REFERENCE.md \
+        || fail "норматив (§8.13) називає не ту еталонну модель · у config/roles.json зараз ${reference_model}"
     grep -Fq 'Режим більше не є промптом' AGENTS.md \
         || fail 'AGENTS.md не фіксує, що режим став конфігурацією прогону'
     # Клас відмови «тихий збій і фіктивна перевірка» коштував двох діб розбору
