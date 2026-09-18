@@ -897,4 +897,35 @@ if (! preg_match("/\.role-card > \.mh\{[^}]*flex-wrap:wrap/", $css)) {
 }
 ' "$CSS" || fail 'вузький екран знову тягне сторінку вбік'
 
+# ФОН ЕКРАНА · МАЛЮНОК НЕ МАЄ ПРАВА ЗНИКАТИ (знайшов власник 2026-09-18).
+#
+# `--page-art` вішається на `body` у самому кінці файла, але КЛАС сильніший за
+# тег незалежно від порядку правил. Тому `.start-page{background:…}` записаний
+# СКОРОЧЕННЯМ скидав `background-image` цілком, і рівно на `/start` малюнок
+# зникав, а на решті екранів лишався · саме це власник і побачив.
+# САБОТАЖ: повернути `.start-page{background:` замість `background-image:` ·
+# цей блок червоніє.
+php -r '
+$css = file_get_contents($argv[1]);
+// Кожне правило рівня сторінки (клас на <body>) мусить або не чіпати картинку,
+// або перелічити її явно. Скорочення `background:` без `--page-art` · заборона.
+if (preg_match_all("/^\.[a-z-]+-page\{([^}]*)\}/m", $css, $m, PREG_SET_ORDER)) {
+    foreach ($m as $rule) {
+        $body = $rule[1];
+        $shorthand = preg_match("/(^|;)\s*background\s*:/", $body);
+        $hasArt = str_contains($body, "var(--page-art)");
+        if ($shorthand && ! $hasArt) {
+            fwrite(STDERR, "FAIL: правило рівня сторінки здуває малюнок фону: ".substr($rule[0], 0, 90)."\n");
+            exit(1);
+        }
+    }
+}
+// І сам малюнок мусить лишатись на місці.
+if (! str_contains($css, "--page-art:url(")) {
+    fwrite(STDERR, "FAIL: у темі більше немає малюнка фону\n"); exit(1);
+}
+' "$ROOT/web/app.css" || fail 'малюнок фону зникає на окремому екрані'
+test -s "$ROOT/web/assets/bdo-background.webp" \
+    || fail 'файла малюнка фону немає · екрани лишаться порожніми'
+
 echo 'web screens: OK · пʼять окремих екранів зі спільною навігацією, каталог моделей читається зі state, вік і дії перевірено.'

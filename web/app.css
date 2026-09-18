@@ -779,7 +779,14 @@ a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,te
    setup as a three-column decision surface: destination, model, and thinking.
    This is intentionally scoped to `.start-page` so the other screens keep
    their current layout while they migrate one by one. */
-.start-page{background:radial-gradient(circle at 78% 0%,var(--body-glow),transparent 34%),var(--s0)}
+/* СТОРІНКА СТАРТУ НЕ МАЄ ПРАВА ЗДУВАТИ МАЛЮНОК.
+   Тут стояв `background:` СКОРОЧЕННЯМ · а воно скидає `background-image`
+   цілком. Малюнок (`--page-art`) додали пізніше, нижче в цьому файлі, на
+   `body`; але клас сильніший за тег незалежно від порядку, тому саме на
+   `/start` фон зникав, а на решті екранів лишався. Знайдено власником
+   2026-09-18. Тепер перелічуємо шари ЯВНО: свічення старту зверху, поверх
+   затемнення й самого малюнка. */
+.start-page{background-image:radial-gradient(circle at 78% 0%,var(--body-glow),transparent 34%),var(--page-art-overlay),var(--page-art)}
 .start-title{margin:28px 0 18px}
 .start-title h1{font-size:30px;letter-spacing:-.03em}
 .start-title .hint{font-size:13px;color:var(--ts)}
