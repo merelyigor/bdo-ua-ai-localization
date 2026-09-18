@@ -472,6 +472,15 @@ final class RunDriveCommand implements Command, \Bdo\Translate\Cli\CommandHelp
      *
      * Маршрут це не змінює: `ChannelRouter` рахує механіку на ФІНАЛЬНОМУ тексті
      * окремо. Тут рівно одне · вирок перестає описувати вчорашній текст.
+     *
+     * ДРУГЕ ДЖЕРЕЛО ТІЄЇ САМОЇ НЕПРАВДИ · ВИРОК QA. 2026-09-18 на першій пачці з
+     * записом у PROD власник бачив на екрані «Русизм: «Пас Апейрон» замість
+     * «Пояс Апейрон»» на трьох рядках, у фінальному тексті яких стоїть рівно
+     * «Пояс Апейрон» · ремонт полагодив, а підпис лишився доремонтний (6 із 9
+     * вироків пачки `20260918_044220`). Механіку тут перерахувати можна, а
+     * судження QA · ні: русизм, стиль і точність визначення не обчислюються
+     * кодом. Тому статус НЕ чіпаємо (інакше це була б вигадка про чистоту), але
+     * текст мусить сказати прямо, ЧОГО він стосується · рядка ДО ремонту.
      */
     private function refreshMechanicalVerdicts(): void
     {
@@ -479,10 +488,18 @@ final class RunDriveCommand implements Command, \Bdo\Translate\Cli\CommandHelp
         $verdicts = json_decode((string) file_get_contents($this->workspace->path('verdicts.json')), true, 512, JSON_THROW_ON_ERROR);
         $rows = RowSet::fromFile($this->workspace->path('rows.json'));
         $healed = \Bdo\Translate\Batch\Candidate::fromFile($this->workspace->path('healed.json'));
+        // Саме `clean.json` бачив QA (`qa-payload.json` збирається з нього),
+        // тому «до ремонту» тут означає рівно цей файл, а не вихід воркера.
+        // Файла немає · порівнювати нічим, і тоді вирок лишається дослівним:
+        // домислювати «ремонт щось змінив» без доказу не можна.
+        $qaFile = $this->workspace->path('clean.json');
+        $seenByQa = is_file($qaFile)
+            ? \Bdo\Translate\Batch\Candidate::fromFile($qaFile)
+            : \Bdo\Translate\Batch\Candidate::fromArray([]);
         $refreshed = [];
         foreach (is_array($verdicts) ? $verdicts : [] as $verdict) {
             if (! is_array($verdict) || ! str_starts_with((string) ($verdict['issue'] ?? ''), $prefix)) {
-                $refreshed[] = $verdict;
+                $refreshed[] = is_array($verdict) ? $this->markRepairedAfterQa($verdict, $seenByQa, $healed) : $verdict;
                 continue;
             }
             $hash = (string) ($verdict['identity_hash'] ?? '');
@@ -518,6 +535,33 @@ final class RunDriveCommand implements Command, \Bdo\Translate\Cli\CommandHelp
             $refreshed[] = $verdict;
         }
         $this->write($this->workspace->path('final-verdicts.json'), json_encode($refreshed, JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR)."\n");
+    }
+
+    /**
+     * Вирок QA на рядку, який ремонт ПЕРЕПИСАВ, каже це прямо.
+     *
+     * Опис не викидається · він єдине джерело знання, ЩО саме знайшов QA, і
+     * обчислити його заново нічим. Але подавати його як чинний дефект не можна:
+     * власник дивиться на екран і шукає в тексті те, чого там уже немає.
+     *
+     * Текст не змінився · вирок лишається як є: тоді він описує дійсність.
+     *
+     * @param  array<string,mixed>  $verdict
+     * @return array<string,mixed>
+     */
+    private function markRepairedAfterQa(array $verdict, \Bdo\Translate\Batch\Candidate $seenByQa, \Bdo\Translate\Batch\Candidate $healed): array
+    {
+        $issue = trim((string) ($verdict['issue'] ?? ''));
+        $hash = (string) ($verdict['identity_hash'] ?? '');
+        if ($issue === '' || $hash === '' || ! $seenByQa->has($hash) || ! $healed->has($hash)) {
+            return $verdict;
+        }
+        if ($seenByQa->text($hash) === $healed->text($hash)) {
+            return $verdict;
+        }
+        $verdict['issue'] = 'ремонт змінив текст · повторної перевірки якості рядок не проходив · QA бачив до ремонту: '.$issue;
+
+        return $verdict;
     }
 
     private function awaitingControlQa(Output $output): int

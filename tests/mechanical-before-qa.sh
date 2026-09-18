@@ -182,4 +182,43 @@ fi
 grep -Fq "Candidate::fromFile(\$this->workspace->path('healed.json'))" "$DRIVE" \
     || fail 'механіку перераховують не на healed.json · вирок описує текст до ремонту'
 
+# ТЕ САМЕ ДРУГИМ ДЖЕРЕЛОМ · ВИРОК QA (інцидент 2026-09-18, пачка
+# `20260918_044220`, перша з записом у PROD). Три рядки показано на екрані як
+# «Русизм: «Пас Апейрон» замість «Пояс Апейрон»», а у фінальному тексті стоїть
+# рівно «Пояс Апейрон» · ремонт полагодив, підпис лишився доремонтний. Механіку
+# перерахувати можна, судження QA · ні, тому статус лишається, а текст мусить
+# сказати, що стосується рядка ДО ремонту.
+# САБОТАЖ: повернути `return $verdict;` першим рядком `markRepairedAfterQa` ·
+# блок червоніє на першому ж випадку.
+php -r '
+require $argv[1];
+use Bdo\Translate\Batch\Candidate;
+use Bdo\Translate\Cli\Command\Run\RunDriveCommand;
+$m = (new ReflectionClass(RunDriveCommand::class))->getMethod("markRepairedAfterQa");
+$drive = (new ReflectionClass(RunDriveCommand::class))->newInstanceWithoutConstructor();
+$qa = Candidate::fromArray(["h1" => "Пас Апейрон", "h2" => "Залізний меч"]);
+$healed = Candidate::fromArray(["h1" => "Пояс Апейрон", "h2" => "Залізний меч"]);
+$issue = "Русизм: «Пас Апейрон» замість «Пояс Апейрон» у назві предмета.";
+
+// 1. Текст переписано ремонтом · вирок мусить це назвати, опис зберегти.
+$fixed = $m->invoke($drive, ["identity_hash" => "h1", "status" => "REVIEW", "severity" => "minor", "issue" => $issue], $qa, $healed);
+if (! str_contains((string) $fixed["issue"], "ремонт змінив текст")) {
+    fwrite(STDERR, "FAIL: вирок QA не каже, що ремонт переписав текст: ".$fixed["issue"]."\n"); exit(1);
+}
+if (! str_contains((string) $fixed["issue"], $issue)) {
+    fwrite(STDERR, "FAIL: опис QA втрачено · що саме знайшов QA, більше нізвідки взяти\n"); exit(1);
+}
+// Статус QA не наш · чистоти рядка код не знає і вигадувати її не має права.
+if ($fixed["status"] !== "REVIEW" || $fixed["severity"] !== "minor") {
+    fwrite(STDERR, "FAIL: статус QA-вироку змінено · це вигадка про чистоту рядка\n"); exit(1);
+}
+
+// 2. Текст НЕ змінився · вирок лишається дослівно, він описує дійсність.
+$kept = $m->invoke($drive, ["identity_hash" => "h2", "status" => "REVIEW", "severity" => "minor", "issue" => "Неточне відмінювання"], $qa, $healed);
+if ($kept["issue"] !== "Неточне відмінювання") {
+    fwrite(STDERR, "FAIL: вирок на незміненому рядку переписано: ".$kept["issue"]."\n"); exit(1);
+}
+' "$ROOT/lib/autoload.php" \
+    || fail 'вирок QA після ремонту не каже дійсність'
+
 echo 'mechanical before qa: OK · вирок після ремонту каже дійсність'
