@@ -381,9 +381,12 @@ expect(($plain['ddd'] ?? '') === 'API: unchanged Без змін.', 'відмо�
         'identity_hash' => $multilineHash,
         'text' => 'DeltaThetaOmega',
     ]], JSON_THROW_ON_ERROR));
+    // РЕМОНТ ВІДДАЄ АДРЕСУ ПРАВКИ, А НЕ ТЕКСТ · `{BDO_NL}` мусить розкодуватись
+    // саме в `replace`, інакше токен доїхав би до `healed.json` рядком.
     file_put_contents($repairRunWorkspace->path('fixes.json'), json_encode([[
         'identity_hash' => $multilineHash,
-        'text' => 'Delta'.$newlineToken.'Iota'.$newlineToken.'Omega',
+        'find' => 'DeltaThetaOmega',
+        'replace' => 'Delta'.$newlineToken.'Iota'.$newlineToken.'Omega',
     ]], JSON_THROW_ON_ERROR));
     file_put_contents($repairRunWorkspace->path('verdicts.json'), "[]\n");
     putenv('BDO_STATE_DIR='.$repairRunState);

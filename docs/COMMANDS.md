@@ -57,7 +57,7 @@
 | `./bdo heal` | сходинки лікування й payload для repair |
 | `./bdo qa-fixes` | фільтр виправлень від QA |
 | `./bdo merge` | накласти виправлення на кандидата |
-| `./bdo names-apply` | накласти правки назв за адресою find/replace |
+| `./bdo apply-edits` | накласти правки ролі за адресою find/replace |
 
 ## ЗАВЕРШЕННЯ
 

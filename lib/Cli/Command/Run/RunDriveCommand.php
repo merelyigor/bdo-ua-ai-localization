@@ -30,8 +30,7 @@ use Bdo\Translate\Cli\Command\Prepare\WorkerPayloadCommand;
 use Bdo\Translate\Cli\Command\Quality\BuildItemsCommand;
 use Bdo\Translate\Cli\Command\Quality\CheckRussianismsCommand;
 use Bdo\Translate\Cli\Command\Quality\MechanicalSplitCommand;
-use Bdo\Translate\Cli\Command\Quality\ApplyNameEditsCommand;
-use Bdo\Translate\Cli\Command\Quality\MergeItemsCommand;
+use Bdo\Translate\Cli\Command\Quality\ApplyEditsCommand;
 use Bdo\Translate\Cli\Command\Quality\NormalizeCandidateCommand;
 use Bdo\Translate\Cli\Command\Quality\QaCoverageFillCommand;
 use Bdo\Translate\Cli\Command\Heal\HealPlanCommand;
@@ -426,6 +425,19 @@ final class RunDriveCommand implements Command, \Bdo\Translate\Cli\CommandHelp
         catch (\Throwable) { /* heal-plan preserves its legacy non-gating behavior */ }
         $repairPath = $this->workspace->path('heal-repair-payload.json');
         if (is_file($repairPath) && Items::count($repairPath) > 0) {
+            // РЕМОНТ ТЕЖ ВІДДАЄ АДРЕСУ ПРАВКИ (рішення власника 2026-09-18).
+            //
+            // Промпт і раніше просив «правильні частини не переписуй», але це
+            // лишалось проханням: жодна перевірка цього не тримала. Заміряно на
+            // тестовій пачці · з шести правок одна мала схожість 65.6%, тобто
+            // ремонт замінив ціле речення («Жодного спорядження не надягнуто» →
+            // «Екіпіроване спорядження відсутнє»), і суддя пропустив гірший
+            // текст у шар. З адресною правкою переписати решту рядка
+            // НЕМОЖЛИВО за побудовою · межа переїхала з прохання в код.
+            // Схема будується з ПІДМНОЖИНИ рядків (`heal-repair-subset.json`), а не
+            // з payload: `BuildSchemaCommand` читає форму `rows.json`, і саме
+            // підмножина обмежує enum хешів тими, кого ремонтують.
+            $this->call(new BuildSchemaCommand(), ['--edits', $this->workspace->path('heal-repair-subset.json')]);
             $this->transition('healing');
             return $this->child($output, 'healing', 'translation-repair', $repairPath, $this->workspace->path('fixes.json'));
         }
@@ -442,17 +454,19 @@ final class RunDriveCommand implements Command, \Bdo\Translate\Cli\CommandHelp
             $retry = $this->retryExceeded('healing', $output);
             if ($retry === null) return 1;
             if ($retry === 'exhausted') return $this->giveUp($output, 'healing');
+            $this->call(new BuildSchemaCommand(), ['--edits', $this->workspace->path('heal-repair-subset.json')]);
             return $this->child($output, 'healing', 'translation-repair', $this->workspace->path('heal-repair-payload.json'), $fixes);
         }
         try {
             $this->decodeTextItems($fixes);
-            $this->call(new MergeItemsCommand(), [$this->workspace->path('heal-merged.json'), $fixes, $this->workspace->path('healed.json')]);
+            $this->call(new ApplyEditsCommand(), [$this->workspace->path('heal-merged.json'), $fixes, $this->workspace->path('healed.json')]);
         }
         catch (\Throwable) {
             @rename($fixes, $this->workspace->path('fixes.invalid.'.time().'.json'));
             $retry = $this->retryExceeded('healing', $output);
             if ($retry === null) return 1;
             if ($retry === 'exhausted') return $this->giveUp($output, 'healing');
+            $this->call(new BuildSchemaCommand(), ['--edits', $this->workspace->path('heal-repair-subset.json')]);
             return $this->child($output, 'healing', 'translation-repair', $this->workspace->path('heal-repair-payload.json'), $fixes);
         }
         copy($this->workspace->path('healed.json'), $this->workspace->path('final-candidate.json'));
@@ -657,7 +671,7 @@ final class RunDriveCommand implements Command, \Bdo\Translate\Cli\CommandHelp
             if (Items::count($this->workspace->path('names-payload.json')) > 0) {
                 $hashes = Items::hashes($this->workspace->path('names-payload.json'));
                 $this->call(new SubsetRowsCommand(), [$this->workspace->path('rows.json'), implode(',', $hashes), $this->workspace->path('names-subset.json')]);
-                $this->call(new BuildSchemaCommand(), ['--names', $this->workspace->path('names-subset.json')]);
+                $this->call(new BuildSchemaCommand(), ['--edits', $this->workspace->path('names-subset.json')]);
                 $this->write($this->workspace->path('names-pass.done'), "\n");
                 $this->transition('names_pass');
                 return $this->child($output, 'names_pass', 'translation-names', $this->workspace->path('names-payload.json'), $this->workspace->path('names-fixes.json'));
@@ -703,18 +717,18 @@ final class RunDriveCommand implements Command, \Bdo\Translate\Cli\CommandHelp
             $retry = $this->retryExceeded('names_pass', $output);
             if ($retry === null) return 1;
             if ($retry === 'exhausted') { $this->transition('ready_to_commit'); return $this->emit($output, true, 'ready_to_commit', ['kind' => 'continue', 'reason' => 'names_pass_retry_exhausted']); }
-            $this->call(new BuildSchemaCommand(), ['--names', $this->workspace->path('names-subset.json')]);
+            $this->call(new BuildSchemaCommand(), ['--edits', $this->workspace->path('names-subset.json')]);
             return $this->child($output, 'names_pass', 'translation-names', $this->workspace->path('names-payload.json'), $fixes);
         }
         // АДРЕСА ПРАВКИ, А НЕ ТЕКСТ · `merge` тут більше не підходить: роль
-        // віддає `find`/`replace`, і заміну робить код (див. ApplyNameEditsCommand).
-        try { $this->call(new ApplyNameEditsCommand(), [$this->workspace->path('final-candidate.json'), $fixes, $this->workspace->path('final-candidate.named.json')]); }
+        // віддає `find`/`replace`, і заміну робить код (див. ApplyEditsCommand).
+        try { $this->call(new ApplyEditsCommand(), [$this->workspace->path('final-candidate.json'), $fixes, $this->workspace->path('final-candidate.named.json')]); }
         catch (\Throwable) {
             @rename($fixes, $this->workspace->path('names-fixes.invalid.'.time().'.json'));
             $retry = $this->retryExceeded('names_pass', $output);
             if ($retry === null) return 1;
             if ($retry === 'exhausted') { $this->transition('ready_to_commit'); return $this->emit($output, true, 'ready_to_commit', ['kind' => 'continue', 'reason' => 'names_pass_answer_invalid']); }
-            $this->call(new BuildSchemaCommand(), ['--names', $this->workspace->path('names-subset.json')]);
+            $this->call(new BuildSchemaCommand(), ['--edits', $this->workspace->path('names-subset.json')]);
             return $this->child($output, 'names_pass', 'translation-names', $this->workspace->path('names-payload.json'), $fixes);
         }
         rename($this->workspace->path('final-candidate.named.json'), $this->workspace->path('final-candidate.json'));
@@ -1022,8 +1036,16 @@ final class RunDriveCommand implements Command, \Bdo\Translate\Cli\CommandHelp
             throw new RuntimeException('Відповідь ролі не є масивом: '.$path);
         }
         foreach ($items as $index => $item) {
-            if (is_array($item) && is_string($item['text'] ?? null)) {
-                $items[$index]['text'] = NewlineToken::decode($item['text']);
+            if (! is_array($item)) {
+                continue;
+            }
+            // Адресна правка приходить із тими самими токенами переносу, що й
+            // payload · інакше `find` не збігся б із текстом, де переноси вже
+            // справжні, і кожна правка «не знаходила місця».
+            foreach (['text', 'find', 'replace'] as $field) {
+                if (is_string($item[$field] ?? null)) {
+                    $items[$index][$field] = NewlineToken::decode($item[$field]);
+                }
             }
         }
         $this->write($path, json_encode($items, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR)."\n");

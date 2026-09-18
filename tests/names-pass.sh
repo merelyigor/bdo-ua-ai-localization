@@ -193,9 +193,9 @@ php -r 'file_put_contents($argv[1], json_encode([
     ["identity_hash" => $argv[2], "find" => "всякиєї всячини", "replace" => "Всяка всячина"],
     ["identity_hash" => $argv[3], "find" => "ЦЬОГО НЕМАЄ", "replace" => "байдуже"],
 ], JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR));' "$apply_dir/edits.json" "$H1" "$H2"
-apply_out="$(php "$ROOT/cli/bdo.php" names-apply "$apply_dir/base.json" "$apply_dir/edits.json" "$apply_dir/out.json" 2>"$apply_dir/err.txt")" \
+apply_out="$(php "$ROOT/cli/bdo.php" apply-edits "$apply_dir/base.json" "$apply_dir/edits.json" "$apply_dir/out.json" 2>"$apply_dir/err.txt")" \
     || fail "підстановка назв упала: $(cat "$apply_dir/err.txt")"
-grep -Fq 'Підставлено назв: 1' <<<"$apply_out" \
+grep -Fq 'Накладено правок: 1' <<<"$apply_out" \
     || fail "команда не підставила назву: $apply_out"
 grep -Fq 'не знайдено місця: 1' <<<"$apply_out" \
     || fail "ненайдене місце не враховано: $apply_out"
@@ -207,7 +207,7 @@ jq -e --arg h "$H2" '.[] | select(.identity_hash == $h) | .text == "Залізн
     || fail 'рядок без знайденої адреси зіпсовано'
 # Чужий рядок · зупинка, а не мовчазне ігнорування.
 php -r 'file_put_contents($argv[1], json_encode([["identity_hash" => str_repeat("f", 64), "find" => "а", "replace" => "б"]], JSON_THROW_ON_ERROR));' "$apply_dir/alien.json"
-if php "$ROOT/cli/bdo.php" names-apply "$apply_dir/base.json" "$apply_dir/alien.json" "$apply_dir/alien-out.json" >/dev/null 2>&1; then
+if php "$ROOT/cli/bdo.php" apply-edits "$apply_dir/base.json" "$apply_dir/alien.json" "$apply_dir/alien-out.json" >/dev/null 2>&1; then
     fail 'чужий identity_hash у правці назв не зупинив команду'
 fi
 # Промпт мусить вимагати саме адресу · інакше модель повернеться до передруку.

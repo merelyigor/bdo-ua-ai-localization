@@ -202,7 +202,10 @@ final class HealPlanCommand implements Command, \Bdo\Translate\Cli\CommandHelp
             if ($hashes !== []) {
                 $subset = $workspace->path('heal-repair-subset.json');
                 $subsetOutput = $this->capture(new SubsetRowsCommand(), [$rowsFile, implode(',', $hashes), $subset]);
-                $repairSchema = $this->capture(new BuildSchemaCommand(), [$subset]);
+                // Ремонт відповідає АДРЕСОЮ правки (`find`/`replace`), а не
+                // повним текстом · схема мусить бути та сама, що її ставить
+                // драйвер, інакше standalone-план і прогін розійшлись би.
+                $repairSchema = $this->capture(new BuildSchemaCommand(), ['--edits', $subset]);
                 $qaSchema = $this->capture(new BuildSchemaCommand(), ['--qa', $subset]);
                 if ($subsetOutput['code'] === 0 && $repairSchema['code'] === 0 && $qaSchema['code'] === 0) {
                     $output->stdout("Схеми repair і контрольного QA переставлено на підмножину: {$subset}\n");

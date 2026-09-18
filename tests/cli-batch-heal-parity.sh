@@ -149,5 +149,14 @@ for file in heal-merged.json heal-repair-payload.json heal-attempts.json heal-re
 done
 test -s "$TMP/heal-php/state/current-response-schema.json" || fail 'heal response schema не створено'
 test -s "$TMP/heal-php/state/current-qa-schema.json" || fail 'heal QA schema не створено'
+# РЕМОНТ ВІДПОВІДАЄ АДРЕСОЮ ПРАВКИ. Схема тут не косметика: поки в ній лишалось
+# поле `text`, роль мала право передрукувати рядок цілком, і жодна перевірка
+# цього не тримала (заміряно 2026-09-18 · правка зі схожістю 65.6%).
+jq -e '.properties.items.items.required == ["identity_hash","find","replace"]' \
+    "$TMP/heal-php/state/current-response-schema.json" >/dev/null \
+    || fail 'схема ремонту не вимагає find/replace · роль знову передруковуватиме рядок'
+jq -e '.properties.items.items.properties | has("text") | not' \
+    "$TMP/heal-php/state/current-response-schema.json" >/dev/null \
+    || fail 'схема ремонту досі дозволяє повний текст'
 
 printf '%s\n' 'cli batch/heal behavior: 5 PHP-команд, stdout/stderr/коди й state files: OK'

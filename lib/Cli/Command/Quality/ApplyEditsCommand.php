@@ -9,7 +9,10 @@ use Bdo\Translate\Cli\Output;
 use RuntimeException;
 
 /**
- * Накладає правки ролі назв · заміну за АДРЕСОЮ, а не переданим текстом.
+ * Накладає правки ролі за АДРЕСОЮ · заміна шматка, а не переданий текст.
+ *
+ * Спільна для ДВОХ кроків: підстановки назв і ремонту після якості. Обидва
+ * міняють у рядку названі місця, тому спосіб накладання в них один.
  *
  * ЧОМУ НЕ `merge`. Роль `translation-names` раніше повертала повний текст
  * рядка, і це коштувало двічі. Ціна перша · вихід: заміряно на живій пачці
@@ -26,12 +29,12 @@ use RuntimeException;
  * випадок називається в stderr і рахується в підсумку, тому «модель вигадала
  * місце» видно одразу, а пачка через це не спиняється.
  */
-final class ApplyNameEditsCommand implements Command, \Bdo\Translate\Cli\CommandHelp
+final class ApplyEditsCommand implements Command, \Bdo\Translate\Cli\CommandHelp
 {
     public function execute(array $arguments, Output $output): int
     {
-        $baseFile = $this->required($arguments, 0, 'Потрібен final-candidate.json (повна пачка)');
-        $editsFile = $this->required($arguments, 1, 'Потрібен names-fixes.json від translation-names');
+        $baseFile = $this->required($arguments, 0, 'Потрібен кандидат пачки (final-candidate.json або heal-merged.json)');
+        $editsFile = $this->required($arguments, 1, 'Потрібен файл правок від ролі (names-fixes.json або fixes.json)');
         $outputFile = $this->required($arguments, 2, 'Потрібен вихідний файл');
 
         $base = json_decode((string) file_get_contents($baseFile), true, 512, JSON_THROW_ON_ERROR);
@@ -57,7 +60,7 @@ final class ApplyNameEditsCommand implements Command, \Bdo\Translate\Cli\Command
             $find = (string) ($edit['find'] ?? '');
             $replace = (string) ($edit['replace'] ?? '');
             if (! isset($index[$hash])) {
-                throw new RuntimeException("Чужий identity_hash у правці назв: {$hash}");
+                throw new RuntimeException("Чужий identity_hash у правці: {$hash}");
             }
             // ПОРОЖНЄ Й ТОТОЖНЕ · НЕ ПРАВКА. Порожній `find` замінив би кожну
             // межу символу, тотожна пара просто витратила б виклик.
@@ -80,7 +83,7 @@ final class ApplyNameEditsCommand implements Command, \Bdo\Translate\Cli\Command
             throw new RuntimeException('Жодної правки не розібрано · формат відповіді ролі не той');
         }
         file_put_contents($outputFile, json_encode($base, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT | JSON_THROW_ON_ERROR));
-        $output->stdout(sprintf("Підставлено назв: %d | не знайдено місця: %d\n", $applied, $missed));
+        $output->stdout(sprintf("Накладено правок: %d | не знайдено місця: %d\n", $applied, $missed));
 
         return 0;
     }
@@ -105,10 +108,11 @@ final class ApplyNameEditsCommand implements Command, \Bdo\Translate\Cli\Command
         return <<<'BDO_HELP_TEXT'
 Накласти правки ролі назв на кандидата пачки.
 
-  ./bdo names-apply final-candidate.json names-fixes.json out.json
+  ./bdo apply-edits final-candidate.json names-fixes.json out.json
+  ./bdo apply-edits heal-merged.json fixes.json healed.json
 
-Роль `translation-names` повертає АДРЕСУ правки (`find` і `replace`), а не текст
-рядка. Заміну робить ця команда, тому все поза названим шматком лишається цілим
+Ролі `translation-names` і `translation-repair` повертають АДРЕСУ правки
+(`find` і `replace`), а не текст рядка. Заміну робить ця команда, тому все поза названим шматком лишається цілим
 за побудовою: плейсхолдери, PA markup, переноси й довжину не треба довіряти
 моделі й перевіряти після неї.
 

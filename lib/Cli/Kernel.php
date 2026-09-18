@@ -49,7 +49,7 @@ use Bdo\Translate\Cli\Command\HelpCommand;
 use Bdo\Translate\Cli\Command\Quality\BuildItemsCommand;
 use Bdo\Translate\Cli\Command\Quality\CheckRussianismsCommand;
 use Bdo\Translate\Cli\Command\Quality\MechanicalSplitCommand;
-use Bdo\Translate\Cli\Command\Quality\ApplyNameEditsCommand;
+use Bdo\Translate\Cli\Command\Quality\ApplyEditsCommand;
 use Bdo\Translate\Cli\Command\Quality\MergeItemsCommand;
 use Bdo\Translate\Cli\Command\Quality\NormalizeCandidateCommand;
 use Bdo\Translate\Cli\Command\Quality\QaCoverageFillCommand;
@@ -172,7 +172,7 @@ final class Kernel
             'check-russianisms' => new CheckRussianismsCommand(),
             'normalize-candidate' => new NormalizeCandidateCommand(),
             'merge-items' => new MergeItemsCommand(),
-            'names-apply' => new ApplyNameEditsCommand(),
+            'apply-edits' => new ApplyEditsCommand(),
             'build-schema' => new BuildSchemaCommand(),
             'memory-apply' => new MemoryApplyCommand(),
             'judge-payload' => new JudgePayloadCommand(),

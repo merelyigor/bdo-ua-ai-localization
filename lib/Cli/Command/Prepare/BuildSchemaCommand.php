@@ -57,8 +57,8 @@ final class BuildSchemaCommand implements Command, \Bdo\Translate\Cli\CommandHel
                 $index++;
                 continue;
             }
-            if ($argument === '--names') {
-                $mode = 'names';
+            if ($argument === '--edits') {
+                $mode = 'edits';
                 $index++;
                 continue;
             }
@@ -98,8 +98,8 @@ final class BuildSchemaCommand implements Command, \Bdo\Translate\Cli\CommandHel
                 'fix' => ['type' => 'string'],
             ];
             $required = ['identity_hash', 'status', 'severity', 'issue', 'fix'];
-        } elseif ($mode === 'names') {
-            // РОЛЬ НАЗВ ВІДДАЄ АДРЕСУ ПРАВКИ, А НЕ ТЕКСТ.
+        } elseif ($mode === 'edits') {
+            // РОЛЬ ВІДДАЄ АДРЕСУ ПРАВКИ, А НЕ ТЕКСТ · назви й ремонт однаково.
             //
             // Заміряно на живому payload: поле `current` займало 54.5% запиту, а
             // модель ПЕРЕДРУКОВУВАЛА весь рядок заради однієї назви · 1 626
@@ -164,7 +164,8 @@ final class BuildSchemaCommand implements Command, \Bdo\Translate\Cli\CommandHel
 що очікує ./bdo items, тому перепакування не потрібне.
 
 Використання:
-  ./bdo schema build rows.json         # схема для worker/repair
+  ./bdo schema build rows.json         # схема для worker
+  ./bdo schema build --edits rows.json # схема для ролей з адресною правкою
   ./bdo schema qa rows.json            # схема для translation-qa (статус на КОЖЕН рядок)
   ./bdo schema clear                   # зняти обидві схеми
   ./bdo schema show                    # показати активні схеми
