@@ -52,6 +52,20 @@ $a = $rows[$h1]; $b = $rows[$h2];
 // Рядок моделі: ремонт його переписав, суддя відправив у шар.
 if ($a["origin"] !== "worker") { fwrite(STDERR, "FAIL: рядок моделі позначено як памʼять\n"); exit(1); }
 if ($a["repair"]["changed"] !== true) { fwrite(STDERR, "FAIL: ремонт переписав рядок, а слід цього не каже\n"); exit(1); }
+// НАСКІЛЬКИ переписав · без числа важку заміну видно лише тому, хто піде
+// звіряти файли руками. На тестовій пачці 2026-09-18 одна з шести правок мала
+// 65.6% і замінила добрий переклад гіршим.
+if (! isset($a["repair"]["similarity"]) || ! is_numeric($a["repair"]["similarity"])) {
+    fwrite(STDERR, "FAIL: слід не каже, НАСКІЛЬКИ ремонт переписав рядок\n"); exit(1);
+}
+if ($a["repair"]["similarity"] >= 100) {
+    fwrite(STDERR, "FAIL: переписаний рядок має схожість 100% · число нічого не міряє\n"); exit(1);
+}
+// JSON повертає 100.0 як ціле 100 · порівнюємо ЧИСЛА, а не типи, інакше
+// перевірка падала б на справному коді.
+if ((float) $b["repair"]["similarity"] !== 100.0) {
+    fwrite(STDERR, "FAIL: незмінений рядок мусить мати схожість 100%, маємо ".json_encode($b["repair"]["similarity"])."\n"); exit(1);
+}
 if ($a["names"]["changed"] !== false) { fwrite(STDERR, "FAIL: підстановка назв рядка не чіпала, а слід каже інше\n"); exit(1); }
 if (($a["judge"]["destination"] ?? "") !== "ai_layer" || ($a["judge"]["confidence"] ?? 0) !== 82) {
     fwrite(STDERR, "FAIL: рішення судді не дійшло до сліду\n"); exit(1);

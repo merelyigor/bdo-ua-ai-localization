@@ -93,7 +93,16 @@ final class Lineage
             // ЧИ ЧІПАВ КРОК РЯДОК · саме факт зміни, а не текст. Текст уже
             // лежить у файлах кроку, і дублювати його тут означало б подвоїти
             // вагу теки пачки.
-            'repair' => ['changed' => $this->changed($this->seenByQa, $this->healed, $hash)],
+            // НАСКІЛЬКИ ремонт переписав · не лише «чи чіпав». Заміряно
+            // 2026-09-18 на тестовій пачці: з шести правок одна мала схожість
+            // 65.6% · ремонт замінив «Жодного спорядження не надягнуто» на
+            // «Екіпіроване спорядження відсутнє», і суддя пропустив це в шар із
+            // впевненістю 95%. Поки числа немає в сліді, такі заміни видно лише
+            // тому, хто піде порівнювати файли руками.
+            'repair' => [
+                'changed' => $this->changed($this->seenByQa, $this->healed, $hash),
+                'similarity' => $this->similarity($this->seenByQa, $this->healed, $hash),
+            ],
             'names' => ['changed' => $this->changed($this->healed, $this->named, $hash)],
             'judge' => $judge === null ? null : [
                 'destination' => (string) ($judge['destination'] ?? ''),
@@ -127,6 +136,28 @@ final class Lineage
         }
 
         return @file_put_contents(rtrim($batchDir, '/').'/lineage.jsonl', $lines) !== false;
+    }
+
+    /**
+     * Наскільки текст лишився собою · відсоток або `null`.
+     *
+     * Рахуємо тим самим `similar_text`, що й `FixPolicy`: другого способу
+     * міряти схожість у наборі бути не має. `null` означає «нема з чим
+     * порівнювати», а не «не змінився».
+     */
+    private function similarity(Candidate $before, Candidate $after, string $hash): ?float
+    {
+        if (! $before->has($hash) || ! $after->has($hash)) {
+            return null;
+        }
+        $from = $before->text($hash);
+        $to = $after->text($hash);
+        if ($from === $to) {
+            return 100.0;
+        }
+        similar_text(mb_strtolower($from), mb_strtolower($to), $percent);
+
+        return round($percent, 1);
     }
 
     /**
