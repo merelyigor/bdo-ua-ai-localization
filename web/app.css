@@ -763,6 +763,15 @@ a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,te
   .role-card.is-active .active-work>#thinkwrap,
   .role-card.is-active .active-work>#streambox{grid-column:1}
   .role-card .call-work-grid{grid-template-columns:1fr}
+  /* ШАПКА КАРТКИ РОЛІ МУСИТЬ ПЕРЕНОСИТИСЬ. `.mh` є flex із `nowrap`, і на
+     390px усе не влазило в один рядок: час виклику обрізався межею картки, а
+     значок роздумів висів ПОЗА нею, тягнучи сторінку вбік на 28px (побачено
+     2026-09-18). Ширину тут нічого не тримає · рядок просто переходить. */
+  .role-card > .mh{flex-wrap:wrap;row-gap:4px}
+  /* Інлайновий `margin-left:auto` на чипі ставить JS · при переносі він
+     розпихає рядок так, що чип, час і значок падають кожен на власну лінію.
+     На вузькому екрані праву кромку тримати нічого · пакуємо вліво. */
+  .role-card > .mh > .chip{margin-left:0!important}
 }
 
 /* START SCREEN · reference 04 / 2026-09-15.
@@ -844,8 +853,14 @@ a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,te
   .start-field,.start-field:first-child,.start-field:last-child{padding:0 0 14px}
   .start-field + .start-field{border-left:0;border-top:1px solid var(--line-soft);padding-top:14px}
   .start-mode-section #modes{grid-template-columns:1fr}
-  .start-patch-section .tbl{display:block;overflow-x:auto}
-  .start-patch-section .tbl{min-width:620px}
+  /* ТАБЛИЦЯ СКРОЛИТЬСЯ САМА, А НЕ ТЯГНЕ СТОРІНКУ. `min-width` стояв на тому
+     самому боксі, що й `overflow-x:auto` · у такій парі скролу немає взагалі:
+     бокс просто стає 620px, і вбік їде вся сторінка. Побачено 2026-09-18 при
+     390px · колонка «без ШІ-шару» зникала за краєм, а підписи під таблицею
+     («категорія», «у патчі 9 лишилось…») обрізались із ЛІВОГО краю. Тому
+     широким лишається ВМІСТ, а бокс тримається в межах екрана. */
+  .start-patch-section .tbl{display:block;overflow-x:auto;max-width:100%}
+  .start-patch-section .tbl > *{min-width:620px}
   .start-run-grid{grid-template-columns:1fr}
   .start-confirm{margin-top:0}
   .start-action-note{flex-basis:100%}

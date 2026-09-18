@@ -303,6 +303,7 @@ switch ($path) {
     case '/api/sessions':
         $ledger = new Ledger($stateDir);
         $sessions = $ledger->sessions(20);
+        $currentBatchId = \Bdo\Translate\Batch\Workspace::current($stateDir)?->id() ?? '';
         foreach ($sessions as $i => $session) {
             $rows = $ledger->batches((string) $session['id']);
             // Стан пачки на екрані · УКРАЇНСЬКОЮ. Ключ (`verified`, `committed`)
@@ -310,8 +311,15 @@ switch ($path) {
             // не реєстр станів · він і сказав це прямо 2026-09-06. Переклад
             // бере `Labels::state`, тобто той самий словник, що й екран прогону
             // й вікно в терміналі: третьої правди про стан не зʼявляється.
+            // ПОТОЧНА ПАЧКА ОДНА, решта · історія. Тільки та, на яку показує
+            // `current-batch`, має право стояти на робочому кроці: її справді
+            // хтось веде. Для всіх інших незакінчений стан означає обрив, і
+            // підпис мусить сказати це прямо (див. `Labels::stateInHistory`).
             foreach ($rows as $j => $row) {
-                $rows[$j]['state_label'] = Labels::state((string) ($row['state'] ?? ''));
+                $state = (string) ($row['state'] ?? '');
+                $rows[$j]['state_label'] = (string) ($row['id'] ?? '') === $currentBatchId
+                    ? Labels::state($state)
+                    : Labels::stateInHistory($state);
             }
             $sessions[$i]['batch_rows'] = $rows;
         }
