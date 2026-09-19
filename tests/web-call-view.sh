@@ -141,8 +141,8 @@ test "$got" = 403 || fail "робота ролі без токена мусит�
 # Без цього все вище перевіряло б лише фікстуру тесту.
 grep -Fq "'payload' => \$relative(\$payloadPath)" "$ROOT/cli/model/client.php" \
     || fail 'клієнт моделі не пише шляху payload у журнал викликів'
-grep -Fq "'answer' => \$relative(\$responsePath)" "$ROOT/cli/model/client.php" \
-    || fail 'клієнт моделі не пише шляху відповіді у журнал викликів'
+grep -Fq "'answer' => \$relative(\$journalAnswerPath)" "$ROOT/cli/model/client.php" \
+    || fail 'клієнт моделі не пише стабільного шляху відповіді у журнал викликів'
 
 # --- 6. ЖУРНАЛ ЗАКРИТОЇ СЕСІЇ · те саме вікно, інше джерело -------------------
 #
