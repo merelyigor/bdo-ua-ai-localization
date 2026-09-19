@@ -190,6 +190,37 @@ grep -Fq 'renderSessionCalls(d.calls)' "$ROOT/web/call.html" \
 grep -Fq 'class="as-button" target="_blank"' "$ROOT/web/call.html" \
     || fail 'посилання повного виклику не має читабельного оформлення'
 
+# ЗАПИТ ЖИВОГО ВИКЛИКУ НАЗИВАЄ САМ ВИКЛИК, А НЕ ЧАС ЗМІНИ ФАЙЛА.
+#
+# Сервер вибирав найсвіжіший `*-payload.json` у теці пачки · тобто вгадував.
+# 2026-09-19 власник побачив у судді порожній масив замість запиту: за секунду
+# до того драйвер записав `names-payload.json` із `[]`, і саме він став
+# найсвіжішим, хоча суддя працював над своїм payload на 1487 байтів.
+# САБОТАЖ: прибрати гілку зі знаком живого виклику · перевірка почервоніє.
+live_dir="$(mktemp -d)"
+mkdir -p "$live_dir/batches/b1"
+php -r '
+$d = $argv[1];
+require $argv[2];
+file_put_contents("$d/current-batch", "b1");
+file_put_contents("$d/batches/b1/judge-payload.json", "[{\"id\":1}]");
+touch("$d/batches/b1/judge-payload.json", time() - 60);
+file_put_contents("$d/batches/b1/names-payload.json", "[]");
+file_put_contents("$d/current-call.json", json_encode([
+    "pid" => getmypid(), "role" => "translation-judge",
+    "at" => gmdate("c"), "payload" => "batches/b1/judge-payload.json",
+]));
+$picked = (new Bdo\Translate\Web\Snapshot($d))->livePayload();
+if ($picked !== "batches/b1/judge-payload.json") {
+    fwrite(STDERR, "живий запит узято не в самого виклику: $picked\n");
+    exit(1);
+}
+' "$live_dir" "$ROOT/lib/autoload.php" || { rm -rf "$live_dir"; fail 'запит живого виклику вгадується за часом файла · суддя знову покаже чужий порожній масив'; }
+rm -rf "$live_dir"
+grep -Fq "'payload' => \$relative(\$payloadPath)," "$ROOT/cli/model/client.php" \
+    || fail 'виклик не називає свій payload у знаку · серверу знову доведеться вгадувати'
+
+
 # РОБОТА РОЛІ ВСЮДИ ВИГЛЯДАЄ ОДНАКОВО. Живий «Запит» ставив сирий `payload.text`
 # від 7.8.3, тому payload у картці прогону був суцільним рядком JSON, а та сама
 # робота в «розгорнути роботу» й на екрані виклику · розкладеною відступами.

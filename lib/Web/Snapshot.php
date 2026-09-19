@@ -1278,6 +1278,18 @@ final class Snapshot
      */
     public function livePayload(): string
     {
+        // ХТО НАЗИВАЄ ФАЙЛ. Спершу сам виклик: клієнт пише свій payload у знак
+        // живого виклику, і це ЄДИНЕ джерело без здогаду. Вибір «найсвіжіший
+        // *-payload.json у теці пачки» лишається запасним шляхом для прогону,
+        // запущеного до появи знака, і він таки помиляється: 2026-09-19 суддя
+        // працював над своїм payload на 1487 байтів, а власник бачив порожній
+        // масив · за секунду до того драйвер записав `names-payload.json` з
+        // `[]`, і саме той файл став найсвіжішим.
+        $active = $this->callActive();
+        $named = is_array($active) ? (string) ($active['payload'] ?? '') : '';
+        if ($named !== '' && ! str_contains($named, '..') && is_file($this->path($named))) {
+            return $named;
+        }
         $batch = trim((string) @file_get_contents($this->path('current-batch')));
         if ($batch === '' || str_contains($batch, '/')) {
             return '';
