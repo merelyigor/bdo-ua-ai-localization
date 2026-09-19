@@ -300,20 +300,25 @@
     var input = B.el('liveRequestTokens');
     var thinking = B.el('liveThinkingTokens');
     var answer = B.el('liveAnswerTokens');
+    var tokenText = function (value, estimated) {
+      var n = Number(value);
+      if (!Number.isFinite(n) || n < 0) { return ''; }
+      return (estimated ? '≈ ' : '') + String(Math.round(n)) + ' ток.';
+    };
+    var tokenMarkup = function (text) {
+      return '<span class="live-token-count">· ' + B.esc(text) + '</span>';
+    };
     if (input) {
-      input.textContent = usage.prompt_tokens == null
-        ? '· токени після завершення'
-        : '· ' + B.num(usage.prompt_tokens) + ' ток.';
+      input.innerHTML = tokenMarkup(usage.prompt_tokens == null
+        ? 'токени після завершення' : tokenText(usage.prompt_tokens, false));
     }
     if (thinking) {
-      thinking.textContent = usage.thinking_tokens == null
-        ? '· рахується…'
-        : '· ≈' + B.num(usage.thinking_tokens) + ' ток.';
+      thinking.innerHTML = tokenMarkup(usage.thinking_tokens == null
+        ? 'рахується…' : tokenText(usage.thinking_tokens, true));
     }
     if (answer) {
-      answer.textContent = usage.answer_tokens == null
-        ? '· рахується…'
-        : '· ≈' + B.num(usage.answer_tokens) + ' ток.';
+      answer.innerHTML = tokenMarkup(usage.answer_tokens == null
+        ? 'рахується…' : tokenText(usage.answer_tokens, true));
     }
   }
 

@@ -822,6 +822,7 @@ a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,te
 .role-card .call-thinking{margin:0 0 10px;border:1px solid var(--line-soft);border-radius:8px;background:var(--surface-alpha)}
 .role-card .call-thinking>summary{padding:8px 10px;color:var(--wr-tx);cursor:pointer;font-size:12px;font-weight:600;list-style-position:inside}
 .role-card .call-thinking>summary .meta{font-weight:400}
+.live-token-count{color:var(--gold-soft);font-weight:500;white-space:nowrap}
 .role-card .call-thinking[open]>summary{border-bottom:1px solid var(--line-soft)}
 .role-card .call-thinking>.box,
 .role-card .call-thinking>pre.log.work{margin:8px}
