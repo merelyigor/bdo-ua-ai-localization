@@ -99,6 +99,34 @@ expect 200 'здоровʼя за токеном' "http://127.0.0.1:$PORT/api/he
 expect 200 'стан за токеном' "http://127.0.0.1:$PORT/api/state?t=$TOKEN"
 expect 200 'сесії за токеном' "http://127.0.0.1:$PORT/api/sessions?t=$TOKEN"
 expect 200 'каталог моделей за токеном' "http://127.0.0.1:$PORT/api/models?t=$TOKEN"
+# ІСТОРІЯ МОДЕЛЕЙ ПРИВʼЯЗАНА ДО ПАЧКИ, а не вгадується з порядку часу.
+# Дві ролі з різними моделями мусять повернути розгортання з обома ролями.
+MODEL_SESSION='20260101_010101'
+MODEL_BATCH="${MODEL_SESSION}_aaaaaaaaaaaaaaaa"
+mkdir -p "$BDO_STATE_DIR/sessions/$MODEL_SESSION" "$BDO_STATE_DIR/batches/$MODEL_BATCH"
+printf '%s\n' '{"id":"20260101_010101","status":"closed","started_at":"2026-01-01T01:01:01+00:00","closed_at":"2026-01-01T01:02:01+00:00","batches":1}' > "$BDO_STATE_DIR/sessions/$MODEL_SESSION/summary.json"
+printf '%s\n' "{\"id\":\"$MODEL_BATCH\",\"at\":\"2026-01-01T01:01:01+00:00\"}" > "$BDO_STATE_DIR/sessions/$MODEL_SESSION/batches.jsonl"
+printf '%s\n' "{\"id\":\"$MODEL_BATCH\",\"rows\":2,\"state\":\"verified\",\"write\":true}" > "$BDO_STATE_DIR/batches/$MODEL_BATCH/manifest.json"
+printf '%s\n' "{\"rows\":2,\"target_written\":2,\"moderation_written\":0,\"quarantine\":0}" > "$BDO_STATE_DIR/batches/$MODEL_BATCH/batch-summary.json"
+printf '%s\n' \
+    "{\"batch\":\"$MODEL_BATCH\",\"role\":\"translation-worker\",\"state\":\"awaiting_worker\",\"model\":\"model-a\"}" \
+    "{\"batch\":\"$MODEL_BATCH\",\"role\":\"translation-qa\",\"state\":\"awaiting_qa\",\"model\":\"model-b\"}" \
+    > "$BDO_STATE_DIR/sessions/$MODEL_SESSION/model-calls.jsonl"
+model_body="$(curl -s -m 5 "http://127.0.0.1:$PORT/api/sessions?t=$TOKEN")"
+MODEL_BODY="$model_body" MODEL_BATCH="$MODEL_BATCH" php -r '
+$d = json_decode((string) getenv("MODEL_BODY"), true);
+foreach ($d["sessions"] ?? [] as $session) {
+    foreach ($session["batch_rows"] ?? [] as $row) {
+        if (($row["id"] ?? "") !== getenv("MODEL_BATCH")) continue;
+        $info = $row["model_info"] ?? [];
+        if (($info["kind"] ?? "") !== "multiple" || count($info["roles"] ?? []) !== 2) {
+            fwrite(STDERR, "API не повернув моделі за ролями для багатомодельної пачки\n"); exit(1);
+        }
+        exit(0);
+    }
+}
+fwrite(STDERR, "тестову пачку моделей не знайдено в /api/sessions\n"); exit(1);
+' || fail 'моделі ролей не привʼязані до пачки в API'
 printf '{"items":["state work"]}\n' >"$BDO_STATE_DIR/work.json"
 work_body="$(curl -s -m 5 "http://127.0.0.1:$PORT/api/work?path=work.json&t=$TOKEN")"
 grep -Fq 'state work' <<<"$work_body" || fail "endpoint файла не віддав state-файл: $work_body"

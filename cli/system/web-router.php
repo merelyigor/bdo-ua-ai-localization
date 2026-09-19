@@ -317,6 +317,24 @@ switch ($path) {
         $currentBatchId = \Bdo\Translate\Batch\Workspace::current($stateDir)?->id() ?? '';
         foreach ($sessions as $i => $session) {
             $rows = $ledger->batches((string) $session['id']);
+            // Модель належить виклику ролі, але на цьому екрані власник дивиться
+            // саме на пачку. Зв'язуємо записи через `batch`, не через час:
+            // кілька ролей можуть працювати паралельно, а журнали закритої
+            // сесії вже лежать окремо від живого журналу.
+            $calls = ($session['status'] ?? '') === 'open'
+                ? $snapshot->callRecords(2000)
+                : $snapshot->sessionCallRecords((string) $session['id'], 2000);
+            $modelsByBatch = [];
+            foreach ($calls as $call) {
+                $batchId = trim((string) ($call['batch'] ?? ''));
+                $role = trim((string) ($call['role'] ?? ''));
+                $model = trim((string) ($call['model'] ?? ''));
+                if ($batchId === '' || $role === '' || $model === '') {
+                    continue;
+                }
+                $modelsByBatch[$batchId][$role]['models'][$model] = true;
+                $modelsByBatch[$batchId][$role]['state'] = (string) ($call['state'] ?? '');
+            }
             // Стан пачки на екрані · УКРАЇНСЬКОЮ. Ключ (`verified`, `committed`)
             // лишається ключем у файлах і в коді, але власник читає сторінку, а
             // не реєстр станів · він і сказав це прямо 2026-09-06. Переклад
@@ -327,6 +345,32 @@ switch ($path) {
             // хтось веде. Для всіх інших незакінчений стан означає обрив, і
             // підпис мусить сказати це прямо (див. `Labels::stateInHistory`).
             foreach ($rows as $j => $row) {
+                $batchModels = [];
+                $allModels = [];
+                foreach ($modelsByBatch[(string) ($row['id'] ?? '')] ?? [] as $role => $entry) {
+                    $roleModels = array_keys($entry['models'] ?? []);
+                    sort($roleModels);
+                    $batchModels[] = [
+                        'role' => $role,
+                        'role_label' => Labels::roleInState($role, (string) ($entry['state'] ?? '')),
+                        'models' => $roleModels,
+                    ];
+                    foreach ($roleModels as $model) {
+                        $allModels[$model] = true;
+                    }
+                }
+                usort($batchModels, static fn (array $a, array $b): int => strcmp(
+                    (string) $a['role_label'],
+                    (string) $b['role_label']
+                ));
+                $allModels = array_keys($allModels);
+                sort($allModels);
+                $rows[$j]['model_info'] = [
+                    'kind' => count($allModels) === 1 ? 'single' : (count($allModels) > 1 ? 'multiple' : 'none'),
+                    'model' => count($allModels) === 1 ? $allModels[0] : '',
+                    'model_count' => count($allModels),
+                    'roles' => $batchModels,
+                ];
                 $state = (string) ($row['state'] ?? '');
                 $rows[$j]['state_label'] = (string) ($row['id'] ?? '') === $currentBatchId
                     ? Labels::state($state)

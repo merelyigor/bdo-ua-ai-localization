@@ -140,17 +140,34 @@
       return '<div class="empty">У цій сесії пачок ще не було.</div>' + sessionBar(s);
     }
     var t = totals(rows);
-    var table = '<table><thead><tr><th>пачка</th><th>початок</th><th>завершення</th><th class="num">рядків</th>'
+    var table = '<table class="session-batches"><thead><tr><th>пачка</th><th>початок</th><th>завершення</th><th class="num">рядків</th>'
       + '<th class="num">у шар</th><th class="num">до людини</th>'
-      + '<th class="num">карантин</th><th>стан</th></tr></thead><tbody>'
+      + '<th class="num">карантин</th><th>режим</th><th>стан</th><th>модель</th></tr></thead><tbody>'
       + rows.map(function (b) {
           if (b.receipt_gone) {
             return '<tr><td class="mono">' + B.esc(b.id) + '</td>'
-              + '<td colspan="7" class="empty">квитанцію прибрано · числа втрачені</td></tr>';
+              + '<td colspan="9" class="empty">квитанцію прибрано · числа втрачені</td></tr>';
           }
           var q = Number(b.quarantine) || 0;
           var started = B.when(b.at);
           var finished = B.when(b.finished_at);
+          var info = b.model_info || {};
+          var modelCell = '<span class="empty" title="у журналі немає назви моделі">—</span>';
+          if (info.kind === 'single') {
+            modelCell = '<span class="batch-model mono" title="модель викликів ролей">'
+              + B.esc(info.model) + '</span>';
+          } else if (info.kind === 'multiple') {
+            modelCell = '<details class="batch-models"><summary><span class="batch-model-count">'
+              + B.num(info.model_count) + ' моделі</span><span class="empty">показати ролі</span></summary>'
+              + '<div class="batch-model-list">'
+              + (info.roles || []).map(function (entry) {
+                return '<div class="batch-model-row"><span>' + B.esc(entry.role_label || entry.role)
+                  + '</span><span class="mono">' + B.esc((entry.models || []).join(' · ')) + '</span></div>';
+              }).join('') + '</div></details>';
+          }
+          var modeCell = b.write === false
+            ? '<span class="chip batch-mode-test" title="прогін без запису на сервер">тестова</span>'
+            : (b.write === true ? '<span class="chip batch-mode-prod">PROD</span>' : '<span class="empty">—</span>');
           return '<tr><td class="mono">' + B.esc(b.id) + '</td>'
             + '<td class="time-cell">' + B.esc(started || 'невідомо') + '</td>'
             + '<td class="time-cell">' + B.esc(finished || 'невідомо') + '</td>'
@@ -158,6 +175,7 @@
             + '<td class="num">' + B.num(b.to_layer) + '</td>'
             + '<td class="num">' + B.num(b.to_human) + '</td>'
             + '<td class="num"' + (q ? ' style="color:var(--dn-tx)"' : '') + '>' + B.num(q) + '</td>'
+            + '<td>' + modeCell + '</td>'
             // Стан УКРАЇНСЬКОЮ, ключ · у підказці: власник читає таблицю, а не
             // реєстр станів (вимога 2026-09-06).
             //
@@ -166,11 +184,9 @@
             // (власник 2026-09-18). Позначка стоїть лише коли ми ТОЧНО знаємо:
             // `write === false`. Старі пачки без цього поля лишаються без
             // підпису · «невідомо» не має права виглядати як «тест».
-            + '<td class="empty" title="' + B.esc(b.state || '') + '">'
-            + (b.write === false
-                ? '<span class="chip" title="прогін без запису · на сервер не йшло нічого">тестова</span> '
-                : '')
-            + B.esc(b.state_label || b.state || '') + '</td></tr>';
+            + '<td class="empty batch-state" title="' + B.esc(b.state || '') + '">'
+            + B.esc(b.state_label || b.state || '') + '</td>'
+            + '<td class="batch-model-cell">' + modelCell + '</td></tr>';
         }).join('') + '</tbody></table>';
 
     return table
