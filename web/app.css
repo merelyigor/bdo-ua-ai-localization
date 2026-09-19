@@ -503,7 +503,8 @@ pre.log.big{max-height:70vh;font-size:13px}
 .batch-models summary .empty{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--acc-tx);opacity:.86}
 .batch-model-list{position:absolute;right:0;top:calc(100% + 6px);z-index:5;width:clamp(280px,28vw,420px);max-width:calc(100vw - 32px);margin:0;padding:8px 10px;border:1px solid var(--bda);border-radius:var(--control-radius);background:var(--s2);box-shadow:var(--shadow)}
 .batch-model-row{display:grid;grid-template-columns:minmax(80px,1fr) minmax(0,1.5fr);gap:10px;padding:5px 0;border-top:1px solid var(--line-soft);font-size:12px;line-height:1.3}
-.batch-model-row .mono{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.batch-model-role-models{display:flex;flex-direction:column;gap:2px;min-width:0}
+.batch-model-role-model{display:block;min-width:0;overflow-wrap:anywhere;line-height:1.3}
 
 @media (max-width:900px){
   .nav{grid-template-columns:minmax(0,1fr) auto;gap:10px}

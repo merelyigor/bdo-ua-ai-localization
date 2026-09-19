@@ -172,9 +172,12 @@
                   return name.indexOf('/') >= 0 ? name.slice(name.lastIndexOf('/') + 1) : name;
                 });
                 var roleModels = (entry.models || []).join(' · ');
+                var roleModelList = roleModelNames.map(function (name) {
+                  return '<span class="batch-model-role-model">' + B.esc(name) + '</span>';
+                }).join('');
                 return '<div class="batch-model-row"><span>' + B.esc(entry.role_label || entry.role)
-                  + '</span><span class="mono" title="' + B.esc(roleModels) + '">'
-                  + B.esc(roleModelNames.join(' · ')) + '</span></div>';
+                  + '</span><span class="batch-model-role-models" title="' + B.esc(roleModels) + '">'
+                  + roleModelList + '</span></div>';
               }).join('') + '</div></details>';
           }
           var modeCell = b.write === false
