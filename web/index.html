@@ -295,19 +295,26 @@
   // оновлювати окремо від картки: сторож `lastCallsKey` навмисно не перебудовує
   // всю розмітку щосекунди. Вхідні токени провайдер повертає лише після
   // завершення, тож до того не вигадуємо число.
+  function tokenText(value, estimated) {
+    var n = Number(value);
+    if (!Number.isFinite(n) || n < 0) { return ''; }
+    return (estimated ? '≈ ' : '') + String(Math.round(n)) + ' ток.';
+  }
+
+  function tokenMarkup(text) {
+    return '<span class="token-count">· ' + B.esc(text) + '</span>';
+  }
+
+  function tokenCountMarkup(value, estimated) {
+    var text = tokenText(value, estimated);
+    return text === '' ? '' : tokenMarkup(text);
+  }
+
   function paintLiveUsage(usage) {
     usage = usage || {};
     var input = B.el('liveRequestTokens');
     var thinking = B.el('liveThinkingTokens');
     var answer = B.el('liveAnswerTokens');
-    var tokenText = function (value, estimated) {
-      var n = Number(value);
-      if (!Number.isFinite(n) || n < 0) { return ''; }
-      return (estimated ? '≈ ' : '') + String(Math.round(n)) + ' ток.';
-    };
-    var tokenMarkup = function (text) {
-      return '<span class="live-token-count">· ' + B.esc(text) + '</span>';
-    };
     if (input) {
       input.innerHTML = tokenMarkup(usage.prompt_tokens == null
         ? 'токени після завершення' : tokenText(usage.prompt_tokens, false));
@@ -378,11 +385,11 @@
           }
           box.dataset.loaded = '1';
           box.innerHTML = '<div class="call-work-grid">'
-            + part('Запит', d.payload)
+            + part('Запит', d.payload, d.in)
             + '<section class="call-work-item answer-work">'
-            + '<div class="empty" style="margin-top:8px">Відповідь</div>'
+            + '<div class="empty" style="margin-top:8px">Відповідь' + tokenCountMarkup(d.out, false) + '</div>'
             + '<details class="call-thinking">'
-            + '<summary>Роздуми</summary>'
+            + '<summary>Роздуми' + tokenCountMarkup(d.thinking_tokens_estimate, true) + '</summary>'
             + (d.thinking
               ? '<pre class="log work">' + B.esc(B.prettyWorkText(d.thinking.text || d.thinking)) + '</pre>'
               : '<div class="empty thinking-unavailable">Роздуми не збережені в завершеному виклику</div>')
@@ -399,7 +406,7 @@
     });
   }
 
-  function part(title, work) {
+  function part(title, work, tokens) {
     if (!work) {
       return '<section class="call-work-item">'
         + '<div class="empty" style="margin-top:6px">' + B.esc(title)
@@ -407,7 +414,8 @@
     }
     var kb = work.size < 1024 ? work.size + ' Б' : Math.round(work.size / 1024) + ' КБ';
     return '<section class="call-work-item"><div class="empty" style="margin-top:8px">' + B.esc(title) + ' · '
-      + B.esc(work.path) + ' · ' + kb + (work.truncated ? ' · показано перші 2 МБ' : '') + '</div>'
+      + B.esc(work.path) + ' · ' + kb + (work.truncated ? ' · показано перші 2 МБ' : '')
+      + tokenCountMarkup(tokens, false) + '</div>'
       // Клас `work` тримає блок нижчим за журнал кроків: два технічні файли
       // по 12 КБ при спільній стелі 420 px давали пів екрана сирого JSON.
       + '<pre class="log work">' + B.esc(B.prettyWorkText(work.text)) + '</pre></section>';

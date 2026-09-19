@@ -74,9 +74,13 @@ grep -Fq 'id="liveThinkingTokens"' "$ROOT/web/index.html" \
     || fail 'live-картка прогону не має лічильника токенів роздумів'
 grep -Fq 'id="liveAnswerTokens"' "$ROOT/web/index.html" \
     || fail 'live-картка прогону не має лічильника токенів відповіді'
-grep -Fq 'live-token-count' "$ROOT/web/index.html" \
-    && grep -Fq '.live-token-count' "$ROOT/web/app.css" \
+grep -Fq 'token-count' "$ROOT/web/index.html" \
+    && grep -Fq '.token-count' "$ROOT/web/app.css" \
     || fail 'live-лічильники токенів не мають окремого акцентного стилю'
+grep -Fq 'tokenCountMarkup(d.out, false)' "$ROOT/web/index.html" \
+    || fail 'завершений блок відповіді не має лічильника токенів'
+grep -Fq 'tokenCountMarkup(d.thinking_tokens_estimate, true)' "$ROOT/web/index.html" \
+    || fail 'завершений блок роздумів не має лічильника токенів'
 grep -Fq 'id="completedThinking"' "$ROOT/web/call.html" \
     || fail 'завершений виклик не має окремого блока роздумів'
 grep -Fq 'id="liveThinkingTokens"' "$ROOT/web/call.html" \
