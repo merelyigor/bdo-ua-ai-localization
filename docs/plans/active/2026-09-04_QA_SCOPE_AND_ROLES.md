@@ -49,8 +49,8 @@ QA -> repair -> judge -> запис -> відмова.
 
 **4. Вийти з кола рядку нікуди.** Відмова приходить у каналі МОДЕРАЦІЇ:
 `output/write_20260904_120628.json` → `layer=manual, mode=proposal,
-auto_approve=false, items 12, written 8, rejected 4`, код `glossary_violation`
-(**D56**). Суддя вже вирішив «до людини», ми надіслали рядок у чергу, і чергу
+auto_approve=false, items 12, written 8, rejected 4`, код `glossary_violation`.
+Суддя вже вирішив «до людини», ми надіслали рядок у чергу, і чергу
 закрив сервер. Локальний маршрут при цьому правильний:
 `lib/Pipeline/ChannelRouter.php:30` віддає в карантин ЛИШЕ текст без тексту.
 
@@ -83,8 +83,8 @@ auto_approve=false, items 12, written 8, rejected 4`, код `glossary_violation
 | C | зроблено | стан `names_pass`, `NamesPayloadCommand`, обробник у `RunDriveCommand`, промпт repair пояснює наказ «ужий»; регресія `tests/names-pass.sh` |
 | D | зроблено на сервері | деплой 2026-09-04: `mode=proposal` приймає розбіжність · прогін `20260904_143842` дав `moderation_written: 4` при `moderation_rejected: 0` (до деплою 0 і 16) |
 | E | зроблено на сервері | машинна назва більше не блокує: `POST /translations/validate` на рядку `6ce446b4…`, який до деплою відхилявся, тепер дає `status: ok`. Наслідок · карантин пачки 0 замість 32% |
-| F | зроблено | межа на нашому боці, поки сервер не змінено: наказ «ужий «X»» віддається лише для назви, затвердженої людиною (`Row::glossaryLayers()`, `tests/names-pass.sh` п. 2б, D60) |
-| + | зроблено | короткі ключі `r1…rN` замість `identity_hash` на межі моделі · `lib/Model/RowAlias.php`, `tests/model-client.sh` п. 11-13 (D59) |
+| F | зроблено | межа на нашому боці, поки сервер не змінено: наказ «ужий «X»» віддається лише для назви, затвердженої людиною (`Row::glossaryLayers()`, `tests/names-pass.sh` п. 2б) |
+| + | зроблено | короткі ключі `r1…rN` замість `identity_hash` на межі моделі · `lib/Model/RowAlias.php`, `tests/model-client.sh` п. 11-13 |
 
 Definition of Done знято з живих прогонів 2026-09-04:
 

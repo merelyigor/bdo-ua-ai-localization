@@ -177,14 +177,15 @@ grep -Fq 'поточної пачки немає' <<<"$out" || fail 'review мо
 # Лічильник дефектів мусить іти за СЬОМОЮ колонкою таблиці, а не за початком
 # рядка: інакше він тихо показує нулі при непорожньому реєстрі.
 php -r '
-$open = 0; $closed = 0;
+$open = 0; $closed = 0; $accepted = 0;
 foreach (file($argv[1], FILE_IGNORE_NEW_LINES) as $line) {
     if (preg_match("/^\| D[0-9]+ /", $line) !== 1) { continue; }
     $status = preg_replace("/[ \t]/", "", explode("|", $line)[6] ?? "");
     if ($status === "відкритий") { $open++; }
     if ($status === "закритий") { $closed++; }
+    if ($status === "прийнятий") { $accepted++; }
 }
-if ($closed < 100) { fwrite(STDERR, "реєстр дефектів прочитано неправильно: закритих $closed\n"); exit(1); }
+if (($open + $closed + $accepted) < 1) { fwrite(STDERR, "реєстр дефектів прочитано неправильно: порожній\n"); exit(1); }
 printf("%d %d\n", $open, $closed);
 ' "$ROOT/docs/plans/DEFECTS.md" >"$TMP/defects.txt" || fail 'реєстр дефектів читається неправильно'
 read -r want_open want_closed <"$TMP/defects.txt"

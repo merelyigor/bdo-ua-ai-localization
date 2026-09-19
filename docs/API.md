@@ -41,8 +41,7 @@
 `max_rows_per_page`, `max_context_rows`), `writes` і `effective_abilities`.
 
 `writes.channels` · СПИСОК обʼєктів `{layer, mode, allowed, result}`, а не мапа
-за назвою каналу. Саме цю форму читає команда `write`: 2026-08-29
-вигадана мапа заблокувала кожен коміт із `api_write_failed` (D33).
+за назвою каналу. Саме цю форму читає команда `write`.
 
 Для машинного шару потрібне `translations:write-machine` у `effective_abilities`.
 

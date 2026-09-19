@@ -774,12 +774,8 @@ check_references() {
     # перше імʼя наступного рядка невидимим для match.
     # ПРАВИЛО: `/tmp/*` із verification evidence не є repo reference.
     # САБОТАЖ: прибрати цей skip; fixture з гарантовано відсутнім `/tmp/*.md` мусить зробити `gate docs` червоним.
-    # Три останні · документи знятого 2026-09-12 флоу двох агентів. Записи
-    # `docs/verification/6.4.2` і `6.4.3` називають їх як ІСТОРІЮ саботажів,
-    # і це правильно: відновлюються з тега `ai-workflow-final`. Перелік
-    # МІНІМАЛЬНИЙ · рівно ті три посилання, що справді трапляються; `ROLES.md`
-    # і `REVIEW.md` сюди не додані навмисно, бо загальне імʼя в skip-списку
-    # маскує майбутнє справді відсутнє посилання з тією самою назвою.
+    # Імена знятого флоу двох агентів можуть траплятися як історичні згадки;
+    # самі документи не є частиною поточного дерева.
     local -r external='docs/AGENT_TRANSLATION_API.md YYYY-MM-DD_SLUG.md translate-patch.sh translate-menu.sh agent-call.sh merge-verdicts.sh watch.sh inspect.sh HANDOFF.md PROMPTS.md docs/ai-workflow/HANDOFF.md'
     local doc ref plan base checked=0
     while IFS= read -r doc; do
