@@ -51,7 +51,7 @@ normalize_stream() {
         -e "s|$TMP/heal-sh|RUN|g" \
         -e "s|$TMP/heal-php|RUN|g" \
         -e "s|$TMP|TMP|g" \
-        -e 's/[0-9]{8}_[0-9]{6}(_[0-9]{3})?_[0-9a-f]{16}/BATCH_ID/g' \
+        -e 's/[0-9]{8}_[0-9]{6}(_[0-9]{3})?_[0-9a-f]{4,16}/BATCH_ID/g' \
         -e 's/[0-9]{8}_[0-9]{6}/TIMESTAMP/g' \
         "$1" >"$2"
 }

@@ -69,6 +69,15 @@ try {
     $workspace = Workspace::create($root, $rows, '20260822_120000');
     $sameSecond = Workspace::create($root, $rows, '20260822_120000');
     expect($sameSecond->id() !== $workspace->id(), 'same-second batch reused an existing workspace');
+    // ІДЕНТИФІКАТОР КОРОТКИЙ, А ПЕРЕВІРКА НАБОРУ ПОВНА (рішення власника
+    // 2026-09-19). 32 символи з'їдали колонку на екрані сесій, нічого не
+    // додаючи оку. У назві теки лишається шість символів відбитка, а повний
+    // ключ живе в маніфесті · саме з ним звіряється `assertRows()`.
+    expect(preg_match('/^[0-9]{8}_[0-9]{6}_[0-9a-f]{6}$/', $workspace->id()) === 1,
+        'ідентифікатор пачки має форму «час + шість символів»: '.$workspace->id());
+    expect(strlen((string) ($workspace->manifest()['identity_key'] ?? '')) === 16,
+        'у маніфесті мусить лишитись ПОВНИЙ ключ набору · ним перевіряють належність рядків');
+    $workspace->assertRows($rows);
     expect(is_file($workspace->path('manifest.json')), 'same-second batch overwrote the first manifest');
     $workspace->completeStep('prepared', 'worker-payload.json', hash('sha256', 'payload'), ['selected' => 1]);
     $workspace->completeStep('prepared', 'worker-payload.json', hash('sha256', 'payload'), ['selected' => 1]);
