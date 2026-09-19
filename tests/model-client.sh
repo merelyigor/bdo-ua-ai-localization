@@ -72,6 +72,17 @@ $answers = [
              "message" => ["content" => "", "thinking" => str_repeat("думай ", 20000)]],
 ];
 $answer = $answers[$mode] ?? $answers["ok"];
+// Рантайм, який замовк посеред відповіді: шле трохи роздумів і зависає.
+// Саме так виглядала жива відмова 2026-09-19 · і саме її не можна плутати з
+// обривом мережі.
+if ($mode === "stall") {
+    header("Content-Type: application/json");
+    echo json_encode(["message" => ["thinking" => "почав думати"], "done" => false]), "\n";
+    flush();
+    sleep(30);
+
+    return true;
+}
 if ($mode === "thinking_long") {
     $pieces = [];
     for ($i = 1; $i <= 1800; $i++) {
@@ -188,20 +199,41 @@ if grep -q 'num_predict' "$SCENARIO_FILE.request"; then
     fail "стеля надіслана в рантайм, хоча її не задано: $(cat "$SCENARIO_FILE.request")"
 fi
 
-# 1в. МЕЖІ ДУМАННЯ НЕМАЄ ЙОГО ВЗАГАЛІ · рішення власника 2026-09-19.
-#     `timeout_seconds` у контексті `http` є межею ТИШІ, а не довжини роздумів,
-#     але 900 с тиші таки обірвали живий виклик, тому в конфігурації стоїть 0 ·
-#     «не обривати». Нуль НЕ можна передавати в рантайм як є: для PHP це
-#     означало б `default_socket_timeout`, тобто 60 с · ЖОРСТКІШУ межу, ніж
-#     була. САБОТАЖ: повернути число в config/roles.json · рядок почервоніє.
+# 1в. СТЕЛЯ ПО ЧАСУ Є, І ВОНА ЩЕДРА (рішення власника 2026-09-19).
+#     900 с виявились замалими · живий виклик обірвався на 1057-й секунді, тому
+#     стеля мусить бути щонайменше 1500 с. Нуль лишається значенням «не
+#     обривати»: у PHP його не можна віддати рантайму як є, бо це означало б
+#     `default_socket_timeout` (60 с), тобто межу ЖОРСТКІШУ за будь-яку нашу.
 config_timeout="$(php -r '$c = json_decode(file_get_contents($argv[1]), true); echo (int) ($c["timeout_seconds"] ?? -1);' "$ROOT/config/roles.json")"
-test "$config_timeout" = 0 \
-    || fail "у config/roles.json знову стоїть межа виклику ${config_timeout} с · модель мусить думати стільки, скільки їй треба"
-resolved_timeout="$(php -r '$c = ["timeout_seconds" => 0]; $t = (int) ($c["timeout_seconds"] ?? 0); echo $t > 0 ? $t : 365 * 24 * 3600;')"
-test "$resolved_timeout" -ge 86400 \
-    || fail "нуль у конфігурації перетворюється на ${resolved_timeout} с замість «не обривати»"
+test "$config_timeout" -ge 1500 \
+    || fail "стеля виклику ${config_timeout} с · замало, живий виклик уже обривався на 1057-й секунді"
 grep -Fq '365 * 24 * 3600' "$ROOT/cli/model/client.php" \
     || fail "клієнт більше не перекладає 0 у «без межі» · нуль стане 60-секундним таймаутом сокета"
+
+# 1г. ТАЙМАУТ МАЄ ВЛАСНУ ПРИЧИНУ Й ВИТРАЧЕНІ СЕКУНДИ (вимога власника
+#     2026-09-19). Раніше стеля часу давала той самий `stream_incomplete`, що
+#     й обрив мережі, тому в журналі дві різні події виглядали однаково.
+cat > "$WORK/roles-timeout.json" <<JSON
+{ "version": 1, "endpoint": "http://127.0.0.1:$PORT", "default_model": "тест-модель",
+  "num_ctx": 131072, "timeout_seconds": 2,
+  "roles": { "translation-worker": { "schema": "response", "temperature": 0.1 } } }
+JSON
+printf '%s' stall > "$SCENARIO_FILE"
+rm -f "$RESPONSE"
+set +e
+timeout_stderr="$(BDO_MODEL_THINK=0 BDO_ROLES_CONFIG="$WORK/roles-timeout.json" BDO_STATE_DIR="$WORK/state" \
+    php "$ROOT/cli/model/client.php" translation-worker \
+    "$WORK/payload.json" "$RESPONSE" --schema "$WORK/schema.json" 2>&1 >/dev/null)"
+timeout_code=$?
+set -e
+printf '%s' ok > "$SCENARIO_FILE"
+test "$timeout_code" = 1 || fail "виклик за стелею часу дав код $timeout_code замість 1"
+grep -q '^timeout_error' <<<"$timeout_stderr" \
+    || fail "стеля часу названа не своєю причиною: $timeout_stderr"
+grep -qE 'витрачено [0-9]+ с' <<<"$timeout_stderr" \
+    || fail "причина таймауту не каже, скільки секунд витрачено: $timeout_stderr"
+grep -q '"verdict":"timeout_error"' "$WORK/state/model-calls.jsonl" \
+    || fail "журнал викликів не записав вирок timeout_error"
 
 # 2. Голий масив без конверта теж приймається: схема ролі може бути й такою.
 run envelopeless

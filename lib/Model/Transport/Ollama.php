@@ -20,6 +20,8 @@ namespace Bdo\Translate\Model\Transport;
  *    сенс потоку зникає.
  *  - обрив без завершального чанка · окрема відмова `stream_incomplete`.
  *    Зібраний JSON може бути валідним, а відповідь · неповною.
+ *  - вичерпана стеля часу · ОКРЕМА відмова `timeout_error` з витраченими
+ *    секундами: межа набору й обрив мережі це різні події.
  */
 final class Ollama implements Transport
 {
@@ -125,6 +127,7 @@ final class Ollama implements Transport
         $thinking = '';
         $final = [];
         $chunks = 0;
+        $startedAt = microtime(true);
         try {
             while (($line = fgets($handle)) !== false) {
                 $line = trim($line);
@@ -155,8 +158,26 @@ final class Ollama implements Transport
                     $final = $chunk;
                 }
             }
+            // ЧИ ЦЕ БУВ ТАЙМАУТ · питаємо сам сокет, а не здогадуємось за
+            // часом. `timed_out` ставить PHP рівно тоді, коли читання
+            // завершилось по межі, і тільки це дає право назвати відмову
+            // таймаутом, а не обривом потоку.
+            $timedOut = (bool) (stream_get_meta_data($handle)['timed_out'] ?? false);
         } finally {
             fclose($handle);
+        }
+        $spent = (int) round(microtime(true) - $startedAt);
+        if ($final === [] && $timedOut) {
+            // ОКРЕМА ПРИЧИНА ДЛЯ МЕЖІ ЧАСУ (вимога власника 2026-09-19).
+            //
+            // Раніше це був той самий `stream_incomplete`, що й обрив мережі,
+            // і в журналі дві різні події виглядали однаково: прогін, який
+            // упрів у стелю, не відрізнявся від того, якому закрили зʼєднання.
+            throw new TransportError('timeout_error', sprintf(
+                'виклик перервано стелею часу · витрачено %d с, отримано %d чанків і жодного завершального',
+                $spent,
+                $chunks,
+            ));
         }
         if ($final === []) {
             // ТИШУ В СОКЕТІ НЕ ПЛУТАТИ З МЕЖЕЮ ДУМАННЯ. Набір не має стель ні
@@ -166,12 +187,11 @@ final class Ollama implements Transport
             // завершується саме по ньому. 2026-09-19 така відмова на 1057-й
             // секунді з нулем вихідних токенів прочиталась як «нам щось
             // обрізало думання», тому причина тепер називає різницю сама.
-            $silence = sprintf(
-                'рантайм замовк · отримано %d чанків і жодного завершального. Це ТИША в зʼєднанні (таймаут читання %d с), а не межа думання: поки модель шле байти, він не наближається',
+            throw new TransportError('stream_incomplete', sprintf(
+                'потік обірвався без завершального чанка · отримано %d чанків за %d с (це не стеля часу: сокет не повідомив про таймаут)',
                 $chunks,
-                $request->timeout,
-            );
-            throw new TransportError('stream_incomplete', $silence);
+                $spent,
+            ));
         }
 
         return new Reply(
