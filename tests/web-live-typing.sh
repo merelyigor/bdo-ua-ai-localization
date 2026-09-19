@@ -305,6 +305,32 @@ console.log(feed.thinking());
 test "$dedup" = 'Я розглядаю терміни з масиву, де багато іменників у грі' \
     || fail "повторна доставка роздумів склеїлась сама з собою: [$dedup]"
 
+# НОВИЙ ВИКЛИК ЧИСТИТЬ ОБИДВА ВІКНА.
+#
+# Правило «коротший хвіст не з'їдає довший» рятувало від D83, але через нього
+# відповідь ПОПЕРЕДНЬОЇ ролі лишалась на екрані, поки нова друкувала роздуми:
+# власний текст нової ще порожній, а скидати накопичене не було за чим.
+# Власник побачив це 2026-09-19 · у «Відповіді» стояв JSON термінолога, поки
+# перекладач думав. Мітка виклику (call_id) робить межу явною.
+# САБОТАЖ: прибрати перевірку call_id у streamFeed · рядок нижче почервоніє.
+mixed="$(node -e "
+global.window={addEventListener(){},location:{href:'http://127.0.0.1/'},localStorage:{length:0,key(){return null},getItem(){return null},setItem(){}}};
+global.document={addEventListener(){},querySelectorAll(){return []},getElementById(){return null},createElement(){return {style:{},setAttribute(){},appendChild(){}}}};
+global.requestAnimationFrame=function(){};global.cancelAnimationFrame=function(){};
+eval(require('fs').readFileSync('$ROOT/web/app.js','utf8'));
+var B=window.BDO;
+var feed=B.streamFeed(B.typer(null,{onPaint:function(){}}),B.typer(null,{onPaint:function(){}}));
+feed.snapshot({call_id:'translation-terminology|100', text:'ВІДПОВІДЬ ТЕРМІНОЛОГА', complete:true, thinking:'терміни обдумано'});
+feed.snapshot({call_id:'translation-worker|200', text:'', complete:true, thinking:'думаю над рядками'});
+console.log(JSON.stringify({answer:feed.raw(), think:feed.thinking()}));
+")"
+node -e "
+const d=JSON.parse(process.argv[1]);
+if (d.answer !== '') { console.error('у вікні відповіді лишився текст попередньої ролі: '+d.answer); process.exit(1); }
+if (d.think !== 'думаю над рядками') { console.error('роздуми нової ролі не ті: '+d.think); process.exit(1); }
+" "$mixed" || fail 'зміна виклику не чистить вікна · відповідь попередньої ролі висить поверх нової'
+
+
 # ПІДПИС РОЗДУМІВ · один опис стану, і він знає ТРИ стани.
 #
 # Підпис брехав двічі: спершу писав «міркування вимкнено» над увімкненими, а
