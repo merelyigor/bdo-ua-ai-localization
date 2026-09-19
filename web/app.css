@@ -368,7 +368,7 @@ td.num,th.num{text-align:right;font-family:var(--mono)}
    параметри моделі. Сітка стискає середню зону, але не збільшує висоту шапки. */
 .nav{display:grid;grid-template-columns:auto minmax(0,1fr) minmax(0,430px);gap:14px;flex-wrap:nowrap}
 .nav .brand{min-width:0;margin-right:0}
-.nav-links{min-width:0;justify-content:center;overflow:hidden}
+.nav-links{min-width:0;justify-content:center;overflow-x:auto;overflow-y:hidden;flex-wrap:nowrap}
 .nav-links a{white-space:nowrap}
 .nav-side{width:100%;max-width:430px}
 
@@ -488,9 +488,9 @@ pre.log.big{max-height:70vh;font-size:13px}
 .session-batches th:nth-child(6),.session-batches td:nth-child(6){width:7%}
 .session-batches th:nth-child(7),.session-batches td:nth-child(7){width:7%}
 .session-batches th:nth-child(8),.session-batches td:nth-child(8){width:8%}
-.session-batches th:nth-child(9),.session-batches td:nth-child(9){width:13%}
-.session-batches th:nth-child(10),.session-batches td:nth-child(10){width:15%}
-.session-batches .batch-model-cell{min-width:0;max-width:none;overflow:hidden}
+.session-batches th:nth-child(9),.session-batches td:nth-child(9){width:16%;padding-right:16px}
+.session-batches th:nth-child(10),.session-batches td:nth-child(10){width:12%;padding-left:16px}
+.session-batches .batch-model-cell{min-width:0;max-width:none;overflow:visible}
 .batch-mode-test{color:var(--wr-tx);border-color:var(--wr-tx)}
 .batch-mode-prod{color:var(--ok-tx);border-color:var(--ok-tx)}
 .batch-model{display:block;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;line-height:1.3}
