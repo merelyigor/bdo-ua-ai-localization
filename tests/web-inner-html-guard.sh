@@ -175,5 +175,33 @@ if (callsNode.innerHTMLWrites === withLive) {
   die('картка «друкує…» лишилась після завершення ролі · сторож ключа її не бачить');
 }
 
-console.log('web innerHTML guard: OK · однаковий snapshot не переписує innerHTML, жива картка приходить і зникає');
+// РОЛЬ, ЯКА ЩЕ НЕ СКАЗАЛА НІ СЛОВА, ТЕЖ ВИДНО.
+//
+// Умовою картки була сама свіжість журналу токенів, тому поки модель вантажила
+// вагу або обробляла промпт, блок ролі зникав з екрана цілком · власник
+// 2026-09-19 бачив «прогін іде, модель працює», і порожнечу під ним. Тепер
+// картку тримає ЗНАК живого виклику, а на місці відповіді крутиться прелоадер
+// із секундами.
+const loadingSnapshot = JSON.parse(JSON.stringify(snapshot));
+loadingSnapshot.running = true;
+loadingSnapshot.stream = {
+  role_label: 'термінолог', role: 'translation-terminology',
+  fresh: false, active: true, waiting: 47, text: null, thinking: null, payload: null
+};
+const beforeLoading = callsNode.innerHTMLWrites;
+render(loadingSnapshot);
+if (callsNode.innerHTMLWrites === beforeLoading) {
+  die('роль, яка ще не віддала жодного символу, не показана · екран порожній, поки модель працює');
+}
+if (!/термінолог/.test(callsNode.innerHTML)) {
+  die('у картці немає назви ролі, яка працює');
+}
+if (!/вантажиться|готує відповідь/.test(callsNode.innerHTML)) {
+  die('немає прелоадера на місці відповіді · власник не бачить, що щось відбувається');
+}
+if (!/47/.test(callsNode.innerHTML)) {
+  die('прелоадер не каже, скільки секунд це триває');
+}
+
+console.log('web innerHTML guard: OK · однаковий snapshot не переписує innerHTML, жива картка приходить і зникає, роль без жодного символу видно з прелоадером');
 NODE

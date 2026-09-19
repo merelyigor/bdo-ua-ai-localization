@@ -235,6 +235,23 @@ grep -qE 'витрачено [0-9]+ с' <<<"$timeout_stderr" \
 grep -q '"verdict":"timeout_error"' "$WORK/state/model-calls.jsonl" \
     || fail "журнал викликів не записав вирок timeout_error"
 
+# 1д. ЗНАК ЖИВОГО ВИКЛИКУ · роль видно, поки вона працює, навіть коли модель
+#     ще мовчить. Файл зʼявляється на старті й ЗНИКАЄ на виході з будь-якої
+#     причини · інакше картка «роль працює» висіла б після смерті процесу.
+grep -Fq "current-call.json" "$ROOT/cli/model/client.php" \
+    || fail 'клієнт не лишає знака живого виклику · картка ролі знову зникне під час завантаження ваги'
+grep -Fq 'register_shutdown_function' "$ROOT/cli/model/client.php" \
+    || fail 'знак живого виклику не прибирається на виході · він переживе процес'
+test ! -e "$WORK/state/current-call.json" \
+    || fail 'після завершених викликів лишився знак живого виклику'
+run ok
+test "$CODE" = 0 || fail "успішний виклик дав код $CODE"
+test ! -e "$WORK/state/current-call.json" \
+    || fail 'успішний виклик лишив по собі знак живого виклику'
+run error
+test ! -e "$WORK/state/current-call.json" \
+    || fail 'виклик, що впав, лишив по собі знак живого виклику'
+
 # 2. Голий масив без конверта теж приймається: схема ролі може бути й такою.
 run envelopeless
 test "$CODE" = 0 || fail "голий масив відхилено: $STDERR"

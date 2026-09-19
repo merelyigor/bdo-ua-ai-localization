@@ -1192,7 +1192,17 @@ final class Snapshot
         // друкує. Без цього картка «ремонтник друкує…» висіла ще дві хвилини
         // після завершення пачки · видно очима на живому прогоні 2026-09-05.
         $path = $this->path('run-stream.log');
+        clearstatcache(true, $path);
         $fresh = is_file($path) && (time() - (int) @filemtime($path)) <= 15;
+        // ЖИВИЙ ВИКЛИК · ЗНАК, А НЕ ЗДОГАД. Свіжість журналу каже лише «текст
+        // ішов щойно», тому під час завантаження ваги або обробки промпта
+        // картка ролі зникала з екрана цілком (власник 2026-09-19: «прогін
+        // іде, модель працює, а блоку немає»). Тепер клієнт лишає файл із
+        // власним pid на весь час виклику, і його наявність є відповіддю.
+        $active = $this->callActive();
+        if ($role === '' && $active !== null) {
+            $role = (string) ($active['role'] ?? '');
+        }
 
         // ЧОМУ НІЧОГО НЕ ВІДБУВАЄТЬСЯ · окреме поле, а не здогад сторінки.
         //
@@ -1205,6 +1215,10 @@ final class Snapshot
         $waiting = 0;
         if ($role !== '' && $assembled['text'] === '' && $assembled['thinking'] === '') {
             $startedAt = $this->streamStartedAt();
+            if ($startedAt === 0 && $active !== null) {
+                // Журнал токенів ще порожній · початок виклику знає лише знак.
+                $startedAt = (int) (strtotime((string) ($active['at'] ?? '')) ?: 0);
+            }
             if ($startedAt > 0) {
                 $waiting = max(0, time() - $startedAt);
             }
@@ -1226,6 +1240,10 @@ final class Snapshot
             'role' => $role,
             'role_label' => $role === '' ? '' : Labels::role($role),
             'fresh' => $fresh,
+            // Роль ПРАЦЮЄ · процес виклику живий. Саме це, а не свіжість
+            // журналу, тримає картку ролі на екрані.
+            'active' => $active !== null,
+            'active_model' => (string) ($active['model'] ?? ''),
             // Скільки секунд роль мовчить від старту виклику · 0, щойно пішов
             // перший символ. Поріг «коли це вже завантаження» ставить сторінка.
             'waiting' => $waiting,
@@ -1269,6 +1287,31 @@ final class Snapshot
     }
 
     /** Час події `start` у журналі токенів; 0 · події немає. */
+    /**
+     * Виклик ролі, який ІДЕ ЗАРАЗ · або `null`.
+     *
+     * Файл лишає сам клієнт моделі на весь час роботи й прибирає його на
+     * виході з будь-якої причини. Але процес можна вбити так, що прибрати він
+     * не встигне, тому знак перевіряється ЖИВИМ pid: мертвий запис не має
+     * права малювати на екрані роботу, якої немає.
+     *
+     * @return array<string,mixed>|null
+     */
+    private function callActive(): ?array
+    {
+        $path = $this->path('current-call.json');
+        clearstatcache(true, $path);
+        if (! is_file($path)) {
+            return null;
+        }
+        $data = json_decode((string) @file_get_contents($path), true);
+        if (! is_array($data) || ! $this->pidAlive((int) ($data['pid'] ?? 0))) {
+            return null;
+        }
+
+        return $data;
+    }
+
     private function streamStartedAt(): int
     {
         $head = (string) @file_get_contents($this->path('run-stream.log'), false, null, 0, 512);

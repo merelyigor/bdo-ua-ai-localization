@@ -390,6 +390,27 @@ $show = (getenv('BDO_MODEL_SHOW') !== '0') && stream_isatty(STDERR);
 // правда про відповідь лишається у `<response>.json`, і жоден крок конвеєра
 // цього файла не читає.
 $streamLog = $stateDir.'/run-stream.log';
+// РОЛЬ, ЯКА ПРАЦЮЄ ЗАРАЗ · окремий ЯВНИЙ знак, а не здогад за журналом.
+//
+// Сторінка досі впізнавала живий виклик за тим, що журнал токенів ріс останні
+// 15 секунд. Через це картка ролі ЗНИКАЛА щоразу, коли модель мовчала довше:
+// під час завантаження ваги (23 ГБ · хвилини) і під час обробки промпта.
+// Власник 2026-09-19 бачив рівно це · прогін іде, модель працює, а на екрані
+// немає нічого. Тепер виклик сам каже, що він живий, і зникає цей знак разом
+// із процесом · pid у файлі дає сторінці перевірити, що процес ще є.
+$callMarker = $stateDir.'/current-call.json';
+@file_put_contents($callMarker, json_encode([
+    'at' => gmdate('c'),
+    'pid' => getmypid(),
+    'role' => $role,
+    'model' => $model,
+    'provider' => $provider,
+], JSON_UNESCAPED_UNICODE)."\n");
+// Знімається В БУДЬ-ЯКОМУ разі: успіх, відмова, фатальна помилка. Інакше
+// картка «роль працює» висіла б після смерті процесу вічно.
+register_shutdown_function(static function () use ($callMarker): void {
+    @unlink($callMarker);
+});
 if ($stream) {
     @file_put_contents($streamLog, json_encode([
         'at' => gmdate('c'), 'role' => $role, 'model' => $model,

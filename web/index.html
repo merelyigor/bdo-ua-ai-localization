@@ -290,6 +290,9 @@
   function paintStream(text) {
     var box = B.el('streambox');
     if (!box) { return; }
+    // Перший символ прибирає прелоадер · далі місце потрібне самому тексту.
+    var wait = B.el('livewait');
+    if (wait && text) { wait.innerHTML = ''; }
     if (!text) {
       box.style.display = 'block'; box.textContent = '';
       var resetThinking = B.el('thinkwrap');
@@ -728,7 +731,16 @@
     if (startLink) { startLink.style.display = resume ? 'none' : ''; }
     renderRunContext(s, b, completed, resume);
 
-    var live = (s.stream && s.stream.role_label && s.stream.fresh) ? s.stream.role_label : '';
+    // РОЛЬ ВИДНО ВЕСЬ ЧАС, ПОКИ ВОНА ПРАЦЮЄ · не лише поки йдуть символи.
+    //
+    // Умовою була сама СВІЖІСТЬ журналу токенів (рух за останні 15 с), тому
+    // картка зникала щоразу, коли модель мовчала довше: вантажила вагу,
+    // обробляла промпт або просто довго думала між чанками. Власник
+    // 2026-09-19 бачив рівно це: прогін іде, модель працює, а на екрані
+    // немає нічого. Тепер тримає ЗНАК живого виклику (`stream.active`), а
+    // свіжість лишається запасним шляхом для прогону з термінала.
+    var live = (s.stream && s.stream.role_label && (s.stream.active || s.stream.fresh))
+      ? s.stream.role_label : '';
     // ЖИВА КАРТКА Є ЧАСТИНОЮ КЛЮЧА. Сторож ключа рятує від перемальовування
     // щосекунди, але має сліпу пляму: коли роль договорила, список ВИКЛИКІВ ще
     // не змінився, і картка «друкує…» лишалась на екрані назавжди · власник
@@ -776,7 +788,7 @@
       }).join('') : '<div class="empty">' + B.esc(callsView.reason || 'викликів немає') + '</div>';
       // Роль, яка друкує ЗАРАЗ, ще не має рядка в журналі викликів: він
       // пишеться ПІСЛЯ відповіді. Тому її картка малюється окремо.
-      if (live && s.running) {
+      if (live && (s.running || (s.stream && s.stream.active))) {
         // ЩО САМЕ ЗАРАЗ · «друкує…» лише коли справді йдуть символи.
         //
         // Ollama вивантажує вагу за налаштуванням машини (у власника 5 хвилин),
@@ -784,6 +796,10 @@
         // це дало 960 секунд повного мовчання · виглядало як «зависло».
         var waiting = (s.stream && s.stream.waiting) || 0;
         var loading = waiting >= 12;
+        // ПОРОЖНЬОГО МІСЦЯ НЕ БУВАЄ. Поки не прийшов перший символ, у блоці
+        // відповіді крутиться прелоадер із секундами · власник просив бачити,
+        // що щось відбувається, навіть коли модель ще нічого не сказала.
+        var silent = !(s.stream && (s.stream.text || s.stream.thinking));
         var liveThinking = '<span class="thinking-indicator ' + (s.stream.thinking ? 'has-thinking' : 'no-thinking')
           + '" role="img" aria-label="' + (s.stream.thinking ? 'із міркуваннями' : 'без міркувань')
           + '" title="' + (s.stream.thinking ? 'із міркуваннями' : 'без міркувань') + '">' + B.icon('thinking') + '</span>';
@@ -838,6 +854,11 @@
                 + 'налаштуванням, і наступні виклики підуть без цієї паузи.</div>'
               : '')
           + '<div class="empty live-answer-title">Відповідь</div>'
+          // Прелоадер живе ПОРУЧ із блоком друку, а не всередині: друкарка
+          // чистить `#streambox` на кожному порожньому тексті й затерла б його.
+          + '<div id="livewait">' + (silent ? B.loadingHtml(loading
+              ? 'модель вантажиться · ' + waiting + ' с'
+              : 'модель готує відповідь · ' + waiting + ' с') : '') + '</div>'
           + '<div class="box mono live-print" id="streambox" aria-live="polite"></div>'
           + '</section></div></div>';
       }
