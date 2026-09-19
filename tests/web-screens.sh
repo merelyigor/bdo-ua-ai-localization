@@ -54,6 +54,10 @@ done
 # дають це задарма: запит живе у файлі свого екрана й ніде більше.
 grep -Fq '/api/moderation' "$QUEUE" \
     || fail 'екран черги не звертається до /api/moderation'
+grep -Fq 'rows = (d.rows || []).slice().sort(newestFirst)' "$QUEUE" \
+    || fail 'черга не сортує найсвіжіші записи першими'
+grep -Fq 'function newestFirst' "$QUEUE" \
+    || fail 'черга не має стабільного сортування за датою та id'
 for other in "$RUN" "$SESSIONS" "$START"; do
     grep -Fq '/api/moderation' "$other" \
         && fail "${other#"$ROOT/"} теж тягне чергу · це зайвий запит у PROD на кожному екрані"
@@ -1005,6 +1009,12 @@ grep -Fq "b.write === false" "$SESSIONS" \
 if grep -Fq 'b.write ==' "$SESSIONS" && ! grep -Fq 'b.write === false' "$SESSIONS"; then
     fail 'позначка тестової пачки стоїть на нестрогому порівнянні · null стане «тестова»'
 fi
+grep -Fq "model_info" "$ROOT/cli/system/web-router.php" \
+    || fail '/api/sessions не приєднує моделі до пачок'
+grep -Fq 'batch-models' "$SESSIONS" \
+    || fail 'таблиця сесій не має розгортання моделей за ролями'
+grep -Fq '<th>режим</th><th>стан</th><th>модель</th>' "$SESSIONS" \
+    || fail 'режим, стан і модель не розділені на окремі колонки'
 grep -Fq "'на цьому кроці: ' + d.state_label" "$ROOT/web/call.html" \
     || fail 'екран виклику показує історичний стан як теперішній'
 # І поведінка, а не лише текст: хмарний запис мусить давати підпис, а не байти.

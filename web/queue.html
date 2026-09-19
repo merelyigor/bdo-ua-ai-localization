@@ -144,13 +144,27 @@
       + '</div></div></div>';
   }
 
+  // ПОРЯДОК ЛИШЕ ДЛЯ ПОКАЗУ. API може повернути пропозиції у порядку, який
+  // залежить від серверного запиту, але на екрані власнику потрібні спочатку
+  // найсвіжіші записи. Якщо API не віддав дату, більший id є стабільним
+  // запасним критерієм і відповідає послідовності створення пропозицій.
+  function rowTime(row) {
+    var value = row.created_at || row.submitted_at || '';
+    var parsed = Date.parse(value);
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
+  function newestFirst(a, b) {
+    var byTime = rowTime(b) - rowTime(a);
+    return byTime || (Number(b.id) || 0) - (Number(a.id) || 0);
+  }
+
   function render(d) {
     if (d.error) {
       B.el('rows').innerHTML = '<div class="empty" style="color:var(--dn-tx)">' + B.esc(d.error) + '</div>';
       B.el('total').textContent = 'не вдалося';
       return;
     }
-    rows = d.rows || [];
+    rows = (d.rows || []).slice().sort(newestFirst);
     B.el('total').textContent = 'чекають ' + B.num(d.total);
     var rest = Math.max(0, (Number(d.total) || 0) - rows.length);
     // СТЕЛЯ ТУТ СЕРВЕРНА, І ПРО ЦЕ ТРЕБА СКАЗАТИ. На `per_page=150` API однаково
