@@ -56,13 +56,13 @@
       </div>
       <div class="call-work-grid live-call-grid">
         <div class="call-work-item">
-          <div class="empty live-section-title">Запит</div>
+          <div class="empty live-section-title">Запит <span class="meta" id="livePayloadTokens"></span></div>
           <div class="box mono" id="livePayload">беру запит ролі…</div>
         </div>
         <div class="call-work-item answer-work">
-          <div class="empty live-section-title">Відповідь</div>
+          <div class="empty live-section-title">Відповідь <span class="meta" id="liveAnswerTokens"></span></div>
           <details id="callThinkWrap" class="call-thinking">
-            <summary>Роздуми <span class="meta">стан невідомий</span></summary>
+            <summary>Роздуми <span class="meta" id="liveThinkingTokens">стан невідомий</span></summary>
             <div class="box mono" id="callThinkBox" style="color:var(--tm)"></div>
           </details>
           <div class="box mono big" id="livebox"></div>
@@ -73,7 +73,7 @@
     <div class="call-work-grid" id="completedWork">
       <div class="panel call-work-item">
         <div class="bar" style="margin-bottom:8px">
-          <span style="font-size:13px;font-weight:500">Запит</span>
+          <span style="font-size:13px;font-weight:500">Запит <span class="meta" id="payloadTokens"></span></span>
           <span class="empty" id="payloadMeta"></span>
         </div>
         <div id="payloadLoad"></div>
@@ -82,12 +82,12 @@
 
       <div class="panel call-work-item answer-work">
         <div class="bar" style="margin-bottom:8px">
-          <span style="font-size:13px;font-weight:500">Відповідь</span>
+          <span style="font-size:13px;font-weight:500">Відповідь <span class="meta" id="answerTokens"></span></span>
           <span class="empty" id="answerMeta"></span>
         </div>
         <div id="answerLoad"></div>
         <details id="completedThinkWrap" class="call-thinking">
-          <summary>Роздуми</summary>
+          <summary>Роздуми <span class="meta" id="completedThinkingTokens"></span></summary>
           <pre class="log big" id="completedThinking"></pre>
           <div class="empty thinking-unavailable" id="completedThinkingEmpty">Міркування вимкнено або не збережені</div>
         </details>
@@ -166,6 +166,20 @@
     var n = Number(bytes) || 0;
     return n < 1024 ? n + ' Б' : (n < 1024 * 1024 ? Math.round(n / 1024) + ' КБ'
       : (n / 1048576).toFixed(1) + ' МБ');
+  }
+
+  function tokens(value, estimated) {
+    var n = Number(value);
+    if (!Number.isFinite(n) || n < 0) { return ''; }
+    return (estimated ? '≈' : '') + B.num(n) + ' ток.';
+  }
+
+  function paintUsage(usage) {
+    usage = usage || {};
+    B.el('liveThinkingTokens').textContent = usage.thinking_tokens == null
+      ? 'рахується…' : tokens(usage.thinking_tokens, usage.estimated !== false);
+    B.el('liveAnswerTokens').textContent = usage.answer_tokens == null
+      ? 'рахується…' : tokens(usage.answer_tokens, usage.estimated !== false);
   }
 
   function show(id, metaId, work) {
@@ -261,8 +275,12 @@
         B.el('payloadLoad').innerHTML = '';
         B.el('answerLoad').innerHTML = '';
         show('payload', 'payloadMeta', d.payload);
+        B.el('payloadTokens').textContent = d.in == null ? 'токени: невідомо' : '· ' + tokens(d.in, false);
         showThinking(d.thinking);
+        B.el('completedThinkingTokens').textContent = d.thinking_tokens_estimate == null
+          ? '' : '· ' + tokens(d.thinking_tokens_estimate, true);
         show('answer', 'answerMeta', d.answer);
+        B.el('answerTokens').textContent = d.out == null ? 'токени: невідомо' : '· вихід: ' + tokens(d.out, false);
         renderSessionCalls(d.calls);
         if (session) {
           document.querySelectorAll('.panel .bar > span:first-child').forEach(function (n) {
@@ -292,6 +310,9 @@
     B.el('liveNote').textContent = waiting >= 12
       ? 'модель вантажиться, ' + waiting + ' с · перший виклик після паузи тягне вагу з диска'
       : 'друкує…';
+    paintUsage(live.usage);
+    B.el('livePayloadTokens').textContent = live.usage && live.usage.prompt_tokens != null
+      ? '· ' + tokens(live.usage.prompt_tokens, false) : '· токени після завершення';
     var thinkingMeta = B.el('callThinkWrap').querySelector('.meta');
     // ТРИ СТАНИ, А НЕ ДВА · та сама причина, що й на екрані прогону: відсутність
     // тексту не означає вимкненої настройки, і підписувати її так було неправдою.

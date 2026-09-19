@@ -1203,6 +1203,18 @@ final class Snapshot
         if ($role === '' && $active !== null) {
             $role = (string) ($active['role'] ?? '');
         }
+        $usage = [
+            'prompt_tokens' => null,
+            'thinking_tokens' => null,
+            'answer_tokens' => null,
+            'estimated' => true,
+        ];
+        if (is_array($active)) {
+            $usage['thinking_tokens'] = isset($active['thinking_tokens_estimate'])
+                ? (int) $active['thinking_tokens_estimate'] : 0;
+            $usage['answer_tokens'] = isset($active['answer_tokens_estimate'])
+                ? (int) $active['answer_tokens_estimate'] : 0;
+        }
 
         // ЧОМУ НІЧОГО НЕ ВІДБУВАЄТЬСЯ · окреме поле, а не здогад сторінки.
         //
@@ -1257,6 +1269,7 @@ final class Snapshot
             // Скільки секунд роль мовчить від старту виклику · 0, щойно пішов
             // перший символ. Поріг «коли це вже завантаження» ставить сторінка.
             'waiting' => $waiting,
+            'usage' => $usage,
             // ЩО ПІШЛО В МОДЕЛЬ · доступне ВЖЕ ПІД ЧАС виклику.
             //
             // Запис у `model-calls.jsonl` (а з ним і шлях до payload) зʼявляється

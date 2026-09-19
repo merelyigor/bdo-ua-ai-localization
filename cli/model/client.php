@@ -277,6 +277,10 @@ $relative = static function (string $path) use ($stateDir): ?string {
 $attempt = 1;
 $thinkingBytes = 0;
 $thinkingChunks = 0;
+$liveThinkingText = '';
+$liveAnswerText = '';
+$thinkingTokensEstimate = 0;
+$answerTokensEstimate = 0;
 $thinkingTokens = [];
 $thinkingCarry = '';
 // Накопичувальний облік повторів: скільки фрагментів усього й скільки з них
@@ -287,7 +291,7 @@ $thinkingDup = 0;
 $thinkingRepeatFragment = '';
 $thinkingRepeatCount = 0;
 $thinkingLoopDetected = false;
-$journal = static function (string $verdict) use ($callsFile, $role, $model, $provider, $started, $currentBatch, $runState, $rows, $payloadBytes, $relative, $payloadPath, $responsePath, &$stats, $numPredict, $timeout, $think, &$thinkObserved, &$thinkMismatch, &$attempt, &$thinkingBytes, &$thinkingChunks, &$thinkingRepeatFragment, &$thinkingRepeatCount, &$thinkingLoopDetected): void {
+$journal = static function (string $verdict) use ($callsFile, $role, $model, $provider, $started, $currentBatch, $runState, $rows, $payloadBytes, $relative, $payloadPath, $responsePath, &$stats, $numPredict, $timeout, $think, &$thinkObserved, &$thinkMismatch, &$attempt, &$thinkingBytes, &$thinkingChunks, &$thinkingRepeatFragment, &$thinkingRepeatCount, &$thinkingLoopDetected, &$thinkingTokensEstimate, &$answerTokensEstimate): void {
     $dir = dirname($callsFile);
     if (! is_dir($dir) && ! mkdir($dir, 0777, true) && ! is_dir($dir)) {
         return;
@@ -325,6 +329,8 @@ $journal = static function (string $verdict) use ($callsFile, $role, $model, $pr
         'attempt' => $attempt,
         'thinking_bytes' => $thinkingBytes,
         'thinking_chunks' => $thinkingChunks,
+        'thinking_tokens_estimate' => $thinkingTokensEstimate,
+        'answer_tokens_estimate' => $answerTokensEstimate,
         'thinking_loop_detected' => $thinkingLoopDetected,
         'thinking_repeat_fragment' => $thinkingRepeatFragment,
         'thinking_repeat_count' => $thinkingRepeatCount,
@@ -399,7 +405,15 @@ $streamLog = $stateDir.'/run-stream.log';
 // немає нічого. Тепер виклик сам каже, що він живий, і зникає цей знак разом
 // із процесом · pid у файлі дає сторінці перевірити, що процес ще є.
 $callMarker = $stateDir.'/current-call.json';
-@file_put_contents($callMarker, json_encode([
+$liveTokenEstimate = static function (string $text): int {
+    preg_match_all('/\s+|[\p{L}\p{N}]+|[^\p{L}\p{N}\s]/u', $text, $parts);
+
+    return count($parts[0] ?? []);
+};
+$publishLiveUsage = static function () use (&$liveThinkingText, &$liveAnswerText, &$thinkingTokensEstimate, &$answerTokensEstimate, &$liveTokenEstimate, $callMarker, $relative, $payloadPath, $role, $model, $provider): void {
+    $thinkingTokensEstimate = $liveTokenEstimate($liveThinkingText);
+    $answerTokensEstimate = $liveTokenEstimate($liveAnswerText);
+    @file_put_contents($callMarker, json_encode([
     'at' => gmdate('c'),
     'pid' => getmypid(),
     'role' => $role,
@@ -411,7 +425,11 @@ $callMarker = $stateDir.'/current-call.json';
     // порожній масив: за секунду до того драйвер записав `names-payload.json`
     // із `[]`, і він став свіжішим. Тепер шлях називає сам виклик.
     'payload' => $relative($payloadPath),
+    'thinking_tokens_estimate' => $thinkingTokensEstimate,
+    'answer_tokens_estimate' => $answerTokensEstimate,
 ], JSON_UNESCAPED_UNICODE)."\n");
+};
+$publishLiveUsage();
 // Знімається В БУДЬ-ЯКОМУ разі: успіх, відмова, фатальна помилка. Інакше
 // картка «роль працює» висіла б після смерті процесу вічно.
 register_shutdown_function(static function () use ($callMarker): void {
@@ -520,13 +538,17 @@ $observeThinking = function (string $text) use (&$thinkingBytes, &$thinkingChunk
     }
 };
 $onChunk = function (string $text, bool $isThinking) use (
-    $show, $dim, $off, $streamLog, $stream, &$chunkSeen, &$contentSeen, &$observeThinking
+    $show, $dim, $off, $streamLog, $stream, &$chunkSeen, &$contentSeen, &$observeThinking,
+    &$liveThinkingText, &$liveAnswerText, &$publishLiveUsage
 ): void {
     if ($isThinking) {
         $observeThinking($text);
+        $liveThinkingText .= $text;
     } elseif ($text !== '') {
         $contentSeen = true;
+        $liveAnswerText .= $text;
     }
+    $publishLiveUsage();
     if ($text === '') {
         return;
     }
@@ -571,6 +593,10 @@ try {
             $thinkMismatch = false;
             $thinkingBytes = 0;
             $thinkingChunks = 0;
+            $liveThinkingText = '';
+            $liveAnswerText = '';
+            $thinkingTokensEstimate = 0;
+            $answerTokensEstimate = 0;
             $thinkingTokens = [];
             $thinkingCarry = '';
             $thinkingSeen = [];
@@ -588,6 +614,9 @@ try {
     $fail($e->reason, $e->getMessage());
 }
 $thinkObserved = $thinkObserved || trim($reply->thinking) !== '';
+$liveThinkingText = $reply->thinking;
+$liveAnswerText = $reply->content;
+$publishLiveUsage();
 $thinkMismatch = $thinkMismatch || ($thinkObserved && ! $think);
 // РОЗДУМИ ЗБЕРІГАЮТЬСЯ ДО перевірок відповіді, а не після. Саме на невдалому
 // виклику вони найцінніші: `truncated` і `empty_content` завершують роботу

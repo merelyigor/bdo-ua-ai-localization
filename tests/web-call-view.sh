@@ -70,6 +70,16 @@ grep -Fq 'id="livePayload"' "$ROOT/web/call.html" \
     || fail 'live-екран виклику не показує постійно відкритий запит'
 grep -Fq 'id="completedThinking"' "$ROOT/web/call.html" \
     || fail 'завершений виклик не має окремого блока роздумів'
+grep -Fq 'id="liveThinkingTokens"' "$ROOT/web/call.html" \
+    || fail 'live-блок роздумів не має лічильника токенів'
+grep -Fq 'id="liveAnswerTokens"' "$ROOT/web/call.html" \
+    || fail 'live-блок відповіді не має лічильника токенів'
+grep -Fq 'id="payloadTokens"' "$ROOT/web/call.html" \
+    || fail 'блок запиту не має лічильника токенів'
+grep -Fq "thinking_tokens_estimate" "$ROOT/lib/Web/Snapshot.php" \
+    || fail 'сервер не віддає live-лічильник роздумів'
+grep -Fq "answer_tokens_estimate" "$ROOT/cli/model/client.php" \
+    || fail 'клієнт моделі не публікує live-лічильник відповіді'
 grep -Fq "dataset.autoCollapsed !== '1'" "$ROOT/web/index.html" \
     || fail 'live-прогін повторно згортає роздуми під час друку відповіді'
 grep -Fq "dataset.autoCollapsed !== '1'" "$ROOT/web/call.html" \
