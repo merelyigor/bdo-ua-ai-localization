@@ -105,14 +105,17 @@
          спершу видно, що зроблено, а вже потім скільки. -->
     <div class="cards" id="cards" style="margin-bottom:14px"></div>
 
-    <div class="panel">
-      <div class="bar" style="margin-bottom:8px">
-        <span style="font-size:13px;font-weight:500">журнал кроків</span>
+    <details class="panel journal-panel">
+      <summary class="journal-summary">
+        <span class="journal-caret" id="journalCaret"></span>
+        <span class="journal-title">журнал кроків</span>
         <span class="empty">запит і відповідь кожної ролі · так само, як у терміналі</span>
-        <button id="follow" style="margin-left:auto" aria-pressed="true">тримаюсь хвоста</button>
+      </summary>
+      <div class="journal-toolbar">
+        <button id="follow" aria-pressed="true">тримаюсь хвоста</button>
       </div>
-      <pre class="log" id="log">журнал порожній</pre>
-    </div>
+      <pre class="log journal-log" id="log">журнал порожній</pre>
+    </details>
   </div>
 </div>
 
@@ -124,6 +127,7 @@
   B.renderNav('/');
   // Стрілку згортання малюємо один раз: вона не залежить від даних.
   B.el('verdictCaret').innerHTML = B.icon('chevron');
+  B.el('journalCaret').innerHTML = B.icon('chevron');
   if (!B.ensureToken()) { return; }
   B.el('app').style.display = 'block';
 
