@@ -358,8 +358,8 @@ td.num,th.num{text-align:right;font-family:var(--mono)}
 .nav-side .sp{margin-left:0}
 /* Параметри займають два короткі рядки, а не випадково переносяться одним
    довгим потоком. Так правий блок лишається компактним і легко сканується. */
-.nav-model{display:grid;grid-template-columns:repeat(4,max-content);gap:1px 8px;font-size:11px;line-height:1.35;
-  color:var(--tm);align-items:center;justify-content:end;min-width:0;white-space:nowrap}
+.nav-model{display:flex;flex-wrap:wrap;gap:1px 7px;font-size:11px;line-height:1.35;
+  color:var(--tm);align-items:center;justify-content:flex-end;min-width:0;white-space:nowrap}
 .nav-param{flex:0 0 auto}
 
 /* Шапка має три стабільні зони: бренд, навігація і службова інформація.
