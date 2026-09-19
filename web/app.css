@@ -356,21 +356,20 @@ td.num,th.num{text-align:right;font-family:var(--mono)}
    нижчі за дворядкову назву зліва. */
 .nav-side{margin-left:auto;display:grid;gap:2px;justify-items:end;align-content:center;min-width:0}
 .nav-side .sp{margin-left:0}
-/* У СТОВПЧИКУ ПАРАМЕТРИ ЙДУТЬ В ОДИН РЯДОК. Два рядки потрібні були тоді, коли
-   блок ділив рядок із навігацією й мусив бути вдвічі вужчим; тут ширини
-   вистачає, а другий рядок додав би шапці висоти. */
-.nav-model{display:flex;flex-wrap:nowrap;gap:8px;font-size:11px;line-height:1.35;
+/* Параметри займають два короткі рядки, а не випадково переносяться одним
+   довгим потоком. Так правий блок лишається компактним і легко сканується. */
+.nav-model{display:grid;grid-template-columns:repeat(4,max-content);gap:1px 8px;font-size:11px;line-height:1.35;
   color:var(--tm);align-items:center;justify-content:end;min-width:0;white-space:nowrap}
 .nav-param{flex:0 0 auto}
 
 /* Шапка має три стабільні зони: бренд, навігація і службова інформація.
    Раніше flex переносив `nav-side` під посилання, коли до нього додавались
    параметри моделі. Сітка стискає середню зону, але не збільшує висоту шапки. */
-.nav{display:grid;grid-template-columns:auto minmax(0,1fr) minmax(0,430px);gap:14px;flex-wrap:nowrap}
+.nav{display:grid;grid-template-columns:auto minmax(0,1fr) minmax(0,330px);gap:14px;flex-wrap:nowrap}
 .nav .brand{min-width:0;margin-right:0}
-.nav-links{min-width:0;justify-content:center;overflow-x:auto;overflow-y:hidden;flex-wrap:nowrap}
+.nav-links{min-width:0;justify-content:center;overflow:visible;flex-wrap:nowrap}
 .nav-links a{white-space:nowrap}
-.nav-side{width:100%;max-width:430px}
+.nav-side{width:100%;max-width:330px;padding-left:12px;border-left:1px solid var(--line-soft)}
 
 .nav-param b{font-weight:500;color:var(--ts)}
 /* Зірочка = значення ставить НАБІР, а не модель. Без неї хедер не відрізнявся
@@ -509,14 +508,14 @@ pre.log.big{max-height:70vh;font-size:13px}
 @media (max-width:900px){
   .nav{grid-template-columns:minmax(0,1fr) auto;gap:10px}
   .nav .brand{grid-column:1}
-  .nav-side{grid-column:2;grid-row:1;max-width:360px}
-  .nav-links{grid-column:1 / -1;grid-row:2;justify-content:flex-start;overflow-x:auto;overflow-y:hidden}
+  .nav-side{grid-column:2;grid-row:1;max-width:330px}
+  .nav-links{grid-column:1 / -1;grid-row:2;justify-content:flex-start;flex-wrap:wrap}
 }
 @media (max-width:640px){
   .nav{grid-template-columns:1fr;gap:8px}
   .nav .brand,.nav-links,.nav-side{grid-column:1;grid-row:auto;max-width:none}
-  .nav-side{justify-items:start;align-items:flex-start}
-  .nav-model{justify-content:flex-start;overflow-x:auto;max-width:100%}
+  .nav-side{justify-items:start;align-items:flex-start;padding-left:0;border-left:0}
+  .nav-model{justify-content:flex-start;max-width:100%}
   .batch-model-list{position:static;width:auto;max-width:none;margin-top:8px;border:0;border-top:1px solid var(--line-soft);border-radius:0;box-shadow:none}
 }
 .batch-model-row:first-child{border-top:0}
@@ -735,7 +734,7 @@ a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,te
   body{padding:12px}
   .nav{gap:10px;margin-bottom:18px}
   .brand{flex-basis:100%;margin-right:0}
-  .nav-links{width:100%;overflow-x:auto;flex-wrap:nowrap;padding-bottom:3px}
+  .nav-links{width:100%;overflow:visible;flex-wrap:wrap;padding-bottom:3px}
   .nav-links a{white-space:nowrap;padding:6px 10px;font-size:12px}
   .nav .sp{margin-left:0}
   .panel{padding:14px;border-radius:11px}
