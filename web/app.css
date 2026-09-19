@@ -246,7 +246,7 @@ pre.log{margin:0;background:var(--s2);border-radius:8px;padding:10px 12px;max-he
 table{width:100%;border-collapse:collapse;font-size:13px}
 th{text-align:left;font-weight:400;color:var(--ts);font-size:12px;padding:4px 8px}
 td{padding:4px 8px;border-top:.5px solid var(--bd)}
-.time-cell{white-space:nowrap;color:var(--ts);font-variant-numeric:tabular-nums}
+.time-cell{white-space:normal;overflow-wrap:anywhere;color:var(--ts);font-variant-numeric:tabular-nums}
 td.num,th.num{text-align:right;font-family:var(--mono)}
 /* Каталог моделей · назви можуть бути довгими, а три дії мають лишатися
    повʼязаною групою. Окремий layout-контейнер не змінює жодної дії чи payload,
@@ -363,6 +363,15 @@ td.num,th.num{text-align:right;font-family:var(--mono)}
   color:var(--tm);align-items:center;justify-content:end;min-width:0;white-space:nowrap}
 .nav-param{flex:0 0 auto}
 
+/* Шапка має три стабільні зони: бренд, навігація і службова інформація.
+   Раніше flex переносив `nav-side` під посилання, коли до нього додавались
+   параметри моделі. Сітка стискає середню зону, але не збільшує висоту шапки. */
+.nav{display:grid;grid-template-columns:auto minmax(0,1fr) minmax(0,430px);gap:14px;flex-wrap:nowrap}
+.nav .brand{min-width:0;margin-right:0}
+.nav-links{min-width:0;justify-content:center;overflow:hidden}
+.nav-links a{white-space:nowrap}
+.nav-side{width:100%;max-width:430px}
+
 .nav-param b{font-weight:500;color:var(--ts)}
 /* Зірочка = значення ставить НАБІР, а не модель. Без неї хедер не відрізнявся
    від виводу рантайму, і звірка з `ollama show` виглядала як розбіжність. */
@@ -462,21 +471,54 @@ pre.log.big{max-height:70vh;font-size:13px}
 .sess table tbody tr{transform:scaleY(-1)}
 .v-open{background:var(--acc-bg);color:var(--acc-tx)}
 .v-closed{background:var(--s1);color:var(--ts)}
-.session-batches{min-width:1180px}
-.session-batches th,.session-batches td{vertical-align:top}
-.session-batches .batch-state{white-space:nowrap}
-.session-batches .batch-model-cell{min-width:250px;max-width:360px}
+.session-batches{width:100%;min-width:1180px;table-layout:fixed}
+.session-batches th,.session-batches td{padding:8px 10px;vertical-align:middle}
+.session-batches th.num,.session-batches td.num{text-align:center}
+.session-batches th:nth-child(8),.session-batches td:nth-child(8){text-align:center}
+.session-batches th:nth-child(9),.session-batches td:nth-child(9){text-align:left}
+.session-batches th:nth-child(10),.session-batches td:nth-child(10){text-align:left}
+.session-batches td:first-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.session-batches .batch-state{white-space:normal;overflow:hidden;line-height:1.3}
+.session-batches .batch-state-text{display:block;max-width:100%;overflow-wrap:anywhere}
+.session-batches th:nth-child(1),.session-batches td:nth-child(1){width:21%}
+.session-batches th:nth-child(2),.session-batches td:nth-child(2){width:10%}
+.session-batches th:nth-child(3),.session-batches td:nth-child(3){width:9%}
+.session-batches th:nth-child(4),.session-batches td:nth-child(4){width:5%}
+.session-batches th:nth-child(5),.session-batches td:nth-child(5){width:5%}
+.session-batches th:nth-child(6),.session-batches td:nth-child(6){width:7%}
+.session-batches th:nth-child(7),.session-batches td:nth-child(7){width:7%}
+.session-batches th:nth-child(8),.session-batches td:nth-child(8){width:8%}
+.session-batches th:nth-child(9),.session-batches td:nth-child(9){width:13%}
+.session-batches th:nth-child(10),.session-batches td:nth-child(10){width:15%}
+.session-batches .batch-model-cell{min-width:0;max-width:none;overflow:hidden}
 .batch-mode-test{color:var(--wr-tx);border-color:var(--wr-tx)}
 .batch-mode-prod{color:var(--ok-tx);border-color:var(--ok-tx)}
-.batch-model{display:inline-block;max-width:340px;overflow-wrap:anywhere;line-height:1.3}
-.batch-models{min-width:230px}
-.batch-models summary{display:flex;align-items:center;gap:8px;cursor:pointer;list-style:none}
+.batch-model{display:block;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;line-height:1.3}
+.batch-models{position:relative;min-width:0;max-width:100%;overflow:visible}
+.batch-models summary{display:flex;align-items:center;gap:8px;cursor:pointer;list-style:none;max-width:100%;overflow:hidden;white-space:nowrap}
+.batch-models summary.batch-model-summary{justify-content:flex-start;padding:3px 7px;border-color:var(--bda);background:var(--acc-bg);color:var(--acc-tx)}
 .batch-models summary::-webkit-details-marker{display:none}
 .batch-models summary::before{content:'▸';color:var(--acc-tx)}
 .batch-models[open] summary::before{content:'▾'}
 .batch-model-count{font-weight:500;color:var(--acc-tx);white-space:nowrap}
-.batch-model-list{margin-top:8px;padding-top:6px;border-top:1px solid var(--line-soft)}
-.batch-model-row{display:grid;grid-template-columns:minmax(100px,1fr) minmax(120px,1.5fr);gap:10px;padding:5px 0;border-top:1px solid var(--line-soft);font-size:12px;line-height:1.3}
+.batch-models summary .empty{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--acc-tx);opacity:.86}
+.batch-model-list{position:absolute;right:0;top:calc(100% + 6px);z-index:5;width:clamp(280px,28vw,420px);max-width:calc(100vw - 32px);margin:0;padding:8px 10px;border:1px solid var(--bda);border-radius:var(--control-radius);background:var(--s2);box-shadow:var(--shadow)}
+.batch-model-row{display:grid;grid-template-columns:minmax(80px,1fr) minmax(0,1.5fr);gap:10px;padding:5px 0;border-top:1px solid var(--line-soft);font-size:12px;line-height:1.3}
+.batch-model-row .mono{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+@media (max-width:900px){
+  .nav{grid-template-columns:minmax(0,1fr) auto;gap:10px}
+  .nav .brand{grid-column:1}
+  .nav-side{grid-column:2;grid-row:1;max-width:360px}
+  .nav-links{grid-column:1 / -1;grid-row:2;justify-content:flex-start;overflow-x:auto;overflow-y:hidden}
+}
+@media (max-width:640px){
+  .nav{grid-template-columns:1fr;gap:8px}
+  .nav .brand,.nav-links,.nav-side{grid-column:1;grid-row:auto;max-width:none}
+  .nav-side{justify-items:start;align-items:flex-start}
+  .nav-model{justify-content:flex-start;overflow-x:auto;max-width:100%}
+  .batch-model-list{position:static;width:auto;max-width:none;margin-top:8px;border:0;border-top:1px solid var(--line-soft);border-radius:0;box-shadow:none}
+}
 .batch-model-row:first-child{border-top:0}
 
 /* ПЕРЕМИКАЧ замість галочки (вимога власника 2026-09-06).

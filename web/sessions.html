@@ -140,7 +140,10 @@
       return '<div class="empty">У цій сесії пачок ще не було.</div>' + sessionBar(s);
     }
     var t = totals(rows);
-    var table = '<table class="session-batches"><thead><tr><th>пачка</th><th>початок</th><th>завершення</th><th class="num">рядків</th>'
+    var table = '<table class="session-batches"><colgroup>'
+      + '<col span="1"><col span="1"><col span="1"><col span="1"><col span="1">'
+      + '<col span="1"><col span="1"><col span="1"><col span="1"><col span="1">'
+      + '</colgroup><thead><tr><th>пачка</th><th>початок</th><th>завершення</th><th class="num">рядків</th>'
       + '<th class="num">у шар</th><th class="num">до людини</th>'
       + '<th class="num">карантин</th><th>режим</th><th>стан</th><th>модель</th></tr></thead><tbody>'
       + rows.map(function (b) {
@@ -154,15 +157,24 @@
           var info = b.model_info || {};
           var modelCell = '<span class="empty" title="у журналі немає назви моделі">—</span>';
           if (info.kind === 'single') {
-            modelCell = '<span class="batch-model mono" title="модель викликів ролей">'
-              + B.esc(info.model) + '</span>';
+            var modelName = String(info.model || '');
+            var modelShort = modelName.indexOf('/') >= 0
+              ? modelName.slice(modelName.lastIndexOf('/') + 1) : modelName;
+            modelCell = '<span class="batch-model mono" title="' + B.esc(modelName)
+              + '">' + B.esc(modelShort) + '</span>';
           } else if (info.kind === 'multiple') {
-            modelCell = '<details class="batch-models"><summary><span class="batch-model-count">'
-              + B.num(info.model_count) + ' моделі</span><span class="empty">показати ролі</span></summary>'
+            modelCell = '<details class="batch-models"><summary class="chip batch-model-summary"><span class="batch-model-count">'
+              + B.num(info.model_count) + ' моделі</span><span class="empty">· ролі</span></summary>'
               + '<div class="batch-model-list">'
               + (info.roles || []).map(function (entry) {
+                var roleModelNames = (entry.models || []).map(function (model) {
+                  var name = String(model || '');
+                  return name.indexOf('/') >= 0 ? name.slice(name.lastIndexOf('/') + 1) : name;
+                });
+                var roleModels = (entry.models || []).join(' · ');
                 return '<div class="batch-model-row"><span>' + B.esc(entry.role_label || entry.role)
-                  + '</span><span class="mono">' + B.esc((entry.models || []).join(' · ')) + '</span></div>';
+                  + '</span><span class="mono" title="' + B.esc(roleModels) + '">'
+                  + B.esc(roleModelNames.join(' · ')) + '</span></div>';
               }).join('') + '</div></details>';
           }
           var modeCell = b.write === false
@@ -184,8 +196,8 @@
             // (власник 2026-09-18). Позначка стоїть лише коли ми ТОЧНО знаємо:
             // `write === false`. Старі пачки без цього поля лишаються без
             // підпису · «невідомо» не має права виглядати як «тест».
-            + '<td class="empty batch-state" title="' + B.esc(b.state || '') + '">'
-            + B.esc(b.state_label || b.state || '') + '</td>'
+            + '<td class="empty batch-state" title="' + B.esc(b.state || '') + '"><span class="batch-state-text">'
+            + B.esc(b.state_label || b.state || '') + '</span></td>'
             + '<td class="batch-model-cell">' + modelCell + '</td></tr>';
         }).join('') + '</tbody></table>';
 
