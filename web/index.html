@@ -291,6 +291,32 @@
     if (atBottom) { box.scrollTop = box.scrollHeight; }
   }
 
+  // ЖИВІ ЛІЧИЛЬНИКИ · оцінки приходять разом зі станом виклику, тому їх треба
+  // оновлювати окремо від картки: сторож `lastCallsKey` навмисно не перебудовує
+  // всю розмітку щосекунди. Вхідні токени провайдер повертає лише після
+  // завершення, тож до того не вигадуємо число.
+  function paintLiveUsage(usage) {
+    usage = usage || {};
+    var input = B.el('liveRequestTokens');
+    var thinking = B.el('liveThinkingTokens');
+    var answer = B.el('liveAnswerTokens');
+    if (input) {
+      input.textContent = usage.prompt_tokens == null
+        ? '· токени після завершення'
+        : '· ' + B.num(usage.prompt_tokens) + ' ток.';
+    }
+    if (thinking) {
+      thinking.textContent = usage.thinking_tokens == null
+        ? '· рахується…'
+        : '· ≈' + B.num(usage.thinking_tokens) + ' ток.';
+    }
+    if (answer) {
+      answer.textContent = usage.answer_tokens == null
+        ? '· рахується…'
+        : '· ≈' + B.num(usage.answer_tokens) + ' ток.';
+    }
+  }
+
   function paintStream(text) {
     var box = B.el('streambox');
     if (!box) { return; }
@@ -823,7 +849,7 @@
           + '</div>'
           + '<div class="active-work live-work-grid">'
           + '<section class="live-request live-work-section">'
-          + '<div class="empty live-section-title">Запит</div>'
+          + '<div class="empty live-section-title">Запит <span class="meta" id="liveRequestTokens"></span></div>'
           + '<div class="box mono" id="reqbox"></div>'
           + '</section>'
           + '<section class="live-answer live-work-section">'
@@ -848,7 +874,7 @@
           // які в цю мить друкувались. Тут лишається лише ПЕРШИЙ стан.
           + '<summary>Роздуми <span class="meta" id="thinkstate">'
           + B.thinkingLabel(s.stream.thinking, s.model && s.model.think)
-          + '</span></summary>'
+          + '</span><span class="meta" id="liveThinkingTokens"></span></summary>'
           // Роздуми МОЖНА перечитати: без межі висоти й прокрутки блок ріс
           // нескінченно, показував лише хвіст, і повернутись до початку думки
           // було нікуди (власник 2026-09-14, жива пачка на 42 КБ роздумів).
@@ -857,7 +883,7 @@
               ? '<div class="empty" style="margin-top:6px">Це не зависання: Ollama вивантажує модель за своїм '
                 + 'налаштуванням, і наступні виклики підуть без цієї паузи.</div>'
               : '')
-          + '<div class="empty live-answer-title">Відповідь</div>'
+          + '<div class="empty live-answer-title">Відповідь <span class="meta" id="liveAnswerTokens"></span></div>'
           // Прелоадер живе ПОРУЧ із блоком друку, а не всередині: друкарка
           // чистить `#streambox` на кожному порожньому тексті й затерла б його.
           + '<div id="livewait">' + (silent ? B.loadingHtml(loading
@@ -868,6 +894,7 @@
       }
       B.el('calls').innerHTML = html;
       bindOpenCall();
+      paintLiveUsage(s.stream && s.stream.usage);
       var req = B.el('reqbox');
       if (req && s.stream && s.stream.payload) {
         B.busy(req, 'беру запит ролі…');
@@ -891,6 +918,7 @@
             : 'цієї сесії · ' + calls.length + ' (пачку не вказано)');
       paintStream(stream.text());
       paintThinking(thinkStream.text());
+      paintLiveUsage(s.stream && s.stream.usage);
     }
 
     // Знімок стану знає лише ХВІСТ журналу токенів (`s.stream.complete` каже,

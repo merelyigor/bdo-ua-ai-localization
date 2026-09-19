@@ -68,6 +68,12 @@ grep -Fq 'class="empty live-section-title">Відповідь' "$ROOT/web/call.h
     || fail 'окремий екран виклику не має заголовка «Відповідь»'
 grep -Fq 'id="livePayload"' "$ROOT/web/call.html" \
     || fail 'live-екран виклику не показує постійно відкритий запит'
+grep -Fq 'id="liveRequestTokens"' "$ROOT/web/index.html" \
+    || fail 'live-картка прогону не має лічильника токенів запиту'
+grep -Fq 'id="liveThinkingTokens"' "$ROOT/web/index.html" \
+    || fail 'live-картка прогону не має лічильника токенів роздумів'
+grep -Fq 'id="liveAnswerTokens"' "$ROOT/web/index.html" \
+    || fail 'live-картка прогону не має лічильника токенів відповіді'
 grep -Fq 'id="completedThinking"' "$ROOT/web/call.html" \
     || fail 'завершений виклик не має окремого блока роздумів'
 grep -Fq 'id="liveThinkingTokens"' "$ROOT/web/call.html" \
