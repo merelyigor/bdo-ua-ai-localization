@@ -291,7 +291,9 @@ $thinkingDup = 0;
 $thinkingRepeatFragment = '';
 $thinkingRepeatCount = 0;
 $thinkingLoopDetected = false;
-$journal = static function (string $verdict) use ($callsFile, $role, $model, $provider, $started, $currentBatch, $runState, $rows, $payloadBytes, $relative, $payloadPath, $responsePath, &$stats, $numPredict, $timeout, $think, &$thinkObserved, &$thinkMismatch, &$attempt, &$thinkingBytes, &$thinkingChunks, &$thinkingRepeatFragment, &$thinkingRepeatCount, &$thinkingLoopDetected, &$thinkingTokensEstimate, &$answerTokensEstimate): void {
+$journalAnswerPath = $responsePath;
+$journalThinkingPath = $responsePath.'.thinking.txt';
+$journal = static function (string $verdict) use ($callsFile, $role, $model, $provider, $started, $currentBatch, $runState, $rows, $payloadBytes, $relative, $payloadPath, &$journalAnswerPath, &$journalThinkingPath, &$stats, $numPredict, $timeout, $think, &$thinkObserved, &$thinkMismatch, &$attempt, &$thinkingBytes, &$thinkingChunks, &$thinkingRepeatFragment, &$thinkingRepeatCount, &$thinkingLoopDetected, &$thinkingTokensEstimate, &$answerTokensEstimate): void {
     $dir = dirname($callsFile);
     if (! is_dir($dir) && ! mkdir($dir, 0777, true) && ! is_dir($dir)) {
         return;
@@ -305,13 +307,13 @@ $journal = static function (string $verdict) use ($callsFile, $role, $model, $pr
         // Шляхи до самої роботи · щоб екран міг показати запит і відповідь
         // ЦІЛКОМ, а не тільки те, що встигло проїхати потоком.
         'payload' => $relative($payloadPath),
-        'answer' => $relative($responsePath),
+        'answer' => $relative($journalAnswerPath),
         // Роздуми лежать ПОРУЧ із відповіддю, у тій самій теці пачки, тому
         // переживають закриття сесії так само, як `payload` і `answer` (D170).
         // `null`, коли модель не думала або файл не створено · сторінка тоді
         // чесно каже, що роздумів немає, а не показує порожній блок.
-        'thinking' => is_file($responsePath.'.thinking.txt')
-            ? $relative($responsePath.'.thinking.txt')
+        'thinking' => is_file($journalThinkingPath)
+            ? $relative($journalThinkingPath)
             : null,
         'batch' => $currentBatch(),
         'model' => $model,
@@ -703,5 +705,24 @@ if (! is_dir($responseDir) && ! mkdir($responseDir, 0777, true) && ! is_dir($res
 $temp = $responsePath.'.tmp.'.bin2hex(random_bytes(5));
 file_put_contents($temp, json_encode($items, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)."\n");
 rename($temp, $responsePath);
+
+// Відповідь ролі може бути тимчасовим артефактом рушія. Наприклад,
+// `translation-terminology` повторно використовує `term-proposals.json` для
+// кожної частини payload і після збирання видаляє файл. Журнал виклику живе
+// довше за цей крок, тому записувати в нього тимчасовий шлях означає втратити
+// завершений виклик після оновлення сторінки. Копія поруч із відповіддю має
+// унікальне ім'я й стає єдиним шляхом, який публікується в журналі.
+$archiveStem = $responsePath.'.call.'.gmdate('Ymd_His').'.'.bin2hex(random_bytes(5));
+$archiveResponsePath = $archiveStem.'.json';
+if (! copy($responsePath, $archiveResponsePath)) {
+    $fail('response_archive', 'не вдалося зберегти відповідь виклику: '.$archiveResponsePath);
+}
+$archiveThinkingPath = $archiveStem.'.thinking.txt';
+$thinkingPath = $responsePath.'.thinking.txt';
+if (is_file($thinkingPath) && ! copy($thinkingPath, $archiveThinkingPath)) {
+    $fail('thinking_archive', 'не вдалося зберегти роздуми виклику: '.$archiveThinkingPath);
+}
+$journalAnswerPath = $archiveResponsePath;
+$journalThinkingPath = $archiveThinkingPath;
 $journal('ok');
 exit(0);

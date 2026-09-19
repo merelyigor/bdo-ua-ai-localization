@@ -245,15 +245,21 @@
       var stepsRect = steps.getBoundingClientRect();
       var navRect = nav.getBoundingClientRect();
       var overlapsHeader = stepsRect.top < navRect.bottom && stepsRect.bottom > navRect.top;
-      if (!contextVisible && overlapsHeader) {
-        setContextVisible(true);
-      } else if (contextVisible && stepsRect.top > navRect.bottom) {
-        setContextVisible(false);
-      }
+      // Sticky-контекст має лишатися видимим і після reload нижче цільового
+      // блока: у такому разі весь `steps` уже над хедером, тому перетину немає.
+      // Показуємо його під час перетину або коли блок повністю пройдений, а
+      // ховаємо лише поки цільовий блок ще попереду.
+      var shouldShow = overlapsHeader || stepsRect.bottom <= navRect.bottom;
+      if (contextVisible !== shouldShow) { setContextVisible(shouldShow); }
     };
     window.addEventListener('scroll', update, { passive: true });
     window.addEventListener('resize', update);
+    window.addEventListener('pageshow', update);
     update();
+    window.requestAnimationFrame(function () {
+      update();
+      window.requestAnimationFrame(update);
+    });
     B.el('navStopBtn').onclick = function () { B.el('stopBtn').click(); };
     B.el('navContinueBtn').onclick = function () { B.el('continueBtn').click(); };
   }

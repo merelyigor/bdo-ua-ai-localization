@@ -969,6 +969,21 @@ grep -Fq '.nav-side{' "$ROOT/web/app.css" \
 if grep -qE '^\.nav-model\{[^}]*grid-template-rows:repeat\(2' "$ROOT/web/app.css"; then
     fail 'параметри в стовпчику знову у два рядки · шапка стане вищою'
 fi
+# STICKY-КОНТЕКСТ · ДРУГИЙ РЯДОК ХЕДЕРА (2026-09-19).
+#
+# Навігація є CSS grid. Якщо sticky-контекст не займає всю сітку, він сідає
+# лише в першу колонку й візуально ламає хедер. Якщо середня колонка дозволяє
+# overflow, її посилання залазять під параметри моделі.
+grep -Fq 'grid-column:1 / -1' "$ROOT/web/app.css" \
+    || fail 'sticky-контекст не розтягується на весь рядок хедера'
+grep -Fq '.nav-links{min-width:0;justify-content:center;overflow:hidden' "$ROOT/web/app.css" \
+    || fail 'посилання навігації можуть залізти під параметри моделі'
+# Після reload нижче цільового блока його повний вихід за хедер теж мусить
+# показувати sticky-контекст, а не лише перетин під час живого скролу.
+grep -Fq 'stepsRect.bottom <= navRect.bottom' "$RUN" \
+    || fail 'sticky-контекст не відновлюється після reload нижче блока'
+grep -Fq "window.addEventListener('pageshow', update)" "$RUN" \
+    || fail 'sticky-контекст не перевіряється після відновлення сторінки'
 grep -Fq "case '/api/model':" "$ROOT/cli/system/web-router.php" \
     || fail 'сервер не віддає /api/model · хедеру нізвідки взяти параметри'
 # ДЕШЕВО, А НЕ «ЩЕ ОДИН ЗНІМОК». Повний `/api/state` важить десятки кілобайт, і

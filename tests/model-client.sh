@@ -175,6 +175,18 @@ grep -q '"num_predict":17' "$SCENARIO_FILE.request" \
     || fail "рольове num_predict не дійшло до Ollama: $(cat "$SCENARIO_FILE.request")"
 php -r 'exit(is_array(json_decode(file_get_contents($argv[1]), true)) && array_is_list(json_decode(file_get_contents($argv[1]), true)) ? 0 : 1);' \
     "$RESPONSE" || fail 'відповідь не є JSON-масивом · конвеєр такого не прийме'
+# Журнал не має посилатися на шлях, який рушій може використати повторно й
+# видалити. Стабільна копія мусить пережити зникнення робочого response-файла.
+php -r '
+$lines = file($argv[1], FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+$entry = json_decode((string) end($lines), true);
+$answer = (string) ($entry["answer"] ?? "");
+if ($answer === "response.json" || ! is_file($argv[2]."/".$answer)) exit(1);
+if (file_get_contents($argv[2]."/".$answer) !== file_get_contents($argv[3])) exit(1);
+unlink($argv[3]);
+if (! is_file($argv[2]."/".$answer)) exit(1);
+' "$WORK/state/model-calls.jsonl" "$WORK/state" "$RESPONSE" \
+    || fail 'журнал успішного виклику не зберіг стабільну копію відповіді'
 
 # 1б. ВЛАСНОЇ СТЕЛІ НЕМАЄ. `num_predict` рахує токени роздумів РАЗОМ із
 #     відповіддю · виміряно на живій моделі: 32 дало 117 символів thinking і

@@ -367,9 +367,10 @@ td.num,th.num{text-align:right;font-family:var(--mono)}
    параметри моделі. Сітка стискає середню зону, але не збільшує висоту шапки. */
 .nav{display:grid;grid-template-columns:auto minmax(0,1fr) minmax(0,330px);gap:14px;flex-wrap:nowrap}
 .nav .brand{min-width:0;margin-right:0}
-.nav-links{min-width:0;justify-content:center;overflow:visible;flex-wrap:nowrap}
+.nav-links{min-width:0;justify-content:center;overflow:hidden;flex-wrap:nowrap}
 .nav-links a{white-space:nowrap}
-.nav-side{width:100%;max-width:330px;padding-left:12px;border-left:1px solid var(--line-soft)}
+.nav-side{width:100%;max-width:330px;min-width:0;overflow:hidden;padding-left:12px;border-left:1px solid var(--line-soft)}
+.nav-model{max-width:100%;overflow:hidden}
 
 .nav-param b{font-weight:500;color:var(--ts)}
 /* Зірочка = значення ставить НАБІР, а не модель. Без неї хедер не відрізнявся
@@ -1002,7 +1003,7 @@ body{
   box-shadow:var(--nav-shadow);
   backdrop-filter:blur(10px)
 }
-.nav-run-context{display:none;flex:1 0 100%;min-width:0;align-items:center;gap:12px;padding-top:8px;border-top:1px solid var(--line-soft)}
+.nav-run-context{display:none;grid-column:1 / -1;width:100%;min-width:0;align-items:center;gap:12px;padding-top:8px;border-top:1px solid var(--line-soft)}
 .nav.run-context-visible .nav-run-context{display:flex}
 .nav-run-summary{display:flex;align-items:center;gap:8px;min-width:0;flex:0 0 auto}
 .nav-run-summary .pill{flex:none}
@@ -1019,6 +1020,12 @@ body{
   .nav-run-summary{flex:0 0 auto}
   .nav-run-steps{order:2;flex-basis:55%}
   .nav-run-actions{order:3;margin-left:auto}
+}
+@media (max-width:1100px){
+  .nav{grid-template-columns:minmax(0,1fr) minmax(250px,330px)}
+  .nav .brand{grid-column:1;grid-row:1}
+  .nav-side{grid-column:2;grid-row:1}
+  .nav-links{grid-column:1 / -1;grid-row:2;justify-content:flex-start;flex-wrap:wrap;overflow:visible}
 }
 @media (max-width:640px){
   .nav{margin-bottom:20px;padding:10px 12px}
