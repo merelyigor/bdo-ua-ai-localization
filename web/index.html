@@ -387,13 +387,13 @@
           box.innerHTML = '<div class="call-work-grid">'
             + part('Запит', d.payload, d.in)
             + '<section class="call-work-item answer-work">'
-            + '<div class="empty" style="margin-top:8px">Відповідь' + tokenCountMarkup(d.out, false) + '</div>'
             + '<details class="call-thinking">'
             + '<summary>Роздуми' + tokenCountMarkup(d.thinking_tokens_estimate, true) + '</summary>'
             + (d.thinking
               ? '<pre class="log work">' + B.esc(B.prettyWorkText(d.thinking.text || d.thinking)) + '</pre>'
               : '<div class="empty thinking-unavailable">Роздуми не збережені в завершеному виклику</div>')
-            + '</details>'
+              + '</details>'
+            + '<div class="empty answer-title">Відповідь' + tokenCountMarkup(d.out, false) + '</div>'
             + (d.answer
               ? '<pre class="log work">' + B.esc(B.prettyWorkText(d.answer.text)) + '</pre>'
               : '<div class="empty answer-unavailable">файла немає (відповіді не було)</div>')

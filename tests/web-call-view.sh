@@ -33,7 +33,7 @@ printf 'секрет власника\n' > "$TMP/outside.txt"
 
 AT='2026-09-06T09:00:00+00:00'
 cat > "$BDO_STATE_DIR/model-calls.jsonl" <<JSONL
-{"at":"$AT","role":"translation-worker","state":"awaiting_worker","rows":1,"payload_bytes":44,"payload":"batches/20260906_120000_abc123/worker-payload.json","answer":"batches/20260906_120000_abc123/worker-answer.json","batch":"20260906_120000_abc123","model":"m","provider":"ollama","verdict":"ok","ms":1200,"in":10,"out":5}
+{"at":"$AT","role":"translation-worker","state":"awaiting_worker","rows":1,"payload_bytes":44,"payload":"batches/20260906_120000_abc123/worker-payload.json","answer":"batches/20260906_120000_abc123/worker-answer.json","batch":"20260906_120000_abc123","model":"m","provider":"ollama","verdict":"ok","ms":1200,"in":10,"out":5,"thinking_tokens_estimate":7,"answer_tokens_estimate":5}
 {"at":"2026-09-06T09:01:00+00:00","role":"translation-qa","state":"awaiting_qa","rows":1,"payload":"../outside.txt","answer":"/etc/hosts","batch":"20260906_120000_abc123","model":"m","provider":"ollama","verdict":"ok","ms":5}
 JSONL
 
@@ -81,6 +81,12 @@ grep -Fq 'tokenCountMarkup(d.out, false)' "$ROOT/web/index.html" \
     || fail 'завершений блок відповіді не має лічильника токенів'
 grep -Fq 'tokenCountMarkup(d.thinking_tokens_estimate, true)' "$ROOT/web/index.html" \
     || fail 'завершений блок роздумів не має лічильника токенів'
+grep -Fq "'thinking_tokens_estimate' => \$record['thinking_tokens_estimate'] ?? null" "$ROOT/cli/system/web-router.php" \
+    || fail 'API завершеного виклику не передає лічильник роздумів'
+grep -Fq "'answer_tokens_estimate' => \$record['answer_tokens_estimate'] ?? null" "$ROOT/cli/system/web-router.php" \
+    || fail 'API завершеного виклику не передає оцінку відповіді'
+grep -Fq 'answer-title' "$ROOT/web/index.html" \
+    || fail 'заголовок відповіді не відділений від блока роздумів'
 grep -Fq 'id="completedThinking"' "$ROOT/web/call.html" \
     || fail 'завершений виклик не має окремого блока роздумів'
 grep -Fq 'id="liveThinkingTokens"' "$ROOT/web/call.html" \
@@ -106,6 +112,10 @@ grep -Fq 'Меч Валька' <<<"$body" \
     || fail "запит до ролі не віддано: $body"
 grep -Fq 'перекладач' <<<"$body" \
     || fail "роль не названо українською: $body"
+grep -Fq '"thinking_tokens_estimate":7' <<<"$body" \
+    || fail "API не віддав лічильник роздумів завершеного виклику: $body"
+grep -Fq '"answer_tokens_estimate":5' <<<"$body" \
+    || fail "API не віддав оцінку відповіді завершеного виклику: $body"
 
 # --- 3. ЧУЖИЙ ФАЙЛ не показується, навіть якщо його просить журнал -----------
 # Журнал теж є файлом. Одного джерела довіри для читання файлів мало, тому шлях

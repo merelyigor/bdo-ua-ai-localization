@@ -493,6 +493,8 @@ switch ($path) {
             'ms' => (int) ($record['ms'] ?? 0),
             'in' => $record['in'] ?? null,
             'out' => $record['out'] ?? null,
+            'thinking_tokens_estimate' => $record['thinking_tokens_estimate'] ?? null,
+            'answer_tokens_estimate' => $record['answer_tokens_estimate'] ?? null,
             'payload' => $snapshot->readWork($record['payload'] ?? null),
             'answer' => $snapshot->readWork($record['answer'] ?? null),
             // Та сама межа, що й для запиту та відповіді: `readWork` читає лише

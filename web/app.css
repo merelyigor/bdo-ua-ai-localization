@@ -826,7 +826,7 @@ a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,te
 .role-card .call-thinking[open]>summary{border-bottom:1px solid var(--line-soft)}
 .role-card .call-thinking>.box,
 .role-card .call-thinking>pre.log.work{margin:8px}
-.role-card .answer-work>.empty:first-child{min-height:2.9em}
+.role-card .answer-work>.answer-title{min-height:2.9em}
 .role-card .answer-work .call-thinking{margin-bottom:10px}
 .role-card .thinking-unavailable,.role-card .answer-unavailable{min-height:0!important;padding:8px 10px}
 @media (max-width:640px){
