@@ -894,7 +894,6 @@
       }
       B.el('calls').innerHTML = html;
       bindOpenCall();
-      paintLiveUsage(s.stream && s.stream.usage);
       var req = B.el('reqbox');
       if (req && s.stream && s.stream.payload) {
         B.busy(req, 'беру запит ролі…');
@@ -918,8 +917,13 @@
             : 'цієї сесії · ' + calls.length + ' (пачку не вказано)');
       paintStream(stream.text());
       paintThinking(thinkStream.text());
-      paintLiveUsage(s.stream && s.stream.usage);
     }
+
+    // ЛІЧИЛЬНИКИ РОСТУТЬ У LIVE · картка навмисно перемальовується лише при
+    // зміні виклику, але оцінки токенів приходять у кожному знімку стану.
+    // Оновлюємо їх поза сторожем картки, інакше число застигало на першому
+    // значенні, поки текст далі друкувався.
+    paintLiveUsage(s.stream && s.stream.usage);
 
     // Знімок стану знає лише ХВІСТ журналу токенів (`s.stream.complete` каже,
     // чи це початок відповіді). Тому його текст ЗШИВАЄТЬСЯ з накопиченим по
