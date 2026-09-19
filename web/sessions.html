@@ -140,16 +140,20 @@
       return '<div class="empty">У цій сесії пачок ще не було.</div>' + sessionBar(s);
     }
     var t = totals(rows);
-    var table = '<table><thead><tr><th>пачка</th><th class="num">рядків</th>'
+    var table = '<table><thead><tr><th>пачка</th><th>початок</th><th>завершення</th><th class="num">рядків</th>'
       + '<th class="num">у шар</th><th class="num">до людини</th>'
       + '<th class="num">карантин</th><th>стан</th></tr></thead><tbody>'
       + rows.map(function (b) {
           if (b.receipt_gone) {
             return '<tr><td class="mono">' + B.esc(b.id) + '</td>'
-              + '<td colspan="5" class="empty">квитанцію прибрано · числа втрачені</td></tr>';
+              + '<td colspan="7" class="empty">квитанцію прибрано · числа втрачені</td></tr>';
           }
           var q = Number(b.quarantine) || 0;
+          var started = B.when(b.at);
+          var finished = B.when(b.finished_at);
           return '<tr><td class="mono">' + B.esc(b.id) + '</td>'
+            + '<td class="time-cell">' + B.esc(started || 'невідомо') + '</td>'
+            + '<td class="time-cell">' + B.esc(finished || 'невідомо') + '</td>'
             + '<td class="num">' + B.num(b.rows) + '</td>'
             + '<td class="num">' + B.num(b.to_layer) + '</td>'
             + '<td class="num">' + B.num(b.to_human) + '</td>'

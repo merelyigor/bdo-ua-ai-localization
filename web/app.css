@@ -246,6 +246,7 @@ pre.log{margin:0;background:var(--s2);border-radius:8px;padding:10px 12px;max-he
 table{width:100%;border-collapse:collapse;font-size:13px}
 th{text-align:left;font-weight:400;color:var(--ts);font-size:12px;padding:4px 8px}
 td{padding:4px 8px;border-top:.5px solid var(--bd)}
+.time-cell{white-space:nowrap;color:var(--ts);font-variant-numeric:tabular-nums}
 td.num,th.num{text-align:right;font-family:var(--mono)}
 /* Каталог моделей · назви можуть бути довгими, а три дії мають лишатися
    повʼязаною групою. Окремий layout-контейнер не змінює жодної дії чи payload,
