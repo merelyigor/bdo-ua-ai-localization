@@ -177,10 +177,18 @@ grep -Fq 'полагоджено ремонтом' "$DRIVE" \
 if grep -Fq 'механічний дефект виправлено ремонтом' "$DRIVE"; then
     fail 'вирок знову змішує «дефект» і «виправлено» в одному рядку · саме це й плутало'
 fi
-# І перерахунок мусить іти на ВИЛІКУВАНОМУ тексті, а не на доремонтному:
-# інакше вирок знову описував би вчорашній рядок.
-grep -Fq "Candidate::fromFile(\$this->workspace->path('healed.json'))" "$DRIVE" \
-    || fail 'механіку перераховують не на healed.json · вирок описує текст до ремонту'
+# І перерахунок мусить іти на ФІНАЛЬНОМУ тексті, а не на доремонтному.
+# `healed.json` існує лише коли ремонт викликали; коли він не знадобився,
+# фінальним є `heal-merged.json` · там уже лежать безпечні виправлення самого
+# QA. Поки дивились тільки в `healed.json`, на пачці без ремонту жоден вирок
+# не оновлювався, і власник 2026-09-19 побачив «Русизм: „Испитання“» над
+# рядком, де вже стояло «Іспитання».
+grep -Fq "is_file(\$healedPath) ? \$healedPath : \$this->workspace->path('heal-merged.json')" "$DRIVE" \
+    || fail 'перерахунок дивиться лише в healed.json · на пачці без ремонту вирок лишиться доремонтним'
+grep -Fq '$this->refreshMechanicalVerdicts();' "$DRIVE" \
+    || fail 'вироки не освіжаються · доремонтний підпис доїде до екрана'
+test "$(grep -c 'refreshMechanicalVerdicts();' "$DRIVE")" -ge 2 \
+    || fail 'гілка без ремонту копіює вироки дослівно · саме там і жив доремонтний підпис'
 
 # ТЕ САМЕ ДРУГИМ ДЖЕРЕЛОМ · ВИРОК QA (інцидент 2026-09-18, пачка
 # `20260918_044220`, перша з записом у PROD). Три рядки показано на екрані як
@@ -202,8 +210,8 @@ $issue = "Русизм: «Пас Апейрон» замість «Пояс Ап
 
 // 1. Текст переписано ремонтом · вирок мусить це назвати, опис зберегти.
 $fixed = $m->invoke($drive, ["identity_hash" => "h1", "status" => "REVIEW", "severity" => "minor", "issue" => $issue], $qa, $healed);
-if (! str_contains((string) $fixed["issue"], "ремонт змінив текст")) {
-    fwrite(STDERR, "FAIL: вирок QA не каже, що ремонт переписав текст: ".$fixed["issue"]."\n"); exit(1);
+if (! str_contains((string) $fixed["issue"], "текст виправлено після вироку")) {
+    fwrite(STDERR, "FAIL: вирок QA не каже, що текст уже виправлено: ".$fixed["issue"]."\n"); exit(1);
 }
 if (! str_contains((string) $fixed["issue"], $issue)) {
     fwrite(STDERR, "FAIL: опис QA втрачено · що саме знайшов QA, більше нізвідки взяти\n"); exit(1);
@@ -220,5 +228,37 @@ if ($kept["issue"] !== "Неточне відмінювання") {
 }
 ' "$ROOT/lib/autoload.php" \
     || fail 'вирок QA після ремонту не каже дійсність'
+
+# ВИПРАВЛЕННЯ ВІД САМОГО QA · РЕМОНТ НЕ ПОТРІБЕН, АЛЕ ПІДПИС МУСИТЬ ЗМІНИТИСЬ.
+#
+# `heal-plan` застосовує безпечний `fix` від QA сам, без жодного виклику
+# моделі, і тоді payload ремонту порожній · роль справедливо пропускається.
+# Пачка 20260919_011019: воркер дав «Уламок Писання: Испитання», QA знайшов
+# русизм і дав виправлення, `heal-merged.json` уже містив «Іспитання» · а на
+# екрані висів доремонтний вирок, і власник вирішив, що ремонт зламано.
+# САБОТАЖ: звузити перевірку назад до healed.json · цей блок почервоніє.
+qa_fix_dir="$(mktemp -d)"
+php -r '
+$d = $argv[1];
+require $argv[2];
+use Bdo\Translate\Batch\Candidate;
+use Bdo\Translate\Cli\Command\Run\RunDriveCommand;
+$m = (new ReflectionClass(RunDriveCommand::class))->getMethod("markRepairedAfterQa");
+$drive = (new ReflectionClass(RunDriveCommand::class))->newInstanceWithoutConstructor();
+$issue = "Русизм: «Испитання» замість «Іспитання».";
+$qa = Candidate::fromArray(["h1" => "Уламок Писання: Испитання"]);
+// Ремонту не було · фінальний текст прийшов із heal-merged, і він уже чистий.
+$merged = Candidate::fromArray(["h1" => "Уламок Писання: Іспитання"]);
+$out = $m->invoke($drive, ["identity_hash" => "h1", "status" => "REVIEW", "severity" => "minor", "issue" => $issue], $qa, $merged);
+if (! str_contains((string) $out["issue"], "текст виправлено після вироку")) {
+    fwrite(STDERR, "вирок не каже, що текст уже виправлено: ".$out["issue"]."\n");
+    exit(1);
+}
+if (! str_contains((string) $out["issue"], $issue)) {
+    fwrite(STDERR, "опис QA втрачено\n");
+    exit(1);
+}
+' "$qa_fix_dir" "$ROOT/lib/autoload.php" || { rm -rf "$qa_fix_dir"; fail 'виправлення від QA не позначається у вироку · власник шукатиме в тексті те, чого там немає'; }
+rm -rf "$qa_fix_dir"
 
 echo 'mechanical before qa: OK · вирок після ремонту каже дійсність'

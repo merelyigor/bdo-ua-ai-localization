@@ -442,7 +442,16 @@ final class RunDriveCommand implements Command, \Bdo\Translate\Cli\CommandHelp
             return $this->child($output, 'healing', 'translation-repair', $repairPath, $this->workspace->path('fixes.json'));
         }
         copy($this->workspace->path('heal-merged.json'), $this->workspace->path('final-candidate.json'));
-        copy($verdicts, $this->workspace->path('final-verdicts.json'));
+        // ВИРОКИ ОСВІЖАЮТЬСЯ Й ТОДІ, КОЛИ РЕМОНТ НЕ ЗНАДОБИВСЯ.
+        //
+        // Тут стояло просте копіювання, і через це вирок QA доїжджав до екрана
+        // дослівно, хоча текст уже інший: безпечне виправлення від самого QA
+        // застосовує `heal-plan` без жодного виклику моделі. Власник
+        // 2026-09-19 побачив «Русизм: „Испитання“ замість „Іспитання“» над
+        // рядком, у якому вже стояло «Іспитання», і вирішив, що ремонт
+        // пропущено помилково. Ремонт справді був НЕ ПОТРІБЕН · неправдою був
+        // підпис.
+        $this->refreshMechanicalVerdicts();
 
         return $this->judgeOrCommit($output);
     }
@@ -502,7 +511,16 @@ final class RunDriveCommand implements Command, \Bdo\Translate\Cli\CommandHelp
         $prefix = 'механічний дефект: ';
         $verdicts = json_decode((string) file_get_contents($this->workspace->path('verdicts.json')), true, 512, JSON_THROW_ON_ERROR);
         $rows = RowSet::fromFile($this->workspace->path('rows.json'));
-        $healed = \Bdo\Translate\Batch\Candidate::fromFile($this->workspace->path('healed.json'));
+        // ФІНАЛЬНИЙ ТЕКСТ · той, що поїде далі, а не лише вихід ремонту.
+        // `healed.json` існує ЛИШЕ коли ремонт викликали; коли він не
+        // знадобився, фінальним є `heal-merged.json` (там уже лежать безпечні
+        // виправлення QA). Поки дивились тільки в `healed.json`, на пачці без
+        // ремонту жоден вирок не оновлювався взагалі.
+        $healedPath = $this->workspace->path('healed.json');
+        $finalPath = is_file($healedPath) ? $healedPath : $this->workspace->path('heal-merged.json');
+        $healed = is_file($finalPath)
+            ? \Bdo\Translate\Batch\Candidate::fromFile($finalPath)
+            : \Bdo\Translate\Batch\Candidate::fromArray([]);
         // Саме `clean.json` бачив QA (`qa-payload.json` збирається з нього),
         // тому «до ремонту» тут означає рівно цей файл, а не вихід воркера.
         // Файла немає · порівнювати нічим, і тоді вирок лишається дослівним:
@@ -574,7 +592,10 @@ final class RunDriveCommand implements Command, \Bdo\Translate\Cli\CommandHelp
         if ($seenByQa->text($hash) === $healed->text($hash)) {
             return $verdict;
         }
-        $verdict['issue'] = 'ремонт змінив текст · повторної перевірки якості рядок не проходив · QA бачив до ремонту: '.$issue;
+        // ХТО САМЕ ВИПРАВИВ · не вгадуємо. Це або ремонт, або безпечне
+        // виправлення від самого QA, застосоване кодом без виклику моделі.
+        // Важливе тут інше: вирок стосується ПОПЕРЕДНЬОЇ редакції рядка.
+        $verdict['issue'] = 'текст виправлено після вироку · повторної перевірки якості рядок не проходив · QA бачив до виправлення: '.$issue;
 
         return $verdict;
     }
