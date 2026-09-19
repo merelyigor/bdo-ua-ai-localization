@@ -112,6 +112,9 @@
   // Журнал закритої сесії · те саме вікно, інше джерело (кнопка «відкрити
   // прогін» на екрані сесій). Другої сторінки для цього не заводимо.
   var session = q.get('session') || '';
+  // Прогін ОДНІЄЇ ПАЧКИ · те саме вікно, третє джерело: власник відкриває його
+  // з переліку сесій, щоб побачити, що було в минулому прогоні (2026-09-19).
+  var batch = q.get('batch') || '';
 
   // Живий друк · той самий буфер і та сама логіка потоку, що на прогоні.
   // Другої реалізації тут навмисно немає: саме роздвоєння дало D83.
@@ -232,7 +235,9 @@
   }
 
   function renderSessionCalls(calls) {
-    if (!session || !Array.isArray(calls)) { return; }
+    // Перелік викликів потрібен і сесії, і ОКРЕМІЙ ПАЧЦІ: саме заради нього
+    // власник і відкриває минулий прогін із таблиці сесій.
+    if ((!session && !batch) || !Array.isArray(calls)) { return; }
     var panel = B.el('sessionCallsPanel');
     var box = B.el('sessionCalls');
     panel.style.display = 'block';
@@ -243,14 +248,16 @@
   }
 
   // --- завершений виклик: беремо роботу цілком -------------------------------
-  if (session || (at && role)) {
+  if (session || batch || (at && role)) {
     // Робота ролі буває на сотні кілобайт · читання з диска й передача займають
     // помітний час, і порожнє вікно без ознаки роботи виглядає як «файла немає».
     B.busy(B.el('payloadLoad'), 'беру запит ролі…');
     B.busy(B.el('answerLoad'), 'беру відповідь ролі…');
-    B.get(session
-        ? '/api/call?session=' + encodeURIComponent(session)
-        : '/api/call?at=' + encodeURIComponent(at) + '&role=' + encodeURIComponent(role))
+    B.get(batch
+        ? '/api/call?batch=' + encodeURIComponent(batch)
+        : (session
+            ? '/api/call?session=' + encodeURIComponent(session)
+            : '/api/call?at=' + encodeURIComponent(at) + '&role=' + encodeURIComponent(role)))
       .then(function (d) {
         if (d.error) {
           B.el('payloadLoad').innerHTML = '';
@@ -300,8 +307,12 @@
   // Без ключа в адресі екран показує те, що друкується ЗАРАЗ · тобто працює як
   // розгорнуте вікно прогону.
   B.live(function (s) {
-    var live = (s.stream && s.stream.role_label && s.stream.fresh) ? s.stream : null;
-    var showLive = !!live && s.running && (!at || (live.role === role));
+    var live = (s.stream && s.stream.role_label && (s.stream.active || s.stream.fresh)) ? s.stream : null;
+    // МИНУЛЕ НЕ ЗМІШУЄТЬСЯ З ТЕПЕРІШНІМ. Коли екран відкрито по СЕСІЇ або по
+    // ПАЧЦІ, він показує історію · і жива картка поточного прогону там не до
+    // речі: 2026-09-19 під прогоном давно закритої пачки друкував контроль
+    // якості з іншої, яка саме йшла.
+    var showLive = !!live && s.running && !session && !batch && (!at || (live.role === role));
     B.el('livePanel').style.display = showLive ? 'block' : 'none';
     B.el('completedWork').style.display = showLive ? 'none' : 'grid';
     if (!showLive) { return; }

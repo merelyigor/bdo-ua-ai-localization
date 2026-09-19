@@ -432,6 +432,46 @@ switch ($path) {
             return;
         }
 
+        // ПРОГІН ОДНІЄЇ ПАЧКИ · відкривається з переліку сесій (вимога
+        // власника 2026-09-19: «пачки мають бути посиланнями на відкриття
+        // всього прогону ролей та стану»). Історію пачки складають три речі:
+        // її власний журнал станів, підсумок запису й виклики ролей.
+        $wantBatch = (string) ($_GET['batch'] ?? '');
+        if ($wantBatch !== '') {
+            if (! Snapshot::isBatchId($wantBatch)) {
+                $fail(400, 'bad_batch', 'пачка називається як 20260919_053739_722cd0');
+
+                return;
+            }
+            $dir = 'batches/'.$wantBatch;
+            $journal = $snapshot->readWork($dir.'/journal.jsonl');
+            $calls = $snapshot->batchCallRecords($wantBatch);
+            if ($journal === null && $calls === []) {
+                $fail(404, 'batch_gone', 'теку цієї пачки прибрано · лишився хіба підсумок сесії');
+
+                return;
+            }
+            $json([
+                'at' => $wantBatch,
+                'role' => 'batch',
+                'role_label' => 'прогін пачки '.$wantBatch,
+                'unit' => '',
+                'rows' => 0,
+                'batch' => $wantBatch,
+                'state_label' => '',
+                'model' => '',
+                'verdict' => '',
+                'ms' => 0,
+                'in' => null,
+                'out' => null,
+                'payload' => $journal,
+                'answer' => $snapshot->readWork($dir.'/commit-report.txt'),
+                'calls' => $calls,
+            ]);
+
+            return;
+        }
+
         $wantSession = (string) ($_GET['session'] ?? '');
         if ($wantSession !== '') {
             if (preg_match('/^[0-9]{8}_[0-9]{6}$/', $wantSession) !== 1) {

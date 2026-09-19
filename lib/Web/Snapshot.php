@@ -961,6 +961,47 @@ final class Snapshot
     }
 
     /**
+     * Виклики ролей ОДНІЄЇ пачки · щоб можна було відкрити минулий прогін.
+     *
+     * Власник дивиться на перелік пачок і хоче побачити, що там було: які ролі
+     * викликались, з якими вироками й скільки це коштувало. Журнал викликів
+     * живе або в корені стану (сесія ще відкрита), або в теці закритої сесії,
+     * тому дивимось обидва місця й лишаємо рядки саме цієї пачки.
+     *
+     * @return list<array<string,mixed>>
+     */
+    public function batchCallRecords(string $batchId): array
+    {
+        if ($batchId === '' || ! self::isBatchId($batchId)) {
+            return [];
+        }
+        $paths = [$this->path('model-calls.jsonl')];
+        $session = (new Ledger($this->stateDir))->sessionForBatch($batchId);
+        if ($session !== null) {
+            $paths[] = $this->path('sessions/'.$session.'/model-calls.jsonl');
+        }
+        $mine = [];
+        foreach ($paths as $path) {
+            if (! is_file($path)) {
+                continue;
+            }
+            foreach ($this->callRecordsFrom($path, PHP_INT_MAX) as $call) {
+                if ((string) ($call['batch'] ?? '') === $batchId) {
+                    $mine[] = $call;
+                }
+            }
+        }
+
+        return $mine;
+    }
+
+    /** Чи схоже це на ідентифікатор пачки · час і хвіст відбитка. */
+    public static function isBatchId(string $id): bool
+    {
+        return preg_match('/^[0-9]{8}_[0-9]{6}(_[0-9]{3})?_[0-9a-f]{4,16}$/', $id) === 1;
+    }
+
+    /**
      * Знайти виклик у живому або перенесеному журналі сесії.
      *
      * Після close `model-calls.jsonl` більше не лежить у корені state, тому

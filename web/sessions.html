@@ -147,8 +147,19 @@
       + '<th class="num">у шар</th><th class="num">до людини</th>'
       + '<th class="num">карантин</th><th>режим</th><th>стан</th><th>модель</th></tr></thead><tbody>'
       + rows.map(function (b) {
+          // ІД ПАЧКИ · ПОСИЛАННЯ НА ЇЇ ПРОГІН (вимога власника 2026-09-19).
+          //
+          // Таблиця називала пачку, але подивитись, ЩО в ній було, не було де:
+          // виклики ролей, вироки й журнал станів лежать у теці пачки. Одна
+          // клітинка на обидві гілки · і на повний рядок, і на той, у якого
+          // прибрали квитанцію: минулий прогін цікавий саме тоді, коли чисел
+          // уже немає.
+          var idCell = '<td class="mono"><a class="work-link" href="/call?batch='
+            + encodeURIComponent(b.id) + '" target="_blank" rel="noopener"'
+            + ' title="відкрити прогін цієї пачки: ролі, вироки й стан">'
+            + B.esc(b.id) + '</a></td>';
           if (b.receipt_gone) {
-            return '<tr><td class="mono">' + B.esc(b.id) + '</td>'
+            return '<tr>' + idCell
               + '<td colspan="9" class="empty">квитанцію прибрано · числа втрачені</td></tr>';
           }
           var q = Number(b.quarantine) || 0;
@@ -183,7 +194,7 @@
           var modeCell = b.write === false
             ? '<span class="chip batch-mode-test" title="прогін без запису на сервер">тестова</span>'
             : (b.write === true ? '<span class="chip batch-mode-prod">PROD</span>' : '<span class="empty">—</span>');
-          return '<tr><td class="mono">' + B.esc(b.id) + '</td>'
+          return '<tr>' + idCell
             + '<td class="time-cell">' + B.esc(started || 'невідомо') + '</td>'
             + '<td class="time-cell">' + B.esc(finished || 'невідомо') + '</td>'
             + '<td class="num">' + B.num(b.rows) + '</td>'

@@ -335,6 +335,40 @@ stat_clears="$(grep -c 'clearstatcache' "$ROOT/lib/Web/Snapshot.php")"
 test "$stat_clears" -ge 3 \
     || fail "у знімку ${stat_reads} читань stat і лише ${stat_clears} скидань кешу · довгий потік бачитиме старі числа"
 
+# --- Минулий прогін пачки відкривається з переліку сесій ---------------------
+# Таблиця сесій називала пачку, але подивитись, ЩО в ній було, не було де:
+# виклики ролей і журнал станів лежать у теці пачки. Власник попросив зробити
+# ідентифікатор посиланням (2026-09-19).
+# САБОТАЖ: прибрати гілку `batch` у роутері · перевірка нижче почервоніє.
+grep -Fq 'href="/call?batch=' "$ROOT/web/sessions.html" \
+    || fail 'ідентифікатор пачки в таблиці сесій не є посиланням на її прогін'
+grep -Fq "q.get('batch')" "$ROOT/web/call.html" \
+    || fail 'екран виклику не вміє відкрити прогін пачки'
+
+past_batch="20260101_010101_abcdef"
+mkdir -p "$BDO_STATE_DIR/batches/$past_batch"
+printf '%s\n' '{"at":"2026-01-01T01:01:01+00:00","event":"state:selected","state":"selected"}' \
+    > "$BDO_STATE_DIR/batches/$past_batch/journal.jsonl"
+printf '%s\n' '{"at":"2026-01-01T01:02:00+00:00","role":"translation-worker","batch":"'"$past_batch"'","verdict":"ok","ms":1200}' \
+    > "$BDO_STATE_DIR/model-calls.jsonl"
+printf '%s\n' '{"at":"2026-01-01T01:03:00+00:00","role":"translation-qa","batch":"чужа-пачка","verdict":"ok","ms":900}' \
+    >> "$BDO_STATE_DIR/model-calls.jsonl"
+past_body="$(curl -s -m 5 "http://127.0.0.1:$PORT/api/call?batch=$past_batch&t=$TOKEN")"
+grep -Fq "прогін пачки $past_batch" <<<"$past_body" \
+    || fail "прогін минулої пачки не відкривається: $past_body"
+grep -Fq 'translation-worker' <<<"$past_body" \
+    || fail 'у прогоні пачки немає її власних викликів'
+grep -Fq 'чужа-пачка' <<<"$past_body" \
+    && fail 'у прогін пачки потрапили виклики чужої пачки'
+test "$(code "http://127.0.0.1:$PORT/api/call?batch=../../etc&t=$TOKEN")" = 400 \
+    || fail 'чужий шлях замість ідентифікатора пачки не відхилено'
+rm -f "$BDO_STATE_DIR/model-calls.jsonl"
+rm -rf "$BDO_STATE_DIR/batches/$past_batch"
+# МИНУЛЕ НЕ ЗМІШУЄТЬСЯ З ТЕПЕРІШНІМ: під прогоном закритої пачки не має
+# друкувати роль, яка працює ЗАРАЗ в іншій пачці.
+grep -Fq '!session && !batch' "$ROOT/web/call.html" \
+    || fail 'екран минулого прогону показує живу картку поточного · дві різні пачки в одному вікні'
+
 # --- Скрипт сторінки мусить бути синтаксично цілим -------------------------
 # Зламаний JavaScript не видно ні в HTTP-коді (сторінка віддається як завжди),
 # ні на скріншоті (розмітка малюється). Видно лише те, що кнопки мертві ·
