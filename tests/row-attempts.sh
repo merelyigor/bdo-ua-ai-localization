@@ -110,18 +110,32 @@ test "$(grep -c '^/rows$' "$TMP/rows.log")" -eq 2 || fail 'порожня сто
 # наступну, не відправляючи вдруге ті самі рядки в памʼять і ролі.
 SEEN_QUERY='patch=active&missing=machine&seen_case=1'
 printf 'local\n' > "$STATE/run-target"
-TRANSLATE_ENV_FILE="$TMP/env" BDO_STATE_DIR="$STATE" php "$ROOT/cli/bdo.php" fetch-rows 20 "$SEEN_QUERY" >"$TMP/seen-first.out" 2>"$TMP/seen-first.err" \
+mkdir -p "$STATE/batches/previous"
+printf 'previous\n' > "$STATE/current-batch"
+printf '%s\n' '{"state":"verified","query":"patch=active&missing=machine&seen_case=1"}' > "$STATE/batches/previous/manifest.json"
+php -r '
+$rows = [];
+for ($i = 101; $i <= 120; $i++) {
+    $rows[] = [
+        "identity_hash" => str_pad(dechex($i), 64, "0", STR_PAD_LEFT),
+        "source_hash" => hash("sha256", "Source ".$i),
+        "source_text" => "Source ".$i,
+    ];
+}
+file_put_contents($argv[1], json_encode(["data" => ["rows" => $rows]], JSON_THROW_ON_ERROR));
+' "$STATE/batches/previous/rows.json"
+TRANSLATE_ENV_FILE="$TMP/env" BDO_DRY_RUN=1 BDO_STATE_DIR="$STATE" php "$ROOT/cli/bdo.php" fetch-rows 20 "$SEEN_QUERY" >"$TMP/seen-first.out" 2>"$TMP/seen-first.err" \
     || fail "перший fetch seen-case впав: $(cat "$TMP/seen-first.err")"
 FIRST_ROWS="$(sed -n 's/^Збережено: //p' "$TMP/seen-first.out" | tail -1)"
 test "$(jq '.data.rows | length' "$FIRST_ROWS")" = 20 || fail 'перший seen-case не повернув 20 рядків'
-TRANSLATE_ENV_FILE="$TMP/env" BDO_STATE_DIR="$STATE" php "$ROOT/cli/bdo.php" fetch-rows 20 "$SEEN_QUERY" >"$TMP/seen-second.out" 2>"$TMP/seen-second.err" \
+test "$(jq -r '.data.rows[0].source_text' "$FIRST_ROWS")" = 'Source 121' \
+    || fail 'завершена current-batch без run-seen не пересунула перший fetch на наступну сторінку'
+TRANSLATE_ENV_FILE="$TMP/env" BDO_DRY_RUN=1 BDO_STATE_DIR="$STATE" php "$ROOT/cli/bdo.php" fetch-rows 20 "$SEEN_QUERY" >"$TMP/seen-second.out" 2>"$TMP/seen-second.err" \
     || fail "другий fetch seen-case впав: $(cat "$TMP/seen-second.err")"
 SECOND_ROWS="$(sed -n 's/^Збережено: //p' "$TMP/seen-second.out" | tail -1)"
-test "$(jq '.data.rows | length' "$SECOND_ROWS")" = 20 || fail 'другий seen-case не добрав наступні 20 рядків'
-test "$(jq -r '.data.rows[0].source_text' "$SECOND_ROWS")" = 'Source 121' \
-    || fail 'другий fetch повторив першу сторінку замість наступної'
+test "$(jq '.data.rows | length' "$SECOND_ROWS")" = 0 || fail 'вичерпана тестова вибірка знову повернула вже бачені рядки'
 jq -e --arg q "$SEEN_QUERY" '.query == $q and (.identities | length) == 40' "$STATE/run-seen.json" >/dev/null \
-    || fail 'run-seen не зберіг 40 уже відібраних identity'
+    || fail 'run-seen не зберіг попередні та нові 40 identity'
 kill "$SERVER" 2>/dev/null || true
 SERVER=''
 # Шлях запису делегує сам запис у `Api\TranslationWriter`, і журнал спроб

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Bdo\Translate\Cli\Command\Api;
 
+use Bdo\Translate\Batch\RowSet;
 use Bdo\Translate\Cli\Command;
 use Bdo\Translate\Cli\Output;
 use Bdo\Translate\Http\Client;
@@ -78,7 +79,10 @@ final class FetchRowsCommand implements Command, \Bdo\Translate\Cli\CommandHelp
         $stateDir = getenv('BDO_STATE_DIR') ?: $root.'/state';
         $excludedFile = $stateDir.'/run-excluded.json';
         $seenFile = $stateDir.'/run-seen.json';
-        $trackSeen = is_file($stateDir.'/run-target');
+        // Сервер сам прибирає успішно записані рядки з `missing=`. Локальна
+        // памʼять вибірки потрібна лише dry-run: там запису немає, тому сервер
+        // законно повертає ту саму першу сторінку наступному тестовому запуску.
+        $trackSeen = getenv('BDO_DRY_RUN') === '1' && is_file($stateDir.'/run-target');
         $oldExcluded = is_file($excludedFile) ? json_decode((string) file_get_contents($excludedFile), true) : [];
         if (($oldExcluded['query'] ?? null) !== $extra) {
             file_put_contents($excludedFile, json_encode(['query' => $extra, 'identities' => []], JSON_UNESCAPED_SLASHES));
@@ -203,11 +207,7 @@ final class FetchRowsCommand implements Command, \Bdo\Translate\Cli\CommandHelp
         if (($manifest['query'] ?? null) !== $query || ! is_file($dir.'/rows.json')) {
             return [];
         }
-        try {
-            return array_fill_keys(RowSet::fromFile($dir.'/rows.json')->identityHashes(), true);
-        } catch (\Throwable) {
-            return [];
-        }
+        return array_fill_keys(RowSet::fromFile($dir.'/rows.json')->identityHashes(), true);
     }
 
     private function client(string $url, string $key): \Bdo\Translate\Http\Response
