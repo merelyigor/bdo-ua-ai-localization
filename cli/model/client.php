@@ -211,6 +211,12 @@ if ($think === true && is_array($catalogData)) {
         if (($catalogModel['thinking'] ?? false) === true
             && ($catalogModel['thinking_levels'] ?? 'not_tested') === 'supported') {
             $think = $settings['think_level'];
+        } else {
+            // Модель без thinking не має отримувати think=true: для такого
+            // runtime це може завершити виклик ще до першого токена.
+            // Глобальне налаштування лишається увімкненим для сумісних моделей,
+            // а цей виклик працює без нього.
+            $think = false;
         }
         break;
     }

@@ -578,6 +578,10 @@ grep -Fq "action: 'run.continue'" "$ROOT/web/index.html" \
     || fail 'кнопка «продовжити пачку» не виконує дії · веде на форму замість продовження (D101)'
 grep -Fq "B.get('/api/state').then(function (state)" "$ROOT/web/index.html" \
     || fail 'після паузи UI не перечитує стан без перезавантаження сторінки'
+grep -Fq 'class="chip role-model"' "$ROOT/web/index.html" \
+    || fail 'картка ролі не показує модель окремим компактним бейджем'
+grep -Fq 'active_provider' "$ROOT/lib/Web/Snapshot.php" \
+    || fail 'жива картка ролі не отримує runtime фактичного виклику'
 grep -Fq "contBtn.style.display = (resume || pausePending) ? '' : 'none';" "$ROOT/web/index.html" \
     || fail 'кнопка продовження показується для звичайного фінішу, а не лише після паузи'
 grep -Fq "navContinue.style.display = (resumablePause || pausePending) ? '' : 'none';" "$ROOT/web/index.html" \
@@ -970,6 +974,11 @@ grep -Fq 'class="sp"' <<<"$nav_side" \
     || fail 'стан звʼязку поза правим стовпчиком шапки · на вужчому вікні він знову впаде під бренд'
 grep -Fq 'class="nav-model" id="navModel"' <<<"$nav_side" \
     || fail 'параметри моделі поза правим стовпчиком шапки'
+grep -Fq "rows.push({key: 'think', value: model.think ? 'true' : 'false'" "$APP" \
+    || grep -Fq "rows.push({key: 'think', value: effectiveThink ? 'true' : 'false'" "$APP" \
+    || fail 'глобальний стан thinking не показується серед параметрів хедера'
+grep -Fq "p.key === 'stop'" "$APP" \
+    || fail 'stop-послідовність не відрізняється від HTML-тега у хедері'
 grep -Fq '.nav-side{' "$ROOT/web/app.css" \
     || fail 'немає стилю правого стовпчика шапки'
 if grep -qE '^\.nav-model\{[^}]*grid-template-rows:repeat\(2' "$ROOT/web/app.css"; then

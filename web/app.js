@@ -364,7 +364,18 @@
   function renderModelParams(model) {
     var host = el('navModel');
     if (!host) { return; }
-    var rows = (model && model.params) || [];
+    var rows = ((model && model.params) || []).slice();
+    // THINK · це глобальна настройка виклику, а не властивість Modelfile.
+    // Показуємо її в тому самому рядку, щоб стан не губився між параметрами
+    // моделі. Зірочка пояснюється підказкою так само, як для інших значень,
+    // які приходять не від самої моделі.
+    if (model && typeof model.think === 'boolean') {
+      var effectiveThink = typeof model.think_effective === 'boolean' ? model.think_effective : model.think;
+      var thinkSource = effectiveThink !== model.think
+        ? 'глобальне налаштування · модель не підтримує thinking'
+        : 'глобальне налаштування';
+      rows.push({key: 'think', value: effectiveThink ? 'true' : 'false', source: thinkSource});
+    }
     // СТОРОЖ КЛЮЧА · параметри міняються раз на прогін, а знімок приходить раз
     // на секунду. Без нього хедер перемальовувався на КОЖНОМУ тику · саме це
     // й спіймала перевірка `web-inner-html-guard`, написана вранці того самого
@@ -393,8 +404,11 @@
         ? p.key + ' = ' + p.value + ' · ставить ' + p.source
           + (p.base ? ' · сама модель: ' + p.base : '')
         : p.key + ' = ' + p.value + ' · значення самої моделі';
+      // STOP · це буквальна stop-послідовність моделі, а не HTML-тег і не
+      // помилка розмітки. Лапки роблять це очевидним у компактному хедері.
+      var displayValue = p.key === 'stop' ? '"' + value + '"' : value;
       return '<span class="nav-param' + (ours ? ' nav-param-ours' : '') + '" title="' + esc(hint) + '">'
-        + '<b>' + esc(SHORT[p.key] || p.key) + '</b> ' + esc(value)
+        + '<b>' + esc(SHORT[p.key] || p.key) + '</b> ' + esc(displayValue)
         + (ours ? '<i class="nav-param-mark">*</i>' : '') + '</span>';
     }).join('');
     host.title = (model.name || '') + (model.runtime ? ' · ' + model.runtime : '');
@@ -553,8 +567,6 @@
   // розгортаються екранування. Розбір навмисно терпимий: потік обривається
   // посеред рядка, і половина значення · нормальний стан, а не помилка.
   // Нічого не впізнали · показуємо як є, бо мовчати гірше, ніж показати сире.
-  var READABLE_KEYS = ['text', 'ukrainian_proposal', 'issue', 'reason'];
-
   function unescapeJsonString(chunk) {
     var out = '';
     for (var i = 0; i < chunk.length; i++) {
@@ -568,55 +580,6 @@
       else { out += next; }
     }
     return out;
-  }
-
-  // Пробіли між ключем і значенням · НЕ дрібниця.
-  //
-  // Термінолог друкує JSON із відступами (`"ukrainian_proposal": "…"`), тому
-  // пошук по `"ключ":"` його не знаходив узагалі, і власник бачив сирий JSON
-  // саме на цій ролі · виявлено оком на живому прогоні 2026-09-06.
-  // Повертає позицію першої лапки значення або -1.
-  function valueStart(raw, from, key) {
-    var at = raw.indexOf('"' + key + '"', from);
-    if (at === -1) { return -1; }
-    var i = at + key.length + 2;
-    while (i < raw.length && (raw.charAt(i) === ' ' || raw.charAt(i) === '\t')) { i++; }
-    if (raw.charAt(i) !== ':') { return -2 - at; }   // це не пара «ключ: значення»
-    i++;
-    while (i < raw.length && (raw.charAt(i) === ' ' || raw.charAt(i) === '\t'
-        || raw.charAt(i) === '\n' || raw.charAt(i) === '\r')) { i++; }
-    if (raw.charAt(i) !== '"') { return -2 - at; }
-    return i + 1;
-  }
-
-  function scanKeys(raw, keys) {
-    var parts = [];
-    for (var k = 0; k < keys.length; k++) {
-      var key = keys[k];
-      var from = 0;
-      var at = valueStart(raw, from, key);
-      while (at !== -1) {
-        if (at < 0) { from = (-at - 2) + key.length + 2; at = valueStart(raw, from, key); continue; }
-        var start = at;
-        var end = start;
-        // Кінець значення · перша НЕекранована лапка. Обрив потоку означає, що
-        // її ще немає: тоді беремо все до кінця, це і є «друкує зараз».
-        while (end < raw.length) {
-          if (raw.charAt(end) === '"') {
-            var slashes = 0;
-            while (raw.charAt(end - 1 - slashes) === '\\') { slashes++; }
-            if (slashes % 2 === 0) { break; }
-          }
-          end++;
-        }
-        parts.push({ at: start, value: unescapeJsonString(raw.slice(start, end)) });
-        from = end;
-        at = valueStart(raw, from, key);
-      }
-    }
-    // Порядок · такий, як у потоці: інакше рядки стрибали б місцями.
-    parts.sort(function (a, b) { return a.at - b.at; });
-    return parts;
   }
 
   // СИРИЙ ВИВІД, ФОРМАТУВАННЯ ЛИШЕ ВІЗУАЛЬНЕ · вимога власника 2026-09-17.
@@ -1095,8 +1058,7 @@
     return {
       write: function (text) {
         if (node.textContent === text) { return; }
-        var linked = fileLinks(text);
-        node.innerHTML = linked;
+        node.innerHTML = fileLinks(text);
         if (stick) { node.scrollTop = node.scrollHeight; }
       },
       html: function (markup) {

@@ -568,6 +568,14 @@
     return B.icon(icons[role] || 'dot', 'role-icon');
   }
 
+  function modelBadge(provider, model) {
+    var name = String(model || '').trim();
+    if (!name) { return ''; }
+    var runtime = String(provider || '').trim();
+    var label = runtime ? runtime + ' / ' + name : name;
+    return '<span class="chip role-model" title="' + B.esc(label) + '">' + B.esc(label) + '</span>';
+  }
+
   function applyVerdictFilter() {
     var q = verdictQuery.trim().toLowerCase();
     Array.prototype.forEach.call(B.el('verdicts').querySelectorAll('.vrow'), function (r) {
@@ -842,6 +850,7 @@
         var key2 = 'at=' + encodeURIComponent(c.at) + '&role=' + encodeURIComponent(c.role);
         return '<div class="msg role-card ' + status.card + '" data-call="' + B.esc(key2) + '"><div class="mh">'
           + roleIcon(c.role) + '<span style="font-weight:500">' + B.esc(c.role_label) + '</span>'
+          + modelBadge(c.provider, c.model)
           + '<span class="meta">' + B.esc(bits.join(' · ')) + '</span>'
           + '<span class="chip role-state ' + status.kind + '" style="margin-left:auto">'
           + '<span class="verdict-icon" aria-hidden="true">' + B.icon(status.icon) + '</span> '
@@ -871,8 +880,11 @@
         var liveThinking = '<span class="thinking-indicator ' + (s.stream.thinking ? 'has-thinking' : 'no-thinking')
           + '" role="img" aria-label="' + (s.stream.thinking ? 'із міркуваннями' : 'без міркувань')
           + '" title="' + (s.stream.thinking ? 'із міркуваннями' : 'без міркувань') + '">' + B.icon('thinking') + '</span>';
+        var liveModel = (s.stream && s.stream.active_model) || (s.model && s.model.name) || '';
+        var liveProvider = (s.stream && s.stream.active_provider) || (s.model && s.model.runtime) || '';
         html += '<div class="msg active role-card is-active"><div class="mh">'
           + roleIcon(s.stream.role) + '<span style="font-weight:500;color:var(--acc-tx)">' + B.esc(live) + '</span>'
+          + modelBadge(liveProvider, liveModel)
           + '<span class="meta" id="liveNote">' + (loading
               ? 'модель вантажиться, ' + waiting + ' с · перший виклик після паузи тягне вагу з диска'
               : 'друкує…') + '</span>'

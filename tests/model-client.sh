@@ -466,6 +466,22 @@ grep -q '"think":true' "$WORK/state/model-calls.jsonl" || fail 'журнал н�
 printf 'request fragment think=on: '
 grep -o '"think":true' "$SCENARIO_FILE.request" | head -1
 
+# 12є. МОДЕЛЬ БЕЗ THINKING НЕ МАЄ ПАДАТИ ВІД ГЛОБАЛЬНОГО ПЕРЕМИКАЧА.
+#      Capability каталогу має сильніший факт за глобальне бажання власника:
+#      несумісна модель отримує think=false і все одно може відповісти.
+cat > "$WORK/state/model-catalog.json" <<'JSON'
+{"models":[{"runtime":"ollama","model":"тест-модель","thinking":false,"thinking_levels":"unsupported"}]}
+JSON
+printf '%s' ok > "$SCENARIO_FILE"; rm -f "$RESPONSE"
+BDO_MODEL_THINK=1 BDO_ROLES_CONFIG="$WORK/roles.json" BDO_STATE_DIR="$WORK/state" \
+    php "$ROOT/cli/model/client.php" translation-worker "$WORK/payload.json" "$RESPONSE" --schema "$WORK/schema.json" >/dev/null 2>&1 \
+    || fail 'модель без thinking не повинна падати при глобально увімкненому thinking'
+grep -q '"think":false' "$SCENARIO_FILE.request" \
+    || fail 'для моделі без thinking клієнт не вимкнув think у запиті'
+grep -q '"think":false' "$WORK/state/model-calls.jsonl" \
+    || fail 'журнал не записав фактичне вимкнення thinking для несумісної моделі'
+rm -f "$WORK/state/model-catalog.json"
+
 # 12ж. Запасний шлях: BDO_MODEL_STREAM=0 повертає одноразову відповідь.
 printf '%s' ok > "$SCENARIO_FILE"; rm -f "$RESPONSE"
 BDO_MODEL_STREAM=0 BDO_ROLES_CONFIG="$WORK/roles.json" BDO_STATE_DIR="$WORK/state" \

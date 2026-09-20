@@ -103,6 +103,7 @@ final class Snapshot
         $want = (string) ($selection['global']['model'] ?? '');
         $runtime = (string) ($selection['global']['runtime'] ?? '');
         $declared = [];
+        $thinkingSupported = null;
         foreach ($catalog['models'] ?? [] as $entry) {
             if (! is_array($entry)) {
                 continue;
@@ -111,6 +112,8 @@ final class Snapshot
                 $want = (string) ($entry['model'] ?? '');
                 $runtime = $runtime !== '' ? $runtime : (string) ($entry['runtime'] ?? '');
                 $declared = is_array($entry['parameters'] ?? null) ? $entry['parameters'] : [];
+                $thinkingSupported = ($entry['thinking'] ?? false) === true
+                    && ($entry['thinking_levels'] ?? 'not_tested') === 'supported';
                 break;
             }
         }
@@ -185,7 +188,18 @@ final class Snapshot
             $think = null;   // не знаємо · сторінка скаже саме це, а не «вимкнено»
         }
 
-        return ['name' => $want, 'runtime' => $runtime, 'params' => $params, 'think' => $think];
+        // Хедер має показувати фактичний прапорець цього виклику. Якщо каталог
+        // уже довів, що модель thinking не підтримує, клієнт вимкне його для
+        // запиту, навіть коли глобальна настройка власника лишилась увімкненою.
+        $effectiveThink = $think === true && $thinkingSupported === false ? false : $think;
+
+        return [
+            'name' => $want,
+            'runtime' => $runtime,
+            'params' => $params,
+            'think' => $think,
+            'think_effective' => $effectiveThink,
+        ];
     }
 
     /** Скільки рядків пачки показувати в блоці вердиктів. */
@@ -350,7 +364,7 @@ final class Snapshot
      * `--end`. Без цього числа «прогін іде» не має тривалості: «щойно почалось»
      * і «висить сорок хвилин» на екрані виглядають однаково.
      *
-     * @return array{elapsed:string,started_at:?string}
+     * @return array{elapsed: string, started_at: ?string}
      */
     private function run(): array
     {
@@ -1370,6 +1384,7 @@ final class Snapshot
             // журналу, тримає картку ролі на екрані.
             'active' => $active !== null,
             'active_model' => (string) ($active['model'] ?? ''),
+            'active_provider' => (string) ($active['provider'] ?? ''),
             // Скільки секунд роль мовчить від старту виклику · 0, щойно пішов
             // перший символ. Поріг «коли це вже завантаження» ставить сторінка.
             'waiting' => $waiting,

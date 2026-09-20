@@ -176,14 +176,14 @@
   }
 }
 *{box-sizing:border-box}
-body{margin:0;padding:22px 28px 36px;background:radial-gradient(circle at 50% -20%,var(--body-glow),transparent 42%),var(--s0);color:var(--tp);font-family:var(--sans);font-size:15px;line-height:1.6}
+body{margin:0;padding:22px 28px 36px;background:radial-gradient(circle at 50% -20%,var(--body-glow),transparent 42%),var(--s0);color:var(--tp);font-family:var(--sans),sans-serif;font-size:15px;line-height:1.6}
 .wrap{max-width:var(--ds-container);margin:0 auto}
 h1{font-size:26px;font-weight:600;letter-spacing:-.02em;margin:0 0 4px}
 .sub{font-size:13px;color:var(--tp);opacity:.82;margin:0 0 16px}
 .panel{background:var(--panel-fill);border:1px solid var(--bd);border-radius:var(--panel-radius);padding:18px;margin-bottom:14px;box-shadow:var(--shadow)}
 .bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px}
 .pill{font-size:12px;padding:3px 9px;border-radius:6px}
-.mono{font-family:var(--mono);font-size:12.5px;line-height:1.55}
+.mono{font-family:var(--mono),monospace;font-size:12.5px;line-height:1.55}
 button{font-family:inherit;font-size:13px;padding:6px 11px;border-radius:var(--control-radius);border:1px solid var(--bd);background:var(--control-bg);color:var(--tp);cursor:pointer;transition:background-color .15s ease,border-color .15s ease,transform .15s ease}
 button:hover{background:var(--s2)}
 /* СТРІЧКА КРОКІВ · хлібним слідом, як у прототипі 01.
@@ -227,13 +227,14 @@ button:hover{background:var(--s2)}
 .thinking-indicator .icon{width:16px;height:16px}
 .thinking-indicator.has-thinking{color:var(--wr-tx);opacity:1;filter:drop-shadow(0 0 5px var(--wr-tx))}
 .thinking-indicator.no-thinking{color:var(--tm)}
+.role-model{max-width:min(38vw,420px);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:var(--mono),monospace;font-size:var(--ds-text-xs);color:var(--ts);background:var(--surface-alpha);border-color:var(--line-soft)}
 .work-link{color:var(--acc-tx);text-decoration:underline;text-decoration-color:var(--bda)}
 .mh{display:flex;align-items:center;gap:8px;font-size:13px}
 .mh .meta{font-size:12px;color:var(--tm)}
 .box{background:var(--s1);border-radius:8px;padding:8px 10px;margin-top:8px;white-space:pre-wrap;word-break:break-word;max-height:220px;overflow:auto}
 .caret{display:inline-block;width:7px;height:14px;background:var(--bda);vertical-align:-2px;animation:b 1s steps(2) infinite}
 @keyframes b{50%{opacity:0}}
-pre.log{margin:0;background:var(--s2);border-radius:8px;padding:10px 12px;max-height:420px;overflow:auto;font-family:var(--mono);font-size:12px;line-height:1.5;white-space:pre-wrap;word-break:break-word}
+pre.log{margin:0;background:var(--s2);border-radius:8px;padding:10px 12px;max-height:420px;overflow:auto;font-family:var(--mono),monospace;font-size:12px;line-height:1.5;white-space:pre-wrap;word-break:break-word}
 .journal-panel{padding:12px 14px}
 .journal-summary{display:flex;align-items:center;gap:10px;min-width:0;cursor:pointer;list-style:none}
 .journal-summary::-webkit-details-marker{display:none}
@@ -250,7 +251,7 @@ table{width:100%;border-collapse:collapse;font-size:13px}
 th{text-align:left;font-weight:400;color:var(--ts);font-size:12px;padding:4px 8px}
 td{padding:4px 8px;border-top:.5px solid var(--bd)}
 .time-cell{white-space:normal;overflow-wrap:anywhere;color:var(--ts);font-variant-numeric:tabular-nums}
-td.num,th.num{text-align:right;font-family:var(--mono)}
+td.num,th.num{text-align:right;font-family:var(--mono),monospace}
 /* Каталог моделей · назви можуть бути довгими, а три дії мають лишатися
    повʼязаною групою. Окремий layout-контейнер не змінює жодної дії чи payload,
    лише прибирає випадковий перенос кнопок і зберігає таблицю читабельною. */
@@ -278,7 +279,7 @@ td.num,th.num{text-align:right;font-family:var(--mono)}
 .global-selection.is-active .global-selection-clear{background:var(--s2);color:var(--acc-tx);border-color:var(--bda)}
 .model-row.is-global-selected{background:var(--acc-bg);box-shadow:inset 3px 0 var(--bda)}
 .model-row.is-global-selected:hover{background:var(--acc-bg)}
-.model-selected-badge{display:inline-block;margin-left:8px;padding:2px 6px;border-radius:999px;background:var(--s2);color:var(--acc-tx);font-family:var(--sans);font-size:11px;font-weight:500;vertical-align:2px;white-space:nowrap}
+.model-selected-badge{display:inline-block;margin-left:8px;padding:2px 6px;border-radius:999px;background:var(--s2);color:var(--acc-tx);font-family:var(--sans),sans-serif;font-size:11px;font-weight:500;vertical-align:2px;white-space:nowrap}
 .model-runtime,.model-size,.model-loaded{white-space:nowrap}
 .model-name{overflow-wrap:anywhere;word-break:break-word}
 .model-state{font-size:12px;overflow-wrap:anywhere}
