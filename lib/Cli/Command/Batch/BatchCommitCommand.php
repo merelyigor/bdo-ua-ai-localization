@@ -392,7 +392,13 @@ final class BatchCommitCommand implements Command, \Bdo\Translate\Cli\CommandHel
             : "Ціль: {$env} ({$environment['base']})\n");
     }
 
-    /** @param array{base:string,key:string,environment:string} $environment */
+    /**
+     * Опис параметрів був копією сусіднього методу й описував `$environment`
+     * як масив, хоча сюди приходить рядок · саме імʼя середовища. Єдиний
+     * параметр, форму якого варто назвати, це перелік затриманих рядків.
+     *
+     * @param list<array<string,mixed>> $held
+     */
     private function appendHeld(string $stateDir, array $held, string $environment, string $batchId, string $channel, bool $recordAttempts): void
     {
         $path = $stateDir.'/quarantine.jsonl';
@@ -413,7 +419,12 @@ final class BatchCommitCommand implements Command, \Bdo\Translate\Cli\CommandHel
         }
     }
 
-    /** @param array{base:string,key:string,environment:string} $environment */
+    /**
+     * Опис тут теж був копією й називав параметр, якого в методі немає взагалі.
+     * Названо те, що метод справді читає з квитанції запису.
+     *
+     * @param array{written:int,skipped:int,rejected:int,results:list<array<string,mixed>>} $result
+     */
     private function printWriterFacts(Output $output, array $result): void
     {
         $output->stdout(sprintf("Записано: %d  Пропущено: %d  Відкинуто: %d\n", $result['written'], $result['skipped'], $result['rejected']));

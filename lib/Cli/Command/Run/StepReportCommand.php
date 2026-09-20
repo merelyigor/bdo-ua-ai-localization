@@ -46,7 +46,9 @@ final class StepReportCommand implements Command
             return json_decode((string) file_get_contents($path), true);
         };
         /** Один рядок тексту без переносів і без хвоста, який не читають. */
-        $one = static function (?string $text, int $max) use ($width): string {
+        // Ширину кожен виклик передає сам аргументом `$max` · захоплення її ще
+        // й ізовні лишалось від ранішої версії й усередині не читалось.
+        $one = static function (?string $text, int $max): string {
             $text = trim(str_replace(["\n", "\r", "\t"], ' ', (string) $text));
             $text = preg_replace('/\s+/u', ' ', $text) ?? $text;
 

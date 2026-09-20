@@ -5,4 +5,9 @@ declare(strict_types=1);
 
 require_once __DIR__.'/lib/autoload.php';
 
+// Аргументи беремо з `$_SERVER`, а не з голої `$argv`: значення те саме, але
+// сама змінна існує лише при увімкненому `register_argc_argv`, тобто залежить
+// від чужого `php.ini`, а не від факту запуску.
+$argv = (array) ($_SERVER['argv'] ?? []);
+
 exit((new Bdo\Translate\Cli\Router())->run(array_slice($argv, 1)));

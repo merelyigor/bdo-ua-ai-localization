@@ -349,6 +349,10 @@ final class RuntimeModels
         ]]);
         $raw = @file_get_contents($url, false, $context);
         $status = 0;
+        // `$http_response_header` створює САМ рантайм і лише тоді, коли HTTP-запит
+        // відбувся. Після невдалого зʼєднання змінної немає взагалі · перевірено
+        // 2026-09-20 на мертвому порту. Аналізатор тут помиляється, і `??` лишається.
+        // @phpstan-ignore nullCoalesce.variable
         foreach (($http_response_header ?? []) as $header) {
             if (preg_match('~^HTTP/[^ ]+ ([0-9]{3})~', $header, $match) === 1) {
                 $status = (int) $match[1];

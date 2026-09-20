@@ -171,7 +171,7 @@ jobs:
           done
 
   phpstan:
-    name: PHPStan level 0
+    name: PHPStan level 3
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
@@ -192,7 +192,7 @@ jobs:
       # «process crashed because it reached configured PHP memory limit», і
       # причина виглядала як поломка аналізу, а не як межа рантайму. Заміряний
       # пік · 51 MB, тож 1G це запас, а не потреба.
-      - name: PHPStan level 0
+      - name: PHPStan level 3
         run: phpstan analyse -c phpstan.neon --no-progress --memory-limit=1G
 
   windows_native:

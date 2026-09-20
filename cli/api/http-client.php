@@ -33,6 +33,10 @@ $options = [
     'follow' => false,
 ];
 $urls = [];
+// Аргументи беремо з `$_SERVER`, а не з голої `$argv`: значення те саме, але
+// сама змінна існує лише при увімкненому `register_argc_argv`, тобто залежить
+// від чужого `php.ini`, а не від факту запуску.
+$argv = (array) ($_SERVER['argv'] ?? []);
 $arguments = array_slice($argv, 1);
 
 $error = static function (string $message, int $code = 2) use (&$options): never {
