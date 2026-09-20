@@ -29,6 +29,10 @@ make_batch() { # $1 state-dir; $2 mode; $3 memory_layers; $4 memory scenario
             ["layer" => "machine", "text" => "Ancient Sword"],
             ["layer" => "machine", "text" => "Стародавній меч"],
         ],
+        "stale-first" => [
+            ["layer" => "machine", "text" => "Сова-воїн", "freshness" => "stale"],
+            ["layer" => "machine", "text" => "Стародавній меч", "freshness" => "fresh"],
+        ],
         "source-manual" => [["layer" => "manual", "text" => "Ancient Sword"]],
         "non-translatable" => [["layer" => "machine", "text" => "Ancient Sword"]],
         default => [["layer" => "machine", "text" => "Стародавній меч"]],
@@ -48,9 +52,10 @@ TMP_IMPROVE="$(mktemp -d)"
 TMP_PATCH="$(mktemp -d)"
 TMP_SOURCE="$(mktemp -d)"
 TMP_FALLBACK="$(mktemp -d)"
+TMP_STALE="$(mktemp -d)"
 TMP_MANUAL="$(mktemp -d)"
 TMP_NONTRANSLATABLE="$(mktemp -d)"
-trap 'rm -rf "$TMP_IMPROVE" "$TMP_PATCH" "$TMP_SOURCE" "$TMP_FALLBACK" "$TMP_MANUAL" "$TMP_NONTRANSLATABLE"' EXIT
+trap 'rm -rf "$TMP_IMPROVE" "$TMP_PATCH" "$TMP_SOURCE" "$TMP_FALLBACK" "$TMP_STALE" "$TMP_MANUAL" "$TMP_NONTRANSLATABLE"' EXIT
 BATCH="$(make_batch "$TMP_IMPROVE/state" improve manual)"
 test "$(count_ready "$BATCH/memory-candidate.json")" = 0 \
     || { echo 'FAIL: improve закрив рядок machine-памʼяттю'; exit 1; }
@@ -103,6 +108,13 @@ BATCH="$(make_batch "$TMP_FALLBACK/state" patch all fallback)"
 test "$(count_ready "$BATCH/memory-candidate.json")" = 1
 jq -e '.[0].text == "Стародавній меч"' "$BATCH/memory-candidate.json" >/dev/null \
     || { echo 'FAIL: не вибрано наступний придатний memory-варіант'; exit 1; }
+
+# Застарілий варіант не може перемогти свіжий лише через порядок відповіді API.
+# Жива пачка D195 отримала Hadum -> «Сова-воїн», хоча далі був fresh «Хадум».
+BATCH="$(make_batch "$TMP_STALE/state" patch all stale-first)"
+test "$(count_ready "$BATCH/memory-candidate.json")" = 1
+jq -e '.[0].text == "Стародавній меч"' "$BATCH/memory-candidate.json" >/dev/null \
+    || { echo 'FAIL: stale memory перемогла свіжий варіант (D195)'; exit 1; }
 
 # Manual є рішенням власника, а non_translatable має лишатися дослівним.
 BATCH="$(make_batch "$TMP_MANUAL/state" patch all source-manual)"

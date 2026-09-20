@@ -51,6 +51,14 @@ final class MemoryApplyCommand implements Command, \Bdo\Translate\Cli\CommandHel
             foreach ($memory->variants($hash) as $variant) {
                 $text = (string) ($variant['text'] ?? '');
                 $layer = (string) ($variant['layer'] ?? '?');
+                // `stale` означає, що переклад належить застарілій редакції
+                // рядка. API може повернути його перед свіжим варіантом (D195:
+                // Hadum -> «Сова-воїн» перед Hadum -> «Хадум»), тому порядок
+                // відповіді сам по собі не робить такий текст придатним.
+                if (($variant['freshness'] ?? null) === 'stale') {
+                    $rejectionReasons[] = 'stale_memory';
+                    continue;
+                }
                 if ($layer === 'machine' && ! $row->isNonTranslatable() && trim($text) === trim($row->sourceText())) {
                     $rejectionReasons[] = 'source_equivalent_machine_memory';
                     continue;
