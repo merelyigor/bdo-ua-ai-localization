@@ -362,7 +362,7 @@ grep -Fq 'model.thinking_probe.supported_levels' "$MODELS" \
     || fail 'екран не показує фактично підтверджені режими моделі'
 grep -Fq "['low', 'medium', 'high'].map" "$MODELS" \
     || fail 'екран не показує виміри probe для всіх трьох режимів'
-grep -Fq "levelTitle = model.thinking_levels === 'supported' ? 'режими' : 'рівні'" "$MODELS" \
+grep -Fq "model.thinking_levels === 'supported' ? 'режими' : 'рівні'" "$MODELS" \
     || fail 'підтверджені режими не мають окремого підпису від неперевірених рівнів'
 grep -Fq 'data-icon="thinking"' "$MODELS" \
     || fail 'на екрані моделей немає іконки роздумів'
@@ -374,6 +374,16 @@ grep -Fq 'thinking_loop' "$MODELS" \
     || fail 'екран не називає зупинку зациклення'
 grep -Fq 'models.unload' "$MODELS" \
     || fail 'у каталозі моделей немає кнопки вивантаження'
+grep -Fq 'catalog-summary-loading' "$MODELS" \
+    || fail 'зведення каталогу не має початкового прелоадера'
+grep -Fq 'function loadTarget' "$MODELS" \
+    || fail 'екран не визначає модель, яка зараз завантажується'
+grep -Fq 'function setBusy' "$MODELS" \
+    || fail 'дії каталогу не мають візуального стану виконання'
+grep -Fq 'model-status-loading' "$MODELS" \
+    || fail 'рядок моделі не показує стан завантаження'
+grep -Fq 'після цього перевірю режими' "$MODELS" \
+    || fail 'екран не пояснює наступну автоматичну перевірку рівнів'
 grep -Fq 'unload_unsupported' "$ROOT/lib/Model/RuntimeModels.php" \
     || fail 'відмова Ollama від вивантаження не має названої причини'
 

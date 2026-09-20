@@ -44,10 +44,9 @@
             <span class="panel-subtitle" id="catalogSummaryMeta">моделі з доступних рантаймів</span></div>
           <button id="refreshModelsTop" class="btn-quiet" type="button" data-action="models.refresh">оновити</button>
         </div>
-        <div id="catalogSummary" class="catalog-summary-grid">
-          <div class="catalog-stat"><span class="catalog-stat-name">усі моделі</span><strong>—</strong></div>
-          <div class="catalog-stat"><span class="catalog-stat-name">рантайми</span><strong>—</strong></div>
-        </div>
+      <div id="catalogSummary" class="catalog-summary-grid" aria-busy="true">
+          <div class="catalog-summary-loading" role="status" aria-live="polite"><span class="spin"></span><span>завантажую зведення каталогу…</span></div>
+      </div>
       </div>
     </div>
 
@@ -82,8 +81,8 @@
     </div>
 
     <div class="panel">
-      <div class="bar section-bar"><span class="section-title">каталог моделей</span><span id="loadState" class="empty" style="margin-left:auto"></span></div>
-      <div id="models"><div class="load"><span class="spin"></span>беру перелік моделей…</div></div>
+      <div class="bar section-bar"><span class="section-title">каталог моделей</span><span id="loadState" class="empty model-load-state" style="margin-left:auto" role="status" aria-live="polite"></span></div>
+      <div id="models" aria-busy="true"><div class="models-loading-state" role="status" aria-live="polite"><span class="spin"></span><span>беру перелік моделей…</span></div></div>
     </div>
 
     <div class="panel role-models-panel">
@@ -132,6 +131,45 @@
     return ['low', 'medium', 'high'].map(function (level) {
       return level + ' ' + B.num(probe[level + '_length']) + '/' + B.num(probe[level + '_repeat_length']);
     }).join(' · ');
+  }
+
+  function modelKey(runtime, model) {
+    return String(runtime || '') + '\u0000' + String(model || '');
+  }
+
+  function loadTarget(state) {
+    var command = String(state && state.command || '');
+    var match = command.match(/(?:^| )models load ([^ ]+) (.+)$/);
+    return match ? {runtime: match[1], model: match[2]} : null;
+  }
+
+  function setBusy(button, label) {
+    if (!button || button.dataset.busy === '1') { return; }
+    button.dataset.busy = '1';
+    button.dataset.idleHtml = button.innerHTML;
+    button.disabled = true;
+    button.setAttribute('aria-busy', 'true');
+    button.classList.add('is-loading');
+    button.innerHTML = '<span class="spin spin-inline" aria-hidden="true"></span><span>' + B.esc(label) + '</span>';
+  }
+
+  function clearBusy(button) {
+    if (!button || button.dataset.busy !== '1') { return; }
+    button.innerHTML = button.dataset.idleHtml || button.innerHTML;
+    button.disabled = false;
+    button.removeAttribute('aria-busy');
+    button.classList.remove('is-loading');
+    delete button.dataset.busy;
+    delete button.dataset.idleHtml;
+  }
+
+  function setLoadState(label, busy) {
+    var host = B.el('loadState');
+    if (!host) { return; }
+    host.classList.toggle('is-loading', busy);
+    host.innerHTML = busy
+      ? '<span class="load-inline"><span class="spin spin-inline" aria-hidden="true"></span><span>' + B.esc(label) + '</span></span>'
+      : B.esc(label || '');
   }
 
   // Назву моделі ріжемо ПОСЕРЕДИНІ, а не з кінця: розрізняльна частина
@@ -325,9 +363,11 @@
     if (!host || !meta) { return; }
     if (!catalog) {
       meta.textContent = 'каталог ще не знято';
+      host.setAttribute('aria-busy', 'false');
       host.innerHTML = '<div class="empty">онови перелік, щоб побачити доступні моделі</div>';
       return;
     }
+    host.setAttribute('aria-busy', 'false');
     var models = catalog.models || [];
     var counts = {};
     models.forEach(function (model) {
@@ -346,40 +386,50 @@
 
   function renderModels(data) {
     var catalog = data.catalog;
+    var load = data.load || {};
+    var target = load.status === 'loading' ? loadTarget(load) : null;
     var selection = data.selection || {};
     var globalChoice = selection.global && selection.global.runtime && selection.global.model ? selection.global : null;
     renderCatalogSummary(catalog);
     if (!catalog) {
+      B.el('models').setAttribute('aria-busy', 'false');
       B.el('models').innerHTML = '<div class="empty">' + B.esc(data.hint || 'перелік недоступний') + '</div>';
       return;
     }
     var models = catalog.models || [];
     if (!models.length) {
+      B.el('models').setAttribute('aria-busy', 'false');
       B.el('models').innerHTML = '<div class="empty">у доступних рантаймах моделей не знайдено</div>';
       return;
     }
+    B.el('models').setAttribute('aria-busy', load.status === 'loading' ? 'true' : 'false');
     var rows = models.map(function (model) {
       var isGlobal = globalChoice && model.runtime === globalChoice.runtime && model.model === globalChoice.model;
+      var isLoading = target && modelKey(target.runtime, target.model) === modelKey(model.runtime, model.model);
       var availability = model.reason
         ? '<span class="model-status model-status-unavailable">недоступна</span><div class="model-status-detail">' + B.esc(model.reason) + '</div>'
         : '<span class="model-status model-status-available">доступна</span>';
-      var disabled = model.reason ? ' disabled' : '';
+      var disabled = model.reason || isLoading ? ' disabled' : '';
       var disabledTitle = model.reason ? ' title="' + B.esc(model.reason) + '"' : '';
       var thinking = model.reason ? 'не перевірено' : (model.thinking === true ? 'підтримує' : 'не підтримує');
       var thinkingReason = model.reason || model.thinking_reason || 'здатність не підтверджена каталогом';
       var levelLabels = {unsupported:'не підтримує', not_tested:'не перевірено', not_deterministic:'не піддається перевірці'};
       var supportedLevels = model.thinking_probe && Array.isArray(model.thinking_probe.supported_levels)
         ? model.thinking_probe.supported_levels : ['low', 'high'];
-      var levelStatus = model.thinking_levels === 'supported'
+      var levelStatus = isLoading && model.thinking === true ? 'перевірка після завантаження…' : model.thinking_levels === 'supported'
         ? (supportedLevels.length ? supportedLevels.join(' · ') : 'не підтверджено')
         : (levelLabels[model.thinking_levels] || 'не перевірено');
-      var levelTitle = model.thinking_levels === 'supported' ? 'режими' : 'рівні';
+      var levelTitle = isLoading && model.thinking === true ? 'перевірка' : (model.thinking_levels === 'supported' ? 'режими' : 'рівні');
       var levelReason = model.thinking_probe && model.thinking_probe.reason ? model.thinking_probe.reason : '';
-      var loadedIcon = String(model.loaded) === 'так' ? B.icon('check', 'model-loaded-icon') : B.icon('circle', 'model-loaded-icon');
-      return '<tr class="model-row' + (isGlobal ? ' is-global-selected' : '') + '"><td class="model-runtime">' + B.esc(model.runtime) + '</td><td class="model-name mono" title="' + B.esc(model.model) + '">' + B.esc(model.model) + (isGlobal ? '<span class="model-selected-badge">загальна</span>' : '') + '</td>'
-        + '<td class="model-size">' + B.esc(model.size) + '</td><td class="model-loaded">' + loadedIcon + B.esc(model.loaded) + '</td><td class="model-state">' + availability + '</td>'
+      var loadedIcon = isLoading
+        ? '<span class="model-status model-status-loading"><span class="spin spin-inline" aria-hidden="true"></span>завантажується</span>'
+        : (String(model.loaded) === 'так' ? B.icon('check', 'model-loaded-icon') : B.icon('circle', 'model-loaded-icon')) + B.esc(model.loaded);
+      var loadingDetail = isLoading && model.thinking === true
+        ? '<div class="model-status-detail model-status-loading-detail">після прогрівання автоматично перевірю low · medium · high</div>' : '';
+      return '<tr class="model-row' + (isGlobal ? ' is-global-selected' : '') + (isLoading ? ' is-loading' : '') + '"' + (isLoading ? ' aria-busy="true"' : '') + '><td class="model-runtime">' + B.esc(model.runtime) + '</td><td class="model-name mono" title="' + B.esc(model.model) + '">' + B.esc(model.model) + (isGlobal ? '<span class="model-selected-badge">загальна</span>' : '') + '</td>'
+        + '<td class="model-size">' + B.esc(model.size) + '</td><td class="model-loaded">' + loadedIcon + '</td><td class="model-state">' + availability + '</td>'
         + '<td class="model-state"><span class="model-status">роздуми: ' + thinking + '</span><div class="model-status-detail">' + B.esc(thinkingReason) + '</div></td>'
-        + '<td class="model-state"><span class="model-status">' + levelTitle + ': ' + levelStatus + '</span>' + (model.thinking_probe ? '<div class="model-status-detail">' + probeDetail(model.thinking_probe) + ' · ' + B.esc(when(model.thinking_probe.probed_at)) + '</div>' + (levelReason ? '<div class="model-status-detail">' + B.esc(levelReason) + '</div>' : '') : '') + '</td>'
+        + '<td class="model-state"><span class="model-status">' + levelTitle + ': ' + levelStatus + '</span>' + loadingDetail + (!isLoading && model.thinking_probe ? '<div class="model-status-detail">' + probeDetail(model.thinking_probe) + ' · ' + B.esc(when(model.thinking_probe.probed_at)) + '</div>' + (levelReason ? '<div class="model-status-detail">' + B.esc(levelReason) + '</div>' : '') : '') + '</td>'
         + '<td class="model-actions-cell"><div class="model-actions">'
         + '<button class="model-action-primary" type="button" data-action="models.select" data-runtime="' + B.esc(model.runtime) + '" data-model="' + B.esc(model.model) + '"' + disabled + disabledTitle + '>' + B.icon('star') + '<span>обрати загально</span></button>'
         + '<button class="model-action" aria-label="завантажити" title="' + B.esc(model.reason || 'завантажити') + '" type="button" data-action="models.load" data-runtime="' + B.esc(model.runtime) + '" data-model="' + B.esc(model.model) + '"' + disabled + '>' + B.icon('download') + '<span>завантажити</span></button>'
@@ -438,15 +488,36 @@
           payload.runtime = option.dataset.runtime;
           payload.model = option.dataset.model;
         }
+        if (action === 'models.refresh') {
+          Array.prototype.forEach.call(document.querySelectorAll('[data-action="models.refresh"]'), function (refresh) {
+            setBusy(refresh, 'оновлюю…');
+          });
+          setLoadState('оновлюю перелік моделей…', true);
+        }
+        if (action === 'models.load') {
+          setBusy(button, 'завантаження…');
+          setLoadState('модель завантажується · потім перевірю режими…', true);
+        }
+        if (action === 'models.unload') { setBusy(button, 'вивантаження…'); }
         button.disabled = true;
         B.post('/api/action', {action: action, payload: payload, confirm: true}).then(function (res) {
-          button.disabled = false;
+          clearBusy(button);
+          if (action === 'models.refresh') {
+            Array.prototype.forEach.call(document.querySelectorAll('[data-action="models.refresh"]'), clearBusy);
+          }
           var body = res.body || {};
           B.el('actionMsg').textContent = actionMessage(action, body);
           if (body.ok && action === 'models.refresh') { load(); }
           else if (body.ok && action === 'models.load') { load(); }
           else if (body.ok) { load(); }
-        }).catch(function () { button.disabled = false; B.el('actionMsg').textContent = 'сервер не відповів'; });
+        }).catch(function () {
+          clearBusy(button);
+          if (action === 'models.refresh') {
+            Array.prototype.forEach.call(document.querySelectorAll('[data-action="models.refresh"]'), clearBusy);
+          }
+          setLoadState('', false);
+          B.el('actionMsg').textContent = 'сервер не відповів';
+        });
       };
     });
   }
@@ -467,7 +538,14 @@
         ? 'знято ' + when(catalog.captured_at) + ' · вік переліку ' + age(catalog.captured_at)
         : (data.hint || 'перелік недоступний');
       var state = data.load || {};
-      B.el('loadState').textContent = state.status === 'loading' ? 'модель вантажиться…' : (state.status === 'failed' ? 'останнє завантаження не вдалося' : '');
+      if (state.status === 'loading') {
+        var target = loadTarget(state);
+        setLoadState(target ? 'завантажується ' + target.model + ' · після цього перевірю режими' : 'модель завантажується · після цього перевірю режими', true);
+      } else if (state.status === 'failed') {
+        setLoadState('останнє завантаження не вдалося', false);
+      } else {
+        setLoadState('', false);
+      }
       renderSelection(data);
       renderSettings(data);
       renderModels(data);
