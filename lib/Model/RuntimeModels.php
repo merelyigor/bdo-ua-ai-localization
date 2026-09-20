@@ -255,10 +255,54 @@ final class RuntimeModels
                     'thinking' => $thinking,
                     'thinking_reason' => $thinking ? 'oMLX thinking_default' : 'oMLX не має thinking_default',
                     'thinking_levels' => $thinking ? 'not_tested' : 'unsupported',
+                    'parameters' => $this->omlxParameters($entry),
                 ] : []),
             ];
         }
         return $models;
+    }
+
+    /**
+     * Власні значення моделі в oMLX · те саме, що Ollama віддає блоком
+     * `parameters`, лише під іншими іменами й у власному об'єкті `settings`.
+     *
+     * ЧОМУ ЦЕ ВЗАГАЛІ ПОТРІБНО. Хедер показує, з чим модель справді працює, і
+     * позначає зірочкою те, що перекриває набір. Поки oMLX не віддавав нічого,
+     * у хедері лишались ЛИШЕ два наші перекриття · власник 2026-09-20 побачив
+     * «temp 1* ctx 128k*» і запитав, куди поділись інші. Поділись вони не з
+     * екрана, а з каталогу: збирач читав ці поля тільки в Ollama.
+     *
+     * Словник один на два рантайми: `repetition_penalty` в oMLX і
+     * `repeat_penalty` в Ollama · те саме число, і два імені поруч у хедері
+     * читались би як два різні параметри.
+     *
+     * `null` пропускаємо: «рантайм не задає» не має права виглядати як нуль.
+     *
+     * @param array<string,mixed> $entry
+     * @return array<string,string>
+     */
+    private function omlxParameters(array $entry): array
+    {
+        $settings = is_array($entry['settings'] ?? null) ? $entry['settings'] : [];
+        $map = [
+            'temperature' => 'temperature',
+            'top_p' => 'top_p',
+            'top_k' => 'top_k',
+            'min_p' => 'min_p',
+            'presence_penalty' => 'presence_penalty',
+            'repetition_penalty' => 'repeat_penalty',
+            'max_context_window' => 'num_ctx',
+        ];
+        $out = [];
+        foreach ($map as $their => $ours) {
+            $value = $settings[$their] ?? null;
+            if ($value === null || is_array($value) || is_bool($value)) {
+                continue;
+            }
+            $out[$ours] = (string) $value;
+        }
+
+        return $out;
     }
 
     /** @return array<string,mixed> */

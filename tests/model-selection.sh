@@ -73,7 +73,10 @@ if ($path === '/admin/api/models') {
     header('Content-Type: application/json');
     $loaded = is_file($state.'.omlx-loaded');
     echo json_encode(['models' => [
-        ['id' => 'omlx-model', 'loaded' => $loaded, 'thinking_default' => true, 'estimated_size_formatted' => '3.2 GB'],
+        ['id' => 'omlx-model', 'loaded' => $loaded, 'thinking_default' => true, 'estimated_size_formatted' => '3.2 GB',
+         'settings' => ['temperature' => 0.6, 'top_p' => 0.95, 'top_k' => 20, 'min_p' => null,
+                        'repetition_penalty' => 1.05, 'max_context_window' => 262144,
+                        'enable_thinking' => true, 'chat_template_kwargs' => null]],
         ['id' => 'omlx-not-tested', 'loaded' => is_file($state.'.omlx-not-tested-loaded'), 'thinking_default' => true, 'estimated_size_formatted' => '2.1 GB'],
         ['id' => 'omlx-no-thinking', 'loaded' => false, 'estimated_size_formatted' => '1.1 GB'],
     ]]);
@@ -169,6 +172,22 @@ php -r '$d=json_decode($argv[1],true); foreach ($d["models"] as $m) { if (!array
 php -r '$d=json_decode($argv[1],true); $want=["ollama/ollama-model"=>"supported","omlx/omlx-model"=>"not_tested","omlx/omlx-not-tested"=>"not_tested","omlx/omlx-no-thinking"=>"unsupported"]; foreach ($d["models"] as $m) { $key=($m["runtime"]??"")."/".($m["model"]??""); if (isset($want[$key]) && ($m["thinking_levels"]??"")!==$want[$key]) { fwrite(STDERR,"початковий стан {$key} неочікуваний\n"); exit(1); } unset($want[$key]); } if ($want) { fwrite(STDERR,"початкові стани відсутні\n"); exit(1); }' "$json_output" \
     || fail 'catalog не розрізняє supported, unsupported і not_tested для loaded та unloaded моделей'
 test -s "$WORK/state/model-catalog.json" || fail 'models list --json не записав state/model-catalog.json'
+# ВЛАСНІ ЗНАЧЕННЯ МОДЕЛІ БЕРУТЬСЯ З ОБОХ РАНТАЙМІВ. Збирач читав їх лише в
+# Ollama, тому після переходу на oMLX у хедері лишались самі наші перекриття ·
+# «temp 1* ctx 128k*» і більше нічого (власник 2026-09-20). Словник один на два
+# рантайми, `null` не стає нулем, службові прапорці в параметри не лізуть.
+php -r '
+$d = json_decode($argv[1], true);
+foreach ($d["models"] as $m) {
+    if (($m["model"] ?? "") !== "omlx-model") { continue; }
+    $p = $m["parameters"] ?? null;
+    $want = ["temperature"=>"0.6","top_p"=>"0.95","top_k"=>"20","repeat_penalty"=>"1.05","num_ctx"=>"262144"];
+    if ($p !== $want) { fwrite(STDERR, "oMLX параметри: ".json_encode($p)."\n"); exit(1); }
+    exit(0);
+}
+fwrite(STDERR, "omlx-model не знайдено в каталозі\n"); exit(1);
+' "$json_output" \
+    || fail 'каталог не бере власних значень моделі з oMLX (або тягне туди null і службові прапорці)'
 php -r '$d=json_decode($argv[1],true); $s=$d["settings"]??[]; if (($s["think"]??null)!==false || array_key_exists("think_limit_bytes", $s)) { fwrite(STDERR,"default model settings містять застарілу байтову ручку\n"); exit(1); }' "$json_output" \
     || fail 'catalog не повернув чисті think settings'
 run_bdo models settings --think 1 | grep -Fq 'з наступного виклику ролі' || fail 'settings не підтвердили збереження'
