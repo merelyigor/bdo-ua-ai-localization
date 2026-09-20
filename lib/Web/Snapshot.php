@@ -516,7 +516,11 @@ final class Snapshot
      * половина рядка не є ні текстом, ні JSON. Тому повертаємо разом із
      * текстом позицію, до якої дочитано.
      *
-     * @return array{text:string,thinking:string,offset:int,restarted:bool}
+     * Імʼя ролі повертається РАЗОМ із текстом і теж є частиною обіцянки: саме
+     * воно підписує живу картку, і саме його бракувало в описі нижче, поки
+     * читач уже на нього спирався.
+     *
+     * @return array{text:string,thinking:string,offset:int,restarted:bool,role:string}
      */
     public function assemble(string $raw, int $from): array
     {
@@ -1250,7 +1254,19 @@ final class Snapshot
         return max(0, $total - min($total, self::TRANSCRIPT_LINES));
     }
 
-    /** @return array{size:int,text:string,thinking:string} */
+    /**
+     * Живий потік ролі для сторінки.
+     *
+     * Опис форми названий ПОВНІСТЮ. Попередній перелічував три поля з
+     * тринадцяти, тобто обіцяв менше, ніж повертав, і будь-яка перевірка типів
+     * бачила порожнє місце там, де сторінка вже читала дані.
+     *
+     * @return array{size:int,text:string,complete:bool,thinking:string,role:string,
+     *     role_label:string,fresh:bool,call_id:string,active:bool,active_model:string,
+     *     active_provider:string,waiting:int,
+     *     usage:array{prompt_tokens:int|null,thinking_tokens:int|null,answer_tokens:int|null,estimated:bool},
+     *     payload:string}
+     */
     private function stream(bool $full = false): array
     {
         $size = $this->streamSize();

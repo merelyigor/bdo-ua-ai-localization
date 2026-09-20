@@ -58,6 +58,13 @@ final class WorkerPayloadCommand implements Command, \Bdo\Translate\Cli\CommandH
                 }
                 $temporaryContext = true;
             }
+            // Середовище API оголошене ДО спроби його прочитати. Без цього воно
+            // існувало лише всередині `try`, а нижче читалось так, ніби читання
+            // не могло впасти: зв'язок «не вийшло взяти середовище → контекст
+            // не будуємо» тримався самим лише порядком рядків. Одна нова
+            // причина лишити `$contextFile` непорожнім · і код звернувся б до
+            // неоголошеної змінної вже на живому прогоні.
+            $environment = [];
             if (is_file($contextFile) && filesize($contextFile) > 0) {
                 $output->stderr("Контекст уже зібраний: {$contextFile} (API не питаю)\n");
             } else {
@@ -77,7 +84,11 @@ final class WorkerPayloadCommand implements Command, \Bdo\Translate\Cli\CommandH
                     $output->stderr("Payload будується без них · це робочий payload, лише слабший сигнал.\n");
                     $contextFile = '';
                 }
-                if ($contextFile !== '') {
+                // Обидві умови описують ОДНУ подію · невдале читання середовища
+                // вище одночасно спорожнює і шлях контексту, і саме середовище.
+                // Названі обидві, бо саме так інваріант видно з коду, а не лише
+                // з порядку рядків.
+                if ($contextFile !== '' && $environment !== []) {
                     $output->stderr(sprintf("Ціль: %s (%s)\n", getenv('BDO_ENV') ?: 'DEV', $environment['base']));
                     try {
                         $this->fetchContext($rowsFile, $contextFile, $termsFile, $environment, $output);
