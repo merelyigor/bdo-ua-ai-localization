@@ -46,7 +46,7 @@ jobs:
           set -euo pipefail
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends jq ripgrep tmux shellcheck desktop-file-utils
-          for tool in git bash php jq curl shellcheck perl tmux rg desktop-file-validate; do
+          for tool in git bash php jq curl shellcheck perl tmux rg desktop-file-validate node; do
             command -v "$tool" >/dev/null || { echo "немає $tool"; exit 1; }
           done
           bash --version | head -1
@@ -94,7 +94,13 @@ jobs:
           if [ "$code" = 0 ]; then BDO_STATE_DIR="$tmp/state" ./bdo web --stop; fi
           exit "$code"
 
+      # ПРОПУСКИ В CI ЗАБОРОНЕНІ. Тут усі інструменти встановлені й перевірені
+      # кроком вище, тому «перевірку не виконано» означає поламане середовище,
+      # а не особливість машини. Без цього зелений прогін CI не гарантував би
+      # навіть того, що JavaScript сторінки колись запускався (аудит A-03).
       - name: gate full
+        env:
+          BDO_GATE_NO_SKIP: '1'
         run: ./bdo gate full
 
   stability:

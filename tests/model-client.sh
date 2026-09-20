@@ -138,8 +138,8 @@ for _ in $(seq 1 40); do
     sleep 0.1
 done
 if ! curl -fsS -m 1 "http://127.0.0.1:$PORT/api/ps" >/dev/null; then
-    printf 'model client: SKIP · середовище забороняє bind локального mock runtime\n'
-    exit 0
+    printf 'model client: ПРОПУЩЕНО · середовище забороняє bind локального mock runtime\n'
+    exit 77
 fi
 
 mkdir -p "$WORK/state" "$WORK/roles"

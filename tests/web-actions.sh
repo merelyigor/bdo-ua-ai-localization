@@ -22,7 +22,7 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 fail() { printf 'FAIL: %s\n' "$1" >&2; exit 1; }
 
 command -v php >/dev/null 2>&1 || fail 'немає php'
-command -v curl >/dev/null 2>&1 || { echo 'web actions: ПРОПУЩЕНО · немає curl'; exit 0; }
+command -v curl >/dev/null 2>&1 || { echo 'web actions: ПРОПУЩЕНО · немає curl, дії сторінки не перевірено'; exit 77; }
 
 # --- 1. План кожної дії мусить бути дозволений реєстром ---------------------
 # Це перевірка ЧИСТА: план будується без запуску, тому звірка з allowlist

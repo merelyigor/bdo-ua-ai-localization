@@ -14,7 +14,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 fail() { printf 'FAIL: %s\n' "$1" >&2; exit 1; }
 
-command -v node >/dev/null 2>&1 || { echo 'web live typing: node недоступний · пропуск'; exit 0; }
+command -v node >/dev/null 2>&1 || { echo 'web live typing: ПРОПУЩЕНО · немає node, темп друку не перевірено'; exit 77; }
 
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT

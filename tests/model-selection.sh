@@ -131,8 +131,8 @@ for _ in $(seq 1 40); do
     sleep 0.1
 done
 if ! curl -fsS -m 1 "http://127.0.0.1:$PORT/api/tags" >/dev/null; then
-    printf 'model selection: SKIP · середовище забороняє bind локального mock runtime\n'
-    exit 0
+    printf 'model selection: ПРОПУЩЕНО · середовище забороняє bind локального mock runtime\n'
+    exit 77
 fi
 
 cat > "$WORK/roles.json" <<JSON

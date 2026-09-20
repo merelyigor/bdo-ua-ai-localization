@@ -25,7 +25,7 @@ if ! command -v tmux >/dev/null 2>&1; then
         fail 'немає tmux, а BDO_REQUIRE_TMUX=1 вимагає живої перевірки TUI'
     fi
     echo 'tui live: ПРОПУЩЕНО · немає tmux (встав: brew install tmux). Текстову частину покриває tests/tui.sh.'
-    exit 0
+    exit 77
 fi
 
 WORK="$(mktemp -d)"

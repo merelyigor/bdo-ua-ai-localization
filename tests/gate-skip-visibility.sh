@@ -1,0 +1,110 @@
+#!/usr/bin/env bash
+# ПРОПУСК НЕ Є УСПІХОМ, і гейт мусить це показувати.
+#
+# До 2026-09-20 тест, якому бракувало інструмента (node, curl, tmux), друкував
+# «пропуск» і виходив НУЛЕМ. Для гейта це нічим не відрізнялось від справжньої
+# перевірки: він казав «Agent gate passed», хоча JavaScript сторінки не
+# виконувався жодного разу. Аудит назвав це прямо (A-03, false green), і саме
+# хибне зелене тут найгірше · воно вчить довіряти тому, чого не було.
+#
+# Домовленість: код виходу 77 означає «перевірку НЕ ВИКОНАНО». Гейт рахує такі
+# перевірки окремо, називає кожну з причиною й пише це в підсумку;
+# `BDO_GATE_NO_SKIP=1` робить пропуск падінням (саме так гейт іде в CI).
+#
+# Перевірка йде ТИМ САМИМ шляхом, що й робота: профіль `selftest` жене названі
+# тести через той самий `touched_run_tests` і той самий підсумок.
+set -euo pipefail
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+GATE="$ROOT/scripts/agent-check.sh"
+fail() { printf 'FAIL: %s\n' "$1" >&2; exit 1; }
+TMP="$(mktemp -d)"
+trap 'rm -rf "$TMP"' EXIT
+
+cat > "$TMP/skipped.sh" <<'SH'
+#!/usr/bin/env bash
+echo 'підроблений тест: ПРОПУЩЕНО · немає вигаданого інструмента'
+exit 77
+SH
+cat > "$TMP/passed.sh" <<'SH'
+#!/usr/bin/env bash
+echo 'підроблений тест: OK'
+SH
+cat > "$TMP/failed.sh" <<'SH'
+#!/usr/bin/env bash
+echo 'підроблений тест: зламано'
+exit 3
+SH
+chmod +x "$TMP"/*.sh
+
+gate() {
+    local jobs="$1"; shift
+    set +e
+    BDO_GATE_JOBS="$jobs" bash "$GATE" selftest "$@" >"$TMP/out" 2>&1
+    printf '%s' "$?" > "$TMP/code"
+    set -e
+}
+
+# Обидва шляхи запуску · послідовний і паралельний. Код виходу губився саме в
+# паралельному, тому перевіряються обидва, а не «типовий».
+for jobs in 1 4; do
+    # 1. Пропуск НЕ валить гейт, але й не мовчить.
+    gate "$jobs" "$TMP/skipped.sh"
+    test "$(cat "$TMP/code")" = 0 || fail "потоків $jobs: пропуск завалив гейт, хоча це не провал"
+    grep -Fq 'НЕ ВИКОНАНО · 1 перевірок' "$TMP/out" \
+        || fail "потоків $jobs: гейт не назвав невиконану перевірку: $(cat "$TMP/out")"
+    grep -Fq 'немає вигаданого інструмента' "$TMP/out" \
+        || fail "потоків $jobs: причину пропуску не показано"
+    grep -Fq 'НЕ ВИКОНАНО перевірок: 1' "$TMP/out" \
+        || fail "потоків $jobs: підсумок промовчав про пропуск · це і є хибне зелене"
+
+    # 2. Успіх лишається успіхом, і підсумок не вигадує пропусків.
+    gate "$jobs" "$TMP/passed.sh"
+    test "$(cat "$TMP/code")" = 0 || fail "потоків $jobs: успішний тест завалив гейт"
+    if grep -Fq 'НЕ ВИКОНАНО' "$TMP/out"; then
+        fail "потоків $jobs: гейт вигадав пропуск там, де все виконано"
+    fi
+
+    # 3. Справжній провал лишається провалом · 77 не став новим «усе гаразд».
+    gate "$jobs" "$TMP/failed.sh"
+    test "$(cat "$TMP/code")" != 0 || fail "потоків $jobs: зламаний тест не завалив гейт"
+
+    # 4. Пропуск поруч із провалом не ховає провал.
+    gate "$jobs" "$TMP/skipped.sh" "$TMP/failed.sh"
+    test "$(cat "$TMP/code")" != 0 || fail "потоків $jobs: провал сховався за пропуском"
+done
+
+# 5. Заборона пропусків · режим CI, де всі інструменти зобовʼязані бути.
+set +e
+BDO_GATE_NO_SKIP=1 bash "$GATE" selftest "$TMP/skipped.sh" >"$TMP/out" 2>&1
+code=$?
+set -e
+test "$code" != 0 || fail 'BDO_GATE_NO_SKIP=1 не зробив пропуск падінням'
+grep -Fq 'пропуски тут заборонені' "$TMP/out" || fail "заборона не названа причиною: $(cat "$TMP/out")"
+
+# 6. Жоден тест набору не має права пропускати себе НУЛЕМ.
+#    Саме так виглядав дефект: повідомлення «ПРОПУЩЕНО» і `exit 0` поруч.
+offenders="$(
+    for file in "$ROOT"/tests/*.sh; do
+        # Себе не скануємо: у цьому файлі «ПРОПУЩЕНО» і «exit 0» стоять поруч
+        # у тексті самого правила, а не в пропуску.
+        case "$file" in *_/gate-skip-visibility.sh|*/gate-skip-visibility.sh) continue ;; esac
+        awk -v name="${file##*/}" '
+            /ПРОПУЩЕНО|: SKIP/ {
+                if ($0 ~ /exit 0/) { print name": "FNR; next }
+                pending = FNR; next
+            }
+            pending && /^[[:space:]]*exit 0[[:space:]]*$/ { print name": "FNR }
+            { pending = 0 }
+        ' "$file"
+    done
+)"
+test -z "$offenders" \
+    || fail "тест пропускає себе нулем · для гейта це успіх: $offenders"
+
+# 7. CI зобовʼязаний вимагати node: без нього web-перевірки мовчки пропустяться.
+grep -Fq 'BDO_GATE_NO_SKIP' "$ROOT/.github/workflows/gate.yml" \
+    || fail 'CI не забороняє пропуски · зелений прогін там нічого не гарантує'
+grep -Eq '^\s*for tool in .*\bnode\b' "$ROOT/.github/workflows/gate.yml" \
+    || fail 'CI не перевіряє наявність node, хоча від нього залежать web-перевірки'
+
+echo 'gate skip visibility: OK · пропуск названо й полічено, провал лишився провалом, CI пропусків не дозволяє.'

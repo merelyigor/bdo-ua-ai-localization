@@ -20,7 +20,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 fail() { printf 'FAIL: %s\n' "$1" >&2; exit 1; }
 have() { command -v "$1" >/dev/null 2>&1; }
-have node || { printf 'web stream fallback: ПРОПУЩЕНО · немає node\n'; exit 0; }
+have node || { printf 'web stream fallback: ПРОПУЩЕНО · немає node, відкат потоку не перевірено\n'; exit 77; }
 
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT

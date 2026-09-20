@@ -35,6 +35,41 @@ fail() { printf 'FAIL: %s\n' "$1" >&2; exit 1; }
 step() { printf '\n== %s ==\n' "$1"; }
 note() { printf '   %s\n' "$1"; }
 have() { command -v "$1" >/dev/null 2>&1; }
+# КОД 77 · «перевірку НЕ ВИКОНАНО», а не «перевірку пройдено».
+#
+# Тест, якому бракує інструмента (node, curl, tmux) або середовища, раніше
+# друкував «пропуск» і виходив нулем. Для гейта це нічим не відрізнялось від
+# справжнього успіху: він казав «passed», хоча JavaScript сторінки не
+# виконувався жодного разу (знайдено аудитом 2026-09-20, A-03). Хибне зелене
+# гірше за червоне · воно вчить довіряти тому, чого не було.
+#
+# Тому пропуск має власний код виходу, гейт рахує такі перевірки окремо й
+# називає їх у підсумку. `BDO_GATE_NO_SKIP=1` робить будь-який пропуск
+# падінням · саме так гейт працює в CI, де всі інструменти зобовʼязані бути.
+readonly GATE_SKIP_CODE=77
+GATE_SKIPPED_LIST=''
+GATE_SKIPPED_COUNT=0
+
+gate_record_skip() {
+    local file="$1" reason="$2"
+    if [ "${BDO_GATE_NO_SKIP:-0}" = 1 ]; then
+        fail "перевірку $file не виконано, а пропуски тут заборонені (BDO_GATE_NO_SKIP=1): $reason"
+    fi
+    GATE_SKIPPED_COUNT=$((GATE_SKIPPED_COUNT + 1))
+    GATE_SKIPPED_LIST="${GATE_SKIPPED_LIST}${file} · ${reason}
+"
+}
+
+gate_report_skips() {
+    test "$GATE_SKIPPED_COUNT" -gt 0 || return 0
+    step "НЕ ВИКОНАНО · $GATE_SKIPPED_COUNT перевірок"
+    printf '%s' "$GATE_SKIPPED_LIST" | while IFS= read -r line; do
+        test -n "$line" || continue
+        note "$line"
+    done
+    note 'ці перевірки нічого не довели · зелений гейт їх не покриває'
+}
+
 run() { printf '   $ %s\n' "$*"; "$@" || fail "$1 завершився з ненульовим кодом"; }
 
 # ЗАМОК ГЕЙТА · один прогін на дерево.
@@ -113,7 +148,13 @@ touched_map() {
             # дорожчою за саму перевірку (рішення власника 2026-09-18: «має йти
             # розробка, а не перевірки»). Зламаний механізм ловить CI, і це
             # єдине місце, де повний прогін нічого не коштує власникові.
-            printf 'lint|scripts/agent-check.sh|синтаксис самого механізму перевірки\n' ;;
+            #
+            # ВИНЯТОК · видимість НЕВИКОНАНОГО. Ця перевірка коштує секунди й
+            # доводить те, чого не доводить жоден інший тест: що зелений гейт
+            # не ховає пропущених перевірок. Саме її відсутність і дала
+            # хибне зелене, тому вона йде локально, а не «в CI колись».
+            printf 'lint|scripts/agent-check.sh|синтаксис самого механізму перевірки\n'
+            printf 'test|tests/gate-skip-visibility.sh|видимість невиконаних перевірок\n' ;;
         web/*)
             printf 'test|tests/web-server.sh|сервер і сторінка\n'
             printf 'test|tests/web-actions.sh|дії сторінки\n'
@@ -302,15 +343,24 @@ touched_lint() {
 }
 
 touched_run_test() {
-    local file="$1"
+    local file="$1" code=0 out
     case "$file" in
-        *.php) run php "$file" ;;
-        *.sh) run bash "$file" ;;
-        *.ps1)
-            have pwsh || fail "не можна запустити змінений тест $file · pwsh недоступний"
-            run pwsh -File "$file" ;;
-        *) fail "карта назвала тест непідтримуваного типу: $file" ;;
+        *.ps1) have pwsh || fail "не можна запустити змінений тест $file · pwsh недоступний" ;;
     esac
+    printf '   $ %s\n' "$file"
+    out="$(mktemp)"
+    set +e
+    touched_test_command "$file" >"$out" 2>&1
+    code=$?
+    set -e
+    cat "$out"
+    if [ "$code" = "$GATE_SKIP_CODE" ]; then
+        gate_record_skip "$file" "$(tail -1 "$out")"
+        rm -f "$out"
+        return 0
+    fi
+    rm -f "$out"
+    test "$code" = 0 || fail "$file завершився з ненульовим кодом"
 }
 
 # ТЕСТИ ЙДУТЬ ПАРАЛЕЛЬНО · рішення власника 2026-09-18.
@@ -378,6 +428,12 @@ touched_run_tests() {
         total=$((total + 1))
         printf '%s\n' "$file" > "$dir/$total.name"
         (
+            # `set +e` ТУТ ОБОВʼЯЗКОВИЙ. Під `set -e` невдалий тест обривав
+            # підоболонку ДО запису коду, файл `.code` не створювався, і читач
+            # нижче підставляв 1 · будь-який код перетворювався на «провал».
+            # Поки пропусків не існувало, це нічого не міняло; з кодом 77
+            # пропуск мовчки ставав падінням (2026-09-20).
+            set +e
             touched_test_command "$file" > "$dir/$total.out" 2>&1
             printf '%s\n' "$?" > "$dir/$total.code"
         ) &
@@ -396,7 +452,9 @@ touched_run_tests() {
         if [ -s "$dir/$index.out" ]; then
             cat "$dir/$index.out"
         fi
-        if [ "$code" != 0 ]; then
+        if [ "$code" = "$GATE_SKIP_CODE" ]; then
+            gate_record_skip "$file" "$(tail -1 "$dir/$index.out" 2>/dev/null || printf 'причини не названо')"
+        elif [ "$code" != 0 ]; then
             printf 'FAIL: %s завершився з кодом %s\n' "$file" "$code" >&2
             failed=$((failed + 1))
         fi
@@ -1803,6 +1861,7 @@ tests/qa-memory-only.sh
 tests/no-silent-failures.sh
 tests/quarantine-recovery.sh
 tests/glossary-confirmed.sh
+tests/gate-skip-visibility.sh
 tests/worker-reference.sh
 tests/schema-provider-compat.sh
 tests/mechanical-final-check.sh
@@ -2007,6 +2066,7 @@ report_preflight() {
 }
 
 profile="${1:-}"
+shift 2>/dev/null || true
 # `preflight` лише читає й нічого не запускає, тому замок йому не потрібен:
 # інакше довідка про стан ставала б недоступною саме тоді, коли йде прогін.
 case "$profile" in
@@ -2015,15 +2075,39 @@ case "$profile" in
     # запускає жодної перевірки, тобто спільних `output/` і `state/` не чіпає.
     # Із замком тест карти було неможливо запустити ЗСЕРЕДИНИ гейта: він падав
     # на «гейт уже працює в цьому дереві» щоразу, коли сам себе й перевіряв.
+    selftest) : ;;
     touched|docs|shell|agents|runtime|api|full)
         [ "${BDO_GATE_TOUCHED_PLAN_ONLY:-0}" = 1 ] || gate_lock_take "$profile" ;;
 esac
 
+# `selftest` · ПЕРЕВІРКА САМОГО ГЕЙТА, і вона мусить іти ТИМ САМИМ шляхом.
+#
+# Питання «чи бачить гейт невиконану перевірку» не можна доводити читанням
+# коду: доводить його лише справжній прогін. Профіль бере перелік тестів
+# аргументами, жене їх тим самим `touched_run_tests` і падає в той самий
+# підсумок нижче · іншої гілки для пропусків не існує за побудовою.
 case "$profile" in
     preflight) report_preflight ;;
     touched) check_touched ;;
+    selftest)
+        selftest_list="$(mktemp)"
+        for selftest_file in "$@"; do
+            printf '%s\n' "$selftest_file"
+        done > "$selftest_list"
+        touched_run_tests "$selftest_list"
+        rm -f "$selftest_list"
+        ;;
     docs|shell|agents|runtime|api|full) run_gate_profile "$profile" ;;
     *) printf 'Usage: %s {preflight|touched|docs|shell|agents|runtime|api|full}\n' "$0" >&2; exit 2 ;;
 esac
 
-printf '\nAgent gate passed: %s\n' "$profile"
+gate_report_skips
+
+# ПІДСУМОК НЕ МАЄ ПРАВА МОВЧАТИ ПРО НЕВИКОНАНЕ. Рядок «passed» без згадки про
+# пропуски читався як «перевірено все» · саме так виглядав зелений гейт, у
+# якому жодна перевірка JavaScript не запускалась.
+if [ "$GATE_SKIPPED_COUNT" -gt 0 ]; then
+    printf '\nAgent gate passed: %s · НЕ ВИКОНАНО перевірок: %d (перелік вище)\n' "$profile" "$GATE_SKIPPED_COUNT"
+else
+    printf '\nAgent gate passed: %s\n' "$profile"
+fi

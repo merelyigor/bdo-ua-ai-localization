@@ -6,7 +6,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 fail() { printf 'FAIL: %s\n' "$1" >&2; exit 1; }
 
-command -v node >/dev/null 2>&1 || { echo 'web innerHTML guard: node недоступний · пропуск'; exit 0; }
+command -v node >/dev/null 2>&1 || { echo 'web innerHTML guard: ПРОПУЩЕНО · немає node, перемальовування блоків не перевірено'; exit 77; }
 
 node - "$ROOT/web/app.js" "$ROOT/web/index.html" <<'NODE'
 const fs = require('fs');

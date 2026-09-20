@@ -26,7 +26,7 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 fail() { printf 'FAIL: %s\n' "$1" >&2; exit 1; }
 
 command -v php >/dev/null 2>&1 || fail 'немає php'
-command -v curl >/dev/null 2>&1 || { echo 'web server: ПРОПУЩЕНО · немає curl'; exit 0; }
+command -v curl >/dev/null 2>&1 || { echo 'web server: ПРОПУЩЕНО · немає curl, сервер сторінки не перевірено'; exit 77; }
 
 TMP="$(mktemp -d)"
 export BDO_STATE_DIR="$TMP/state"

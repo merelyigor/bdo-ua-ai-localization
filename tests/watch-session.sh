@@ -46,7 +46,7 @@ foreach ($found as $rule) {
 
 if ! command -v tmux >/dev/null 2>&1; then
     echo 'watch session: ПРОПУЩЕНО живу частину · немає tmux (brew install tmux). Межу в коді перевірено.'
-    exit 0
+    exit 77
 fi
 
 SESSION="bdo-test-$$"
