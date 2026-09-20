@@ -1,202 +1,293 @@
-# Технічний аудит проєкту · 2026-09-20
+# Технічний аудит і план покращень · 2026-09-20
 
-## Результат
+## Статус документа
 
-Аудит завершено, код і конфігурацію не змінювали. Проєкт загалом має послідовну архітектуру, але поточний feedback loop дає хибну впевненість: повний gate падає через некоректне очікування тесту, частина production-коду не проходить PHPStan, а деякі перевірки можуть завершуватися успішно без фактичного виконання.
+Це перевірений зріз, а не норматив. Аудит повторно звірено з кодом, тестами,
+CI, git-історією та паралельною роботою на `HEAD c8de0ea`.
+
+Стани пунктів: **активне** — дефект підтверджений; **в роботі** — виправлення
+є лише в робочому дереві; **закрито** — є regression-перевірка; **не
+планувати** — висновок завищений або не має достатнього ROI.
+
+Паралельну роботу над видимістю пропусків закомічено в `c8de0ea`; локальна
+regression-перевірка зелена. Остаточний доказ у CI з’явиться після push.
 
 ## Executive Summary
 
-1. `./bdo gate full` зараз падає не через runtime-баг, а через суперечність у тесті `cli-payload-parity`: тест очікує наказ `ужий`, хоча fixture вже містить правильну назву `Залізний меч`, яку код навмисно вважає вже використаною.
-2. PHPStan перевіряє лише `lib/**` і працює на `level: 0`. Важливі production-файли в `cli/**` залишаються поза статичним аналізом.
-3. Web-тести переважно використовують Node/fake browser або `curl`; у CI немає справжнього browser smoke-тесту. За відсутності Node частина тестів повертає код 0 зі статусом `SKIP`.
-4. Документаційний gate сам виводить помилку `grep: --include=*.php: No such file or directory`, але все одно завершується успішно. Конкретна перевірка фактично може не працювати.
-5. `lib/Web/Snapshot.php` використовує Unix-команду `kill -0` як fallback. Це суперечить заявленій підтримці native Windows.
-6. `RunDriveCommand.php` і `Snapshot.php` стали великими orchestration/read-model об’єктами з багатьма відповідальностями. Це головний архітектурний ризик для майбутніх змін.
-7. Інструкції для AI-агентів дуже детальні й дубльовані в чотирьох файлах по 264 рядки. Вони синхронні, але споживають багато context window і містять історичні або нестабільні деталі.
-8. Немає підтвердженої критичної security-вразливості. Web-сервер має перевірки token, origin і loopback. Основні ризики зараз — якість перевірок, portability і maintainability.
+1. Початковий аудит був переважно правильним, але застарів: хибний
+   `cli-payload-parity` і зламана команда docs-gate вже виправлені.
+2. «Зелені пропуски» тестів закриті в `c8de0ea`: skip має exit 77, gate показує
+   окремий підсумок, а CI забороняє пропуски.
+3. Найменша актуальна runtime-проблема — Unix-команда `kill -0` у
+   `Snapshot::pidAlive()`, хоча `WebCommand` уже має Windows-гілку через
+   `tasklist.exe`.
+4. PHPStan аналізує лише `lib/**` на level 0; production entrypoints у
+   `cli/**` залишаються поза ним.
+5. Заявлена підтримка PHP 8.3+ не перевіряється: CI запускає лише PHP 8.5, а
+   bundled Windows runtime має версію 8.4.25.
+6. Чотири instruction-файли byte-identical і автоматично звіряються. Їхня
+   проблема — не суперечність, а 264 рядки з низьким signal-to-noise.
+7. `RunDriveCommand` і `Snapshot` великі, але line count не доводить потребу в
+   rewrite. Виділяти слід лише pure component під конкретну зміну.
+8. Відсутність Playwright/Selenium у CI не є medium-ризиком сама по собі:
+   Node DOM/HTTP-тести доповнює обов’язкова перевірка у браузері власника.
+9. Підтвердженої критичної security-вразливості не знайдено. Це targeted
+   review, а не penetration test.
 
 ## Highest Priority Problems
 
-### A-01. Червоний повний gate через неправильний контракт тесту
+### A-06. Unix-only PID fallback у Windows web snapshot — активне
 
-- **Severity:** High
-- **Area:** Tests / CI / Code
-- **Agent impact:** High
-- **Evidence:** `tests/cli-payload-parity.sh:20-23,110-111`; `lib/Cli/Command/Prepare/NamesPayloadCommand.php:52-61`
-- **Problem:** Fixture має candidate `Залізний меч`, а validation очікує `Залізний меч`. Тест вимагає наявності `ужий`, але код навмисно не створює такий наказ, якщо очікувана назва вже присутня.
-- **Why it matters:** Повний gate червоний, хоча це не доводить поломку production-флоу. Агент може почати виправляти робочий код, щоб задовольнити помилковий тест.
-- **Recommended change:** Або змінити fixture на справді неправильний переклад, або перевіряти порожній payload і повідомлення `вже виконано`.
-- **Expected benefit:** Gate перевірятиме реальну поведінку, а не суперечливий сценарій.
+- **Severity:** Medium.
+- **Area:** Code / Cross-platform / DX.
+- **Agent impact:** Medium.
+- **Evidence:** `lib/Web/Snapshot.php:1551-1563` викликає `kill -0` без
+  `posix_kill`; `WebCommand.php:474-516` уже використовує `tasklist.exe`;
+  `tests/windows-native-smoke.ps1` не покриває `Snapshot::pidAlive()`.
+- **Problem:** native Windows не гарантує Unix-команду `kill`; Snapshot може
+  позначити живий model call завершеним.
+- **Recommended change:** винести чинну cross-platform логіку `WebCommand` у
+  малий PHP adapter і використати його в обох consumers.
+- **Larger option:** heartbeat замість PID — не робити зараз.
+- **Expected benefit:** один process-liveness contract на всіх ОС.
+- **Risk of change:** Low/Medium.
+- **Estimated effort:** Small/Medium.
+- **Confidence:** High.
+
+Пакет реалізації для Luna High:
+
+1. Scope: новий helper у `lib/`, `Snapshot.php`, `WebCommand.php`, Windows
+   smoke і один POSIX unit-style test.
+2. Не змінювати формат `state/*.json`, lifecycle сервера або сигнали.
+3. Спершу перенести `WebCommand::isAlive()` без зміни поведінки; `Snapshot`
+   має викликати той самий helper.
+4. Додати injectable platform probe для тесту; не підміняти глобальні константи
+   й не використовувати чужий реальний PID.
+5. Regression: invalid PID → false; POSIX success/failure; Windows tasklist з
+   PID → true; аргументи передаються масивом, не shell-рядком.
+6. Focused tests, `./bdo gate touched`, `./bdo api`, `git diff --check` → exit 0.
+7. **Definition of Done:** у production немає `exec('kill -0 ...')`, обидва
+   consumers використовують adapter, Windows regression зелений.
+
+### A-02. PHPStan не охоплює весь production PHP — активне
+
+- **Severity:** Medium, не High.
+- **Area:** Code / CI.
+- **Agent impact:** High.
+- **Evidence:** `phpstan.neon` має `level: 0`, `paths: [lib]`; production
+  `cli/model/client.php` і `cli/system/web-router.php` поза scope.
+- **Problem:** зелений PHPStan не є доказом для всього runtime.
+- **Recommended change:** спочатку виміряти diagnostics для `cli/**/*.php`.
+  Невеликий список виправити напряму; baseline — лише для великого списку з
+  окремим follow-up. Не піднімати level у цій задачі.
+- **Expected benefit:** точніший machine-readable feedback.
+- **Risk of change:** Low для config, Medium для масових fixes.
+- **Estimated effort:** Medium.
+- **Confidence:** High щодо gap; обсяг diagnostics ще невідомий.
+
+Пакет реалізації для Luna High:
+
+1. Запустити чинний PHPStan і зафіксувати baseline.
+2. Тимчасово перевірити всі tracked production `cli/**/*.php`; порахувати
+   errors за файлами й класами.
+3. До 20 локальних errors — додати `cli` у paths і виправити. Більше 20 —
+   розбити план; широкий baseline автоматично не створювати.
+4. Не змінювати `level: 0`.
+5. Додати check, який падає, якщо production `cli/**/*.php` знову поза scope.
+6. PHPStan, focused tests, `./bdo gate touched`, `./bdo api`,
+   `git diff --check` → exit 0.
+7. **Definition of Done:** весь production PHP аналізується або має явно
+   обґрунтований вузький виняток.
+
+### A-08. CI не перевіряє мінімальну PHP 8.3 — активне
+
+- **Severity:** Medium.
+- **Area:** CI / Compatibility / Documentation.
+- **Agent impact:** Medium.
+- **Evidence:** README і Windows docs заявляють PHP 8.3+; усі jobs у
+  `.github/workflows/gate.yml` використовують 8.5; `bdo.bat` pin-ить 8.4.25.
+- **Problem:** API/синтаксис PHP 8.4+ може пройти CI й зламати PHP 8.3.
+- **Recommended change:** додати дешевий Linux job PHP 8.3: lint усіх tracked
+  PHP-файлів плюс вузький runtime smoke. Full gate лишити на 8.5.
+- **Expected benefit:** minimum version стає перевіреним контрактом.
 - **Risk of change:** Low.
 - **Estimated effort:** Small.
 - **Confidence:** High.
 
-### A-02. PHPStan створює неповну картину якості
+Пакет реалізації для Luna High:
 
-- **Severity:** High
-- **Area:** Code / CI
-- **Agent impact:** High
-- **Evidence:** `phpstan.neon:1-4`; production-код у `cli/system/web-router.php` та `cli/model/client.php`
-- **Problem:** Аналіз охоплює лише `lib/**`, хоча значна частина runtime живе в `cli/**`. Рівень PHPStan — `0`.
-- **Why it matters:** Агент отримує зелений static-analysis результат, хоча критичний HTTP/model runtime не перевірений типами.
-- **Recommended change:** Поетапно додати `cli/**` до аналізу, починаючи з production PHP-файлів і окремого baseline для вже наявних проблем.
-- **Expected benefit:** Менше прихованих type/runtime регресій і точніший feedback.
-- **Risk of change:** Medium: можуть з’явитися численні старі warnings.
-- **Estimated effort:** Medium.
-- **Confidence:** High.
-
-### A-03. Web-перевірки допускають false green
-
-- **Severity:** Medium
-- **Area:** Tests / CI / AI Agent
-- **Agent impact:** High
-- **Evidence:** `tests/web-inner-html-guard.sh:9`; `tests/web-live-typing.sh:17`; `tests/web-server.sh:29`; `.mcp.json:4-5`
-- **Problem:** За відсутності Node або curl тести друкують `SKIP`/`ПРОПУЩЕНО` і повертають код 0. У CI немає реального браузерного smoke-тесту.
-- **Why it matters:** Локально агент може отримати зелений результат, хоча JavaScript або browser interaction взагалі не перевірялися.
-- **Recommended change:** Розділити статуси `passed`, `skipped`, `not-run`; для критичного flow додати один реальний browser smoke у CI або явно позначити його окремим обов’язковим ручним gate.
-- **Expected benefit:** Зменшення ризику непомічених UI-регресій.
-- **Risk of change:** Medium: browser CI збільшить час і складність середовища.
-- **Estimated effort:** Medium.
-- **Confidence:** High.
-
-### A-04. Docs gate має помилкову команду, але не падає
-
-- **Severity:** Medium
-- **Area:** CI / Documentation / AI Agent
-- **Agent impact:** High
-- **Evidence:** `scripts/agent-check.sh:868-871`
-- **Problem:** `grep` отримує `--include` після шляхів і виводить `grep: --include=*.php: No such file or directory`. Помилка приховується через `|| true`.
-- **Why it matters:** Gate повідомляє `passed`, хоча перевірка викликів старих `.sh`-скриптів може фактично не виконуватися.
-- **Recommended change:** Перенести `--include` перед `--`/pattern і перевіряти exit code самого пошуку окремо від “нічого не знайдено”.
-- **Expected benefit:** Документаційний gate знову стане доказом, а не лише повідомленням.
-- **Risk of change:** Low.
-- **Estimated effort:** Small.
-- **Confidence:** High.
+1. Scope: `.github/workflows/gate.yml` і, лише за потреби, один smoke test.
+2. Job `php_83_compat`, `ubuntu-24.04`, PHP 8.3.
+3. Lint усіх tracked `*.php`, виключивши `state/`, `output/`, `legacy/`,
+   `node_modules/`.
+4. Запустити короткий existing smoke без API, Ollama і GUI.
+5. Не змінювати minimum version і не дублювати full gate для трьох версій.
+6. Локально повторити lint-команду, smoke, `./bdo gate touched`,
+   `git diff --check`.
+7. **Definition of Done:** PR CI має окремий зелений PHP 8.3 job.
 
 ## Architecture & Code Quality
 
-### A-05. Надто великі orchestration/read-model класи
+### A-05. Великі класи — спостерігати, не рефакторити окремо
 
-- **Severity:** Medium
-- **Area:** Architecture / Code / Maintainability
-- **Agent impact:** High
-- **Evidence:** `lib/Cli/Command/Run/RunDriveCommand.php` — 1183 рядки; `lib/Web/Snapshot.php` — 1549 рядків.
-- **Problem:** `RunDriveCommand` одночасно керує state transitions, retry, QA, healing, judge, names pass, записом файлів і subprocesses. `Snapshot` одночасно читає state, stream, журнали, PID, summaries і web payload.
-- **Why it matters:** Невелика зміна в одному сценарії може зачепити кілька незалежних поверхонь. Агенту важко визначити side effects і правильний вузький тест.
-- **Recommended change:** Не робити rewrite. Поступово винести pure/read-only частини: state transition handlers, file readers, stream assembler, process-status adapter.
-- **Expected benefit:** Менші поверхні змін, простіші unit-тести, менший ризик регресій.
-- **Risk of change:** Medium/High: неправильне розділення може змінити порядок state transitions.
-- **Estimated effort:** Large.
-- **Confidence:** High.
-
-### A-06. Unix-specific перевірка PID у Windows-сумісному runtime
-
-- **Severity:** Medium
-- **Area:** Architecture / Cross-platform / DX
-- **Agent impact:** Medium
-- **Evidence:** `lib/Web/Snapshot.php:1536-1547`; `docs/PROJECT_OVERVIEW.md:17-24`
-- **Problem:** Якщо немає `posix_kill`, код викликає `kill -0`. У native Windows цієї Unix-команди немає.
-- **Why it matters:** Web snapshot може помилково вважати процес завершеним або не показати активний model call.
-- **Recommended change:** Винести process-liveness у platform adapter або перейти на state/lock contract, який не залежить від Unix PID-команд. Додати Windows regression test.
-- **Expected benefit:** Однакова поведінка macOS/Linux/Windows.
-- **Risk of change:** Medium.
-- **Estimated effort:** Medium.
-- **Confidence:** High.
+- **Severity:** Low/Medium.
+- **Area:** Architecture / Maintainability.
+- **Agent impact:** Medium.
+- **Evidence:** `RunDriveCommand.php` — 1183 рядки й понад 50 methods;
+  `Snapshot.php` — 1564 рядки й понад 35 methods.
+- **Confirmed problem:** зміна state machine/read model потребує широкого
+  читання й збільшує reasoning cost.
+- **Correction:** розмір не доводить god object. Перший клас є state machine,
+  другий — агрегованим read model; централізація частково навмисна.
+- **Recommended change:** не робити class-split PR. Виносити лише pure
+  component під конкретну зміну з власним regression test. Перший кандидат —
+  process adapter з A-06.
+- **Risk of change:** High для rewrite, Low для одного helper.
+- **Estimated effort:** Large для повного поділу; його не планувати.
+- **Confidence:** Medium.
 
 ## Testing & Verification
 
-Поточний фактичний стан перевірок:
+Повторно перевірено:
 
-- `./bdo gate full` — **exit 1**, приблизно після 1:34, падіння на `tests/cli-payload-parity.sh`.
-- `./bdo gate docs` — **exit 0**, але з помилкою `grep`, описаною вище.
-- `./bdo gate agents` — **exit 0**.
-- `git diff --check` — **exit 0**.
-- Local `phpstan` — **не запущений**, executable відсутній.
-- Поточний `HEAD` — `3148bd0`; він випереджає `origin/main` на 3 коміти, тому для нього немає окремого CI-прогону.
-- Робоче дерево чисте.
+- `bash tests/cli-payload-parity.sh` → exit 0; A-01 закрито.
+- чотири instruction mirrors byte-identical; gate перевіряє тотожність і
+  ліміт 300 рядків;
+- docs-gate використовує `git grep` і розрізняє exit 1 та scanner error;
+  A-04 закрито;
+- local `phpstan` відсутній, тому кількість diagnostics для `cli/**` невідома;
+- full gate не запускався: незавершена паралельна зміна самого gate і тестів
+  зробила б результат сумішшю аудиту та чужої реалізації.
 
-Додаткові слабкі місця:
+Більше не писати як актуальний факт:
 
-- Full gate працює fail-fast і після першої помилки не показує стан інших тестів.
-- Тимчасові каталоги тестів видаляються через `trap`, а CI не завантажує failure artifacts.
-- Частина model/runtime тестів може завершуватися `SKIP`, якщо середовище не дозволяє локальний bind.
-- Коментар у `tests/web-server.sh:19-20` говорить про `sessionStorage`, тоді як код використовує `localStorage` як основне сховище (`web/app.js:20-41`).
+- full gate падає на `cli-payload-parity`;
+- docs-gate друкує `grep --include` error;
+- дерево чисте або `HEAD` дорівнює `3148bd0`;
+- skips повертають exit 0 — після `c8de0ea` це вже неправда.
+
+Низькопріоритетне:
+
+- fail-fast не показує всі failures — це нормальна властивість gate;
+- artifacts додавати лише для конкретного failure, журнал якого губиться;
+- `tests/web-server.sh` має stale comment про `sessionStorage`, тоді як primary
+  storage — `localStorage`; виправити після завершення паралельної роботи.
 
 ## AI Agent Readiness
 
-### A-07. Надмірний і дубльований instruction context
+### A-07. Instruction context має низький signal-to-noise — активне, не перше
 
-- **Severity:** Medium
-- **Area:** AI Agent / Documentation / DX
-- **Agent impact:** High
-- **Evidence:** `AGENTS.md`, `CLAUDE.md`, `QWEN.md`, `.cursorrules` — по 264 рядки кожен; `docs/AI_AGENT_RULES_REFERENCE.md` — 240 рядків; `docs/DELEGATION.md` — 214 рядків.
-- **Problem:** Дзеркала синхронні, але агент перед простою задачею потенційно отримує понад 700-1500 рядків нормативного контексту з історичними поясненнями, датами та рідкісними edge cases.
-- **Why it matters:** Зростає шанс пропустити критичне правило, переплутати актуальну норму з історичним рішенням або витратити context на інформацію, яка не стосується задачі.
-- **Recommended change:** Залишити короткий operational entrypoint із маршрутами й acceptance criteria; деталі перенести в on-demand reference. Дзеркала генерувати з одного канонічного джерела.
-- **Expected benefit:** Менше reasoning overhead і чіткіша навігація.
-- **Risk of change:** Medium: не можна просто скоротити правила без перенесення їхніх gate-перевірок.
+- **Severity:** Medium.
+- **Area:** AI Agent / Documentation / DX.
+- **Agent impact:** High.
+- **Evidence:** чотири identical файли по 264 рядки; reference — 240 рядків;
+  gate вимагає багато дослівних історичних фраз.
+- **Problem:** critical acceptance criteria конкурують з датами, причинами й
+  рідкісними edge cases.
+- **Correction:** mirrors не є різними sources of truth — gate доводить їхню
+  тотожність. Генератор не обов’язковий; важливіше скоротити канон.
+- **Recommended change:** в entrypoint лишити scope, safety boundaries,
+  routing, gates і final format. Історію та рідкісні сценарії маршрутизувати в
+  `AI_AGENT_RULES_REFERENCE.md`. Нічого не скорочувати без mechanical check.
+- **Expected benefit:** менше context overhead.
+- **Risk of change:** Medium/High.
 - **Estimated effort:** Medium.
-- **Confidence:** High.
+- **Confidence:** High щодо обсягу, Medium щодо впливу без A/B eval.
 
-Окремо `docs/DELEGATION.md:8-10` посилається на зовнішній локальний шлях, якого немає в цьому репозиторії. Це не runtime-баг, але зайва hidden dependency для агента.
+Пакет дослідження для Luna High, без переписування правил:
 
-## Documentation & Agent Instructions
+1. Таблиця для кожного bullet: `keep`, `route`, `remove as history`,
+   `already enforced by code/gate`.
+2. Для `route/remove` назвати mechanical enforcement; немає — не скорочувати.
+3. Розділити machine-specific, project-wide і task-specific правила.
+4. Ціль аналізу — entrypoint ≤150 рядків без втрати hard boundaries; це не
+   дозвіл механічно різати текст.
+5. Підготувати diff-план і потрібні gate changes, код не змінювати.
+6. **Definition of Done:** кожен рядок має долю, кожна hard boundary — check.
 
-Документація загалом добре описує intended architecture і має автоматичні parity-перевірки. Проблеми:
-
-- `AGENTS.md` позиціонується як коротка карта, але фактично містить багато повної нормативної документації.
-- `gate docs` перевіряє посилання, дзеркала й ключові рядки, але не ловить змістовну суперечність коментарів на кшталт `sessionStorage`/`localStorage`.
-- README заявляє PHP `8.3+`, тоді як CI перевіряє лише PHP `8.5`, а Windows bootstrap завантажує PHP `8.4.25`.
-- Зовнішні або швидкозмінні деталі моделей, провайдерів і delegation workflow краще не тримати в основному agent prompt.
+Посилання в `docs/DELEGATION.md` на setup сусіднього проєкту є provenance, а
+не runtime dependency; його відсутність у цьому repo не є дефектом.
 
 ## Dependency / Library Opportunities
 
-Сильних кандидатів на заміну custom code бібліотекою не знайдено.
+Нову runtime dependency аудит не рекомендує:
 
-- Composer або PHP framework не потрібні: проєкт має невеликий frameworkless runtime, власний простий autoloader і не має великого dependency graph.
-- Замінювати file-backed `state/**` на database/event bus не варто: state одночасно читають CLI, TUI і web, а DB додала б друге джерело істини.
-- Виносити process liveness у бібліотеку необов’язково; достатньо маленького platform adapter.
-- Реальний browser test runner може бути корисним, але лише для критичних сценаріїв. Додавати його як загальну залежність без визначення конкретних UI-регресій не виправдано.
+- framework/Composer не вирішують підтвердженої проблеми;
+- database/event bus не потрібні для file-backed contract `state/**`;
+- process adapter має бути малим внутрішнім класом;
+- Playwright/Selenium не додавати без browser-only failure, якого не ловлять
+  чинні Node/HTTP tests і live browser verification.
 
 ## Quick Wins
 
-1. Виправити fixture або assertion у `tests/cli-payload-parity.sh`.
-2. Виправити порядок аргументів `grep` у `scripts/agent-check.sh` і перестати приховувати помилку самого scanner.
-3. Розділити `passed`, `skipped` і `not-run` у тестових результатах.
-4. Виправити stale comment про `sessionStorage`.
-5. Зафіксувати support matrix: PHP 8.3, 8.4, 8.5 та обов’язкові локальні інструменти.
-6. Додати CI artifact для failure logs тестів, не змінюючи їхню cleanup-поведінку локально.
+1. Виправити stale comment у `tests/web-server.sh`.
+2. Додати PHP 8.3 compatibility job (A-08).
+3. Виправити Windows PID fallback (A-06).
 
 ## Larger Improvements
 
-1. Розширити PHPStan на `cli/**` із поступовим підняттям рівня.
-2. Винести з `Snapshot` platform-neutral process status і state readers.
-3. Розділити `RunDriveCommand` на окремі state/use-case handlers.
-4. Створити короткий canonical agent entrypoint і генерувати дзеркала.
-5. Додати один обмежений real-browser smoke для основного flow.
-6. Зробити CI більш відтворюваним: pin versions для зовнішніх dev tools, узгодити PHP support matrix, зберігати діагностичні артефакти.
+1. Розширити PHPStan scope без підняття level (A-02).
+2. Провести inventory instruction context, потім окремо затвердити скорочення
+   (A-07).
+3. Виносити pure components з великих класів лише під конкретну зміну (A-05).
 
 ## Things That Should NOT Be Changed
 
-- Не потрібен rewrite на framework.
-- Не потрібен Composer лише “для стандартності”.
-- Не потрібно замінювати file-based state на database.
-- Не потрібно повертати LLM orchestration; порядок кроків у коді є правильнішим рішенням.
-- Не потрібно прибирати `cli/command-registry.json` і generated `docs/COMMANDS.md`: це корисна пара source-of-truth + generated documentation.
-- Не потрібно переносити весь runtime із PHP у shell або навпаки; поточне розділення runtime PHP і development scripts має логіку.
+- Не робити framework rewrite, не додавати Composer «для стандартності».
+- Не замінювати file-backed state на database.
+- Не повертати LLM orchestration замість deterministic driver.
+- Не розбивати великі класи лише через line count.
+- Не додавати browser framework без виміряного defect.
+- Не вважати mirrors різними sources of truth.
+- Не створювати PHPStan baseline до виміру diagnostics.
+
+## Already Completed
+
+### A-01. Хибний `cli-payload-parity` — закрито
+
+Коміт `4aacb25` додав три сценарії: назви немає; назва дослівно; відмінкова
+форма. D204 закритий. Повторний тест завершився exit 0. У roadmap не повертати.
+
+### A-04. Зламана команда docs-gate — закрито
+
+`scripts/agent-check.sh` використовує `git grep -nE` і розрізняє «збігів
+немає» та scanner error. Після виправлення docs-gate мав exit 0 без старої
+помилки. У roadmap не повертати.
+
+### A-03. Невидимі пропуски тестів — закрито локально
+
+Коміт `c8de0ea` ввів exit 77, окремий підсумок пропусків і strict mode для CI.
+`bash tests/gate-skip-visibility.sh` завершився exit 0. Після push лишається
+дочекатися зеленого CI; нової реалізації для цього пункту не планувати.
 
 ## Recommended Roadmap
 
-1. **P0 — відновити довіру до gate:** виправити `cli-payload-parity`, виправити `grep` у docs gate.
-2. **P1 — прибрати false green:** явні `SKIP`/`not-run`, failure artifacts, актуальна документація про prerequisites.
-3. **P1 — закрити coverage gap:** додати production `cli/**` до PHPStan.
-4. **P2 — portability:** винести перевірку PID і додати native Windows regression.
-5. **P2 — agent context:** скоротити entrypoint та автоматизувати дзеркала.
-6. **P3 — архітектурна стабілізація:** поступово розділити `RunDriveCommand` і `Snapshot`.
-7. **P3 — browser confidence:** додати мінімальний реальний UI smoke лише після визначення критичних сценаріїв.
+1. **P1 — A-08:** дешевий PHP 8.3 compatibility job.
+2. **P1 — A-06:** спільний process adapter і Windows regression.
+3. **P2 — A-02, вимір:** порахувати PHPStan diagnostics для `cli/**`.
+4. **P2 — A-02, реалізація:** розширити scope, лишити level 0.
+5. **P3 — A-07:** тільки inventory; переписування після окремого прийняття.
+6. Не створювати задачі на class split, browser framework чи artifacts без
+   нового конкретного дефекту.
 
-## Verification
+## Загальний протокол для слабшої coding-моделі
 
-Перевірено структуру, entrypoints, runtime-код, state flow, tests, CI, gates, PHPStan configuration, agent instructions, web tooling і cross-platform paths. `gate docs` і `gate agents` завершилися з кодом 0, `gate full` — з кодом 1 на конкретному test-contract mismatch.
+Кожен пункт roadmap — окрема задача:
 
-Звіт створено без змін коду, конфігурації або тестів.
+1. Прочитати `AGENTS.md`, названі файли, tests і call sites.
+2. Перевірити `git status --short`; чужі зміни не редагувати й не комітити.
+3. Відтворити проблему або baseline до зміни.
+4. Змінити лише scope пункту; не додавати dependency/abstraction поза планом.
+5. Додати regression з negative control.
+6. Focused test, потім `./bdo gate touched && ./bdo api`, якщо пакет не задає
+   сильнішої перевірки.
+7. `git diff --check`, `git diff --stat`, повний diff, `git status --short`.
+8. Не оголошувати «вирішено» без exit 0 обов’язкової команди.
+
+## Межі впевненості
+
+- Перевірені code/config/CI/instructions, ключові execution paths і history.
+- Security-висновок не є formal penetration test.
+- Performance profiling та A/B eval agent instructions не проводились.
+- Windows PID defect доведений статично й прогалиною coverage; живого
+  відтворення на Windows у цьому аудиті не було.
