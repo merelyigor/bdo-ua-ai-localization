@@ -243,6 +243,7 @@ touched_map() {
             printf 'test|tests/api-doc-contract.sh|документований API-контракт\n'
             printf 'test|tests/cli-write-parity.sh|запис через API\n'
             printf 'test|tests/glossary-confirmed.sh|підтвердження вжитої назви\n'
+            printf 'test|tests/glossary-unknown-state.sh|«поля немає» не стає «порожньо»\n'
             printf 'test|tests/glossary-listing.sh|повний обхід глосарія\n' ;;
         lib/Batch/*)
             printf 'test|tests/pipeline-unit.php|unit-контракти batch\n'
@@ -250,6 +251,7 @@ touched_map() {
             printf 'test|tests/batch-summary.sh|підсумок пачки\n'
             printf 'test|tests/drive-memory-layers.sh|шари памʼяті drive\n'
             printf 'test|tests/glossary-provenance.sh|походження правил глосарія\n'
+            printf 'test|tests/glossary-unknown-state.sh|«поля немає» не стає «порожньо»\n'
             printf 'test|tests/qa-gap-costs-rows.sh|прогалина QA ізолює рядки\n'
             printf 'test|tests/cli-batch-clean-parity.sh|парність batch clean\n'
             printf 'test|tests/cli-batch-heal-parity.sh|парність batch heal\n' ;;
@@ -328,6 +330,7 @@ touched_map() {
             printf 'test|tests/qa-gap-costs-rows.sh|прогалина QA ізолює рядки\n'
             printf 'test|tests/rotation.sh|ротація завершених даних\n' ;;
         lib/Cli/Command/Prepare/*)
+            printf 'test|tests/glossary-unknown-state.sh|«поля немає» не стає «порожньо»\n'
             printf 'test|tests/schema-provider-compat.sh|сумісність schema провайдерів\n'
             printf 'test|tests/worker-reference.sh|довідковий текст воркера\n' ;;
         lib/Cli/Command/Run/*)
@@ -1976,6 +1979,7 @@ tests/qa-memory-only.sh
 tests/no-silent-failures.sh
 tests/quarantine-recovery.sh
 tests/glossary-confirmed.sh
+tests/glossary-unknown-state.sh
 tests/gate-skip-visibility.sh
 tests/phpstan-scope.sh
 tests/process-state.sh

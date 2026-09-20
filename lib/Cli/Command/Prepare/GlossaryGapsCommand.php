@@ -25,6 +25,7 @@ final class GlossaryGapsCommand implements Command, \Bdo\Translate\Cli\CommandHe
         }
         $rows = RowSet::fromFile($rowsFile);
         $pending = [];
+        $unknown = [];
         $unresolved = [];
         $unresolvedRows = [];
         $resolved = 0;
@@ -33,27 +34,44 @@ final class GlossaryGapsCommand implements Command, \Bdo\Translate\Cli\CommandHe
             foreach ($row->pendingTerms() as $name) {
                 $pending[$name] = true;
             }
+            foreach ($row->unknownTerms() as $name) {
+                $unknown[$name] = true;
+            }
             foreach ($row->unresolvedEntities() as $name) {
                 $unresolved[$name] = $row->identityHash();
                 $unresolvedRows[$row->identityHash()] = true;
             }
         }
         $pending = array_keys($pending);
+        $unknown = array_keys($unknown);
         $output->stdout(sprintf(
-            "Рядків: %d | затверджених термінів: %d | без відповідника: %d | нерозпізнаних назв: %d\n",
-            count($rows), $resolved, count($pending), count($unresolved),
+            "Рядків: %d | затверджених термінів: %d | без відповідника: %d | стан невідомий: %d | нерозпізнаних назв: %d\n",
+            count($rows), $resolved, count($pending), count($unknown), count($unresolved),
         ));
         foreach ($pending as $name) {
             $output->stdout("  без відповідника: {$name}\n");
+        }
+        foreach ($unknown as $name) {
+            $output->stdout("  стан невідомий: {$name}\n");
         }
         foreach ($unresolved as $name => $hash) {
             $output->stdout("  нерозпізнана назва: {$name}\n");
         }
         $output->stdout("\n");
-        if ($pending === [] && $unresolved === []) {
+        // «Прогалин немає» не має права прозвучати, поки хоч про один термін
+        // стан невідомий: саме так тихий збій і виглядає · вирок бадьорий,
+        // а глосарія в рядку немає.
+        if ($pending === [] && $unresolved === [] && $unknown === []) {
             $output->stdout("ВИРОК: прогалин немає, можна одразу до translation-worker.\n");
         } elseif ($pending !== []) {
             $output->stdout("ВИРОК: спочатку translation-terminology для цих термінів, потім worker.\n");
+        }
+        if ($unknown !== []) {
+            $output->stdout(sprintf(
+                "ВИРОК: %d термінів сервер віддав БЕЗ поля відповідника · це «невідомо», а не «порожньо».\n",
+                count($unknown),
+            ));
+            $output->stdout("        Відповідника їм не пропонуємо: затверджена людиною назва перезаписана бути не може.\n");
         }
         if ($unresolved !== []) {
             $output->stdout(sprintf(

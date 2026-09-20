@@ -39,6 +39,8 @@ final class Term
     /**
      * Український відповідник або `null`, якщо його ще немає.
      *
+     * `null` тут означає ДВІ різні речі, і розрізняє їх `knowsUkrainian()`.
+     *
      * @param  array<string,mixed>  $term
      */
     public static function ukrainian(array $term): ?string
@@ -46,5 +48,29 @@ final class Term
         $value = $term['ukrainian'] ?? $term['translation'] ?? null;
 
         return is_string($value) && trim($value) !== '' ? $value : null;
+    }
+
+    /**
+     * Чи сказав API взагалі ЩОСЬ про український відповідник.
+     *
+     * «Поля немає» і «поле порожнє» · різні відповіді, і плутати їх коштує
+     * дорого саме в цей бік: порожнє поле означає «відповідника ще не
+     * затверджено, можна пропонувати», а відсутнє означає «невідомо». Якщо
+     * проєкція відповіді звузиться (інший endpoint, інша версія, інший бекенд
+     * із парою `term`/`translation`), кожен термін виглядатиме як незатверджений,
+     * і набір почне пропонувати відповідники там, де людина вже затвердила свій.
+     * Це той самий клас, що й опис терміна, де запобіжник стоїть із D18
+     * (`has_definition` у `term-notes-queue`), лише дорожчий: відповідник
+     * потрапляє просто в переклад рядка, а не в чергу модерації.
+     *
+     * Перевіряється саме НАЯВНІСТЬ ключа, а не його значення: `ukrainian: null`
+     * є повноцінною відповіддю «порожньо», і легітимний бекенд віддає її
+     * щодня.
+     *
+     * @param  array<string,mixed>  $term
+     */
+    public static function knowsUkrainian(array $term): bool
+    {
+        return array_key_exists('ukrainian', $term) || array_key_exists('translation', $term);
     }
 }

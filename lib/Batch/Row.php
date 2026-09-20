@@ -158,7 +158,14 @@ final class Row
     }
 
     /**
-     * Обовʼязкові терміни без затвердженого відповідника.
+     * Обовʼязкові терміни з ДОВЕДЕНО порожнім відповідником.
+     *
+     * «Доведено» · це не формальність. Цей перелік є входом у пропозицію
+     * відповідника: терміни звідси йдуть у `translation-terminology` і в
+     * payload воркера як такі, для яких відповідник ще треба придумати. Тому
+     * термін потрапляє сюди лише тоді, коли API ПРЯМО сказав, що поле порожнє.
+     * Термін, про відповідник якого сервер не сказав нічого, іде в
+     * `unknownTerms()` і не пропонується · див. `Term::knowsUkrainian()`.
      *
      * @return list<string>
      */
@@ -167,7 +174,7 @@ final class Row
         $pending = [];
         foreach ($this->data['glossary']['terms'] ?? [] as $term) {
             $name = is_array($term) ? Term::name($term) : null;
-            if ($name === null) {
+            if ($name === null || ! Term::knowsUkrainian($term)) {
                 continue;
             }
             if (Term::ukrainian($term) === null && ($term['severity'] ?? null) === 'mandatory') {
@@ -176,6 +183,28 @@ final class Row
         }
 
         return array_keys($pending);
+    }
+
+    /**
+     * Терміни, про відповідник яких API не сказав нічого.
+     *
+     * Існує, щоб пропущений термін не зник МОВЧКИ: інакше звуження проєкції
+     * відповіді виглядало б як «прогалин немає», і набір спокійно поїхав би
+     * далі без глосарія. Порожній перелік є нормою й нічого не друкує.
+     *
+     * @return list<string>
+     */
+    public function unknownTerms(): array
+    {
+        $unknown = [];
+        foreach ($this->data['glossary']['terms'] ?? [] as $term) {
+            $name = is_array($term) ? Term::name($term) : null;
+            if ($name !== null && ! Term::knowsUkrainian($term)) {
+                $unknown[$name] = true;
+            }
+        }
+
+        return array_keys($unknown);
     }
 
     /**
