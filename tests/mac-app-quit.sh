@@ -24,7 +24,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 fail() { printf 'FAIL: %s\n' "$1" >&2; exit 1; }
 
-test "$(uname -s)" = Darwin || { printf 'mac app quit: ПРОПУЩЕНО · не macOS\n'; exit 77; }
+test "$(uname -s)" = Darwin || { printf 'mac app quit: НЕ ЗАСТОСОВНО · не macOS\n'; exit 78; }
 command -v php >/dev/null 2>&1 || fail 'немає php'
 
 TMP="$(mktemp -d)"

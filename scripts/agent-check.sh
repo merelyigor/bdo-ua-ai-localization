@@ -45,9 +45,26 @@ have() { command -v "$1" >/dev/null 2>&1; }
 # Тому пропуск має власний код виходу, гейт рахує такі перевірки окремо й
 # називає їх у підсумку. `BDO_GATE_NO_SKIP=1` робить будь-який пропуск
 # падінням · саме так гейт працює в CI, де всі інструменти зобовʼязані бути.
+#
+# КОД 78 · «тут НЕ ЗАСТОСОВНО», і це ІНША річ. Бандл macOS на ubuntu-runner не
+# перевіриться ніколи й ніяким встановленням інструмента: там немає ні
+# AppleScript, ні самої платформи. Заборона пропусків таку перевірку валити НЕ
+# має · інакше CI вимагав би виправити те, що виправленню не підлягає, і
+# єдиним виходом стало б прибрати заборону цілком. Тому платформа має власний
+# код: її теж рахують і називають, але вона не є боргом.
 readonly GATE_SKIP_CODE=77
+readonly GATE_NA_CODE=78
 GATE_SKIPPED_LIST=''
 GATE_SKIPPED_COUNT=0
+GATE_NA_LIST=''
+GATE_NA_COUNT=0
+
+gate_record_na() {
+    local file="$1" reason="$2"
+    GATE_NA_COUNT=$((GATE_NA_COUNT + 1))
+    GATE_NA_LIST="${GATE_NA_LIST}${file} · ${reason}
+"
+}
 
 gate_record_skip() {
     local file="$1" reason="$2"
@@ -60,6 +77,13 @@ gate_record_skip() {
 }
 
 gate_report_skips() {
+    if [ "$GATE_NA_COUNT" -gt 0 ]; then
+        step "НЕ ЗАСТОСОВНО ТУТ · $GATE_NA_COUNT перевірок"
+        printf '%s' "$GATE_NA_LIST" | while IFS= read -r line; do
+            test -n "$line" || continue
+            note "$line"
+        done
+    fi
     test "$GATE_SKIPPED_COUNT" -gt 0 || return 0
     step "НЕ ВИКОНАНО · $GATE_SKIPPED_COUNT перевірок"
     printf '%s' "$GATE_SKIPPED_LIST" | while IFS= read -r line; do
@@ -417,6 +441,11 @@ touched_run_test() {
     code=$?
     set -e
     cat "$out"
+    if [ "$code" = "$GATE_NA_CODE" ]; then
+        gate_record_na "$file" "$(tail -1 "$out")"
+        rm -f "$out"
+        return 0
+    fi
     if [ "$code" = "$GATE_SKIP_CODE" ]; then
         gate_record_skip "$file" "$(tail -1 "$out")"
         rm -f "$out"
@@ -515,7 +544,9 @@ touched_run_tests() {
         if [ -s "$dir/$index.out" ]; then
             cat "$dir/$index.out"
         fi
-        if [ "$code" = "$GATE_SKIP_CODE" ]; then
+        if [ "$code" = "$GATE_NA_CODE" ]; then
+            gate_record_na "$file" "$(tail -1 "$dir/$index.out" 2>/dev/null || printf 'причини не названо')"
+        elif [ "$code" = "$GATE_SKIP_CODE" ]; then
             gate_record_skip "$file" "$(tail -1 "$dir/$index.out" 2>/dev/null || printf 'причини не названо')"
         elif [ "$code" != 0 ]; then
             printf 'FAIL: %s завершився з кодом %s\n' "$file" "$code" >&2
@@ -2171,8 +2202,11 @@ gate_report_skips
 # ПІДСУМОК НЕ МАЄ ПРАВА МОВЧАТИ ПРО НЕВИКОНАНЕ. Рядок «passed» без згадки про
 # пропуски читався як «перевірено все» · саме так виглядав зелений гейт, у
 # якому жодна перевірка JavaScript не запускалась.
+gate_tail=''
 if [ "$GATE_SKIPPED_COUNT" -gt 0 ]; then
-    printf '\nAgent gate passed: %s · НЕ ВИКОНАНО перевірок: %d (перелік вище)\n' "$profile" "$GATE_SKIPPED_COUNT"
-else
-    printf '\nAgent gate passed: %s\n' "$profile"
+    gate_tail=" · НЕ ВИКОНАНО перевірок: $GATE_SKIPPED_COUNT (перелік вище)"
 fi
+if [ "$GATE_NA_COUNT" -gt 0 ]; then
+    gate_tail="${gate_tail} · не застосовно тут: $GATE_NA_COUNT"
+fi
+printf '\nAgent gate passed: %s%s\n' "$profile" "$gate_tail"

@@ -29,6 +29,11 @@ cat > "$TMP/passed.sh" <<'SH'
 #!/usr/bin/env bash
 echo 'підроблений тест: OK'
 SH
+cat > "$TMP/not-applicable.sh" <<'SH'
+#!/usr/bin/env bash
+echo 'підроблений тест: НЕ ЗАСТОСОВНО · вигадана платформа'
+exit 78
+SH
 cat > "$TMP/failed.sh" <<'SH'
 #!/usr/bin/env bash
 echo 'підроблений тест: зламано'
@@ -39,7 +44,12 @@ chmod +x "$TMP"/*.sh
 gate() {
     local jobs="$1"; shift
     set +e
-    BDO_GATE_JOBS="$jobs" bash "$GATE" selftest "$@" >"$TMP/out" 2>&1
+    # ЗАБОРОНУ ПРОПУСКІВ ЗАДАЄ ТЕСТ, А НЕ СЕРЕДОВИЩЕ. У CI весь крок гейта
+    # працює з `BDO_GATE_NO_SKIP=1`, і ця змінна проходила наскрізь у вкладений
+    # запуск: підроблений пропуск ставав падінням, і тест валив сам себе саме
+    # там, де доводив, що пропуск падінням НЕ є (червоний CI 2026-09-20).
+    # Розділ 5 нижче вмикає заборону явно й перевіряє саме її.
+    BDO_GATE_NO_SKIP=0 BDO_GATE_JOBS="$jobs" bash "$GATE" selftest "$@" >"$TMP/out" 2>&1
     printf '%s' "$?" > "$TMP/code"
     set -e
 }
@@ -68,6 +78,19 @@ for jobs in 1 4; do
     gate "$jobs" "$TMP/failed.sh"
     test "$(cat "$TMP/code")" != 0 || fail "потоків $jobs: зламаний тест не завалив гейт"
 
+    # 3b. «Не застосовно тут» · окрема річ від пропуску. Бандл macOS на
+    #     ubuntu-runner не перевіриться ніяким встановленням інструмента, тому
+    #     така перевірка називається окремо й боргом не рахується.
+    gate "$jobs" "$TMP/not-applicable.sh"
+    test "$(cat "$TMP/code")" = 0 || fail "потоків $jobs: незастосовна перевірка завалила гейт"
+    grep -Fq 'НЕ ЗАСТОСОВНО ТУТ · 1 перевірок' "$TMP/out" \
+        || fail "потоків $jobs: гейт не назвав незастосовну перевірку: $(cat "$TMP/out")"
+    grep -Fq 'не застосовно тут: 1' "$TMP/out" \
+        || fail "потоків $jobs: підсумок промовчав про незастосовну перевірку"
+    if grep -Fq 'НЕ ВИКОНАНО' "$TMP/out"; then
+        fail "потоків $jobs: платформу порахували як невиконану перевірку · це різні речі"
+    fi
+
     # 4. Пропуск поруч із провалом не ховає провал.
     gate "$jobs" "$TMP/skipped.sh" "$TMP/failed.sh"
     test "$(cat "$TMP/code")" != 0 || fail "потоків $jobs: провал сховався за пропуском"
@@ -81,6 +104,16 @@ set -e
 test "$code" != 0 || fail 'BDO_GATE_NO_SKIP=1 не зробив пропуск падінням'
 grep -Fq 'пропуски тут заборонені' "$TMP/out" || fail "заборона не названа причиною: $(cat "$TMP/out")"
 
+# 5b. АЛЕ ЗАБОРОНА НЕ СТОСУЄТЬСЯ ПЛАТФОРМИ. Інакше CI вимагав би виправити те,
+#     що виправленню не підлягає, і єдиним виходом стало б зняти заборону
+#     цілком · саме так і впав прогін 2026-09-20.
+set +e
+BDO_GATE_NO_SKIP=1 bash "$GATE" selftest "$TMP/not-applicable.sh" >"$TMP/out" 2>&1
+code=$?
+set -e
+test "$code" = 0 \
+    || fail "BDO_GATE_NO_SKIP=1 завалив перевірку, незастосовну на цій платформі: $(cat "$TMP/out")"
+
 # 6. Жоден тест набору не має права пропускати себе НУЛЕМ.
 #    Саме так виглядав дефект: повідомлення «ПРОПУЩЕНО» і `exit 0` поруч.
 offenders="$(
@@ -89,7 +122,7 @@ offenders="$(
         # у тексті самого правила, а не в пропуску.
         case "$file" in *_/gate-skip-visibility.sh|*/gate-skip-visibility.sh) continue ;; esac
         awk -v name="${file##*/}" '
-            /ПРОПУЩЕНО|: SKIP/ {
+            /ПРОПУЩЕНО|НЕ ЗАСТОСОВНО|: SKIP/ {
                 if ($0 ~ /exit 0/) { print name": "FNR; next }
                 pending = FNR; next
             }

@@ -23,8 +23,8 @@ fail() { printf 'FAIL: %s\n' "$1" >&2; exit 1; }
 # цього переліку, тому прогін там нічого не доводить · чесніше сказати про
 # пропуск, ніж вигадати вирок (CI ходить на ubuntu-runner).
 if [ "$(uname -s)" != Darwin ]; then
-    printf 'gui path: ПРОПУЩЕНО · кліковий вхід є артефактом macOS, а тут %s\n' "$(uname -s)"
-    exit 77
+    printf 'gui path: НЕ ЗАСТОСОВНО · кліковий вхід є артефактом macOS, а тут %s\n' "$(uname -s)"
+    exit 78
 fi
 
 APPLESCRIPT="$ROOT/cli/system/mac-app.applescript"
@@ -64,8 +64,8 @@ test "$code" -le 1 \
 # 5. Зворотний бік: на ГОЛОМУ PATH php справді недосяжний, інакше пункти 2-4
 #    нічого не доводять · вони проходили б і зі зламаним бандлом.
 if env -i PATH='/usr/bin:/bin:/usr/sbin:/sbin' bash -c 'command -v php' >/dev/null 2>&1; then
-    printf 'gui path: ПРОПУЩЕНО · php лежить у базовому PATH, перевірка нічого не доводить\n'
-    exit 77
+    printf 'gui path: НЕ ЗАСТОСОВНО · php лежить у базовому PATH, перевірка нічого не доводить\n'
+    exit 78
 fi
 
 echo 'gui path: OK · клік по значку стартує php без термінального PATH і без жодного shell-скрипта'
