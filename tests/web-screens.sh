@@ -576,6 +576,12 @@ grep -Fq 'продовжити пачку' "$ROOT/web/index.html" \
 # resume. Питаємо ВИКЛИК дії, а не текст кнопки.
 grep -Fq "action: 'run.continue'" "$ROOT/web/index.html" \
     || fail 'кнопка «продовжити пачку» не виконує дії · веде на форму замість продовження (D101)'
+grep -Fq "B.get('/api/state').then(function (state)" "$ROOT/web/index.html" \
+    || fail 'після паузи UI не перечитує стан без перезавантаження сторінки'
+grep -Fq "contBtn.style.display = (resume || pausePending) ? '' : 'none';" "$ROOT/web/index.html" \
+    || fail 'кнопка продовження показується для звичайного фінішу, а не лише після паузи'
+grep -Fq "navContinue.style.display = (resumablePause || pausePending) ? '' : 'none';" "$ROOT/web/index.html" \
+    || fail 'стикі кнопка продовження показується для звичайного фінішу'
 grep -Fq "case 'run.continue':" "$ROOT/lib/Run/Actions.php" \
     || fail 'планувальник не знає run.continue · кнопка не має команди з реєстру'
 # ЗАВЕРШЕНА ПАЧКА НЕ ПРОДОВЖУЄТЬСЯ (D105). Канонічний terminal state пачки —

@@ -223,12 +223,16 @@
     var navContinue = B.el('navContinueBtn');
     var navStart = B.el('navStartLink');
     if (navStop) { navStop.disabled = !s.running; }
+    var pausePending = !!s.paused && !!s.running;
+    var resumablePause = resume;
     if (navContinue) {
-      navContinue.style.display = (resume || completed) ? '' : 'none';
-      navContinue.disabled = !resume;
-      navContinue.setAttribute('aria-disabled', String(!resume));
+      // Пауза прийнята, але поточний крок ще дописує результат: показуємо
+      // майбутню дію одразу, але не дозволяємо натиснути її раніше часу.
+      navContinue.style.display = (resumablePause || pausePending) ? '' : 'none';
+      navContinue.disabled = !resumablePause;
+      navContinue.setAttribute('aria-disabled', String(!resumablePause));
     }
-    if (navStart) { navStart.style.display = resume ? 'none' : ''; }
+    if (navStart) { navStart.style.display = (resumablePause || pausePending) ? 'none' : ''; }
   }
 
   function bindRunContext() {
@@ -747,7 +751,7 @@
     // сесії, а не пачки, тому перевірка його тут пропускала завершені пачки
     // в гілку «можна продовжити» (саме так зʼявлявся суперечливий екран).
     var completed = !s.running && !!b.id && batchState === 'verified';
-    var resume = !s.running && !!b.id && !completed && batchState !== 'failed_terminal';
+    var resume = !!s.paused && !s.running && !!b.id && !completed && batchState !== 'failed_terminal';
     if (completed) {
       idle.textContent = 'Пачку завершено автоматично · стоїть на кроці «'
         + (b.state_label || batchState) + '». Це не зависання і не ручна зупинка. '
@@ -782,17 +786,17 @@
     var contBtn = B.el('continueBtn');
     var startLink = B.el('startLink');
     if (contBtn) {
-      // Завершену пачку залишаємо видимою, але явно вимкненою: власник бачить,
-      // що продовження існує для перерваних пачок, але тут воно недоступне.
-      contBtn.style.display = (resume || completed) ? '' : 'none';
+      var pausePending = !!s.paused && !!s.running;
+      contBtn.style.display = (resume || pausePending) ? '' : 'none';
       contBtn.disabled = !resume;
       contBtn.setAttribute('aria-disabled', String(!resume));
       contBtn.title = resume
         ? 'веде пачку ' + b.id + ' далі з кроку «' + (b.state_label || b.state || '?')
           + '» · нова пачка не братиметься'
+        : pausePending ? 'паузу прийнято · поточний крок завершується, продовження зʼявиться після зупинки'
         : completed ? 'пачку завершено автоматично · продовження недоступне' : '';
     }
-    if (startLink) { startLink.style.display = resume ? 'none' : ''; }
+    if (startLink) { startLink.style.display = (resume || pausePending) ? 'none' : ''; }
     renderRunContext(s, b, completed, resume);
 
     // РОЛЬ ВИДНО ВЕСЬ ЧАС, ПОКИ ВОНА ПРАЦЮЄ · не лише поки йдуть символи.
@@ -1014,6 +1018,28 @@
   B.live(render, function (d) { feed.delta(d); });
   bindRunContext();
 
+  // Після дії сторінка не має залежати від того, коли SSE надішле наступний
+  // знімок. Пауза кладе прапорець одразу, але цикл може ще завершувати поточний
+  // крок, тому перечитуємо стан до фактичної зупинки й не просимо reload.
+  var pauseSyncTimer = null;
+  function syncPauseState() {
+    if (pauseSyncTimer) { clearTimeout(pauseSyncTimer); pauseSyncTimer = null; }
+    var attempts = 0;
+    var refresh = function () {
+      if (document.hidden) { pauseSyncTimer = null; return; }
+      B.get('/api/state').then(function (state) {
+        render(state);
+        if (state.running && attempts < 180) {
+          attempts++;
+          pauseSyncTimer = setTimeout(refresh, 1000);
+        } else {
+          pauseSyncTimer = null;
+        }
+      }).catch(function () { pauseSyncTimer = null; });
+    };
+    refresh();
+  }
+
   B.el('pauseBtn').onclick = function () {
     var msg = B.el('actionMsg');
     msg.style.color = '';
@@ -1024,6 +1050,7 @@
       msg.textContent = ok
         ? 'пауза буде після поточного кроку · пачка лишиться на місці'
         : 'не вдалося поставити паузу';
+      if (ok) { syncPauseState(); }
     });
   };
 
