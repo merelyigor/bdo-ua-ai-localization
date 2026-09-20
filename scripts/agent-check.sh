@@ -777,8 +777,17 @@ check_rules() {
         || fail "у $RULE_REFERENCE немає обовʼязкового очікування CI"
     grep -Fq '§14 Браузерний інтерфейс як основна поверхня власника' "$RULE_REFERENCE" \
         || fail "у $RULE_REFERENCE немає §14 про браузерний інтерфейс"
-    # Розмір пачки зафіксовано на 50 (рішення власника 2026-08-28) і це стеля
-    # запису API (`/me` -> `max_items`). Джерело правди · валідатор fetch.
+    # РОЗМІР ПАЧКИ · ВИБІР ВЛАСНИКА В МЕЖАХ API (рішення власника 2026-09-21).
+    #
+    # До цього тут стояло `test "$plan_size" -eq 50` · жорстке число. Воно
+    # тримало правильну річ (одне джерело розміру), але заодно забороняло
+    # ВИБІР, якого власник просив: змінити розмір пачки з екрана було
+    # неможливо. Тепер перевіряється справжній інваріант · дефолт лишився 50,
+    # межі вибору беруться з живого валідатора `fetch-rows`, і планувальник
+    # мусить сам відмовляти на значенні поза ними.
+    #
+    # Правило вимірювання від цього не змінилось і живе в §6.8 довідника:
+    # механіку перевіряють найменшою достатньою пачкою, поведінку моделі · на 50.
     local fetch_min fetch_max plan_size composers
     fetch_min="$(php -r 'require $argv[1]; echo Bdo\Translate\Cli\Command\Api\FetchRowsCommand::MIN_BATCH;' lib/autoload.php 2>/dev/null || true)"
     fetch_max="$(php -r 'require $argv[1]; echo Bdo\Translate\Cli\Command\Api\FetchRowsCommand::MAX_BATCH;' lib/autoload.php 2>/dev/null || true)"
@@ -791,7 +800,38 @@ check_rules() {
     test -n "$plan_size" || fail 'lib/Run/Actions.php не називає розміру пачки'
     test "$plan_size" -ge "$fetch_min" && test "$plan_size" -le "$fetch_max" \
         || fail "планувальник бере пачку $plan_size поза діапазоном fetch $fetch_min-$fetch_max"
-    test "$plan_size" -eq 50 || fail "планувальник бере пачку $plan_size; зафіксовано рівно 50"
+    test "$plan_size" -eq 50 || fail "дефолт розміру пачки $plan_size; зафіксовано рівно 50"
+    # ВИБІР МУСИТЬ ПЕРЕВІРЯТИСЬ ЖИВИМИ МЕЖАМИ, А НЕ ЇХНЬОЮ КОПІЄЮ. Друга копія
+    # діапазону означала б, що сторінка пропускає розмір, на якому `fetch-rows`
+    # відмовить уже ПІСЛЯ відбору пачки · власник побачив би помилку не там, де
+    # її зробив. Тому перевіряється поведінка планувальника на межах, а не текст.
+    php -r '
+        require $argv[1];
+        use Bdo\Translate\Cli\Command\Api\FetchRowsCommand as F;
+        use Bdo\Translate\Run\Actions;
+        $fail = static function (string $why): void { fwrite(STDERR, $why."\n"); exit(1); };
+        if (Actions::rowsPerBatch([]) !== Actions::BATCH_SIZE) {
+            $fail("порожній вибір не дає дефолтного розміру пачки");
+        }
+        if (Actions::rowsPerBatch(["rows" => (string) F::MIN_BATCH]) !== F::MIN_BATCH) {
+            $fail("планувальник не приймає мінімального розміру, який віддає API");
+        }
+        if (Actions::rowsPerBatch(["rows" => (string) F::MAX_BATCH]) !== F::MAX_BATCH) {
+            $fail("планувальник не приймає максимального розміру, який віддає API");
+        }
+        foreach ([F::MIN_BATCH - 1, F::MAX_BATCH + 1] as $bad) {
+            try {
+                Actions::rowsPerBatch(["rows" => (string) $bad]);
+                $fail("планувальник пропустив розмір ".$bad." поза межами API");
+            } catch (RuntimeException) {
+            }
+        }
+        try {
+            Actions::rowsPerBatch(["rows" => "50; rm -rf /"]);
+            $fail("планувальник прийняв нечислове значення розміру пачки");
+        } catch (RuntimeException) {
+        }
+    ' lib/autoload.php || fail 'планувальник не стереже меж розміру пачки'
     # МЕЖА ПРОТИ ДВОХ ПРАВД. `mode start` кличуть рівно два місця, і кожне з них
     # названо тут разом із причиною:
     #   lib/Run/Actions.php   · СКЛАДАЄ аргументи з вибору людини (обидві

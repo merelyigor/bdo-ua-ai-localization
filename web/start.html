@@ -77,6 +77,15 @@
           <select id="domain"><option value="">усі</option></select>
           <label class="empty" for="batches">пачок</label>
           <input id="batches" type="number" min="1" max="200" value="1">
+          <!-- РОЗМІР ПАЧКИ · ВИБІР ВЛАСНИКА (2026-09-21). До цього 50 було
+               вшите в планувальник, і з екрана його змінити не можна було
+               взагалі. Межі 20-100 не вигадані тут: їх віддає валідатор
+               `fetch-rows`, тому поле не може пообіцяти розмір, на якому прогін
+               упаде після відбору пачки. На відміну від числа пачок, це поле
+               ЖИВЕ й у режимі «перекласти все»: там немає стелі на кількість
+               пачок, але розмір кожної лишається вибором. -->
+          <label class="empty" for="rows">рядків у пачці</label>
+          <input id="rows" type="number" min="20" max="100" step="10" value="50">
           <!-- ПОВНИЙ ПРОГІН · ОКРЕМИЙ ПЕРЕМИКАЧ, а не третій стан поля числа.
                Перша редакція зробила з цього випадайку «обсяг», і поле числа
                лишалось на екрані мертвим · власник сказав прямо, що так
@@ -260,16 +269,27 @@
       return;
     }
     var left = Number(found.missing_machine) || 0;
-    var batches = Math.max(1, Math.ceil(left / 50));
+    var size = rowsPerBatch() || 50;
+    var batches = Math.max(1, Math.ceil(left / size));
     // У режимі «усе» число пачок не є вибором власника · його визначає сам
     // залишок, тому й у підказці стоїть не «приблизно скільки взяти», а
     // «стільки буде зроблено, і зупиниться воно саме».
     var scope = allScope()
-      ? ' рядків без ШІ-шару · прогін візьме їх УСІ, пачками по 50, і спиниться сам, коли робота скінчиться'
-      : ' рядків без ШІ-шару · це приблизно ' + B.num(batches) + ' пачок по 50';
+      ? ' рядків без ШІ-шару · прогін візьме їх УСІ, пачками по ' + size + ', і спиниться сам, коли робота скінчиться'
+      : ' рядків без ШІ-шару · це приблизно ' + B.num(batches) + ' пачок по ' + size;
     B.el('patchHint').textContent = (value === 'active' ? 'в активному патчі ' : 'у патчі ')
       + found.patch + ' лишилось ' + B.num(left) + scope
       + (patchesFromCache ? ' · числа з кешу, оновлюються раз на 5 хв' : ' · числа щойно з API');
+  }
+
+  // Розмір пачки з поля · порожнє або поламане значення означає «як було»,
+  // тобто дефолт планувальника. Підказка й план мусять брати ОДНЕ й те саме
+  // число, інакше екран пообіцяв би не те, що виконає сервер.
+  function rowsPerBatch() {
+    var box = B.el('rows');
+    if (!box) { return 0; }
+    var n = parseInt(box.value, 10);
+    return (n >= 20 && n <= 100) ? n : 0;
   }
 
   // Обсяг роботи: рахуємо пачки чи беремо все, що лишилось у патчі.
@@ -296,6 +316,10 @@
     // не лишилось. Тому в режимі «усе» ключ `batches` у план просто не йде.
     var batches = allScope() ? '' : B.el('batches').value;
     if (batches) { p.batches = batches; }
+    // РОЗМІР ПАЧКИ ЙДЕ ЗАВЖДИ · і з стелею на кількість пачок, і без неї.
+    // «Перекласти все» знімає стелю, а не робить розмір чужим вибором.
+    var rows = rowsPerBatch();
+    if (rows) { p.rows = String(rows); }
     return p;
   }
 
@@ -352,19 +376,19 @@
 
   // Відновлюємо збережене ДО першого показу команди, інакше перший рендер
   // покаже одне, а памʼять · інше.
-  ['domain', 'batches', 'scopeAll'].forEach(function (id) {
+  ['domain', 'batches', 'rows', 'scopeAll'].forEach(function (id) {
     var node = B.el(id);
     var saved = P.get(id, null);
     if (saved === null) { return; }
     if (node.type === 'checkbox') { node.checked = !!saved; } else { node.value = saved; }
   });
-  ['domain', 'batches', 'scopeAll'].forEach(function (id) {
+  ['domain', 'batches', 'rows', 'scopeAll'].forEach(function (id) {
     var node = B.el(id);
     node.addEventListener('change', function () {
       P.set(id, node.type === 'checkbox' ? node.checked : node.value);
     });
   });
-  ['domain', 'batches', 'scopeAll'].forEach(function (id) {
+  ['domain', 'batches', 'rows', 'scopeAll'].forEach(function (id) {
     B.el(id).onchange = refresh;
     B.el(id).oninput = refresh;
   });

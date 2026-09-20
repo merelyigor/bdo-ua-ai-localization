@@ -453,4 +453,80 @@ grep -Fq 'id="batches" type="number"' "$ROOT/web/start.html" \
 grep -Fq "allScope() ? ''" "$ROOT/web/start.html" \
     || fail 'сторінка шле кількість пачок навіть у режимі «перекласти все»'
 
-echo 'web actions: OK · кожна дія є командою з реєстру, POST зі своєю Origin, PROD вимагає підтвердження, рядок із браузера не стає командою, помилка сторінки лишає слід у файлі.'
+# РОЗМІР ПАЧКИ · ВИБІР ВЛАСНИКА В МЕЖАХ API (рішення власника 2026-09-21).
+#
+# До цього 50 було вшите в планувальник, і змінити його з екрана було
+# неможливо. Небезпека нового поля не в самому виборі, а в ДВОХ місцях, де він
+# міг би розійтися: межі поля проти меж `fetch-rows` (сторінка обіцяла б розмір,
+# на якому прогін упаде вже ПІСЛЯ відбору пачки) і «перекласти все» проти
+# звичайного прогону (зняття стелі на КІЛЬКІСТЬ пачок не робить чужим вибір
+# їхнього РОЗМІРУ).
+# САБОТАЖ: віддати `rows` повз перевірку меж, перестати слати його в режимі
+# «усе», заглушити поле перемикачем або прибрати зі сторінки · кожен рядок
+# нижче червоніє окремо.
+php -r '
+require $argv[1];
+use Bdo\Translate\Cli\Command\Api\FetchRowsCommand as F;
+use Bdo\Translate\Run\Actions;
+$size = static function (array $payload): string {
+    foreach (Actions::plan("run.start", $payload)["steps"] as $step) {
+        if (($step[1] ?? "") === "mode") { return (string) ($step[4] ?? ""); }
+    }
+    return "";
+};
+$base = ["mode" => "patch", "patch" => "9"];
+if ($size($base) !== (string) Actions::BATCH_SIZE) {
+    fwrite(STDERR, "FAIL: без вибору пачка перестала бути дефолтною\n"); exit(1);
+}
+if ($size(array_merge($base, ["rows" => "30"])) !== "30") {
+    fwrite(STDERR, "FAIL: обраний розмір пачки не дійшов до mode start\n"); exit(1);
+}
+if ($size(array_merge($base, ["rows" => "30", "batches" => 4])) !== "30") {
+    fwrite(STDERR, "FAIL: разом зі стелею пачок розмір загубився\n"); exit(1);
+}
+foreach ([F::MIN_BATCH, F::MAX_BATCH] as $edge) {
+    if ($size(array_merge($base, ["rows" => (string) $edge])) !== (string) $edge) {
+        fwrite(STDERR, "FAIL: межа діапазону API ".$edge." не приймається\n"); exit(1);
+    }
+}
+foreach ([(string) (F::MIN_BATCH - 1), (string) (F::MAX_BATCH + 1), "0", "abc", "50 1"] as $bad) {
+    try {
+        Actions::plan("run.start", array_merge($base, ["rows" => $bad]));
+        fwrite(STDERR, "FAIL: прийнято неприпустимий розмір пачки: ".$bad."\n"); exit(1);
+    } catch (RuntimeException) {
+    }
+}
+' "$ROOT/lib/autoload.php" || fail 'планувальник не тримає меж розміру пачки'
+
+grep -Fq 'id="rows" type="number"' "$ROOT/web/start.html" \
+    || fail 'на сторінці старту немає поля розміру пачки · власник знову не зможе його змінити'
+# Межі поля мусять збігатися з тими, що віддає валідатор `fetch-rows`.
+php -r '
+require $argv[1];
+use Bdo\Translate\Cli\Command\Api\FetchRowsCommand as F;
+$html = (string) file_get_contents($argv[2]);
+if (! preg_match("/id=\"rows\"[^>]*min=\"([0-9]+)\"[^>]*max=\"([0-9]+)\"/", $html, $m)) {
+    fwrite(STDERR, "FAIL: поле розміру пачки без меж min/max\n"); exit(1);
+}
+if ((int) $m[1] !== F::MIN_BATCH || (int) $m[2] !== F::MAX_BATCH) {
+    fwrite(STDERR, "FAIL: межі поля ".$m[1]."-".$m[2]." розійшлись з API ".F::MIN_BATCH."-".F::MAX_BATCH."\n");
+    exit(1);
+}
+' "$ROOT/lib/autoload.php" "$ROOT/web/start.html" || fail 'межі поля розміру пачки розійшлися з API'
+# Памʼять вибору · там само, де кількість пачок і «перекласти все».
+FLAT_START="$(tr '\n' ' ' < "$ROOT/web/start.html" | tr -s ' ')"
+case "$FLAT_START" in
+    *"'batches', 'rows', 'scopeAll'"*) ;;
+    *) fail 'розмір пачки не потрапив у памʼять вибору власника' ;;
+esac
+# Розмір іде в план ЗАВЖДИ · «перекласти все» знімає стелю на кількість пачок,
+# а не забирає вибір розміру.
+case "$FLAT_START" in
+    *'p.rows = String(rows)'*) ;;
+    *) fail 'сторінка не надсилає розміру пачки в план' ;;
+esac
+case "$FLAT_START" in
+    *"B.el('rows').disabled"*) fail 'поле розміру пачки глушиться перемикачем · розмір лишається вибором власника' ;;
+esac
+
+echo 'web actions: OK · кожна дія є командою з реєстру, POST зі своєю Origin, PROD вимагає підтвердження, рядок із браузера не стає командою, розмір пачки є вибором у межах API, помилка сторінки лишає слід у файлі.'

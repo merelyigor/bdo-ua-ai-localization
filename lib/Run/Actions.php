@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Bdo\Translate\Run;
 
+use Bdo\Translate\Cli\Command\Api\FetchRowsCommand;
 use Bdo\Translate\Ui\Labels;
 use RuntimeException;
 
@@ -42,7 +43,19 @@ final class Actions
         'world', 'knowledge', 'dialogue', 'title', 'mission', 'market', 'unknown',
     ];
 
-    /** Розмір пачки зафіксовано рішенням власника 2026-08-28 і стелею API. */
+    /**
+     * Розмір пачки ЗА ЗАМОВЧУВАННЯМ · 50 (рішення власника 2026-08-28).
+     *
+     * До 2026-09-21 це число було єдиним можливим, і власник не мав як його
+     * змінити з екрана. Тепер розмір є ВИБОРОМ власника, а 50 лишилось тим, що
+     * стоїть у полі, поки він нічого не міняв. Межі вибору не вигадуються тут:
+     * їх дає сам API (`FetchRowsCommand::MIN_BATCH`/`MAX_BATCH`), бо інакше
+     * сторінка обіцяла б розмір, якого сервер не віддасть.
+     *
+     * Правило вимірювання лишається чинним і від цього не залежить: механіку
+     * перевіряють найменшою достатньою пачкою, а поведінку МОДЕЛІ на
+     * навантаженні · на робочому розмірі 50 (§6.8 довідника).
+     */
     public const BATCH_SIZE = 50;
 
     public const MAX_BATCHES = 200;
@@ -115,7 +128,7 @@ final class Actions
                 if ($domain !== '') {
                     $domain = self::enum('domain', $domain, self::DOMAINS);
                 }
-                $start = ['./bdo', 'mode', 'start', $mode, (string) self::BATCH_SIZE, $patch];
+                $start = ['./bdo', 'mode', 'start', $mode, (string) self::rowsPerBatch($payload), $patch];
                 if ($domain !== '') {
                     $start[] = $domain;
                 }
@@ -552,6 +565,40 @@ final class Actions
         }
 
         return $value;
+    }
+
+    /**
+     * Скільки рядків брати в одну пачку · вибір власника в межах, які дає API.
+     *
+     * МЕЖІ ЧИТАЮТЬСЯ З ЖИВОГО ВАЛІДАТОРА, а не переписуються сюди числами.
+     * `fetch-rows` однаково відмовить на значенні поза діапазоном, і друга
+     * копія меж означала б, що сторінка пропускає розмір, на якому прогін
+     * упаде вже після відбору пачки · тобто помилку власник побачив би пізно
+     * і не там, де її зробив.
+     *
+     * Порожнє або відсутнє значення · не помилка, а «власник не міняв»: тоді
+     * діє `BATCH_SIZE`. Це важливо для вікна в терміналі й для `run.start` без
+     * поля, які про розмір нічого не знають.
+     *
+     * @param  array<string,mixed>  $payload
+     */
+    public static function rowsPerBatch(array $payload): int
+    {
+        $raw = trim((string) ($payload['rows'] ?? ''));
+        if ($raw === '') {
+            return self::BATCH_SIZE;
+        }
+        if (! preg_match('/^[0-9]+$/', $raw)) {
+            throw new RuntimeException('rows: потрібно ціле число, отримано «'.$raw.'»');
+        }
+        $rows = (int) $raw;
+        $min = FetchRowsCommand::MIN_BATCH;
+        $max = FetchRowsCommand::MAX_BATCH;
+        if ($rows < $min || $rows > $max) {
+            throw new RuntimeException('rows: API віддає пачку від '.$min.' до '.$max.' рядків, отримано '.$rows);
+        }
+
+        return $rows;
     }
 
     private static function count(string $field, mixed $value, int $max): int
