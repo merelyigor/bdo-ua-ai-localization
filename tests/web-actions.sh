@@ -313,6 +313,16 @@ printf '{"content":"жи"}\n' > "$BDO_STATE_DIR/run-stream.log"
 test "$(running "$BDO_STATE_DIR")" = yes \
     || fail 'свіжий рух у журналі токенів не вважається прогоном · сторінка казала б «не працює» посеред роботи (D69)'
 
+# Фінальний запис теж свіжий, але завершена пачка вже не є живим прогоном.
+# До D195 ця евристика ще 120 секунд блокувала кнопку нового старту.
+mkdir -p "$BDO_STATE_DIR/batches/20260101_000000_abc123"
+printf '%s\n' '20260101_000000_abc123' > "$BDO_STATE_DIR/current-batch"
+printf '%s\n' '{"id":"20260101_000000_abc123","state":"verified","rows":50}' \
+    > "$BDO_STATE_DIR/batches/20260101_000000_abc123/manifest.json"
+test "$(running "$BDO_STATE_DIR")" = no \
+    || fail 'завершена пачка зі свіжим журналом блокує новий старт (D195)'
+rm -rf "$BDO_STATE_DIR/batches/20260101_000000_abc123" "$BDO_STATE_DIR/current-batch"
+
 # Довга тиша · це «не працює», і саме так і треба показати: завислий прогін не
 # має виглядати як робочий.
 php -r 'touch($argv[1], time() - 600);' "$BDO_STATE_DIR/run-stream.log"

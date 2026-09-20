@@ -23,6 +23,9 @@ final class RunLoopCommand implements Command, \Bdo\Translate\Cli\CommandHelp
     private string $stateDir;
     private string $transcript;
 
+    /** @var resource|null Замок живого циклу; існування файла саме по собі нічого не означає. */
+    private $loopLock = null;
+
     /** @return list<string> */
     public static function timedSteps(): array
     {
@@ -45,17 +48,56 @@ final class RunLoopCommand implements Command, \Bdo\Translate\Cli\CommandHelp
         }
         $this->transcript = rtrim($this->stateDir, '/').'/run-transcript.log';
 
-        try {
-            return $this->loop($batchLimit, $once, $output);
-        } catch (RuntimeException $exception) {
-            $output->stderr('ЗУПИНКА: '.$exception->getMessage()."\n");
-
-            return 1;
-        } catch (\Throwable $exception) {
-            $output->stderr('ЗУПИНКА: '.$exception->getMessage()."\n");
+        if (! $this->acquireLoopLock()) {
+            $output->stderr("ЗУПИНКА: у цій теці стану вже працює інший прогін.\n");
 
             return 1;
         }
+
+        try {
+            try {
+                return $this->loop($batchLimit, $once, $output);
+            } catch (RuntimeException $exception) {
+                $output->stderr('ЗУПИНКА: '.$exception->getMessage()."\n");
+
+                return 1;
+            } catch (\Throwable $exception) {
+                $output->stderr('ЗУПИНКА: '.$exception->getMessage()."\n");
+
+                return 1;
+            }
+        } finally {
+            $this->releaseLoopLock();
+        }
+    }
+
+    /** Цей lock живе рівно стільки, скільки сам цикл, а не tmux-панель після нього. */
+    private function acquireLoopLock(): bool
+    {
+        $path = rtrim($this->stateDir, '/').'/run-loop.lock';
+        $handle = @fopen($path, 'c+b');
+        if ($handle === false || ! @flock($handle, LOCK_EX | LOCK_NB)) {
+            if (is_resource($handle)) {
+                fclose($handle);
+            }
+
+            return false;
+        }
+        ftruncate($handle, 0);
+        fwrite($handle, (string) getmypid()."\n");
+        fflush($handle);
+        $this->loopLock = $handle;
+
+        return true;
+    }
+
+    private function releaseLoopLock(): void
+    {
+        if (is_resource($this->loopLock)) {
+            @flock($this->loopLock, LOCK_UN);
+            fclose($this->loopLock);
+        }
+        $this->loopLock = null;
     }
 
     /** @return array{0:int|null,1:bool} */

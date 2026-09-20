@@ -428,6 +428,13 @@ final class Snapshot
      */
     public function running(): bool
     {
+        // Єдина пряма ознака життя ВСЬОГО циклу. tmux-панель після завершення
+        // навмисно лишається відкритою, а свіжий фінальний рядок журналу ще
+        // 120 секунд виглядав як активність і блокував новий старт (D195).
+        if ($this->loopActive()) {
+            return true;
+        }
+
         foreach (glob($this->path('batches').'/*/drive.lock') ?: [] as $lock) {
             if (! is_link($lock)) {
                 continue;
@@ -438,7 +445,32 @@ final class Snapshot
             }
         }
 
+        $manifest = $this->currentManifest();
+        if (in_array((string) ($manifest['state'] ?? ''), ['committed', 'verified', 'failed_terminal'], true)) {
+            return false;
+        }
+
         return $this->recentActivity();
+    }
+
+    /** Файл може лишитись після аварії; активність означає зайнятий OS-lock. */
+    private function loopActive(): bool
+    {
+        $path = $this->path('run-loop.lock');
+        if (! is_file($path)) {
+            return false;
+        }
+        $handle = @fopen($path, 'rb');
+        if ($handle === false) {
+            return false;
+        }
+        $acquired = @flock($handle, LOCK_EX | LOCK_NB);
+        if ($acquired) {
+            @flock($handle, LOCK_UN);
+        }
+        fclose($handle);
+
+        return ! $acquired;
     }
 
     /**
