@@ -9,7 +9,6 @@
 #   agents     OpenCode config, prompts, model allowlist і routing guard
 #   runtime    локальна Ollama-модель, явно й окремо
 #   api        read-only Agent API smoke, явно й окремо
-#   full       docs + shell + agents, без зовнішніх model/API calls
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -119,16 +118,20 @@ gate_lock_take() {
 changed_files() {
     {
         git status --porcelain | sed -n 's/^.. //p'
-        if git rev-parse --verify --quiet origin/main >/dev/null 2>&1; then
-            git diff --name-only origin/main...HEAD
+        if [ "${BDO_GATE_TOUCHED_ALL:-0}" = 1 ]; then
+            git ls-files
+        elif [ -n "${BDO_GATE_TOUCHED_BASE:-}" ]; then
+            git rev-parse --verify --quiet "${BDO_GATE_TOUCHED_BASE}^{commit}" >/dev/null 2>&1 \
+                || fail "BDO_GATE_TOUCHED_BASE не є доступним комітом: $BDO_GATE_TOUCHED_BASE"
+            git diff --name-only "$BDO_GATE_TOUCHED_BASE" HEAD
         fi
     } | sort -u
 }
 
 # Карта `gate touched` · єдине місце, де шлях пов'язується з перевіркою.
 # Причина кожного запису друкується разом із вибором, щоб звуження gate не було
-# мовчазним. Профіль `full` є безпечним fallback для механізму gate і невідомих
-# шляхів; окремі тести названі там, де вони стережуть конкретний шар.
+# мовчазним. Невідомий шлях є ПОМИЛКОЮ карти: без `full` він не має права
+# пройти зеленим. Окремі тести названі там, де вони стережуть конкретний шар.
 touched_map() {
     local path="$1" fixture_owner
     # Змінений сценарій · спершу ЛІНТЕР, і лише потім те, що він стереже.
@@ -140,6 +143,8 @@ touched_map() {
         tests/fixtures/*) : ;;   # ДАНІ, А НЕ СЦЕНАРІЙ · див. гілку tests/fixtures нижче
         *.sh|.githooks/*)
             printf 'lint|%s|синтаксис і shellcheck зміненого сценарію\n' "$path" ;;
+        *.php)
+            printf 'lint|%s|синтаксис зміненого PHP-файла\n' "$path" ;;
     esac
     case "$path" in
         scripts/agent-check.sh|.githooks/*|.github/*)
@@ -154,7 +159,18 @@ touched_map() {
             # не ховає пропущених перевірок. Саме її відсутність і дала
             # хибне зелене, тому вона йде локально, а не «в CI колись».
             printf 'lint|scripts/agent-check.sh|синтаксис самого механізму перевірки\n'
-            printf 'test|tests/gate-skip-visibility.sh|видимість невиконаних перевірок\n' ;;
+            printf 'test|tests/gate-skip-visibility.sh|видимість невиконаних перевірок\n'
+            printf 'test|tests/gate-touched-map.sh|fail-closed карта селективних перевірок\n'
+            case "$path" in
+                .githooks/commit-msg) printf 'test|tests/commit-version-guard.sh|унікальність версії коміту\n' ;;
+                .githooks/pre-push) printf 'test|tests/pre-push-attribution.sh|авторство перед push\n' ;;
+            esac ;;
+        Makefile|scripts/build-icons.sh|scripts/build-mac-app.sh)
+            printf 'profile|shell|build-оснастка, Makefile і desktop bundle\n' ;;
+        scripts/delegate-codex.sh)
+            printf 'profile|docs|контракт зовнішнього делегування\n' ;;
+        scripts/generate-command-docs.php)
+            printf 'test|tests/command-registry.sh|генератор довідки команд\n' ;;
         web/*)
             printf 'test|tests/web-server.sh|сервер і сторінка\n'
             printf 'test|tests/web-actions.sh|дії сторінки\n'
@@ -175,15 +191,18 @@ touched_map() {
             if [ -f "$ROOT/$fixture_owner" ]; then
                 printf 'test|%s|тест, якому належить еталон\n' "$fixture_owner"
             else
-                printf 'profile|full|еталон без власного тесту · невідомо, хто його читає\n'
+                printf 'unknown|%s|еталон без власного тесту · невідомо, хто його читає\n' "$path"
             fi ;;
         tests/*)
             # Support-файл зачіпає невідомо які тести · локально не вгадуємо, а
             # віддаємо це CI. Вгадування коштувало повного прогону щоразу.
             printf 'lint|%s|синтаксис зміненого support-файла\n' "$path" ;;
         roles/*|config/*)
-            printf 'profile|agents|ролі, prompts і конфігурація ролей\n' ;;
-        docs/*|*.md)
+            printf 'profile|agents|ролі, prompts і конфігурація ролей\n'
+            printf 'test|tests/schema-provider-compat.sh|сумісність schema провайдерів\n'
+            printf 'test|tests/glossary-provenance.sh|походження правил глосарія\n'
+            printf 'test|tests/worker-reference.sh|довідковий текст воркера\n' ;;
+        docs/*|*.md|.cursorrules)
             printf 'profile|docs|документи, посилання й норматив\n' ;;
         lib/Api/*)
             printf 'test|tests/cli-api-reports.sh|контракт API reports\n'
@@ -191,12 +210,15 @@ touched_map() {
             printf 'test|tests/cli-api-fetch.sh|контракт API fetch\n'
             printf 'test|tests/api-doc-contract.sh|документований API-контракт\n'
             printf 'test|tests/cli-write-parity.sh|запис через API\n'
-            printf 'test|tests/glossary-confirmed.sh|підтвердження вжитої назви\n' ;;
+            printf 'test|tests/glossary-confirmed.sh|підтвердження вжитої назви\n'
+            printf 'test|tests/glossary-listing.sh|повний обхід глосарія\n' ;;
         lib/Batch/*)
             printf 'test|tests/pipeline-unit.php|unit-контракти batch\n'
             printf 'test|tests/pipeline-faults.php|відмови pipeline\n'
             printf 'test|tests/batch-summary.sh|підсумок пачки\n'
             printf 'test|tests/drive-memory-layers.sh|шари памʼяті drive\n'
+            printf 'test|tests/glossary-provenance.sh|походження правил глосарія\n'
+            printf 'test|tests/qa-gap-costs-rows.sh|прогалина QA ізолює рядки\n'
             printf 'test|tests/cli-batch-clean-parity.sh|парність batch clean\n'
             printf 'test|tests/cli-batch-heal-parity.sh|парність batch heal\n' ;;
         lib/Http/*)
@@ -211,14 +233,20 @@ touched_map() {
             printf 'test|tests/prompt-payload-contract.sh|контракт prompt payload\n'
             printf 'test|tests/payload-shared-examples.sh|спільні приклади payload\n'
             printf 'test|tests/terminology-excerpt.sh|excerpt термінології\n'
-            printf 'test|tests/terminology-chunks.sh|chunks термінології\n' ;;
+            printf 'test|tests/terminology-chunks.sh|chunks термінології\n'
+            printf 'test|tests/schema-provider-compat.sh|сумісність schema провайдерів\n'
+            printf 'test|tests/glossary-provenance.sh|походження правил глосарія\n'
+            printf 'test|tests/worker-reference.sh|довідковий текст воркера\n' ;;
         lib/Pipeline/*)
             printf 'test|tests/lineage.sh|слід рядка\n'
             printf 'test|tests/pipeline-unit.php|unit-контракти pipeline\n'
             printf 'test|tests/pipeline-faults.php|відмови pipeline\n'
             printf 'test|tests/qa-scope.sh|scope QA\n'
             printf 'test|tests/row-attempts.sh|спроби рядка\n'
-            printf 'test|tests/quarantine-recovery.sh|відновлення quarantine\n' ;;
+            printf 'test|tests/quarantine-recovery.sh|відновлення quarantine\n'
+            printf 'test|tests/domain-filter.sh|фільтр категорії\n'
+            printf 'test|tests/patch-argument.sh|номер патча\n'
+            printf 'test|tests/no-silent-failures.sh|видимі причини відмов\n' ;;
         lib/Quality/*)
             printf 'test|tests/cli-quality-parity.sh|парність quality\n'
             printf 'test|tests/mechanical-before-qa.sh|порядок mechanical перед QA\n'
@@ -237,15 +265,40 @@ touched_map() {
             printf 'test|tests/run-resume.sh|продовження run\n'
             printf 'test|tests/run-stop.sh|зупинка run\n'
             printf 'test|tests/run-target-env.sh|ціль run\n'
-            printf 'test|tests/step-times.sh|час кроків\n' ;;
+            printf 'test|tests/step-times.sh|час кроків\n'
+            printf 'test|tests/judge-flow.sh|наскрізний маршрут судді\n'
+            printf 'test|tests/no-silent-failures.sh|видимі причини відмов\n'
+            printf 'test|tests/step-report.sh|зміст звіту кроку\n' ;;
         lib/Session/*)
             printf 'test|tests/session-lifecycle.sh|життєвий цикл сесії\n'
-            printf 'test|tests/watch-session.sh|спостереження сесії\n' ;;
+            printf 'test|tests/watch-session.sh|спостереження сесії\n'
+            printf 'test|tests/rotation.sh|ротація завершених даних\n' ;;
         lib/Ui/*|lib/Web/*)
             printf 'test|tests/web-server.sh|сервер UI\n'
             printf 'test|tests/web-actions.sh|дії UI\n'
             printf 'test|tests/web-steps.sh|кроки UI\n'
             printf 'test|tests/web-screens.sh|екрани UI\n' ;;
+        lib/Cli/Command/Audit/*|cli/audit/*)
+            printf 'test|tests/cli-audit-reports.sh|звіти обслуговування\n'
+            printf 'test|tests/audit-response-shape.sh|форма відповіді в аудиті\n' ;;
+        lib/Cli/Command/Api/*)
+            printf 'test|tests/cli-api-fetch.sh|прямий regression API fetch-команд\n'
+            printf 'test|tests/domain-filter.sh|фільтр категорії\n'
+            printf 'test|tests/patch-argument.sh|номер патча\n'
+            printf 'test|tests/glossary-listing.sh|повний обхід глосарія\n' ;;
+        lib/Cli/Command/Batch/*)
+            printf 'test|tests/judge-flow.sh|наскрізний маршрут судді\n'
+            printf 'test|tests/qa-gap-costs-rows.sh|прогалина QA ізолює рядки\n'
+            printf 'test|tests/rotation.sh|ротація завершених даних\n' ;;
+        lib/Cli/Command/Prepare/*)
+            printf 'test|tests/schema-provider-compat.sh|сумісність schema провайдерів\n'
+            printf 'test|tests/worker-reference.sh|довідковий текст воркера\n' ;;
+        lib/Cli/Command/Run/*)
+            printf 'test|tests/cli-run-drive-parity.sh|парність run drive\n'
+            printf 'test|tests/driver-loop.sh|цикл драйвера\n'
+            printf 'test|tests/judge-flow.sh|наскрізний маршрут судді\n'
+            printf 'test|tests/no-silent-failures.sh|видимі причини відмов\n'
+            printf 'test|tests/step-report.sh|зміст звіту кроку\n' ;;
         lib/Cli/*|lib/autoload.php)
             printf 'test|tests/cli-kernel.sh|kernel і router\n'
             printf 'test|tests/command-registry.sh|реєстр команд\n'
@@ -313,11 +366,9 @@ touched_map() {
             printf 'test|tests/cli-kernel.sh|маршрутизація entrypoint\n'
             printf 'test|tests/command-registry.sh|реєстр команд entrypoint\n' ;;
         *)
-            # НЕВІДОМИЙ ШЛЯХ · не привід ганяти все локально. Раніше будь-який
-            # файл поза картою давав повний прогін, і саме так звичайна правка
-            # перетворювалась на три хвилини очікування. Межа лишається, але
-            # тримає її CI.
-            printf 'note|%s|шлях не в карті · повну перевірку зробить CI\n' "$path" ;;
+            # БЕЗ `full` невідомий шлях мусить зупинити і локальну перевірку,
+            # і CI. Інакше новий production-шар пройде без жодного тесту.
+            printf 'unknown|%s|шлях не має селективної перевірки\n' "$path" ;;
     esac
 }
 
@@ -334,12 +385,16 @@ touched_changed_files() {
 touched_lint() {
     local file="$1"
     test -e "$file" || return 0
-    run bash -n "$file"
-    if have shellcheck; then
-        run shellcheck -x -S warning "$file"
-    else
-        note "shellcheck недоступний · синтаксис перевірено, стиль ні: $file"
-    fi
+    case "$file" in
+        *.php) run php -l "$file" ;;
+        *)
+            run bash -n "$file"
+            if have shellcheck; then
+                run shellcheck -x -S warning "$file"
+            else
+                note "shellcheck недоступний · синтаксис перевірено, стиль ні: $file"
+            fi ;;
+    esac
 }
 
 touched_run_test() {
@@ -472,13 +527,12 @@ run_gate_profile() {
         agents) check_rules; check_agents; check_whitespace ;;
         runtime) check_rules; check_runtime ;;
         api) check_rules; check_api ;;
-        full) check_docs; check_shell; check_design; check_bash32_arrays; check_php_runtime_guards; check_run_php_subprocess_guards; check_write_php_subprocess_guards; check_sigpipe_pipelines; check_agents ;;
         *) fail "невідомий профіль gate: $1" ;;
     esac
 }
 
 check_touched() {
-    local paths plan selected='' full_reason='' path kind target reason
+    local paths plan selected='' unknown='' path kind target reason
     paths="$(mktemp)"
     plan="$(mktemp)"
     trap 'rm -f "${paths:-}" "${plan:-}"; gate_lock_release' EXIT
@@ -498,21 +552,13 @@ check_touched() {
     while IFS='|' read -r kind target reason; do
         test -n "$kind" || continue
         selected="${selected}${selected:+, }${target} — ${reason}"
-        if [ "$kind" = profile ] && [ "$target" = full ]; then
-            full_reason="${full_reason}${full_reason:+; }${reason}"
+        if [ "$kind" = unknown ]; then
+            unknown="${unknown}${unknown:+; }${target} — ${reason}"
         fi
     done < "$plan"
     note "обрано: $selected"
-    if [ -n "$full_reason" ]; then
-        note "пропущено: усі часткові перевірки · запущено full через: $full_reason"
-        if [ "${BDO_GATE_TOUCHED_PLAN_ONLY:-0}" = 1 ]; then
-            note 'plan-only: виконання перевірок пропущено навмисно тестом карти'
-            return 0
-        fi
-        run_gate_profile full
-        return 0
-    fi
-    note 'пропущено: full і не обрані профілі · максимум deterministic-перевірок доганяє CI; API/runtime не запускаються локально без зміни їхніх шляхів'
+    test -z "$unknown" || fail "карта gate touched неповна: $unknown"
+    note 'не обрані профілі не запускаються · перевірка пропорційна зміненим шляхам'
     if [ "${BDO_GATE_TOUCHED_PLAN_ONLY:-0}" = 1 ]; then
         note 'plan-only: виконання перевірок пропущено навмисно тестом карти'
         return 0
@@ -528,6 +574,7 @@ check_touched() {
             lint) touched_lint "$target" ;;
             test) printf '%s\n' "$target" >> "$tests" ;;
             note) note "$target · $reason" ;;
+            unknown) fail "карта gate touched неповна: $target — $reason" ;;
             *) fail "карта повернула невідомий тип: $kind" ;;
         esac
     done < "$plan"
@@ -1413,6 +1460,15 @@ check_delegation_contract() {
         || fail 'карта правил не називає делегування сплячим · Codex знову стане дефолтом'
     grep -Fq 'ТРИГЕРИТЬСЯ ЛИШЕ' AGENTS.md \
         || fail 'карта правил не вимагає явного запиту власника для делегування'
+    grep -Fq 'перевір доступні інструменти' AGENTS.md \
+        || fail 'карта правил не вимагає перевірити інструменти поточної сесії'
+    grep -Fq 'доступний нативний механізм сабагентів' AGENTS.md \
+        || fail 'карта правил не дозволяє нативних сабагентів Codex'
+    grep -Fq 'вкладений `codex exec` із Codex не запускай' AGENTS.md \
+        || fail 'карта правил не відрізняє нативного сабагента Codex від вкладеного codex exec'
+    grep -Fq 'Поза Codex' AGENTS.md \
+        && grep -Fq 'через `scripts/delegate-codex.sh`' AGENTS.md \
+        || fail 'карта правил не маршрутизує зовнішні сесії через delegate-codex.sh'
     if grep -Fq 'СПОЧАТКУ CODEX' AGENTS.md; then
         fail 'карта правил знову ставить Codex способом за замовчуванням'
     fi
@@ -2076,7 +2132,7 @@ case "$profile" in
     # Із замком тест карти було неможливо запустити ЗСЕРЕДИНИ гейта: він падав
     # на «гейт уже працює в цьому дереві» щоразу, коли сам себе й перевіряв.
     selftest) : ;;
-    touched|docs|shell|agents|runtime|api|full)
+    touched|docs|shell|agents|runtime|api)
         [ "${BDO_GATE_TOUCHED_PLAN_ONLY:-0}" = 1 ] || gate_lock_take "$profile" ;;
 esac
 
@@ -2097,8 +2153,8 @@ case "$profile" in
         touched_run_tests "$selftest_list"
         rm -f "$selftest_list"
         ;;
-    docs|shell|agents|runtime|api|full) run_gate_profile "$profile" ;;
-    *) printf 'Usage: %s {preflight|touched|docs|shell|agents|runtime|api|full}\n' "$0" >&2; exit 2 ;;
+    docs|shell|agents|runtime|api) run_gate_profile "$profile" ;;
+    *) printf 'Usage: %s {preflight|touched|docs|shell|agents|runtime|api}\n' "$0" >&2; exit 2 ;;
 esac
 
 gate_report_skips

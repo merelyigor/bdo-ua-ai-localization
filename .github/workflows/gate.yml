@@ -6,7 +6,7 @@
 # проїхав BLOCKER (повтори на «connection refused» коштували 570 секунд
 # замість 0.7) і нестабільний тест D111, який падав раз із трьох.
 #
-# Секретів тут НЕМАЄ і не буде: `./bdo gate full` ключа не читає · він потрібен
+# Секретів тут НЕМАЄ і не буде: селективний gate ключа не читає · він потрібен
 # лише категорії `api` (`scripts/agent-check.sh`, `check_api`).
 #
 # ЗАБОРОНЕНО додавати `continue-on-error`, `|| true` чи будь-що, що ковтає код
@@ -23,17 +23,23 @@ permissions:
   contents: read
 
 jobs:
-  full:
-    name: ./bdo gate full
+  selective:
+    name: ./bdo gate touched
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
+        # GitHub action input; JetBrains cannot resolve remote action metadata here.
+        #noinspection UndefinedParamsPresent
+        with:
+          fetch-depth: 0
 
       # Версія прибита числом навмисно: мовчазне оновлення рантайму зробило б
       # CI нестабільним, а нестабільний CI починають ігнорувати.
       - name: PHP 8.5
         uses: shivammathur/setup-php@v2
+        # GitHub action inputs; JetBrains cannot resolve remote action metadata here.
+        #noinspection UndefinedParamsPresent
         with:
           php-version: '8.5'
           extensions: curl, json, mbstring, posix, pcntl
@@ -98,10 +104,21 @@ jobs:
       # кроком вище, тому «перевірку не виконано» означає поламане середовище,
       # а не особливість машини. Без цього зелений прогін CI не гарантував би
       # навіть того, що JavaScript сторінки колись запускався (аудит A-03).
-      - name: gate full
+      - name: Селективні перевірки точного diff
         env:
           BDO_GATE_NO_SKIP: '1'
-        run: ./bdo gate full
+          PUSH_BASE: ${{ github.event.before }}
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+        run: |
+          set -euo pipefail
+          base="$PUSH_BASE"
+          if [ "${{ github.event_name }}" = pull_request ]; then base="$PR_BASE"; fi
+          if [ -z "$base" ] || [ "$base" = "0000000000000000000000000000000000000000" ] \
+            || ! git rev-parse --verify --quiet "${base}^{commit}" >/dev/null; then
+            BDO_GATE_TOUCHED_ALL=1 ./bdo gate touched
+          else
+            BDO_GATE_TOUCHED_BASE="$base" ./bdo gate touched
+          fi
 
   stability:
     name: cli-api-fetch × 5
@@ -112,6 +129,8 @@ jobs:
 
       - name: PHP 8.5
         uses: shivammathur/setup-php@v2
+        # GitHub action inputs; JetBrains cannot resolve remote action metadata here.
+        #noinspection UndefinedParamsPresent
         with:
           php-version: '8.5'
           extensions: curl, json, mbstring, posix, pcntl
@@ -160,6 +179,8 @@ jobs:
 
       - name: PHP 8.5
         uses: shivammathur/setup-php@v2
+        # GitHub action inputs; JetBrains cannot resolve remote action metadata here.
+        #noinspection UndefinedParamsPresent
         with:
           php-version: '8.5'
           tools: phpstan:2.2.13
@@ -177,6 +198,8 @@ jobs:
 
       - name: PHP 8.5
         uses: shivammathur/setup-php@v2
+        # GitHub action inputs; JetBrains cannot resolve remote action metadata here.
+        #noinspection UndefinedParamsPresent
         with:
           php-version: '8.5'
           coverage: none

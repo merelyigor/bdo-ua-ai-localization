@@ -107,5 +107,4 @@ HTTP write, виклик моделі й життєвий цикл стану м
 - `shell` · Bash/ShellCheck/PHP syntax;
 - `agents` · ролі конвеєра, драйвер, TUI і клієнт моделі;
 - `runtime` · локальна модель через справжній виклик `cli/model/client.php`;
-- `api` · read-only API smoke проти цілі з `.env`;
-- `full` · усі детерміновані локальні gates без викликів моделі та API.
+- `api` · read-only API smoke проти цілі з `.env`.

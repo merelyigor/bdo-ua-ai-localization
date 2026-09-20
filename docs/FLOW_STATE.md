@@ -132,7 +132,8 @@ markup, довжина, русизми, гомогліфи, чужа писем�
 ./bdo api
 ```
 
-Для документації — `./bdo gate docs`; для механізму перевірки —
-`./bdo gate full`. Команди, параметри й актуальні маршрути не копіюються сюди:
+Для документації — `./bdo gate docs`; механізм селективної перевірки стережуть
+`tests/gate-touched-map.sh` і `tests/gate-skip-visibility.sh`. Команди,
+параметри й актуальні маршрути не копіюються сюди:
 їхні джерела — [`COMMANDS.md`](COMMANDS.md),
 [`API.md`](API.md) і [`PROJECT_OVERVIEW.md`](PROJECT_OVERVIEW.md).

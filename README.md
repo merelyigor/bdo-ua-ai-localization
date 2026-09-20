@@ -1,6 +1,6 @@
 # bdo-ua-ai-localization
 
-<img src="docs/assets/banner.png" alt="BDO UA AI Localization · браузерний інтерфейс і конвеєр локалізації" width="100%">
+<img src="docs/assets/banner.png" alt="BDO UA AI Localization · браузерний інтерфейс і конвеєр локалізації" width="935" height="1683">
 
 Набір інструментів для української локалізації **Black Desert Online** у
 проєкті [BDO UA Translate](https://bdo-ua.com.ua). Це клієнт Agent API, а не
@@ -83,7 +83,7 @@ workflow і не отримує доступу до shell чи API.
 ./bdo gate touched   # пропорційна перевірка змінених шляхів
 ./bdo gate docs      # правила, плани, посилання, публічна безпека
 ./bdo api            # read-only перевірка доступності Agent API
-./bdo gate full      # повний локальний quality gate
+./bdo gate touched   # селективні перевірки змінених шляхів
 ```
 
 `docs/COMMANDS.md` не редагують вручну. `state/`, `output/` і `.env` — локальні
