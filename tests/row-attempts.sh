@@ -52,6 +52,23 @@ if ($path === '/taxonomy') {
 }
 if ($path === '/rows') {
     $query = (string) parse_url((string) ($_SERVER['REQUEST_URI'] ?? '/'), PHP_URL_QUERY);
+    if (str_contains($query, 'seen_case=1')) {
+        $second = str_contains($query, 'cursor=seen-next');
+        $start = $second ? 121 : 101;
+        $rows = [];
+        for ($i = $start; $i < $start + 20; $i++) {
+            $rows[] = [
+                'identity_hash' => str_pad(dechex($i), 64, '0', STR_PAD_LEFT),
+                'source_hash' => hash('sha256', 'Source '.$i),
+                'source_text' => 'Source '.$i,
+            ];
+        }
+        echo json_encode([
+            'data' => ['rows' => $rows],
+            'meta' => ['has_more' => ! $second, 'next_cursor' => $second ? null : 'seen-next', 'total_matching' => 40],
+        ], JSON_THROW_ON_ERROR);
+        return;
+    }
     if (str_contains($query, 'cursor=next')) {
         echo '{"data":{"rows":[]},"meta":{"has_more":true,"next_cursor":"next"}}';
     } else {
@@ -86,6 +103,25 @@ test "$code" -eq 0 || fail "fetch з фільтром завершився ко�
 grep -Fq 'Отримано: 1 рядків' <<<"$out" || fail "вичерпаний рядок потрапив у результат: $out"
 grep -Fq 'Пропущено 1 рядків із вичерпаними спробами' "$TMP/fetch.err" || fail 'stderr не назвав число пропущених рядків'
 test "$(grep -c '^/rows$' "$TMP/rows.log")" -eq 2 || fail 'порожня сторінка не зупинила обхід'
+
+# 2б. Тестовий прогін не змінює серверний `missing=machine`, тому без локальної
+# памʼяті вибірки кожен новий fetch починався з тих самих перших 50 identity.
+# Другий fetch тієї самої цілі мусить пропустити вже видану сторінку й добрати
+# наступну, не відправляючи вдруге ті самі рядки в памʼять і ролі.
+SEEN_QUERY='patch=active&missing=machine&seen_case=1'
+printf 'local\n' > "$STATE/run-target"
+TRANSLATE_ENV_FILE="$TMP/env" BDO_STATE_DIR="$STATE" php "$ROOT/cli/bdo.php" fetch-rows 20 "$SEEN_QUERY" >"$TMP/seen-first.out" 2>"$TMP/seen-first.err" \
+    || fail "перший fetch seen-case впав: $(cat "$TMP/seen-first.err")"
+FIRST_ROWS="$(sed -n 's/^Збережено: //p' "$TMP/seen-first.out" | tail -1)"
+test "$(jq '.data.rows | length' "$FIRST_ROWS")" = 20 || fail 'перший seen-case не повернув 20 рядків'
+TRANSLATE_ENV_FILE="$TMP/env" BDO_STATE_DIR="$STATE" php "$ROOT/cli/bdo.php" fetch-rows 20 "$SEEN_QUERY" >"$TMP/seen-second.out" 2>"$TMP/seen-second.err" \
+    || fail "другий fetch seen-case впав: $(cat "$TMP/seen-second.err")"
+SECOND_ROWS="$(sed -n 's/^Збережено: //p' "$TMP/seen-second.out" | tail -1)"
+test "$(jq '.data.rows | length' "$SECOND_ROWS")" = 20 || fail 'другий seen-case не добрав наступні 20 рядків'
+test "$(jq -r '.data.rows[0].source_text' "$SECOND_ROWS")" = 'Source 121' \
+    || fail 'другий fetch повторив першу сторінку замість наступної'
+jq -e --arg q "$SEEN_QUERY" '.query == $q and (.identities | length) == 40' "$STATE/run-seen.json" >/dev/null \
+    || fail 'run-seen не зберіг 40 уже відібраних identity'
 kill "$SERVER" 2>/dev/null || true
 SERVER=''
 # Шлях запису делегує сам запис у `Api\TranslationWriter`, і журнал спроб

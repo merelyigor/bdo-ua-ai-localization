@@ -77,9 +77,18 @@ final class FetchRowsCommand implements Command, \Bdo\Translate\Cli\CommandHelp
 
         $stateDir = getenv('BDO_STATE_DIR') ?: $root.'/state';
         $excludedFile = $stateDir.'/run-excluded.json';
+        $seenFile = $stateDir.'/run-seen.json';
+        $trackSeen = is_file($stateDir.'/run-target');
         $oldExcluded = is_file($excludedFile) ? json_decode((string) file_get_contents($excludedFile), true) : [];
         if (($oldExcluded['query'] ?? null) !== $extra) {
             file_put_contents($excludedFile, json_encode(['query' => $extra, 'identities' => []], JSON_UNESCAPED_SLASHES));
+        }
+        $seenState = $trackSeen && is_file($seenFile) ? json_decode((string) file_get_contents($seenFile), true) : [];
+        $seenIdentities = (($seenState['query'] ?? null) === $extra && is_array($seenState['identities'] ?? null))
+            ? array_fill_keys(array_map('strval', $seenState['identities']), true)
+            : [];
+        if ($trackSeen && $seenIdentities === []) {
+            $seenIdentities = $this->currentBatchIdentities($stateDir, $extra);
         }
         $maxPages = max(0, (int) (getenv('BDO_FETCH_MAX_PAGES') ?: '10'));
         $cursor = '';
@@ -108,7 +117,12 @@ final class FetchRowsCommand implements Command, \Bdo\Translate\Cli\CommandHelp
             }
             $pageData = json_decode($response->body, true, 512, JSON_THROW_ON_ERROR);
             $rows = $pageData['data']['rows'] ?? [];
-            $filtered = $attempts->filterRows(is_array($rows) ? $rows : [], RowAttempts::maxAttempts());
+            $pageRows = array_values(array_filter(
+                is_array($rows) ? $rows : [],
+                static fn (mixed $row): bool => is_array($row)
+                    && ! isset($seenIdentities[(string) ($row['identity_hash'] ?? '')]),
+            ));
+            $filtered = $attempts->filterRows($pageRows, RowAttempts::maxAttempts());
             $aggregate['data']['rows'] = array_merge($aggregate['data']['rows'], $filtered['kept']);
             if (isset($pageData['meta'])) {
                 $aggregate['meta'] = $pageData['meta'];
@@ -142,6 +156,17 @@ final class FetchRowsCommand implements Command, \Bdo\Translate\Cli\CommandHelp
         $output->stdout('has_more=' . ($hasMore ? 'true' : 'false') . '  next_cursor=' . ($nextCursor ?? 'null') . "\n");
         $output->stdout("Збережено: {$out}\n");
         $this->resultPath = $out;
+        if ($count > 0 && $trackSeen) {
+            foreach ($rows as $row) {
+                if (is_array($row) && (string) ($row['identity_hash'] ?? '') !== '') {
+                    $seenIdentities[(string) $row['identity_hash']] = true;
+                }
+            }
+            file_put_contents($seenFile, json_encode([
+                'query' => $extra,
+                'identities' => array_keys($seenIdentities),
+            ], JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR), LOCK_EX);
+        }
         if ($count > 0) {
             $output->stdout("\n-- Перші 5 рядків (скорочено) --\n");
             foreach (array_slice($rows, 0, 5) as $index => $row) {
@@ -164,6 +189,25 @@ final class FetchRowsCommand implements Command, \Bdo\Translate\Cli\CommandHelp
         }
 
         return 0;
+    }
+
+    /** @return array<string,true> */
+    private function currentBatchIdentities(string $stateDir, string $query): array
+    {
+        $id = trim((string) @file_get_contents($stateDir.'/current-batch'));
+        if ($id === '') {
+            return [];
+        }
+        $dir = $stateDir.'/batches/'.$id;
+        $manifest = is_file($dir.'/manifest.json') ? json_decode((string) file_get_contents($dir.'/manifest.json'), true) : [];
+        if (($manifest['query'] ?? null) !== $query || ! is_file($dir.'/rows.json')) {
+            return [];
+        }
+        try {
+            return array_fill_keys(RowSet::fromFile($dir.'/rows.json')->identityHashes(), true);
+        } catch (\Throwable) {
+            return [];
+        }
     }
 
     private function client(string $url, string $key): \Bdo\Translate\Http\Response
