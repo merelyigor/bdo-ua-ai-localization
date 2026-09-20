@@ -186,8 +186,14 @@ jobs:
           tools: phpstan:2.2.13
           coverage: none
 
+      # Межа памʼяті названа числом навмисно. Обсяг аналізу виріс із самої
+      # теки `lib` до всього робочого шляху, а PHPStan рахує паралельними
+      # процесами: на машині розробника дефолтні 128M саме через це впали з
+      # «process crashed because it reached configured PHP memory limit», і
+      # причина виглядала як поломка аналізу, а не як межа рантайму. Заміряний
+      # пік · 51 MB, тож 1G це запас, а не потреба.
       - name: PHPStan level 0
-        run: phpstan analyse -c phpstan.neon --no-progress
+        run: phpstan analyse -c phpstan.neon --no-progress --memory-limit=1G
 
   windows_native:
     name: Windows native PHP smoke

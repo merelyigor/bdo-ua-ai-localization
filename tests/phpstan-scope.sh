@@ -1,0 +1,79 @@
+#!/usr/bin/env bash
+# СТАТИЧНИЙ АНАЛІЗ МУСИТЬ БАЧИТИ ВЕСЬ РОБОЧИЙ ШЛЯХ.
+#
+# До 2026-09-20 `phpstan.neon` перевіряв саму теку `lib`, а `cli/**` і
+# entrypoint `bdo` · код, який і запускає прогін · не перевірявся нічим, крім
+# `php -l`. Лінтер бачить лише синтаксис: помилка в імені класу, метода чи
+# аргумента проходила б крізь нього мовчки й падала вже на живому прогоні.
+#
+# Тест не запускає PHPStan (він живе окремим завданням CI, і бінарника на
+# машині власника може не бути). Він стереже ІНШЕ й робить це без жодного
+# інструмента: щоб жоден робочий PHP-файл не опинився поза переліком `paths`.
+# Саме звуження переліку · тиха відмова, якої ніхто не помітить: прогін
+# лишається зеленим, бо перевіряти стало нічого.
+set -euo pipefail
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+cd "$ROOT"
+fail() { printf 'FAIL: %s\n' "$1" >&2; exit 1; }
+
+CONFIG='phpstan.neon'
+test -f "$CONFIG" || fail "немає $CONFIG · статичного аналізу не існує взагалі"
+
+# Перелік `paths:` читаємо з самого конфігу, а не переписуємо тут: інакше тест
+# доводив би власну копію, а не те, що піде в CI.
+paths="$(
+    awk '
+        /^[[:space:]]*paths:[[:space:]]*$/ { inside = 1; next }
+        inside && /^[[:space:]]*-[[:space:]]*/ { sub(/^[[:space:]]*-[[:space:]]*/, ""); print; next }
+        inside && /^[[:space:]]*[a-zA-Z_]+:/ { inside = 0 }
+    ' "$CONFIG"
+)"
+test -n "$paths" || fail "у $CONFIG не знайдено жодного шляху аналізу"
+
+# Рівень названий явно · без нього PHPStan мовчки візьме 0, і зміна рівня
+# стала б невидимою.
+grep -Eq '^[[:space:]]*level:[[:space:]]*[0-9]+' "$CONFIG" \
+    || fail "у $CONFIG немає явного рівня аналізу"
+
+covered() {
+    local file="$1" path
+    for path in $paths; do
+        case "$file" in
+            "$path"|"$path"/*) return 0 ;;
+        esac
+    done
+    return 1
+}
+
+# Робочий шлях · те, що виконується у власника. Оснастка розробки (`tests/**`,
+# `scripts/**`) поза аналізом свідомо, і саме тому виняток названий ТУТ явним
+# переліком: новий каталог робочого коду під нього не потрапить і завалить
+# перевірку, а не проїде тихо.
+uncovered=''
+while IFS= read -r file; do
+    case "$file" in
+        tests/*|scripts/*|legacy/*) continue ;;
+    esac
+    covered "$file" || uncovered="$uncovered $file"
+done <<EOF
+$(git ls-files '*.php'; git ls-files | while IFS= read -r f; do
+    case "$f" in *.*) continue ;; esac
+    head -1 "$f" 2>/dev/null | grep -q 'env php' && printf '%s\n' "$f"
+done)
+EOF
+
+test -z "$uncovered" \
+    || fail "робочий PHP поза статичним аналізом ·$uncovered"
+
+# Кожен названий шлях мусить існувати: неіснуючий рядок у переліку PHPStan
+# вважає помилкою конфігурації, і CI впав би не на коді, а на друкарській
+# помилці.
+for path in $paths; do
+    test -e "$path" || fail "у $CONFIG названо неіснуючий шлях: $path"
+done
+
+# CI мусить проганяти саме цей конфіг, а не власний перелік тек.
+grep -Fq 'phpstan analyse -c phpstan.neon' .github/workflows/gate.yml \
+    || fail 'CI не проганяє phpstan.neon · конфіг перестав бути джерелом правди'
+
+echo "phpstan scope: OK · аналіз накриває робочий шлях ($(printf '%s' "$paths" | tr '\n' ' '))"

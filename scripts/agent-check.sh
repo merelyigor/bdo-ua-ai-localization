@@ -144,7 +144,12 @@ touched_map() {
         *.sh|.githooks/*)
             printf 'lint|%s|синтаксис і shellcheck зміненого сценарію\n' "$path" ;;
         *.php)
-            printf 'lint|%s|синтаксис зміненого PHP-файла\n' "$path" ;;
+            printf 'lint|%s|синтаксис зміненого PHP-файла\n' "$path"
+            # НОВИЙ PHP-ФАЙЛ МОЖЕ НАРОДИТИСЬ ПОЗА СТАТИЧНИМ АНАЛІЗОМ. `php -l`
+            # цього не бачить: він перевіряє синтаксис і мовчить про те, що
+            # файла немає в `phpstan.neon`. Перевірка коштує частку секунди й
+            # тому висить на кожній зміні PHP, а не лише на самому конфігу.
+            printf 'test|tests/phpstan-scope.sh|обсяг статичного аналізу\n' ;;
     esac
     case "$path" in
         scripts/agent-check.sh|.githooks/*|.github/*)
@@ -362,7 +367,10 @@ touched_map() {
             printf 'test|tests/registry-hygiene.sh|гігієна реєстрів\n' ;;
         cli/*)
             printf 'test|tests/cli-kernel.sh|загальний CLI kernel-контракт\n' ;;
+        phpstan.neon)
+            printf 'test|tests/phpstan-scope.sh|обсяг статичного аналізу\n' ;;
         bdo)
+            printf 'test|tests/phpstan-scope.sh|обсяг статичного аналізу entrypoint\n'
             printf 'test|tests/cli-kernel.sh|маршрутизація entrypoint\n'
             printf 'test|tests/command-registry.sh|реєстр команд entrypoint\n' ;;
         *)
@@ -1918,6 +1926,7 @@ tests/no-silent-failures.sh
 tests/quarantine-recovery.sh
 tests/glossary-confirmed.sh
 tests/gate-skip-visibility.sh
+tests/phpstan-scope.sh
 tests/worker-reference.sh
 tests/schema-provider-compat.sh
 tests/mechanical-final-check.sh
