@@ -70,7 +70,14 @@ const window = {
   addEventListener() {},
   location: { href: 'http://127.0.0.1/?t=test-token', pathname: '/' },
   localStorage,
-  sessionStorage: localStorage
+  sessionStorage: localStorage,
+  // Кадр анімації · СИНХРОННО. Sticky-контекст хедера ставить себе саме через
+  // `requestAnimationFrame` (два вкладені виклики, не більше), і підроблене
+  // вікно без цієї функції валило весь сценарій ще до першої перевірки
+  // розмітки. Заглушка, яка НЕ кличе callback, була б гіршою за падіння: код
+  // хедера мовчки не виконувався б, і сторож перевіряв би не те, що працює.
+  requestAnimationFrame(fn) { fn(0); return 0; },
+  cancelAnimationFrame() {}
 };
 
 global.window = window;

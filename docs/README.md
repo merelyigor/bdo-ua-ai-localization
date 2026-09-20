@@ -28,6 +28,7 @@
 | Контракт запису через Agent API | [API_WRITE_CONTRACT.md](../API_WRITE_CONTRACT.md) |
 | Потрібна зміна в API на серверному боці | [API_CHANGE_HANDOFF.md](API_CHANGE_HANDOFF.md) · формат передачі |
 | Плани, реєстр і черга | [plans/README.md](plans/README.md), [plans/BACKLOG.md](plans/BACKLOG.md) |
+| Зріз стану коду на дату | [TECHNICAL_AUDIT_2026-09-20.md](TECHNICAL_AUDIT_2026-09-20.md) · разовий аудит, а не норматив: його висновки перевіряються окремо, і чинним лишається те, що доведене тестом або гейтом |
 
 ## Інтерфейс
 

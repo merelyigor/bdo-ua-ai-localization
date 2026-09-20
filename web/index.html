@@ -321,23 +321,31 @@
     return text === '' ? '' : tokenMarkup(text);
   }
 
+  // Лічильник оновлюється на КОЖЕН тік стану, тому розмітка ставиться рівно
+  // один раз, а далі міняється сам текст. `innerHTML` тут змушував браузер
+  // щоразу заново розбирати рядок · рівно той клас ривків, проти якого і
+  // стоїть сторож `tests/web-inner-html-guard.sh`.
+  function paintTokenCount(el, text) {
+    if (!el) { return; }
+    var span = el.firstChild;
+    if (!span || span.className !== 'token-count') {
+      el.textContent = '';
+      span = document.createElement('span');
+      span.className = 'token-count';
+      el.appendChild(span);
+    }
+    var next = '· ' + text;
+    if (span.textContent !== next) { span.textContent = next; }
+  }
+
   function paintLiveUsage(usage) {
     usage = usage || {};
-    var input = B.el('liveRequestTokens');
-    var thinking = B.el('liveThinkingTokens');
-    var answer = B.el('liveAnswerTokens');
-    if (input) {
-      input.innerHTML = tokenMarkup(usage.prompt_tokens == null
-        ? 'токени після завершення' : tokenText(usage.prompt_tokens, false));
-    }
-    if (thinking) {
-      thinking.innerHTML = tokenMarkup(usage.thinking_tokens == null
-        ? 'рахується…' : tokenText(usage.thinking_tokens, true));
-    }
-    if (answer) {
-      answer.innerHTML = tokenMarkup(usage.answer_tokens == null
-        ? 'рахується…' : tokenText(usage.answer_tokens, true));
-    }
+    paintTokenCount(B.el('liveRequestTokens'), usage.prompt_tokens == null
+      ? 'токени після завершення' : tokenText(usage.prompt_tokens, false));
+    paintTokenCount(B.el('liveThinkingTokens'), usage.thinking_tokens == null
+      ? 'рахується…' : tokenText(usage.thinking_tokens, true));
+    paintTokenCount(B.el('liveAnswerTokens'), usage.answer_tokens == null
+      ? 'рахується…' : tokenText(usage.answer_tokens, true));
   }
 
   function paintStream(text) {
