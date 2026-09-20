@@ -217,9 +217,33 @@ if ($think === true && is_array($catalogData)) {
             // Рівні — це лише уточнення форми thinking. Якщо рантайм заявляє
             // thinking, але рівні ще не перевірені або їх немає, базовий
             // `think:true` все одно мусить лишитися активним.
-            $think = ($catalogModel['thinking_levels'] ?? 'not_tested') === 'supported'
-                ? $settings['think_level']
-                : true;
+            if (($catalogModel['thinking_levels'] ?? 'not_tested') === 'supported') {
+                $supportedLevels = $catalogModel['thinking_probe']['supported_levels'] ?? null;
+                // Старий каталог знає лише, що probe довела low/high. Не
+                // ламаймо такі записи після оновлення клієнта.
+                if (! is_array($supportedLevels) || $supportedLevels === []) {
+                    $supportedLevels = ['low', 'high'];
+                }
+                $supportedLevels = array_values(array_intersect(['low', 'medium', 'high'], $supportedLevels));
+                $requestedLevel = $settings['think_level'];
+                if (in_array($requestedLevel, $supportedLevels, true)) {
+                    $think = $requestedLevel;
+                } else {
+                    $order = ['low', 'medium', 'high'];
+                    $requestedIndex = array_search($requestedLevel, $order, true);
+                    $lower = array_values(array_filter($supportedLevels, static function (string $level) use ($order, $requestedIndex): bool {
+                        return array_search($level, $order, true) < $requestedIndex;
+                    }));
+                    $higher = array_values(array_filter($supportedLevels, static function (string $level) use ($order, $requestedIndex): bool {
+                        return array_search($level, $order, true) > $requestedIndex;
+                    }));
+                    usort($lower, static fn (string $a, string $b): int => array_search($b, $order, true) <=> array_search($a, $order, true));
+                    usort($higher, static fn (string $a, string $b): int => array_search($a, $order, true) <=> array_search($b, $order, true));
+                    $think = $lower[0] ?? $higher[0] ?? true;
+                }
+            } else {
+                $think = true;
+            }
         } else {
             // Модель без thinking не має отримувати think=true: для такого
             // runtime це може завершити виклик ще до першого токена.

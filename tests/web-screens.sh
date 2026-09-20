@@ -348,6 +348,22 @@ grep -Fq "action: 'models.settings'" "$MODELS" \
     || fail 'автозбереження роздумів не проходить через models.settings'
 grep -Fq 'onchange = saveThinkingSettings' "$MODELS" \
     || fail 'перемикач і рівень роздумів не мають автозбереження'
+for level in low medium high; do
+    grep -Fq "<option value=\"$level\">" "$MODELS" \
+        || fail "глобальний селектор роздумів не має режиму $level"
+done
+grep -Fq 'var anyLevelModel' "$MODELS" \
+    || fail 'екран не шукає моделі з підтвердженими рівнями для глобального дефолту'
+grep -Fq 'level.disabled = !canChooseLevel' "$MODELS" \
+    || fail 'селектор рівня не враховує глобальний дефолт для підтримуваних моделей'
+grep -Fq '(toggle.disabled && level.disabled)' "$MODELS" \
+    || fail 'зміну глобального рівня не можна зберегти, коли активна модель не підтверджує рівні'
+grep -Fq 'model.thinking_probe.supported_levels' "$MODELS" \
+    || fail 'екран не показує фактично підтверджені режими моделі'
+grep -Fq "['low', 'medium', 'high'].map" "$MODELS" \
+    || fail 'екран не показує виміри probe для всіх трьох режимів'
+grep -Fq "levelTitle = model.thinking_levels === 'supported' ? 'режими' : 'рівні'" "$MODELS" \
+    || fail 'підтверджені режими не мають окремого підпису від неперевірених рівнів'
 grep -Fq 'data-icon="thinking"' "$MODELS" \
     || fail 'на екрані моделей немає іконки роздумів'
 grep -Fq '<span>🧠 Роздуми</span>' "$MODELS" \

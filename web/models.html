@@ -128,6 +128,12 @@
       ? choice.runtime + ' / ' + choice.model : 'за конфігом';
   }
 
+  function probeDetail(probe) {
+    return ['low', 'medium', 'high'].map(function (level) {
+      return level + ' ' + B.num(probe[level + '_length']) + '/' + B.num(probe[level + '_repeat_length']);
+    }).join(' · ');
+  }
+
   // Назву моделі ріжемо ПОСЕРЕДИНІ, а не з кінця: розрізняльна частина
   // (`:35b-Claude-4.7-q4_K`) стоїть саме в хвості, і обрізаний хвіст зробив би
   // два різні рядки однаковими на вигляд. Рідний `select` у закритому стані
@@ -229,7 +235,7 @@
     var toggle = B.el('thinkToggle');
     var level = B.el('thinkLevel');
     var state = B.el('thinkState');
-    if (!toggle || !level || !state || toggle.disabled) { return; }
+    if (!toggle || !level || !state || (toggle.disabled && level.disabled)) { return; }
     var seq = ++thinkingSaveSeq;
     var think = toggle.checked;
     var thinkLevel = level.value;
@@ -283,19 +289,29 @@
     })[0] || null;
     var canThink = activeModel && activeModel.thinking === true;
     var hasLevels = canThink && activeModel.thinking_levels === 'supported';
+    var anyLevelModel = (catalog.models || []).some(function (model) {
+      return model.thinking === true && model.thinking_levels === 'supported';
+    });
+    var canChooseLevel = hasLevels || anyLevelModel;
     toggle.checked = settings.think === true;
     toggle.disabled = !canThink;
-    level.disabled = !hasLevels;
+    level.disabled = !canChooseLevel;
     toggle.title = canThink ? 'рантайм декларує thinking' : 'недоступно: активна модель не декларує thinking';
     var levelReason = activeModel && activeModel.thinking_probe && activeModel.thinking_probe.reason
       ? activeModel.thinking_probe.reason : 'рівні ще не доведені поведінковою пробою';
-    level.title = hasLevels ? 'рівні доведені поведінковою пробою' : 'недоступно: ' + levelReason;
+    level.title = hasLevels
+      ? 'рівні доведені поведінковою пробою'
+      : canChooseLevel
+        ? 'дефолт збережеться й застосовується до моделей із підтвердженими рівнями'
+        : 'недоступно: ' + levelReason;
     if (!canThink) {
       B.el('thinkState').textContent = activeModel ? 'недоступно · модель не декларує thinking' : 'недоступно · спершу обери модель';
     } else if (activeModel.thinking_levels === 'not_deterministic') {
       B.el('thinkState').textContent = 'рівні недоступні · ' + levelReason;
     } else if (!hasLevels) {
-      B.el('thinkState').textContent = 'увімкнено/вимкнено · рівні не перевірено';
+      B.el('thinkState').textContent = canChooseLevel
+        ? 'увімкнено/вимкнено · дефолтний рівень збережеться для моделей із режимами'
+        : 'увімкнено/вимкнено · рівні не перевірено';
     } else {
       B.el('thinkState').textContent = toggle.checked ? 'увімкнено · рівні підтримує' : 'вимкнено · рівні підтримує';
     }
@@ -351,14 +367,19 @@
       var disabledTitle = model.reason ? ' title="' + B.esc(model.reason) + '"' : '';
       var thinking = model.reason ? 'не перевірено' : (model.thinking === true ? 'підтримує' : 'не підтримує');
       var thinkingReason = model.reason || model.thinking_reason || 'здатність не підтверджена каталогом';
-      var levelLabels = {supported:'підтримує', unsupported:'не підтримує', not_tested:'не перевірено', not_deterministic:'не піддається перевірці'};
-      var levelStatus = levelLabels[model.thinking_levels] || 'не перевірено';
+      var levelLabels = {unsupported:'не підтримує', not_tested:'не перевірено', not_deterministic:'не піддається перевірці'};
+      var supportedLevels = model.thinking_probe && Array.isArray(model.thinking_probe.supported_levels)
+        ? model.thinking_probe.supported_levels : ['low', 'high'];
+      var levelStatus = model.thinking_levels === 'supported'
+        ? (supportedLevels.length ? supportedLevels.join(' · ') : 'не підтверджено')
+        : (levelLabels[model.thinking_levels] || 'не перевірено');
+      var levelTitle = model.thinking_levels === 'supported' ? 'режими' : 'рівні';
       var levelReason = model.thinking_probe && model.thinking_probe.reason ? model.thinking_probe.reason : '';
       var loadedIcon = String(model.loaded) === 'так' ? B.icon('check', 'model-loaded-icon') : B.icon('circle', 'model-loaded-icon');
       return '<tr class="model-row' + (isGlobal ? ' is-global-selected' : '') + '"><td class="model-runtime">' + B.esc(model.runtime) + '</td><td class="model-name mono" title="' + B.esc(model.model) + '">' + B.esc(model.model) + (isGlobal ? '<span class="model-selected-badge">загальна</span>' : '') + '</td>'
         + '<td class="model-size">' + B.esc(model.size) + '</td><td class="model-loaded">' + loadedIcon + B.esc(model.loaded) + '</td><td class="model-state">' + availability + '</td>'
         + '<td class="model-state"><span class="model-status">роздуми: ' + thinking + '</span><div class="model-status-detail">' + B.esc(thinkingReason) + '</div></td>'
-        + '<td class="model-state"><span class="model-status">рівні: ' + levelStatus + '</span>' + (model.thinking_probe ? '<div class="model-status-detail">low ' + B.num(model.thinking_probe.low_length) + '/' + B.num(model.thinking_probe.low_repeat_length) + ' · high ' + B.num(model.thinking_probe.high_length) + '/' + B.num(model.thinking_probe.high_repeat_length) + ' · ' + B.esc(when(model.thinking_probe.probed_at)) + '</div>' + (levelReason ? '<div class="model-status-detail">' + B.esc(levelReason) + '</div>' : '') : '') + '</td>'
+        + '<td class="model-state"><span class="model-status">' + levelTitle + ': ' + levelStatus + '</span>' + (model.thinking_probe ? '<div class="model-status-detail">' + probeDetail(model.thinking_probe) + ' · ' + B.esc(when(model.thinking_probe.probed_at)) + '</div>' + (levelReason ? '<div class="model-status-detail">' + B.esc(levelReason) + '</div>' : '') : '') + '</td>'
         + '<td class="model-actions-cell"><div class="model-actions">'
         + '<button class="model-action-primary" type="button" data-action="models.select" data-runtime="' + B.esc(model.runtime) + '" data-model="' + B.esc(model.model) + '"' + disabled + disabledTitle + '>' + B.icon('star') + '<span>обрати загально</span></button>'
         + '<button class="model-action" aria-label="завантажити" title="' + B.esc(model.reason || 'завантажити') + '" type="button" data-action="models.load" data-runtime="' + B.esc(model.runtime) + '" data-model="' + B.esc(model.model) + '"' + disabled + '>' + B.icon('download') + '<span>завантажити</span></button>'

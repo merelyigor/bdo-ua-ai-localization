@@ -488,7 +488,33 @@ grep -q '"think":"low"' "$SCENARIO_FILE.request" \
     || fail 'глобальний low не передано як think:low для моделі з рівнями'
 rm -f "$WORK/state/model-catalog.json" "$WORK/state/model-settings.json"
 
-# 12є.1. МОДЕЛЬ БЕЗ THINKING НЕ МАЄ ПАДАТИ ВІД ГЛОБАЛЬНОГО ПЕРЕМИКАЧА.
+# 12є.1. Якщо модель має тільки low/high, глобальний medium опускається до low.
+cat > "$WORK/state/model-catalog.json" <<'JSON'
+{"models":[{"runtime":"ollama","model":"тест-модель","thinking":true,"thinking_levels":"supported","thinking_probe":{"supported_levels":["low","high"]}}]}
+JSON
+printf '%s\n' '{"version":1,"think":true,"think_level":"medium"}' > "$WORK/state/model-settings.json"
+printf '%s' ok > "$SCENARIO_FILE"; rm -f "$RESPONSE"
+BDO_ROLES_CONFIG="$WORK/roles.json" BDO_STATE_DIR="$WORK/state" \
+    php "$ROOT/cli/model/client.php" translation-worker "$WORK/payload.json" "$RESPONSE" --schema "$WORK/schema.json" >/dev/null 2>&1 \
+    || fail 'модель із low/high не прийняла fallback із medium до low'
+grep -q '"think":"low"' "$SCENARIO_FILE.request" \
+    || fail 'medium не перемкнувся на найближчий нижчий low'
+rm -f "$WORK/state/model-catalog.json" "$WORK/state/model-settings.json"
+
+# 12є.2. Якщо нижчого рівня немає, global low піднімається до medium.
+cat > "$WORK/state/model-catalog.json" <<'JSON'
+{"models":[{"runtime":"ollama","model":"тест-модель","thinking":true,"thinking_levels":"supported","thinking_probe":{"supported_levels":["medium"]}}]}
+JSON
+printf '%s\n' '{"version":1,"think":true,"think_level":"low"}' > "$WORK/state/model-settings.json"
+printf '%s' ok > "$SCENARIO_FILE"; rm -f "$RESPONSE"
+BDO_ROLES_CONFIG="$WORK/roles.json" BDO_STATE_DIR="$WORK/state" \
+    php "$ROOT/cli/model/client.php" translation-worker "$WORK/payload.json" "$RESPONSE" --schema "$WORK/schema.json" >/dev/null 2>&1 \
+    || fail 'модель лише з medium не прийняла fallback із low до medium'
+grep -q '"think":"medium"' "$SCENARIO_FILE.request" \
+    || fail 'low не перемкнувся на найближчий вищий medium'
+rm -f "$WORK/state/model-catalog.json" "$WORK/state/model-settings.json"
+
+# 12є.3. МОДЕЛЬ БЕЗ THINKING НЕ МАЄ ПАДАТИ ВІД ГЛОБАЛЬНОГО ПЕРЕМИКАЧА.
 #      Capability каталогу має сильніший факт за глобальне бажання власника:
 #      несумісна модель отримує think=false і все одно може відповісти.
 cat > "$WORK/state/model-catalog.json" <<'JSON'
@@ -504,7 +530,7 @@ grep -q '"think":false' "$WORK/state/model-calls.jsonl" \
     || fail 'журнал не записав фактичне вимкнення thinking для несумісної моделі'
 rm -f "$WORK/state/model-catalog.json"
 
-# 12є.2. МОДЕЛЬ ІЗ THINKING, АЛЕ БЕЗ ПІДТВЕРДЖЕНИХ РІВНІВ, отримує базовий
+# 12є.4. МОДЕЛЬ ІЗ THINKING, АЛЕ БЕЗ ПІДТВЕРДЖЕНИХ РІВНІВ, отримує базовий
 #       think=true. Рівень `low` дозволений тільки після окремого probe.
 cat > "$WORK/state/model-catalog.json" <<'JSON'
 {"models":[{"runtime":"ollama","model":"тест-модель","thinking":true,"thinking_levels":"not_tested"}]}

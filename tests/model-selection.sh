@@ -15,8 +15,8 @@ grep -Fq 'toggle.disabled = !canThink' "$ROOT/web/models.html" \
     || fail 'перемикач thinking не блокується за capability моделі'
 grep -Fq "activeModel.thinking_levels === 'supported'" "$ROOT/web/models.html" \
     || fail 'рівні стали доступними без доведеної probe'
-grep -Fq "foreach (['low', 'high'] as \$level)" "$ROOT/lib/Model/RuntimeModels.php" \
-    || fail 'probe не порівнює рівні low і high'
+grep -Fq "\$levels = ['low', 'medium', 'high']" "$ROOT/lib/Model/RuntimeModels.php" \
+    || fail 'probe не порівнює всі три режими low, medium і high'
 grep -Fq 'temperature: 0.0' "$ROOT/lib/Model/RuntimeModels.php" \
     || fail 'probe не фіксує temperature 0'
 grep -Fq 'for ($attempt = 0; $attempt < 2; $attempt++)' "$ROOT/lib/Model/RuntimeModels.php" \
@@ -63,6 +63,10 @@ if ($path === '/api/chat') {
     $request = json_decode($body, true);
     $think = is_array($request) ? ($request['think'] ?? false) : false;
     $model = is_array($request) ? ($request['model'] ?? '') : '';
+    if ($model === 'ollama-model' && $think === 'medium') {
+        echo json_encode(['error' => 'think level medium is unsupported']);
+        return true;
+    }
     $thinking = $model === 'ollama-model'
         ? ($think === 'low' ? str_repeat('l', 14) : ($think === 'high' ? str_repeat('h', 473) : ''))
         : '';
@@ -209,7 +213,7 @@ set -e
 test "$probe_code" -eq 0 || fail "probe oMLX завершилась з кодом $probe_code: $probe_output_omlx"
 grep -Fq 'рівні не піддаються перевірці' <<<"$probe_output_omlx" || fail "probe не зафіксувала недетермінованість: $probe_output_omlx"
 grep -Fq 'рантайм дає різні відповіді на однакові запити' <<<"$probe_output_omlx" || fail "probe не назвала причину: $probe_output_omlx"
-php -r '$d=json_decode(file_get_contents($argv[1]),true); $m=$d["models"]??[]; $found=[]; foreach($m as $x) { $found[($x["runtime"]??"")."/".($x["model"]??"")]=$x; } $want=["ollama/ollama-model"=>"supported","omlx/omlx-model"=>"not_deterministic","omlx/omlx-not-tested"=>"not_tested","omlx/omlx-no-thinking"=>"unsupported"]; foreach($want as $key=>$status) { if (($found[$key]["thinking_levels"]??"")!==$status) { fwrite(STDERR,"{$key} не має стану {$status}\n"); exit(1); } } if (($found["omlx/omlx-model"]["thinking_probe"]["reason"]??"")==="" || !isset($found["ollama/ollama-model"]["thinking_probe"]["probed_at"])) exit(1);' "$WORK/state/model-catalog.json" \
+php -r '$d=json_decode(file_get_contents($argv[1]),true); $m=$d["models"]??[]; $found=[]; foreach($m as $x) { $found[($x["runtime"]??"")."/".($x["model"]??"")]=$x; } $want=["ollama/ollama-model"=>"supported","omlx/omlx-model"=>"not_deterministic","omlx/omlx-not-tested"=>"not_tested","omlx/omlx-no-thinking"=>"unsupported"]; foreach($want as $key=>$status) { if (($found[$key]["thinking_levels"]??"")!==$status) { fwrite(STDERR,"{$key} не має стану {$status}\n"); exit(1); } } if (($found["ollama/ollama-model"]["thinking_probe"]["supported_levels"]??[]) !== ["low","high"]) { fwrite(STDERR,"probe не зберегла саме low/high\n"); exit(1); } if (($found["omlx/omlx-model"]["thinking_probe"]["reason"]??"")==="" || !isset($found["ollama/ollama-model"]["thinking_probe"]["probed_at"])) exit(1);' "$WORK/state/model-catalog.json" \
     || fail 'результат probe не записаний поруч із моделлю або стани змішані'
 
 select_output="$(run_bdo models select omlx omlx-model --role translation-worker)"

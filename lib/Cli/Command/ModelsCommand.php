@@ -160,12 +160,15 @@ final class ModelsCommand implements Command, CommandHelp
             default => $result['status'],
         };
         $output->stdout(sprintf(
-            "Проба %s / %s: рівні %s (low=%d/%d, high=%d/%d, probed_at=%s)%s\n",
+            "Проба %s / %s: рівні %s (%s; low=%d/%d, medium=%d/%d, high=%d/%d, probed_at=%s)%s\n",
             $runtime,
             $model,
             $statusLabel,
+            implode(',', $result['supported_levels'] ?? []),
             $result['low_length'],
             $result['low_repeat_length'],
+            $result['medium_length'],
+            $result['medium_repeat_length'],
             $result['high_length'],
             $result['high_repeat_length'],
             $result['probed_at'],
@@ -342,6 +345,8 @@ final class ModelsCommand implements Command, CommandHelp
     {
         return is_array($probe)
             && isset($probe['model_fingerprint'])
+            && isset($probe['supported_levels'])
+            && is_array($probe['supported_levels'])
             && hash_equals((string) $probe['model_fingerprint'], $this->modelFingerprint($model));
     }
 

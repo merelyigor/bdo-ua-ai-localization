@@ -100,12 +100,12 @@ final class RuntimeModels
     }
 
     /**
-     * Два однакові короткі виклики кожного рівня доводять, чи має модель
-     * рівні роздумів і чи достатньо стабільний цей доказ.
+     * Два однакові короткі виклики кожного рівня доводять, які режими
+     * роздумів модель реально розрізняє і чи достатньо стабільний цей доказ.
      * Порівнюємо поле thinking, а не content: відповідь може бути однакова,
      * навіть коли тривалість внутрішнього міркування різна.
      *
-     * @return array{status:string,low_length:int,high_length:int,low_repeat_length:int,high_repeat_length:int,reason?:string,probed_at:string}
+     * @return array{status:string,supported_levels:list<string>,low_length:int,medium_length:int,high_length:int,low_repeat_length:int,medium_repeat_length:int,high_repeat_length:int,reason?:string,probed_at:string}
      */
     public function probeThinking(string $runtime, string $model): array
     {
@@ -127,43 +127,73 @@ final class RuntimeModels
             $this->config,
             ['provider' => $runtime, 'model' => $model],
         );
-        $lengths = ['low' => [], 'high' => []];
-        foreach (['low', 'high'] as $level) {
+        $levels = ['low', 'medium', 'high'];
+        $lengths = array_fill_keys($levels, []);
+        foreach ($levels as $level) {
             for ($attempt = 0; $attempt < 2; $attempt++) {
-                $reply = $transport->send(new \Bdo\Translate\Model\Transport\Request(
-                    role: 'thinking-probe',
-                    model: $model,
-                    prompt: 'Перевірка рівня thinking. Відповідай коротко.',
-                    payload: '{"probe":"thinking"}',
-                    schema: null,
-                    stream: false,
-                    think: $level,
-                    temperature: 0.0,
-                    numCtx: (int) ($settings['num_ctx'] ?? $this->config['num_ctx'] ?? 4096),
-                    numPredict: 512,
-                    timeout: (int) ($this->config['timeout_seconds'] ?? 900),
-                ));
-                $lengths[$level][] = mb_strlen($reply->thinking, 'UTF-8');
+                try {
+                    $reply = $transport->send(new \Bdo\Translate\Model\Transport\Request(
+                        role: 'thinking-probe',
+                        model: $model,
+                        prompt: 'Перевірка рівня thinking. Відповідай коротко.',
+                        payload: '{"probe":"thinking"}',
+                        schema: null,
+                        stream: false,
+                        think: $level,
+                        temperature: 0.0,
+                        numCtx: (int) ($settings['num_ctx'] ?? $this->config['num_ctx'] ?? 4096),
+                        numPredict: 512,
+                        timeout: (int) ($this->config['timeout_seconds'] ?? 900),
+                    ));
+                    $lengths[$level][] = mb_strlen($reply->thinking, 'UTF-8');
+                } catch (\Bdo\Translate\Model\Transport\TransportError $exception) {
+                    // Деякі runtime відкидають конкретний невідомий рівень
+                    // через model_error. Це доказ, що недоступний саме цей
+                    // режим; мережеві й timeout-помилки не можна маскувати.
+                    if ($exception->reason !== 'model_error') {
+                        throw $exception;
+                    }
+                    $lengths[$level] = [0, 0];
+                    break;
+                }
             }
         }
 
-        $lowDelta = abs($lengths['low'][0] - $lengths['low'][1]);
-        $highDelta = abs($lengths['high'][0] - $lengths['high'][1]);
-        $repeatDelta = max($lowDelta, $highDelta);
-        $lowMean = intdiv($lengths['low'][0] + $lengths['low'][1], 2);
-        $highMean = intdiv($lengths['high'][0] + $lengths['high'][1], 2);
-        $levelDelta = abs($highMean - $lowMean);
+        $means = [];
+        $repeatDelta = 0;
+        foreach ($levels as $level) {
+            $repeatDelta = max($repeatDelta, abs($lengths[$level][0] - $lengths[$level][1]));
+            $means[$level] = intdiv($lengths[$level][0] + $lengths[$level][1], 2);
+        }
+        $distinctMeans = array_values(array_unique(array_filter($means, static fn (int $length): bool => $length > 0)));
+        $levelDelta = count($distinctMeans) > 1 ? max($distinctMeans) - min($distinctMeans) : 0;
         // Поріг 50%: шум, що сягає половини міжрівневої різниці, уже може пояснити висновок.
         $notDeterministic = $repeatDelta > 0 && ($levelDelta === 0 || $repeatDelta * 2 >= $levelDelta);
+        $supportedLevels = [];
+        if (! $notDeterministic && $levelDelta > 0) {
+            $nonEmptyLevels = array_values(array_filter($levels, static fn (string $level): bool => $means[$level] > 0));
+            $distinctNonEmpty = array_values(array_unique(array_map(static fn (string $level): int => $means[$level], $nonEmptyLevels)));
+            foreach ($levels as $level) {
+                $sameMeanCount = count(array_filter($means, static function (int $mean) use ($means, $level): bool {
+                    return $mean > 0 && $mean === $means[$level];
+                }));
+                if ($means[$level] > 0 && (count($distinctNonEmpty) > 1 ? $sameMeanCount === 1 : count($nonEmptyLevels) === 1)) {
+                    $supportedLevels[] = $level;
+                }
+            }
+        }
         $status = $notDeterministic
             ? 'not_deterministic'
-            : ($levelDelta === 0 ? 'unsupported' : 'supported');
+            : (count($supportedLevels) >= 1 ? 'supported' : 'unsupported');
 
         $result = [
             'status' => $status,
+            'supported_levels' => $supportedLevels,
             'low_length' => $lengths['low'][0],
+            'medium_length' => $lengths['medium'][0],
             'high_length' => $lengths['high'][0],
             'low_repeat_length' => $lengths['low'][1],
+            'medium_repeat_length' => $lengths['medium'][1],
             'high_repeat_length' => $lengths['high'][1],
             'probed_at' => gmdate('c'),
         ];
