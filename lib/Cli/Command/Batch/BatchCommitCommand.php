@@ -18,6 +18,7 @@ use Bdo\Translate\Pipeline\JudgeDecisions;
 use Bdo\Translate\Pipeline\JudgePolicy;
 use Bdo\Translate\Pipeline\RowAttempts;
 use Bdo\Translate\Quality\Defects;
+use Bdo\Translate\Quality\GlossaryPresence;
 use RuntimeException;
 
 /**
@@ -140,12 +141,15 @@ final class BatchCommitCommand implements Command, \Bdo\Translate\Cli\CommandHel
             $minConfidence = JudgePolicy::minConfidence(getenv('BDO_JUDGE_MIN_CONFIDENCE') ?: null);
             $apiRejected = $apiRejectedFile !== '' && is_file($apiRejectedFile)
                 ? ApiResponse::fromFile($apiRejectedFile)->rejections() : [];
+            $glossaryConfirmed = $apiRejectedFile !== '' && is_file($apiRejectedFile)
+                ? $this->glossaryConfirmable(ApiResponse::fromFile($apiRejectedFile), $rows, $textByHash) : [];
             $pass = [];
             $held = [];
             $moderation = [];
             $counts = ['PASS' => 0, 'REVIEW' => 0, 'REJECT' => 0];
             $unresolvedCount = 0;
             $sameAsSource = 0;
+            $confirmedGlossary = 0;
             $mechanicalHeld = 0;
             $mechanicalLog = [];
             $judgeLog = [];
@@ -215,6 +219,10 @@ final class BatchCommitCommand implements Command, \Bdo\Translate\Cli\CommandHel
                         $item['same_as_source'] = true;
                         $sameAsSource++;
                     }
+                    if (isset($glossaryConfirmed[$hash])) {
+                        $item['glossary_confirmed'] = true;
+                        $confirmedGlossary++;
+                    }
                     $pass[] = $item;
                 } elseif ($route === ChannelRouter::PROPOSAL) {
                     $item = [
@@ -225,6 +233,10 @@ final class BatchCommitCommand implements Command, \Bdo\Translate\Cli\CommandHel
                     if ($text === ($rowByHash[$hash]['source_text'] ?? null)) {
                         $item['same_as_source'] = true;
                         $sameAsSource++;
+                    }
+                    if (isset($glossaryConfirmed[$hash])) {
+                        $item['glossary_confirmed'] = true;
+                        $confirmedGlossary++;
                     }
                     $moderation[] = $item;
                 } else {
@@ -272,7 +284,7 @@ final class BatchCommitCommand implements Command, \Bdo\Translate\Cli\CommandHel
                 throw new RuntimeException('Не вдалося створити файл карантину: '.$quarantinePath);
             }
 
-            $this->report($output, $rows, $pass, $moderation, $held, $counts, $sameAsSource, $unresolvedCount, $mechanicalHeld, $mechanicalLog, $judgeCounts, $minConfidence, $remaining, $blocked);
+            $this->report($output, $rows, $pass, $moderation, $held, $counts, $sameAsSource, $confirmedGlossary, $unresolvedCount, $mechanicalHeld, $mechanicalLog, $judgeCounts, $minConfidence, $remaining, $blocked);
             $worker = $this->worker($stateDir, $root, $candidateFile);
             $targetCounts = ['written' => 0, 'skipped' => 0, 'rejected' => 0];
             $moderationCounts = ['written' => 0, 'skipped' => 0, 'rejected' => 0];
@@ -415,11 +427,88 @@ final class BatchCommitCommand implements Command, \Bdo\Translate\Cli\CommandHel
         }
     }
 
-    private function report(Output $output, RowSet $rows, array $pass, array $moderation, array $held, array $counts, int $sameAsSource, int $unresolvedCount, int $mechanicalHeld, array $mechanicalLog, array $judgeCounts, int $minConfidence, int $remaining, ?string $blocked): void
+    /**
+     * Рядки, про які МОЖНА сказати серверу «назва на місці, я вжив її в іншій
+     * формі» · прапорець `glossary_confirmed`.
+     *
+     * ЦЕ ЄДИНИЙ СПОСІБ ЗАКРИТИ ТАКИЙ РЯДОК. Сервер відхиляє його з
+     * `glossary_violation`, хоча затверджена назва в тексті стоїть · просто у
+     * відмінковій формі («Торговця з ліхтарем» замість «Торговець з
+     * ліхтарем»). Без підтвердження рядок іде до людини й повертається в
+     * наступній вибірці (D53). Сам контракт описаний сервером: `GET /taxonomy`
+     * код `glossary_violation` і `GET /guide` версії 6 прямо кажуть надіслати
+     * `glossary_confirmed: true` разом із текстом.
+     *
+     * ПІДТВЕРДЖУЄМО ЛИШЕ ТЕ, ЩО БАЧИМО САМІ, і рівно на тих умовах:
+     *
+     * 1. Скарга сервера · саме `glossary_violation` і саме на цей рядок.
+     *    Підтверджувати те, про що нас не питали, права немає.
+     * 2. Кожна названа сервером вимога мусить бути виконана в тексті. Досить
+     *    однієї невиконаної · і рядок іде звичайним шляхом до людини.
+     * 3. Походження назви · людське. `machine` і невідоме походження не є
+     *    доказом людського правила (у каталозі 96,6% назв машинні), і
+     *    підтверджувати машинну здогадку означало б закривати рядок власним
+     *    домислом.
+     * 4. Хоч одна назва стоїть НЕ дослівно. Якщо всі вони дослівні, то це вже
+     *    інший дефект · сервер не бачить того, що є, і прапорець його не
+     *    лікує, а маскує.
+     *
+     * Ціна помилки тут несиметрична: зайве підтвердження ЗАКРИЄ рядок із
+     * неправильною назвою, а пропущене лише відправить його до людини. Тому
+     * всі чотири умови обовʼязкові разом.
+     *
+     * @param  array<string,string>  $textByHash
+     * @return array<string,true>
+     */
+    private function glossaryConfirmable(ApiResponse $validate, RowSet $rows, array $textByHash): array
+    {
+        $confirmable = [];
+        foreach ($validate->results() as $result) {
+            if (($result['status'] ?? '') !== 'rejected' || ($result['code'] ?? '') !== 'glossary_violation') {
+                continue;
+            }
+            $hash = (string) ($result['identity_hash'] ?? '');
+            $text = $textByHash[$hash] ?? '';
+            if ($hash === '' || $text === '' || ! $rows->has($hash)) {
+                continue;
+            }
+            $layers = $rows->getOrEmpty($hash)->glossaryLayers();
+            $issues = is_array($result['details']['glossary'] ?? null) ? $result['details']['glossary'] : [];
+            $checked = 0;
+            $inflected = 0;
+            foreach ($issues as $issue) {
+                $expected = (string) ($issue['expected'] ?? '');
+                $canonical = (string) ($issue['canonical'] ?? '');
+                $layer = $layers[$canonical] ?? '';
+                if ($expected === '' || $canonical === '' || $layer === '' || $layer === 'machine') {
+                    $checked = 0;
+                    break;
+                }
+                if (! GlossaryPresence::used($text, $expected)) {
+                    $checked = 0;
+                    break;
+                }
+                $checked++;
+                if (! GlossaryPresence::literal($text, $expected)) {
+                    $inflected++;
+                }
+            }
+            if ($checked > 0 && $inflected > 0) {
+                $confirmable[$hash] = true;
+            }
+        }
+
+        return $confirmable;
+    }
+
+    private function report(Output $output, RowSet $rows, array $pass, array $moderation, array $held, array $counts, int $sameAsSource, int $confirmedGlossary, int $unresolvedCount, int $mechanicalHeld, array $mechanicalLog, array $judgeCounts, int $minConfidence, int $remaining, ?string $blocked): void
     {
         $output->stdout(sprintf("Пачка: %d рядків | PASS %d, REVIEW %d, REJECT %d\n", count($rows), $counts['PASS'], $counts['REVIEW'], $counts['REJECT']));
         if ($sameAsSource > 0) {
             $output->stdout("Переклад = джерело: {$sameAsSource} рядків із прапорцем same_as_source (у ШІ-шар лише за вироком судді, у модерацію завжди)\n");
+        }
+        if ($confirmedGlossary > 0) {
+            $output->stdout("Назва глосарія вжита у відмінковій формі: {$confirmedGlossary} рядків із прапорцем glossary_confirmed (текст не міняли, серверу сказано, що назва на місці)\n");
         }
         if ($mechanicalHeld > 0) {
             $output->stdout("Механічні дефекти у фінальному тексті: {$mechanicalHeld} рядків знято з ШІ-шару до людини\n");

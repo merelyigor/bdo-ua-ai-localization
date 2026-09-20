@@ -80,6 +80,16 @@ final class WritePayload
                     throw new RuntimeException("Елемент #$i має `same_as_source` не рівний true; прапорець ставиться лише для збігу з джерелом.");
                 }
             }
+            // `glossary_confirmed` знімає серверну перевірку `glossary_violation`
+            // для ОДНОГО елемента: назва глосарія стоїть у тексті, просто у
+            // відмінковій формі. Ціна помилки та сама · рядок із неправильною
+            // назвою закриється мовчки, тому прапорець теж лише справжній
+            // `true` і лише там, де присутність назви доведена кодом.
+            if (array_key_exists('glossary_confirmed', $item)) {
+                if ($item['glossary_confirmed'] !== true) {
+                    throw new RuntimeException("Елемент #$i має `glossary_confirmed` не рівний true; прапорець ставиться лише для вже вжитої назви.");
+                }
+            }
         }
     }
 }

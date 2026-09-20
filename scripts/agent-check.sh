@@ -149,7 +149,8 @@ touched_map() {
             printf 'test|tests/cli-api-glossary.sh|контракт API glossary\n'
             printf 'test|tests/cli-api-fetch.sh|контракт API fetch\n'
             printf 'test|tests/api-doc-contract.sh|документований API-контракт\n'
-            printf 'test|tests/cli-write-parity.sh|запис через API\n' ;;
+            printf 'test|tests/cli-write-parity.sh|запис через API\n'
+            printf 'test|tests/glossary-confirmed.sh|підтвердження вжитої назви\n' ;;
         lib/Batch/*)
             printf 'test|tests/pipeline-unit.php|unit-контракти batch\n'
             printf 'test|tests/pipeline-faults.php|відмови pipeline\n'
@@ -184,7 +185,8 @@ touched_map() {
             printf 'test|tests/hallucinated-tokens.sh|вигадані токени\n'
             printf 'test|tests/lineage.sh|слід рядка\n'
             printf 'test|tests/qa-memory-only.sh|memory-only QA\n'
-            printf 'test|tests/names-pass.sh|перевірка імен\n' ;;
+            printf 'test|tests/names-pass.sh|перевірка імен\n'
+            printf 'test|tests/glossary-confirmed.sh|підтвердження вжитої назви\n' ;;
         lib/Run/*)
             printf 'test|tests/run-pause.sh|пауза прогону\n'
             printf 'test|tests/cli-run-foundation-parity.sh|парність run foundation\n'
@@ -865,9 +867,15 @@ check_references() {
     # рядки на кшталт `./run-loop.sh --batches 3` · команда до файла, якого в
     # наборі немає. Перевірок це не проходило взагалі: gate дивився лише на
     # markdown. Тепер приклад у довідці мусить називати штатний вхід.
-    local help_hit
-    help_hit="$(grep -rn -- '\./[a-z0-9_-]\+\.sh' lib/Cli/ cli/ --include='*.php' --include='*.sh' \
-        | grep -v 'scripts/agent-check\.sh' | grep -v 'bin/tui\.sh' | sed -n '1p' || true)"
+    local help_hit help_code
+    if help_hit="$(git grep -nE '\./[a-z0-9_-]+\.sh' -- lib/Cli cli)"; then
+        help_code=0
+    else
+        help_code=$?
+        test "$help_code" -eq 1 || fail "не вдалося перевірити довідку команд: git grep завершився з кодом $help_code"
+        help_hit=''
+    fi
+    help_hit="$(printf '%s\n' "$help_hit" | grep -v 'scripts/agent-check\.sh' | grep -v 'bin/tui\.sh' | sed -n '1p')"
     test -z "$help_hit" || fail "довідка або повідомлення кличе скрипт замість ./bdo: $help_hit"
     note 'приклади в довідці команд ведуть на ./bdo'
 
@@ -1021,11 +1029,18 @@ check_design() {
     # ламає нічого механічно, тому жоден тест її не помічав. Тепер число живе
     # лише в токенах `--ds-container` і `--ds-container-wide`, а будь-яка
     # чотиризначна стеля поза `:root` означає, що сторінка знову заводить
-    # власну ширину. Три цифри не чіпаємо · це медіа-запити (`max-width:640px`).
+    # власну ширину.
+    #
+    # МЕДІА-ЗАПИТ СТЕЛЕЮ НЕ Є, І РОЗМІР ЦИФР ЙОГО НЕ ВИЗНАЧАЄ. Перша редакція
+    # спиралась на «три цифри · це точка зламу, чотири · це ширина», і перший
+    # же `@media (max-width:1100px)` поклав увесь повний гейт, хоча нічого не
+    # ламав (2026-09-20). Точка зламу відрізняється від стелі не числом, а
+    # місцем: вона стоїть в умові `@media`, а не у властивості правила.
     local cwidth
     cwidth="$(awk '
         /:root[[:space:]]*\{/ { inroot = 1 }
         inroot && /^[[:space:]]*\}/ { inroot = 0; next }
+        /@media/ { next }
         !inroot && /max-width:[[:space:]]*[0-9][0-9][0-9][0-9]/ { print NR": "$0; exit }
     ' "$css")"
     test -z "$cwidth" \
@@ -1787,6 +1802,7 @@ tests/web-call-view.sh
 tests/qa-memory-only.sh
 tests/no-silent-failures.sh
 tests/quarantine-recovery.sh
+tests/glossary-confirmed.sh
 tests/worker-reference.sh
 tests/schema-provider-compat.sh
 tests/mechanical-final-check.sh

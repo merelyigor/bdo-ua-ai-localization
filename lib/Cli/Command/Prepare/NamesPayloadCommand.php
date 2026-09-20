@@ -10,6 +10,7 @@ use Bdo\Translate\Batch\RowSet;
 use Bdo\Translate\Cli\Command;
 use Bdo\Translate\Cli\Output;
 use Bdo\Translate\Quality\GlossaryExamples;
+use Bdo\Translate\Quality\GlossaryPresence;
 use RuntimeException;
 
 /**
@@ -52,7 +53,7 @@ final class NamesPayloadCommand implements Command
                 // Тому перевіряємо ФАКТ: чи є очікуване в тексті. Є · наказу не
                 // додаємо й називаємо це вголос, бо інакше зникнення наказу
                 // виглядало б як утрата вимоги.
-                if ($this->alreadyUsed($candidate->text($hash), $expected)) {
+                if (GlossaryPresence::used($candidate->text($hash), $expected)) {
                     $satisfied[] = $expected;
                     continue;
                 }
@@ -75,61 +76,6 @@ final class NamesPayloadCommand implements Command
         // справжню помилку перекладу.
         if ($satisfied !== []) $output->stderr(sprintf("  %d вимог уже виконано в тексті (%s): наказ не додано, виклик ролі на них не витрачається\n", count($satisfied), implode(', ', array_slice(array_unique($satisfied), 0, 5))));
         return 0;
-    }
-
-    /**
-     * Чи стоїть очікувана назва в тексті вже зараз.
-     *
-     * Дослівний збіг · головний випадок: затверджений відповідник часто
-     * дорівнює англійському терміну («Life» для «Life»), і тоді наказ порожній
-     * за побудовою.
-     *
-     * Відмінкова форма · другий: «Торговця з ліхтарем» для «Торговець з
-     * ліхтарем». Сервер такі рядки відхиляє (D53), але переклад у них
-     * ПРАВИЛЬНИЙ, і кликати модель переставляти те, що вже стоїть, означає
-     * псувати робочий текст.
-     *
-     * ЧОМУ НЕ `GlossaryExamples::stems()`. Спробував саме його · він ріже два
-     * символи з кінця, і «Торговець» дає основу «Торгове», якої в «Торговця»
-     * немає: перевірка мовчки відповідала «не вжито». Для прикладів глосарія
-     * того правила досить, для питання «чи вжито назву» · ні.
-     *
-     * Тому тут власне правило, і воно назване прямо: кожне слово назви довше за
-     * три літери мусить знайтись у тексті початком, не коротшим за пʼять літер
-     * (або цілим словом, якщо воно коротше). Пʼять · щоб «Броня» не збіглася з
-     * «Бронза»; збіг мусить бути в УСІХ словах, тому пара слів розрізняє
-     * надійніше за одне.
-     *
-     * Хибне спрацювання тут не псує текст: наказ просто не додається, сервер
-     * наступного разу відхилить рядок знову, і він піде до людини.
-     */
-    private function alreadyUsed(string $text, string $expected): bool
-    {
-        $expected = trim($expected);
-        if ($expected === '' || $text === '') {
-            return false;
-        }
-        if (mb_stripos($text, $expected) !== false) {
-            return true;
-        }
-        $words = [];
-        foreach (preg_split('/\s+/u', $expected) ?: [] as $word) {
-            $word = trim($word, ".,!?:;«»\"'()[]{}");
-            if (mb_strlen($word) > 3) {
-                $words[] = $word;
-            }
-        }
-        if ($words === []) {
-            return false;
-        }
-        foreach ($words as $word) {
-            $length = min(mb_strlen($word), max(5, mb_strlen($word) - 3));
-            if (mb_stripos($text, mb_substr($word, 0, $length)) === false) {
-                return false;
-            }
-        }
-
-        return true;
     }
 
     private function required(array $arguments, int $index, string $message): string

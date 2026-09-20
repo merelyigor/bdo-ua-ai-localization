@@ -224,11 +224,13 @@ fi
 # Такий наказ коштує повного проходу ролі, а зробити з ним нічого не можна.
 # Другий випадок · назва вже вжита у відмінковій формі: сервер такий рядок
 # відхиляє (D53), але переклад у ньому правильний.
-# САБОТАЖ: прибрати виклик `alreadyUsed` · блок червоніє.
+# САБОТАЖ: прибрати виклик `GlossaryPresence::used` · блок червоніє.
+#
+# Саме правило з 2026-09-20 живе в `lib/Quality/GlossaryPresence.php`: те саме
+# питання ставить запис, коли вирішує, чи можна сказати серверу
+# `glossary_confirmed`. Дві копії правила розійшлися б при першій же зміні.
 php -r '
 require $argv[1];
-$m = new ReflectionMethod(Bdo\Translate\Cli\Command\Prepare\NamesPayloadCommand::class, "alreadyUsed");
-$c = (new ReflectionClass(Bdo\Translate\Cli\Command\Prepare\NamesPayloadCommand::class))->newInstanceWithoutConstructor();
 $cases = [
     ["Exchange Junk it for goods", "Exchange", true, "дослівний збіг"],
     ["Зустрів Торговця з ліхтарем", "Торговець з ліхтарем", true, "відмінкова форма"],
@@ -237,14 +239,14 @@ $cases = [
     ["Бронзова статуя", "Броня", false, "коротка назва не збігається з чужим словом"],
 ];
 foreach ($cases as [$text, $expected, $want, $why]) {
-    $got = $m->invoke($c, $text, $expected);
+    $got = Bdo\Translate\Quality\GlossaryPresence::used($text, $expected);
     if ($got !== $want) {
         fwrite(STDERR, "FAIL: {$why} · «{$expected}» у «{$text}» дало ".var_export($got, true)."\n");
         exit(1);
     }
 }
 ' "$ROOT/lib/autoload.php" || fail 'перевірка «назва вже вжита» працює неправильно'
-grep -Fq '$this->alreadyUsed($candidate->text($hash), $expected)' "$ROOT/lib/Cli/Command/Prepare/NamesPayloadCommand.php" \
+grep -Fq 'GlossaryPresence::used($candidate->text($hash), $expected)' "$ROOT/lib/Cli/Command/Prepare/NamesPayloadCommand.php" \
     || fail 'payload проходу по назвах не пропускає вже виконаних вимог · модель кликатимуть намарно'
 grep -Fq 'уже виконано в тексті' "$ROOT/lib/Cli/Command/Prepare/NamesPayloadCommand.php" \
     || fail 'пропущені вимоги не називаються вголос · зникнення наказу виглядатиме як утрата вимоги'
