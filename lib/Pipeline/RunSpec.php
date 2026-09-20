@@ -81,8 +81,8 @@ final class RunSpec
         if (! in_array($environment, ['PROD', 'DEV'], true)) {
             throw new InvalidArgumentException("Невідоме середовище: $environment");
         }
-        if ($batchSize < 20 || $batchSize > 100) {
-            throw new InvalidArgumentException('Розмір пачки має бути від 20 до 100.');
+        if ($batchSize < 5 || $batchSize > 100) {
+            throw new InvalidArgumentException('Розмір пачки має бути від 5 до 100.');
         }
         if ($parentSession === '') {
             throw new InvalidArgumentException('RunSpec потребує OpenCode parent session ID.');

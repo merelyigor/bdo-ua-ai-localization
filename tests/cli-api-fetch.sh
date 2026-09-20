@@ -138,13 +138,13 @@ for zone in UTC Europe/Kyiv; do
         || fail "зона $zone: date дає $stamp_date, PHP дає $stamp_php · імена файлів розійдуться"
 done
 
-for size in 15 19 101; do
+for size in 1 4 101; do
     set +e
     invalid_err="$(TRANSLATE_ENV_FILE="$TMP/env" BDO_STATE_DIR="$TMP/invalid-$size" php "$ROOT/cli/bdo.php" fetch-rows "$size" 2>&1 >/dev/null)"
     invalid_code=$?
     set -e
     test "$invalid_code" -eq 2 || fail "розмір $size не відхилено кодом 2"
-    grep -Fq 'від 20 до 100' <<<"$invalid_err" || fail "для розміру $size немає пояснення межі"
+    grep -Fq 'від 5 до 100' <<<"$invalid_err" || fail "для розміру $size немає пояснення межі"
 done
 
 echo 'cli api fetch: 3 команди, stdout/stderr, коди й файли: OK'

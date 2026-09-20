@@ -347,21 +347,21 @@ done
 # САБОТАЖ: replacing the actual size with a valid default must make this proof
 # observe a request or lose the named fetch_failed reason.
 for side in sh php; do
-    mkdir -p "$TMP/size15-$side"
+    mkdir -p "$TMP/size4-$side"
 done
-run_logged_side "$TMP/size15.sh.requests" sh "$TMP/size15-sh" "$TMP/size15.sh.out" "$TMP/size15.sh.err" "$TMP/size15.sh.code" patch 15
-run_logged_side "$TMP/size15.php.requests" php "$TMP/size15-php" "$TMP/size15.php.out" "$TMP/size15.php.err" "$TMP/size15.php.code" patch 15
-compare_pair size15 "$TMP/size15-sh" "$TMP/size15-php"
+run_logged_side "$TMP/size4.sh.requests" sh "$TMP/size4-sh" "$TMP/size4.sh.out" "$TMP/size4.sh.err" "$TMP/size4.sh.code" patch 4
+run_logged_side "$TMP/size4.php.requests" php "$TMP/size4-php" "$TMP/size4.php.out" "$TMP/size4.php.err" "$TMP/size4.php.code" patch 4
+compare_pair size4 "$TMP/size4-sh" "$TMP/size4-php"
 for side in sh php; do
-    test "$(<"$TMP/size15.$side.code")" = 1 || fail "size15 $side code changed"
-    assert_json_fragment "$TMP/size15.$side.out" '"state":"waiting_dependency"' "size15 $side state"
-    assert_json_fragment "$TMP/size15.$side.out" '"reason":"fetch_failed"' "size15 $side reason"
-    assert_json_fragment "$TMP/size15.$side.out" '"size":"15"' "size15 $side size"
-    grep -Fq 'від 20 до 100' "$TMP/size15.$side.out" || fail "size15 $side reason detail missing"
-    test ! -s "$TMP/size15.$side.requests" || fail "size15 $side performed HTTP"
-    test ! -e "$TMP/size15-$side/run-batches.json" || fail "size15 $side wrote budget"
-    test ! -e "$TMP/size15-$side/run-goal.json" || fail "size15 $side wrote goal"
-    test ! -e "$TMP/size15-$side/current-batch" || fail "size15 $side created batch"
+    test "$(<"$TMP/size4.$side.code")" = 1 || fail "size4 $side code changed"
+    assert_json_fragment "$TMP/size4.$side.out" '"state":"waiting_dependency"' "size4 $side state"
+    assert_json_fragment "$TMP/size4.$side.out" '"reason":"fetch_failed"' "size4 $side reason"
+    assert_json_fragment "$TMP/size4.$side.out" '"size":"4"' "size4 $side size"
+    grep -Fq 'від 5 до 100' "$TMP/size4.$side.out" || fail "size4 $side reason detail missing"
+    test ! -s "$TMP/size4.$side.requests" || fail "size4 $side performed HTTP"
+    test ! -e "$TMP/size4-$side/run-batches.json" || fail "size4 $side wrote budget"
+    test ! -e "$TMP/size4-$side/run-goal.json" || fail "size4 $side wrote goal"
+    test ! -e "$TMP/size4-$side/current-batch" || fail "size4 $side created batch"
 done
 
 # ПРАВИЛО: zero rows completes without budget, goal, or batch creation; fetch failures

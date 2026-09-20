@@ -498,8 +498,10 @@ foreach ([(string) (F::MIN_BATCH - 1), (string) (F::MAX_BATCH + 1), "0", "abc", 
 }
 ' "$ROOT/lib/autoload.php" || fail 'планувальник не тримає меж розміру пачки'
 
-grep -Fq 'id="rows" type="number"' "$ROOT/web/start.html" \
-    || fail 'на сторінці старту немає поля розміру пачки · власник знову не зможе його змінити'
+grep -Fq 'id="rows" type="range" min="5" max="100" step="5" value="50"' "$ROOT/web/start.html" \
+    || fail 'на сторінці старту немає слайдера розміру пачки 5-100 із кроком 5'
+grep -Fq 'id="rowsValue"' "$ROOT/web/start.html" \
+    || fail 'біля слайдера немає видимого поточного значення'
 # Межі поля мусять збігатися з тими, що віддає валідатор `fetch-rows`.
 php -r '
 require $argv[1];

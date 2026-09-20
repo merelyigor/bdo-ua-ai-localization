@@ -928,7 +928,16 @@ a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,te
 .start-patch-section .tbl.pick tbody tr.on{box-shadow:inset 3px 0 var(--bda)}
 .start-patch-filters{display:flex;align-items:center;gap:9px;flex-wrap:wrap;margin-top:12px}
 .start-patch-filters select{width:auto;min-width:170px}
-.start-patch-filters input{width:78px!important}
+.start-patch-filters #batches{width:78px!important}
+.start-rows-control{display:flex;align-items:center;gap:9px;min-width:220px}
+.start-rows-control #rows{width:220px;min-width:150px;flex:1 1 auto;padding:0;background:transparent;accent-color:var(--gold);appearance:none}
+.start-rows-control #rows::-webkit-slider-runnable-track{height:6px;border:1px solid var(--bd);border-radius:999px;background:var(--s3)}
+.start-rows-control #rows::-webkit-slider-thumb{width:18px;height:18px;margin-top:-7px;border:2px solid var(--gold);border-radius:50%;background:var(--s1);box-shadow:0 0 0 3px var(--gold-bg);appearance:none}
+.start-rows-control #rows::-moz-range-track{height:6px;border:1px solid var(--bd);border-radius:999px;background:var(--s3)}
+.start-rows-control #rows::-moz-range-progress{height:6px;border-radius:999px;background:var(--gold)}
+.start-rows-control #rows::-moz-range-thumb{width:14px;height:14px;border:2px solid var(--gold);border-radius:50%;background:var(--s1);box-shadow:0 0 0 3px var(--gold-bg)}
+.start-rows-control #rows:focus-visible{outline:2px solid var(--acc-bg);outline-offset:4px}
+.start-rows-control output{display:inline-flex;align-items:center;justify-content:center;min-width:42px;min-height:30px;padding:4px 8px;border:1px solid var(--bd);border-radius:8px;background:var(--s2);color:var(--tp);font-size:13px;font-variant-numeric:tabular-nums}
 /* Перемикач повного прогону живе в тому самому рядку, що й поле числа, тому
    ширина «78px» для `input` цього блоку не має розтягувати схований чекбокс:
    він лежить під написом і перехоплював би клік по ньому. */

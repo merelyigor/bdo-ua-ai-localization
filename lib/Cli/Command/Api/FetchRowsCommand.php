@@ -20,7 +20,7 @@ use RuntimeException;
  */
 final class FetchRowsCommand implements Command, \Bdo\Translate\Cli\CommandHelp
 {
-    public const MIN_BATCH = 20;
+    public const MIN_BATCH = 5;
 
     public const MAX_BATCH = 100;
 
@@ -41,7 +41,7 @@ final class FetchRowsCommand implements Command, \Bdo\Translate\Cli\CommandHelp
         $batch = (string) ($arguments[0] ?? '50');
         $extra = (string) ($arguments[1] ?? '');
         if (! preg_match('/^[0-9]+$/', $batch) || (int) $batch < self::MIN_BATCH || (int) $batch > self::MAX_BATCH) {
-            $output->stderr("Розмір логічної пачки має бути від 20 до 100.\n");
+            $output->stderr("Розмір логічної пачки має бути від 5 до 100.\n");
 
             return 2;
         }

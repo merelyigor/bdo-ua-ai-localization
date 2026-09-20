@@ -177,10 +177,10 @@ try {
     expect(($spec['filter'] ?? null) === 'patch=active&missing=manual&exclude_proposed=1', 'proposal preset selected a wrong filter');
     expect(RunSpec::create('proposal', 'PROD', 'ses_parent', 100)->toArray()['batch_size'] === 100, 'batch upper bound was rejected');
     try {
-        RunSpec::create('proposal', 'PROD', 'ses_parent', 19);
+        RunSpec::create('proposal', 'PROD', 'ses_parent', 4);
         throw new RuntimeException('batch lower bound was accepted');
     } catch (InvalidArgumentException $error) {
-        expect(str_contains($error->getMessage(), '20 до 100'), 'wrong batch lower-bound error');
+        expect(str_contains($error->getMessage(), '5 до 100'), 'wrong batch lower-bound error');
     }
     $manualSpec = RunSpec::preset('manual');
     expect($manualSpec['channel'] === 'manual', 'manual preset selected a wrong channel');

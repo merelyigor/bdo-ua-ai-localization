@@ -85,7 +85,7 @@ compare_spec() {
         status-snapshot-invalid-patch) reason='Патч має бути' ;;
         status-invalid-domain) reason='Невідома категорія' ;;
         status-invalid-mode) reason='Невідомий режим' ;;
-        plan-invalid-*) reason='Розмір пачки має бути від 20 до 100' ;;
+        plan-invalid-*) reason='Розмір пачки має бути від 5 до 100' ;;
         plan-missing-parent) reason='plan потребує ідентифікатор прогону' ;;
         *) reason='' ;;
     esac
@@ -145,11 +145,11 @@ compare_spec status-snapshot-domain "$DEV_ENV" status patch 123 quest
 compare_spec status-snapshot-invalid-patch "$DEV_ENV" status patch nope
 compare_spec status-invalid-domain "$DEV_ENV" status patch active not-a-domain
 compare_spec status-invalid-mode "$DEV_ENV" status unknown
-for size in 20 50 100; do
+for size in 5 50 100; do
     compare_spec "plan-dev-$size" "$DEV_ENV" plan improve parent-session "$size"
 done
 compare_spec plan-prod "$PROD_ENV" plan patch parent-session 50
-for size in 19 101; do
+for size in 4 101; do
     compare_spec "plan-invalid-$size" "$DEV_ENV" plan patch parent-session "$size"
 done
 compare_spec plan-missing-parent "$DEV_ENV" plan patch '' 50
