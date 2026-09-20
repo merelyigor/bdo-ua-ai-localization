@@ -112,8 +112,11 @@ final class Snapshot
                 $want = (string) ($entry['model'] ?? '');
                 $runtime = $runtime !== '' ? $runtime : (string) ($entry['runtime'] ?? '');
                 $declared = is_array($entry['parameters'] ?? null) ? $entry['parameters'] : [];
-                $thinkingSupported = ($entry['thinking'] ?? false) === true
-                    && ($entry['thinking_levels'] ?? 'not_tested') === 'supported';
+                // `thinking` відповідає на питання, чи можна вмикати базовий
+                // режим. `thinking_levels` лише визначає, чи можна передати
+                // конкретний рівень (`low`/`high`). Неперевірені рівні не
+                // повинні перетворювати підтримувану модель на `think:false`.
+                $thinkingSupported = ($entry['thinking'] ?? false) === true;
                 break;
             }
         }
@@ -461,6 +464,17 @@ final class Snapshot
 
         $manifest = $this->currentManifest();
         if (in_array((string) ($manifest['state'] ?? ''), ['committed', 'verified', 'failed_terminal'], true)) {
+            return false;
+        }
+
+        // ПІДПИС ЛЮДИНИ СИЛЬНІШИЙ ЗА СЛІД ФАЙЛІВ. «Останній рух» · це лише
+        // свіжий журнал, а журнал лишається свіжим ще дві хвилини після того,
+        // як процес убито. Власник натиснув «зупинити» 2026-09-20 і побачив
+        // «прогін іде» разом із карткою «готується наступна роль · очікується
+        // запуск»: сторінка обіцяла роботу, якої вже ніхто не робив. Підпис
+        // зупинки вже вміє відрізняти чинну зупинку від застарілої · пачку,
+        // яку продовжили, він не вважає зупиненою.
+        if ($this->humanStop($manifest) !== null) {
             return false;
         }
 

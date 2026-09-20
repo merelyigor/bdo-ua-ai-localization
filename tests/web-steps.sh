@@ -222,4 +222,55 @@ grep -Fq "dry: 'тестовий прогін" "$ROOT/web/index.html" \
 grep -Fq '.step.dry{' "$ROOT/web/app.css" \
     || fail 'тестовий крок запису не має власного кольору'
 
+# 8. ЗУПИНКА РІШЕННЯМ ЛЮДИНИ ВИДНО ОДРАЗУ, А НЕ ЧЕРЕЗ ДВІ ХВИЛИНИ.
+#
+# «Прогін іде» трималось на свіжості журналу, а журнал лишається свіжим ще
+# 120 секунд після того, як процес убито. Власник натиснув «зупинити»
+# 2026-09-20 і далі бачив «прогін іде» разом із карткою «готується наступна
+# роль · очікується запуск»: сторінка обіцяла роботу, якої вже ніхто не робив.
+# Підпис зупинки лежав у пачці весь цей час · його просто ніхто не питав.
+run_state() {
+    php -r '
+    require $argv[1];
+    $d = (new Bdo\Translate\Web\Snapshot($argv[2]))->toArray();
+    $stop = $d["batch"]["human_stop"] ?? null;
+    echo $d["running"] ? "іде" : "стоїть";
+    echo "|", $stop ? ($stop["reason"] ?: "без причини") : "немає підпису";
+    ' "$ROOT/lib/autoload.php" "$STATE2"
+}
+
+# Журнал свіжий · саме та ситуація, у якій сторінка показувала роботу.
+printf '{"event":"start","at":"%s"}\n' "$(date -u +%Y-%m-%dT%H:%M:%S+00:00)" > "$STATE2/run-stream.log"
+printf '{"at":"2026-09-20T03:00:00+00:00","event":"child_dispatch:translation-worker:49"}\n' \
+    > "$STATE2/batches/$BATCH2/journal.jsonl"
+cat > "$STATE2/batches/$BATCH2/manifest.json" <<JSON
+{"id": "$BATCH2", "rows": 50, "state": "awaiting_worker", "mode": "patch", "write": true,
+ "updated_at": "2026-09-20T03:02:42+00:00"}
+JSON
+got="$(run_state)"
+test "$got" = "іде|немає підпису" \
+    || fail "свіжий журнал без підпису зупинки мусить читатись як прогін: «${got}»"
+
+# Той самий свіжий журнал, але зупинку вже ПІДПИСАНО.
+printf '{"at":"2026-09-20T03:05:00+00:00","event":"human_stop:натиснуто «зупинити» на сторінці"}\n' \
+    >> "$STATE2/batches/$BATCH2/journal.jsonl"
+cat > "$STATE2/batches/$BATCH2/manifest.json" <<JSON
+{"id": "$BATCH2", "rows": 50, "state": "awaiting_worker", "mode": "patch", "write": true,
+ "human_stop": {"at": "2026-09-20T03:05:00+00:00", "reason": "натиснуто «зупинити» на сторінці"},
+ "updated_at": "2026-09-20T03:02:42+00:00"}
+JSON
+got="$(run_state)"
+test "$got" = "стоїть|натиснуто «зупинити» на сторінці" \
+    || fail "після підпису зупинки сторінка все одно показує роботу: «${got}»"
+
+# Пачку ПРОДОВЖИЛИ після зупинки · підпис стає історією, а не поточним станом.
+printf '{"at":"2026-09-20T03:06:00+00:00","event":"child_dispatch:translation-worker:49"}\n' \
+    >> "$STATE2/batches/$BATCH2/journal.jsonl"
+got="$(run_state)"
+test "$got" = "іде|немає підпису" \
+    || fail "робота після зупинки не скасувала підпис · сторінка застрягла в «зупинено»: «${got}»"
+
+grep -Fq 'зупинено власником' "$ROOT/web/index.html" \
+    || fail 'сторінка не відрізняє зупинку рішенням людини від обриву'
+
 echo 'web steps: OK · крок пройдено за роллю навіть без свого стану, пропущений названо словом, виклики підписані пачкою, тестовий запис не зелений.'

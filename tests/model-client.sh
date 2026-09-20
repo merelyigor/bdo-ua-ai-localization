@@ -70,6 +70,14 @@ $answers = [
     // Заміна живого зациклення: модель віддає тільки повторюваний thinking.
     "thinking_loop" => ["done_reason" => "stop", "prompt_eval_count" => 10, "eval_count" => 9000,
              "message" => ["content" => "", "thinking" => str_repeat("думай ", 20000)]],
+    // ЗАЦИКЛЕННЯ У ВІДПОВІДІ · знято з живого прогону 2026-09-20. Модель
+    // крутила той самий абзац у `content`, роздумів не було взагалі, і
+    // детектор роздумів такого не бачив ніколи.
+    "answer_loop" => ["done_reason" => "stop", "prompt_eval_count" => 10, "eval_count" => 36302,
+             "message" => ["content" => str_repeat(
+                 '{"items":[{"identity_hash":"aa","text":"Розділ 4: Утримання та піст. Вони вчили мене поститись і стримуватись, щоб дух лишався чистим. ", ',
+                 900
+             )]],
 ];
 $answer = $answers[$mode] ?? $answers["ok"];
 // Рантайм, який замовк посеред відповіді: шле трохи роздумів і зависає.
@@ -466,7 +474,21 @@ grep -q '"think":true' "$WORK/state/model-calls.jsonl" || fail 'журнал н�
 printf 'request fragment think=on: '
 grep -o '"think":true' "$SCENARIO_FILE.request" | head -1
 
-# 12є. МОДЕЛЬ БЕЗ THINKING НЕ МАЄ ПАДАТИ ВІД ГЛОБАЛЬНОГО ПЕРЕМИКАЧА.
+# 12є. ПІДТВЕРДЖЕНІ РІВНІ · глобальний default low іде в Ollama саме як
+#       `think:"low"`, а не як базове булеве значення.
+cat > "$WORK/state/model-catalog.json" <<'JSON'
+{"models":[{"runtime":"ollama","model":"тест-модель","thinking":true,"thinking_levels":"supported"}]}
+JSON
+printf '%s\n' '{"version":1,"think":true,"think_level":"low"}' > "$WORK/state/model-settings.json"
+printf '%s' ok > "$SCENARIO_FILE"; rm -f "$RESPONSE"
+BDO_ROLES_CONFIG="$WORK/roles.json" BDO_STATE_DIR="$WORK/state" \
+    php "$ROOT/cli/model/client.php" translation-worker "$WORK/payload.json" "$RESPONSE" --schema "$WORK/schema.json" >/dev/null 2>&1 \
+    || fail 'модель із підтвердженими рівнями не прийняла глобальний режим low'
+grep -q '"think":"low"' "$SCENARIO_FILE.request" \
+    || fail 'глобальний low не передано як think:low для моделі з рівнями'
+rm -f "$WORK/state/model-catalog.json" "$WORK/state/model-settings.json"
+
+# 12є.1. МОДЕЛЬ БЕЗ THINKING НЕ МАЄ ПАДАТИ ВІД ГЛОБАЛЬНОГО ПЕРЕМИКАЧА.
 #      Capability каталогу має сильніший факт за глобальне бажання власника:
 #      несумісна модель отримує think=false і все одно може відповісти.
 cat > "$WORK/state/model-catalog.json" <<'JSON'
@@ -480,6 +502,22 @@ grep -q '"think":false' "$SCENARIO_FILE.request" \
     || fail 'для моделі без thinking клієнт не вимкнув think у запиті'
 grep -q '"think":false' "$WORK/state/model-calls.jsonl" \
     || fail 'журнал не записав фактичне вимкнення thinking для несумісної моделі'
+rm -f "$WORK/state/model-catalog.json"
+
+# 12є.2. МОДЕЛЬ ІЗ THINKING, АЛЕ БЕЗ ПІДТВЕРДЖЕНИХ РІВНІВ, отримує базовий
+#       think=true. Рівень `low` дозволений тільки після окремого probe.
+cat > "$WORK/state/model-catalog.json" <<'JSON'
+{"models":[{"runtime":"ollama","model":"тест-модель","thinking":true,"thinking_levels":"not_tested"}]}
+JSON
+printf '%s' ok > "$SCENARIO_FILE"; rm -f "$RESPONSE"
+BDO_MODEL_THINK=1 BDO_ROLES_CONFIG="$WORK/roles.json" BDO_STATE_DIR="$WORK/state" \
+    php "$ROOT/cli/model/client.php" translation-worker "$WORK/payload.json" "$RESPONSE" --schema "$WORK/schema.json" >/dev/null 2>&1 \
+    || fail 'модель із thinking без рівнів не повинна падати'
+grep -q '"think":true' "$SCENARIO_FILE.request" \
+    || fail 'для thinking-моделі без рівнів клієнт не ввімкнув базовий think'
+if grep -q '"think":"low"' "$SCENARIO_FILE.request"; then
+    fail 'неперевірені рівні thinking помилково передані як low'
+fi
 rm -f "$WORK/state/model-catalog.json"
 
 # 12ж. Запасний шлях: BDO_MODEL_STREAM=0 повертає одноразову відповідь.
@@ -552,11 +590,11 @@ variant_prepare no-detector
 # підставляла `&&` через awk `sub()`, де `&` означає ВЕСЬ ЗБІГ · виходив
 # синтаксично зламаний файл, і перевірка «падала» з іншої причини, ніж
 # заявлено. Тепер поріг просто робиться недосяжним, а код лишається валідним.
-sed 's|\$thinkingDup / \$thinkingGrams >= 0.5|\$thinkingDup / \$thinkingGrams >= 99|' \
+sed 's|\$thinkingWatch->looping(0.5)|\$thinkingWatch->looping(99)|' \
     "$VAR_ROOT/no-detector/cli/model/client.php" > "$VAR_ROOT/no-detector/cli/model/client.php.tmp"
 php -l "$VAR_ROOT/no-detector/cli/model/client.php.tmp" >/dev/null \
     || fail 'саботаж detector зламав синтаксис замість порога'
-grep -q 'thinkingGrams >= 99' "$VAR_ROOT/no-detector/cli/model/client.php.tmp" \
+grep -q 'thinkingWatch->looping(99)' "$VAR_ROOT/no-detector/cli/model/client.php.tmp" \
     || fail 'саботаж detector не знайшов порога · перевірка стала б фіктивною'
 mv "$VAR_ROOT/no-detector/cli/model/client.php.tmp" "$VAR_ROOT/no-detector/cli/model/client.php"
 SECONDS=0
@@ -590,5 +628,67 @@ if test "$VAR_CODE" = 0 || ! grep -q '"think":false' "$SCENARIO_FILE.requests"; 
     fail 'саботаж retry без thinking не зламав перевірку повтору'
 fi
 printf 'sabotage retry-thinking: fail in %ss (expected second request think=false)\n' "$variant_elapsed"
+
+# ЗАЦИКЛЕННЯ У ВІДПОВІДІ · ОКРЕМИЙ КАНАЛ, ОКРЕМА ПЕРЕВІРКА.
+#
+# 2026-09-20 власник зупинив прогін руками: модель крутилась не в роздумах, а в
+# самій відповіді · 36 302 вихідні токени того самого абзаца. Детектор дивився
+# лише на роздуми, тому не бачив цього взагалі, і єдиним рубежем лишалась стеля
+# часу в 1500 с.
+SECONDS=0
+run answer_loop
+elapsed="$SECONDS"
+test "$CODE" != 0 || fail 'зациклена ВІДПОВІДЬ завершилась успіхом'
+grep -q '^answer_loop' <<<"$STDERR" \
+    || fail "зациклення у відповіді не назване своєю причиною: ${STDERR%%$'\n'*}"
+printf 'answer loop: fail in %ss (%s)\n' "$elapsed" "${STDERR%%$'\n'*}"
+
+# САБОТАЖ: без детектора та сама відповідь НЕ називається зацикленням.
+variant_prepare no-answer-detector
+sed 's|\$answerWatch->looping(0.8)|\$answerWatch->looping(99)|' \
+    "$VAR_ROOT/no-answer-detector/cli/model/client.php" > "$VAR_ROOT/no-answer-detector/cli/model/client.php.tmp"
+php -l "$VAR_ROOT/no-answer-detector/cli/model/client.php.tmp" >/dev/null \
+    || fail 'саботаж детектора відповіді зламав синтаксис замість порога'
+grep -q 'answerWatch->looping(99)' "$VAR_ROOT/no-answer-detector/cli/model/client.php.tmp" \
+    || fail 'саботаж детектора відповіді не знайшов порога · перевірка стала б фіктивною'
+mv "$VAR_ROOT/no-answer-detector/cli/model/client.php.tmp" "$VAR_ROOT/no-answer-detector/cli/model/client.php"
+variant_run no-answer-detector answer_loop
+if grep -q '^answer_loop' <<<"$VAR_STDERR"; then
+    fail 'саботаж детектора відповіді не зламав перевірку · причина взялася не з нього'
+fi
+printf 'sabotage answer-detector: %s\n' "${VAR_STDERR%%$'\n'*}"
+
+# ЗДОРОВА ВІДПОВІДЬ ПОВТОРЮЄТЬСЯ ЗАКОННО, і плутати це із зацикленням не можна.
+# У пачці трапляються рядки з ОДНАКОВИМ вихідним текстом · один живий випадок
+# (45 однакових описів предмета) дав 44.7% повторів. Поріг 80% узято саме з
+# цього заміру: найгірша здорова відповідь із 45 справжніх · 44.7%, зациклена ·
+# 97.1%.
+BDO_ROOT="$ROOT" php -r '
+require getenv("BDO_ROOT")."/lib/autoload.php";
+$watch = new \Bdo\Translate\Model\RepeatWatch();
+// Форма та сама, що в живій відповіді: 45 РІЗНИХ рядків із ОДНАКОВИМ текстом.
+// Саме так виглядає пачка з повторюваним описом предмета · вимір на справжньому
+// файлі дав 44.7% повторів при найчастішому фрагменті 45 разів.
+$items = [];
+for ($i = 0; $i < 45; $i++) {
+    $items[] = [
+        "identity_hash" => str_pad(dechex($i * 7919), 12, "0", STR_PAD_LEFT).str_repeat("a", 20),
+        "text" => "Спорядження для пробних персонажів, призначене для Арени Арші та звичайних боїв без нагороди.",
+    ];
+}
+foreach (mb_str_split(json_encode(["items" => $items], JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT), 7) as $piece) {
+    $watch->observe($piece);
+}
+if ($watch->grams() < 500) { fwrite(STDERR, "вибірка замала, перевірка нічого не доводить
+"); exit(1); }
+if ($watch->looping(0.8)) { fwrite(STDERR, "здоровий повтор названо зацикленням: ".$watch->percent()."%
+"); exit(1); }
+$loop = new \Bdo\Translate\Model\RepeatWatch();
+foreach (mb_str_split(str_repeat("Розділ 4: Утримання та піст. Вони вчили мене поститись. ", 400), 7) as $piece) { $loop->observe($piece); }
+if (! $loop->looping(0.8)) { fwrite(STDERR, "справжнє зациклення не впізнано: ".$loop->percent()."%
+"); exit(1); }
+printf("repeat watch: здоровий повтор %d%%, зациклення %d%% · межа 80%% між ними
+", $watch->percent(), $loop->percent());
+' || fail 'вимірювач повторів плутає законний повтор рядків із зацикленням'
 
 echo "OK: клієнт моделі падає з причиною на кожному шляху відмови й ховає хеші за короткими ключами."

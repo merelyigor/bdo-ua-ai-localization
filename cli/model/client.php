@@ -213,14 +213,16 @@ if ($think === true && is_array($catalogData)) {
             || ($catalogModel['model'] ?? '') !== $model) {
             continue;
         }
-        if (($catalogModel['thinking'] ?? false) === true
-            && ($catalogModel['thinking_levels'] ?? 'not_tested') === 'supported') {
-            $think = $settings['think_level'];
+        if (($catalogModel['thinking'] ?? false) === true) {
+            // Рівні — це лише уточнення форми thinking. Якщо рантайм заявляє
+            // thinking, але рівні ще не перевірені або їх немає, базовий
+            // `think:true` все одно мусить лишитися активним.
+            $think = ($catalogModel['thinking_levels'] ?? 'not_tested') === 'supported'
+                ? $settings['think_level']
+                : true;
         } else {
             // Модель без thinking не має отримувати think=true: для такого
             // runtime це може завершити виклик ще до першого токена.
-            // Глобальне налаштування лишається увімкненим для сумісних моделей,
-            // а цей виклик працює без нього.
             $think = false;
         }
         break;
@@ -292,19 +294,20 @@ $liveThinkingText = '';
 $liveAnswerText = '';
 $thinkingTokensEstimate = 0;
 $answerTokensEstimate = 0;
-$thinkingTokens = [];
-$thinkingCarry = '';
-// Накопичувальний облік повторів: скільки фрагментів усього й скільки з них
-// модель уже писала раніше в цьому ж потоці.
-$thinkingSeen = [];
-$thinkingGrams = 0;
-$thinkingDup = 0;
+// Накопичувальний облік повторів · ОКРЕМО ДЛЯ КОЖНОГО КАНАЛУ. Роздуми й
+// відповідь зациклюються незалежно одне від одного, і спільний лічильник
+// показував би суміш двох різних текстів.
+$thinkingWatch = new \Bdo\Translate\Model\RepeatWatch();
+$answerWatch = new \Bdo\Translate\Model\RepeatWatch();
 $thinkingRepeatFragment = '';
 $thinkingRepeatCount = 0;
 $thinkingLoopDetected = false;
+$answerRepeatFragment = '';
+$answerRepeatCount = 0;
+$answerLoopDetected = false;
 $journalAnswerPath = $responsePath;
 $journalThinkingPath = $responsePath.'.thinking.txt';
-$journal = static function (string $verdict) use ($callsFile, $role, $model, $provider, $started, $currentBatch, $runState, $rows, $payloadBytes, $relative, $payloadPath, &$journalAnswerPath, &$journalThinkingPath, &$stats, $numPredict, $timeout, $think, &$thinkObserved, &$thinkMismatch, &$attempt, &$thinkingBytes, &$thinkingChunks, &$thinkingRepeatFragment, &$thinkingRepeatCount, &$thinkingLoopDetected, &$thinkingTokensEstimate, &$answerTokensEstimate): void {
+$journal = static function (string $verdict) use ($callsFile, $role, $model, $provider, $started, $currentBatch, $runState, $rows, $payloadBytes, $relative, $payloadPath, &$journalAnswerPath, &$journalThinkingPath, &$stats, $numPredict, $timeout, $think, &$thinkObserved, &$thinkMismatch, &$attempt, &$thinkingBytes, &$thinkingChunks, &$thinkingRepeatFragment, &$thinkingRepeatCount, &$thinkingLoopDetected, &$answerRepeatFragment, &$answerRepeatCount, &$answerLoopDetected, &$thinkingTokensEstimate, &$answerTokensEstimate): void {
     $dir = dirname($callsFile);
     if (! is_dir($dir) && ! mkdir($dir, 0777, true) && ! is_dir($dir)) {
         return;
@@ -347,6 +350,9 @@ $journal = static function (string $verdict) use ($callsFile, $role, $model, $pr
         'thinking_loop_detected' => $thinkingLoopDetected,
         'thinking_repeat_fragment' => $thinkingRepeatFragment,
         'thinking_repeat_count' => $thinkingRepeatCount,
+        'answer_loop_detected' => $answerLoopDetected,
+        'answer_repeat_fragment' => $answerRepeatFragment,
+        'answer_repeat_count' => $answerRepeatCount,
         'stream' => getenv('BDO_MODEL_STREAM') !== '0',
     ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)."\n", FILE_APPEND);
 };
@@ -458,7 +464,7 @@ $dim = ($show && getenv('NO_COLOR') === false) ? "\033[2m" : '';
 $off = $dim !== '' ? "\033[0m" : '';
 $chunkSeen = 0;
 $contentSeen = false;
-$observeThinking = function (string $text) use (&$thinkingBytes, &$thinkingChunks, &$thinkingTokens, &$thinkingCarry, &$thinkingSeen, &$thinkingGrams, &$thinkingDup, &$thinkingRepeatFragment, &$thinkingRepeatCount, &$thinkingLoopDetected, &$thinkObserved, &$thinkMismatch, $think, $responsePath): void {
+$observeThinking = function (string $text) use (&$thinkingBytes, &$thinkingChunks, $thinkingWatch, &$thinkingRepeatFragment, &$thinkingRepeatCount, &$thinkingLoopDetected, &$thinkObserved, &$thinkMismatch, $think, $responsePath): void {
     if ($text === '') {
         return;
     }
@@ -474,85 +480,68 @@ $observeThinking = function (string $text) use (&$thinkingBytes, &$thinkingChunk
     }
     $thinkingBytes += strlen($text);
     $thinkingChunks++;
-    // СЛОВО ЗБИРАЄТЬСЯ ЧЕРЕЗ МЕЖУ ШМАТКА. Потік ріже текст де завгодно, тому
-    // «думай» приходить як «дума»+«й». Токенізація кожного шматка ОКРЕМО дає
-    // токени, які залежать від НАРІЗКИ транспорту, а не від того, що написала
-    // модель: виміряно на зацикленому потоці · у журнал пішло «дума й дум ай»
-    // замість «думай», і те саме зміщення робить саме вікно повторів хитким.
-    // Тому незавершений хвіст переноситься в наступний шматок.
-    $chunk = $thinkingCarry.$text;
-    $thinkingCarry = '';
-    $normalized = preg_replace('/\s+/u', ' ', trim($chunk)) ?? trim($chunk);
-    if ($normalized === '') {
-        return;
-    }
-    $newTokens = preg_split('/\s+/u', $normalized, -1, PREG_SPLIT_NO_EMPTY) ?: [];
-    // Хвіст без завершального пробілу ще не є словом · чекаємо продовження.
-    if ($newTokens !== [] && preg_match('/\s\z/u', $chunk) !== 1) {
-        $thinkingCarry = (string) array_pop($newTokens);
-    }
-    if ($newTokens === []) {
-        return;
-    }
-    // ЗАЦИКЛЕННЯ · ЦЕ КОЛИ МОДЕЛЬ ПЕРЕПИСУЄ САМУ СЕБЕ, А НЕ КОЛИ ВОНА ДОВГО
-    // ДУМАЄ. Тому міряється ВЛАСТИВІСТЬ ТЕКСТУ: яка частка написаного вже
-    // зустрічалась раніше в цьому ж потоці. Ні обсяг, ні час, ні стеля тут не
-    // беруть участі взагалі.
-    //
-    // Чому саме так, а не «копії поспіль», як було: на живому прогоні власника
-    // 2026-09-16 модель повторила ту саму фразу 41 раз, але ЖОДНОГО разу
-    // підряд · між копіями йшов інший текст. Старий детектор не спрацював би
-    // ніколи, скільки б годин вона не крутилась.
-    //
+    $thinkingWatch->observe($text);
+    $thinkingRepeatFragment = $thinkingWatch->topFragment();
+    $thinkingRepeatCount = $thinkingWatch->topCount();
     // Межа взята з двох ЗАМІРЯНИХ класів, а не зі стелі:
     //   зациклення       · 18 096 фрагментів, повторних 93.4%;
     //   здорове мислення ·    242 фрагменти, повторних  0.0%.
     // Половина лежить посередині цієї прірви. На тому ж потоці 50% настає на
     // 2 379-му слові · рішення ухвалюється за хвилини, а не за 12.
-    //
-    // Вісім слів у фрагменті накривають усі три випадки, які називає власник:
-    // одне повторене слово, кілька слів і ціле речення · будь-який із них
-    // піднімає ту саму частку.
-    $thinkingTokens = array_merge($thinkingTokens, $newTokens);
-    while (count($thinkingTokens) >= 8) {
-        $gram = array_slice($thinkingTokens, 0, 8);
-        array_shift($thinkingTokens);
-        $hash = crc32(implode(' ', $gram));
-        $thinkingGrams++;
-        if (isset($thinkingSeen[$hash])) {
-            $thinkingDup++;
-            $thinkingSeen[$hash]++;
-            if ($thinkingSeen[$hash] > $thinkingRepeatCount) {
-                $thinkingRepeatCount = $thinkingSeen[$hash];
-                // Один і той самий токен вісім разів читається як стіна · у
-                // журналі показуємо саме слово, бо власник бачить симптом так.
-                $thinkingRepeatFragment = count(array_unique($gram)) === 1
-                    ? $gram[0]
-                    : implode(' ', $gram);
-            }
-        } else {
-            $thinkingSeen[$hash] = 1;
-        }
+    if (! $thinkingWatch->looping(0.5)) {
+        return;
     }
-    // Порожній хвіст менший за фрагмент нічого не вирішує, але його треба
-    // зберегти: наступний шматок добудує з нього повний фрагмент.
-    if ($thinkingGrams >= 500 && $thinkingDup / $thinkingGrams >= 0.5) {
-        $thinkingLoopDetected = true;
-        throw new \Bdo\Translate\Model\Transport\TransportError(
-            'thinking_loop',
-            sprintf(
-                'модель переписує себе: %d%% роздумів уже зустрічалось (%d фрагментів), найчастіший %d разів: %s',
-                (int) round(100 * $thinkingDup / $thinkingGrams),
-                $thinkingGrams,
-                $thinkingRepeatCount,
-                $thinkingRepeatFragment
-            )
-        );
+    $thinkingLoopDetected = true;
+    throw new \Bdo\Translate\Model\Transport\TransportError(
+        'thinking_loop',
+        sprintf(
+            'модель переписує себе: %d%% роздумів уже зустрічалось (%d фрагментів), найчастіший %d разів: %s',
+            $thinkingWatch->percent(),
+            $thinkingWatch->grams(),
+            $thinkingWatch->topCount(),
+            $thinkingWatch->topFragment()
+        )
+    );
+};
+
+// ВІДПОВІДЬ ЗАЦИКЛЮЄТЬСЯ ТАК САМО, І ЦЕ НЕ ТЕОРІЯ.
+//
+// 2026-09-20 власник зупинив прогін руками: модель крутилась НЕ в роздумах, а
+// в самій відповіді · 36 302 вихідні токени, у потоці нескінченне
+// `{BDO_NL}{BDO_NL}…`. Детектор дивився лише на роздуми, тому не бачив цього
+// взагалі, і єдиним рубежем лишалась стеля часу в 1500 с. Схема тут не рятує:
+// constrained decoding є не в кожному рантаймі.
+//
+// ПОРІГ ІНШИЙ, І ЦЕ ВИМІР, А НЕ ОБЕРЕЖНІСТЬ. Здорова відповідь ПОВТОРЮЄТЬСЯ
+// законно: у пачці трапляються рядки з однаковим текстом, і один такий випадок
+// (45 однакових описів предмета) дав 44.7% повторів при 750 фрагментах. Заміряно
+// на 45 справжніх відповідях: найгірша здорова · 44.7%, зациклена · 97.1%.
+// Тому межа тут 80% · вище за будь-яку бачену здорову й далеко нижче за зрив.
+$observeAnswer = function (string $text) use ($answerWatch, &$answerRepeatFragment, &$answerRepeatCount, &$answerLoopDetected): void {
+    if ($text === '') {
+        return;
     }
+    $answerWatch->observe($text);
+    $answerRepeatFragment = $answerWatch->topFragment();
+    $answerRepeatCount = $answerWatch->topCount();
+    if (! $answerWatch->looping(0.8)) {
+        return;
+    }
+    $answerLoopDetected = true;
+    throw new \Bdo\Translate\Model\Transport\TransportError(
+        'answer_loop',
+        sprintf(
+            'модель переписує себе у ВІДПОВІДІ: %d%% уже зустрічалось (%d фрагментів), найчастіший %d разів: %s',
+            $answerWatch->percent(),
+            $answerWatch->grams(),
+            $answerWatch->topCount(),
+            $answerWatch->topFragment()
+        )
+    );
 };
 $onChunk = function (string $text, bool $isThinking) use (
     $show, $dim, $off, $streamLog, $stream, &$chunkSeen, &$contentSeen, &$observeThinking,
-    &$liveThinkingText, &$liveAnswerText, &$publishLiveUsage
+    &$liveThinkingText, &$liveAnswerText, &$publishLiveUsage, &$observeAnswer
 ): void {
     if ($isThinking) {
         $observeThinking($text);
@@ -560,6 +549,7 @@ $onChunk = function (string $text, bool $isThinking) use (
     } elseif ($text !== '') {
         $contentSeen = true;
         $liveAnswerText .= $text;
+        $observeAnswer($text);
     }
     $publishLiveUsage();
     if ($text === '') {
@@ -585,14 +575,22 @@ try {
         try {
             $reply = $transport->send($request, $stream ? $onChunk : null);
             if (! $stream) {
+                // Без потоку текст приходить цілим шматком · перевірка мусить
+                // іти тим самим шляхом, інакше вимкнений потік був би дірою в
+                // детекторі.
                 $observeThinking($reply->thinking);
+                $observeAnswer($reply->content);
             }
             break;
         } catch (\Bdo\Translate\Model\Transport\TransportError $e) {
-            if ($e->reason !== 'thinking_loop' || $attempt >= 2) {
+            // Друга спроба дається обом зривам однаково: і роздуми, і
+            // відповідь зациклюються від випадкового збігу семплювання, і
+            // повторний запит часто йде нормально. Третьої спроби немає ·
+            // тоді це вже поведінка моделі, а не випадковість.
+            if (! in_array($e->reason, ['thinking_loop', 'answer_loop'], true) || $attempt >= 2) {
                 throw $e;
             }
-            $journal('thinking_loop');
+            $journal($e->reason);
             $attempt++;
             // Retry keeps the owner's explicit thinking choice intact.
             $request = $makeRequest($think);
@@ -610,14 +608,14 @@ try {
             $liveAnswerText = '';
             $thinkingTokensEstimate = 0;
             $answerTokensEstimate = 0;
-            $thinkingTokens = [];
-            $thinkingCarry = '';
-            $thinkingSeen = [];
-            $thinkingGrams = 0;
-            $thinkingDup = 0;
+            $thinkingWatch->reset();
+            $answerWatch->reset();
             $thinkingRepeatFragment = '';
             $thinkingRepeatCount = 0;
             $thinkingLoopDetected = false;
+            $answerRepeatFragment = '';
+            $answerRepeatCount = 0;
+            $answerLoopDetected = false;
             continue;
         }
     }
