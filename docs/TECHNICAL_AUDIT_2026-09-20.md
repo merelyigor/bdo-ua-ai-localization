@@ -54,20 +54,19 @@ regression-перевірка зелена. Остаточний доказ у C
 - **Estimated effort:** Small/Medium.
 - **Confidence:** High.
 
-Пакет реалізації для Luna High:
+Деталі можливої реалізації: природний scope тут обмежується малим helper у
+`lib/`, двома consumers (`Snapshot` і `WebCommand`) та Windows/POSIX
+regression-тестами. Формат `state/*.json`, lifecycle сервера і семантика
+сигналів змінюватися не повинні. Найменш ризиковий варіант — перенести вже
+робочу логіку `WebCommand::isAlive()` без зміни поведінки й використати її зі
+`Snapshot`. Тестованість потребує керованого platform probe: перевірки не
+повинні підміняти глобальні константи або залежати від чужого реального PID.
 
-1. Scope: новий helper у `lib/`, `Snapshot.php`, `WebCommand.php`, Windows
-   smoke і один POSIX unit-style test.
-2. Не змінювати формат `state/*.json`, lifecycle сервера або сигнали.
-3. Спершу перенести `WebCommand::isAlive()` без зміни поведінки; `Snapshot`
-   має викликати той самий helper.
-4. Додати injectable platform probe для тесту; не підміняти глобальні константи
-   й не використовувати чужий реальний PID.
-5. Regression: invalid PID → false; POSIX success/failure; Windows tasklist з
-   PID → true; аргументи передаються масивом, не shell-рядком.
-6. Focused tests, `./bdo gate touched`, `./bdo api`, `git diff --check` → exit 0.
-7. **Definition of Done:** у production немає `exec('kill -0 ...')`, обидва
-   consumers використовують adapter, Windows regression зелений.
+Ознаки коректного виправлення: invalid PID дає `false`; POSIX success/failure
+розрізняються; Windows-відповідь `tasklist` з потрібним PID дає `true`;
+аргументи зовнішньої команди передаються масивом, а не shell-рядком; у
+production немає `exec('kill -0 ...')`; focused tests, `./bdo gate touched`,
+`./bdo api` і `git diff --check` мають exit 0.
 
 ### A-02. PHPStan не охоплює весь production PHP — активне
 
@@ -85,19 +84,17 @@ regression-перевірка зелена. Остаточний доказ у C
 - **Estimated effort:** Medium.
 - **Confidence:** High щодо gap; обсяг diagnostics ще невідомий.
 
-Пакет реалізації для Luna High:
+Деталі можливої реалізації: безпечна перша фаза — виміряти чинний baseline і
+окремо кількість diagnostics для tracked production `cli/**/*.php`. Якщо
+список невеликий (орієнтир — до 20 локальних errors), його доцільно виправити
+разом із додаванням `cli` у `paths`. Більший список означає потребу в поділі за
+файлами або класами помилок, а не в автоматичному широкому baseline. Підняття
+`level: 0` є окремою зміною і не повинно змішуватися з розширенням coverage.
 
-1. Запустити чинний PHPStan і зафіксувати baseline.
-2. Тимчасово перевірити всі tracked production `cli/**/*.php`; порахувати
-   errors за файлами й класами.
-3. До 20 локальних errors — додати `cli` у paths і виправити. Більше 20 —
-   розбити план; широкий baseline автоматично не створювати.
-4. Не змінювати `level: 0`.
-5. Додати check, який падає, якщо production `cli/**/*.php` знову поза scope.
-6. PHPStan, focused tests, `./bdo gate touched`, `./bdo api`,
-   `git diff --check` → exit 0.
-7. **Definition of Done:** весь production PHP аналізується або має явно
-   обґрунтований вузький виняток.
+Ознаки коректного виправлення: весь production PHP аналізується або має
+явний вузький виняток; окрема перевірка не дозволяє `cli/**/*.php` знову
+випасти зі scope; PHPStan, focused tests, `./bdo gate touched`, `./bdo api` і
+`git diff --check` мають exit 0.
 
 ### A-08. CI не перевіряє мінімальну PHP 8.3 — активне
 
@@ -114,17 +111,16 @@ regression-перевірка зелена. Остаточний доказ у C
 - **Estimated effort:** Small.
 - **Confidence:** High.
 
-Пакет реалізації для Luna High:
+Деталі можливої реалізації: достатній scope — `.github/workflows/gate.yml` і,
+лише якщо наявного немає, один короткий smoke test. Окремий job
+`php_83_compat` на `ubuntu-24.04` може перевіряти синтаксис усіх tracked
+`*.php` поза `state/`, `output/`, `legacy/`, `node_modules/` і запускати smoke
+без API, Ollama та GUI. Дублювання повного gate на 8.3/8.4/8.5 не має
+доведеного ROI.
 
-1. Scope: `.github/workflows/gate.yml` і, лише за потреби, один smoke test.
-2. Job `php_83_compat`, `ubuntu-24.04`, PHP 8.3.
-3. Lint усіх tracked `*.php`, виключивши `state/`, `output/`, `legacy/`,
-   `node_modules/`.
-4. Запустити короткий existing smoke без API, Ollama і GUI.
-5. Не змінювати minimum version і не дублювати full gate для трьох версій.
-6. Локально повторити lint-команду, smoke, `./bdo gate touched`,
-   `git diff --check`.
-7. **Definition of Done:** PR CI має окремий зелений PHP 8.3 job.
+Ознаки коректного виправлення: мінімальна заявлена версія не змінена; PR CI
+має окремий зелений PHP 8.3 job; та сама lint-команда, smoke,
+`./bdo gate touched` і `git diff --check` локально мають exit 0.
 
 ## Architecture & Code Quality
 
@@ -194,16 +190,15 @@ regression-перевірка зелена. Остаточний доказ у C
 - **Estimated effort:** Medium.
 - **Confidence:** High щодо обсягу, Medium щодо впливу без A/B eval.
 
-Пакет дослідження для Luna High, без переписування правил:
-
-1. Таблиця для кожного bullet: `keep`, `route`, `remove as history`,
-   `already enforced by code/gate`.
-2. Для `route/remove` назвати mechanical enforcement; немає — не скорочувати.
-3. Розділити machine-specific, project-wide і task-specific правила.
-4. Ціль аналізу — entrypoint ≤150 рядків без втрати hard boundaries; це не
-   дозвіл механічно різати текст.
-5. Підготувати diff-план і потрібні gate changes, код не змінювати.
-6. **Definition of Done:** кожен рядок має долю, кожна hard boundary — check.
+Деталі можливого дослідження: корисним артефактом була б таблиця кожного
+bullet зі статусами `keep`, `route`, `remove as history` або
+`already enforced by code/gate`. Для кожного `route/remove` потрібне посилання
+на mechanical enforcement; без нього скорочення створює ризик. Окремі групи
+мають утворити machine-specific, project-wide і task-specific правила.
+Орієнтир ≤150 рядків для entrypoint може використовуватися лише як метрика, а
+не як вимога механічно зрізати текст. Достатній результат аналізу — кожен
+поточний bullet має обґрунтовану долю, а кожна hard boundary має observable
+check; саме переписування правил потребує окремого рішення.
 
 Посилання в `docs/DELEGATION.md` на setup сусіднього проєкту є provenance, а
 не runtime dependency; його відсутність у цьому repo не є дефектом.
@@ -218,18 +213,20 @@ regression-перевірка зелена. Остаточний доказ у C
 - Playwright/Selenium не додавати без browser-only failure, якого не ловлять
   чинні Node/HTTP tests і live browser verification.
 
-## Quick Wins
+## Low-risk Opportunities
 
-1. Виправити stale comment у `tests/web-server.sh`.
-2. Додати PHP 8.3 compatibility job (A-08).
-3. Виправити Windows PID fallback (A-06).
+- Stale comment у `tests/web-server.sh` можна узгодити з фактичним
+  `localStorage` без зміни поведінки.
+- PHP 8.3 compatibility job з A-08 має низький runtime-ризик.
+- Спільний process adapter з A-06 є вузькою зміною, якщо не зачіпає state і
+  lifecycle процесів.
 
-## Larger Improvements
+## Larger Opportunities
 
-1. Розширити PHPStan scope без підняття level (A-02).
-2. Провести inventory instruction context, потім окремо затвердити скорочення
-   (A-07).
-3. Виносити pure components з великих класів лише під конкретну зміну (A-05).
+- Розширення PHPStan scope без підняття level описане в A-02.
+- Inventory instruction context має передувати будь-якому скороченню A-07.
+- Pure components із великих класів доцільно виділяти лише разом із
+  конкретною поведінковою зміною, як зазначено в A-05.
 
 ## Things That Should NOT Be Changed
 
@@ -260,29 +257,23 @@ regression-перевірка зелена. Остаточний доказ у C
 `bash tests/gate-skip-visibility.sh` завершився exit 0. Після push лишається
 дочекатися зеленого CI; нової реалізації для цього пункту не планувати.
 
-## Recommended Roadmap
+## Suggested Priority If Work Is Chosen
 
-1. **P1 — A-08:** дешевий PHP 8.3 compatibility job.
-2. **P1 — A-06:** спільний process adapter і Windows regression.
-3. **P2 — A-02, вимір:** порахувати PHPStan diagnostics для `cli/**`.
-4. **P2 — A-02, реалізація:** розширити scope, лишити level 0.
-5. **P3 — A-07:** тільки inventory; переписування після окремого прийняття.
-6. Не створювати задачі на class split, browser framework чи artifacts без
-   нового конкретного дефекту.
+Цей порядок є оцінкою ризику й залежностей, а не вказівкою виконати всі
+пункти: A-08 має найменший runtime-ризик; A-06 є наступною вузькою проблемою;
+A-02 логічно починається з виміру й лише потім переходить до розширення scope;
+A-07 спочатку потребує inventory. Class split, browser framework і загальні
+failure artifacts не мають ставати задачами без нового конкретного дефекту.
 
-## Загальний протокол для слабшої coding-моделі
+## Як читати рекомендації слабшій coding-моделі
 
-Кожен пункт roadmap — окрема задача:
-
-1. Прочитати `AGENTS.md`, названі файли, tests і call sites.
-2. Перевірити `git status --short`; чужі зміни не редагувати й не комітити.
-3. Відтворити проблему або baseline до зміни.
-4. Змінити лише scope пункту; не додавати dependency/abstraction поза планом.
-5. Додати regression з negative control.
-6. Focused test, потім `./bdo gate touched && ./bdo api`, якщо пакет не задає
-   сильнішої перевірки.
-7. `git diff --check`, `git diff --stat`, повний diff, `git status --short`.
-8. Не оголошувати «вирішено» без exit 0 обов’язкової команди.
+Кожен finding є незалежною оцінкою, а не чергою обов’язкових завдань. Якщо
+власник окремо обирає finding для реалізації, його поля `Evidence`,
+`Recommended change`, деталі можливої реалізації та ознаки коректного
+виправлення разом задають межі роботи. Вони не дозволяють автоматично брати
+наступний finding, розширювати scope, додавати dependency або виконувати весь
+список. Чинні правила `AGENTS.md` щодо чужих змін, перевірок, коміту й push
+залишаються вищими за цей аналітичний документ.
 
 ## Межі впевненості
 
