@@ -582,6 +582,10 @@ grep -Fq 'class="chip role-model"' "$ROOT/web/index.html" \
     || fail 'картка ролі не показує модель окремим компактним бейджем'
 grep -Fq 'active_provider' "$ROOT/lib/Web/Snapshot.php" \
     || fail 'жива картка ролі не отримує runtime фактичного виклику'
+grep -Fq 'class="msg role-transition"' "$ROOT/web/index.html" \
+    || fail 'перехід між ролями не має окремої візуальної картки'
+grep -Fq 'function transitionInfo' "$ROOT/web/index.html" \
+    || fail 'картка переходу не читає поточний крок зі знімка'
 grep -Fq "contBtn.style.display = (resume || pausePending) ? '' : 'none';" "$ROOT/web/index.html" \
     || fail 'кнопка продовження показується для звичайного фінішу, а не лише після паузи'
 grep -Fq "navContinue.style.display = (resumablePause || pausePending) ? '' : 'none';" "$ROOT/web/index.html" \

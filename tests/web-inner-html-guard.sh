@@ -164,7 +164,7 @@ for (const [id, node] of elements) {
 // список, її зникнення · теж, а два однакові знімки · ні.
 const livingSnapshot = JSON.parse(JSON.stringify(snapshot));
 livingSnapshot.running = true;
-livingSnapshot.stream = { role_label: 'підстановка назв', role: 'translation-names', fresh: true, text: null, payload: null };
+livingSnapshot.stream = { role_label: 'підстановка назв', role: 'translation-names', fresh: true, active: true, text: null, payload: null };
 const callsNode = elements.get('calls');
 if (!callsNode) { die('у фікстурі немає #calls · перевірка нічого не доводить'); }
 const beforeLive = callsNode.innerHTMLWrites;
@@ -208,6 +208,33 @@ if (!/вантажиться|готує відповідь/.test(callsNode.inner
 }
 if (!/47/.test(callsNode.innerHTML)) {
   die('прелоадер не каже, скільки секунд це триває');
+}
+
+// ПЕРЕХІД МІЖ РОЛЯМИ · прогін іде, але активного виклику ще немає.
+// У цей момент сторінка мусить показати, який крок запускається далі, а не
+// залишати порожній простір під уже завершеними викликами.
+const transitionSnapshot = JSON.parse(JSON.stringify(snapshot));
+transitionSnapshot.running = true;
+transitionSnapshot.stream = { role_label: 'термінолог', role: 'translation-terminology', fresh: true, active: false, text: null, thinking: null, payload: null };
+transitionSnapshot.steps = [
+  { label: 'терміни', state: 'done', role: 'translation-terminology', key: 'awaiting_terminology' },
+  { label: 'переклад', state: 'now', role: 'translation-worker', key: 'awaiting_worker' },
+  { label: 'якість', state: 'pending', role: 'translation-qa', key: 'awaiting_qa' }
+];
+const beforeTransition = callsNode.innerHTMLWrites;
+render(transitionSnapshot);
+if (callsNode.innerHTMLWrites === beforeTransition) {
+  die('між ролями не зʼявилась картка підготовки наступної ролі');
+}
+if (!/попередня роль завершилася/.test(callsNode.innerHTML)
+    || !/готується наступна роль · переклад/.test(callsNode.innerHTML)
+    || !/очікується запуск/.test(callsNode.innerHTML)) {
+  die('картка переходу не пояснює, яка роль запускається далі');
+}
+const withTransition = callsNode.innerHTMLWrites;
+render(transitionSnapshot);
+if (callsNode.innerHTMLWrites !== withTransition) {
+  die('картка переходу перемальовується на однаковому знімку');
 }
 
 console.log('web innerHTML guard: OK · однаковий snapshot не переписує innerHTML, жива картка приходить і зникає, роль без жодного символу видно з прелоадером');

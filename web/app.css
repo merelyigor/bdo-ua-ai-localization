@@ -217,6 +217,12 @@ button:hover{background:var(--s2)}
 .role-card.is-ok{border-color:var(--ok-tx)}
 .role-card.is-review{border-color:var(--wr-tx)}
 .role-card.is-failed{border-color:var(--dn-tx)}
+.role-transition{align-items:center;border-color:var(--bda);background:var(--surface-alpha)}
+.role-transition>.role-icon{flex:0 0 auto;color:var(--acc-tx)}
+.transition-copy{min-width:0;flex:1}
+.transition-title{color:var(--acc-tx);font-size:13px;font-weight:500}
+.transition-target{margin-top:2px;color:var(--ts);font-size:12px}
+.role-transition .load{padding:5px 0 0}
 .role-state{display:inline-flex;align-items:center;gap:4px;cursor:default}
 .role-state.running{background:var(--acc-bg);color:var(--acc-tx);border-color:var(--bda)}
 .role-state.ok{background:var(--ok-bg);color:var(--ok-tx);border-color:var(--ok-tx)}
