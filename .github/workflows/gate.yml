@@ -43,6 +43,11 @@ jobs:
         with:
           php-version: '8.5'
           extensions: curl, json, mbstring, posix, pcntl
+          # Аналізатор типів ставиться ТУТ, бо селективний гейт тепер ганяє
+          # його сам. Без нього `tests/phpstan-scope.sh` вийшов би кодом «не
+          # виконано», а пропуски в CI заборонені. Версія та сама, що й у
+          # завданні нижче й у системі розробника · інакше вивід розходився б.
+          tools: phpstan:2.2.14
           coverage: none
 
       # Перелік зміряний: `scripts/agent-check.sh` вимагає git bash php jq curl
@@ -189,7 +194,7 @@ jobs:
         #noinspection UndefinedParamsPresent
         with:
           php-version: '8.5'
-          tools: phpstan:2.2.13
+          tools: phpstan:2.2.14
           coverage: none
 
       # Межа памʼяті названа числом навмисно. Обсяг аналізу виріс із самої
