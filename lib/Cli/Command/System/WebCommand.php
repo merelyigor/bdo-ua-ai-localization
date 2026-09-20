@@ -6,6 +6,7 @@ namespace Bdo\Translate\Cli\Command\System;
 
 use Bdo\Translate\Cli\Command;
 use Bdo\Translate\Cli\Output;
+use Bdo\Translate\System\ProcessState;
 
 /**
  * Локальний браузерний сервер із контрактом команди `bdo web`.
@@ -495,28 +496,10 @@ final class WebCommand implements Command, \Bdo\Translate\Cli\CommandHelp
 
     private function isAlive(int $pid): bool
     {
-        if ($pid <= 0) {
-            return false;
-        }
-        if (PHP_OS_FAMILY === 'Windows') {
-            $tasklist = $this->windowsSystemBinary('tasklist.exe');
-            if ($tasklist === null) {
-                return false;
-            }
-            [$code, $stdout] = $this->capture($tasklist, ['/FI', 'PID eq '.$pid, '/NH']);
-
-            return $code === 0 && preg_match('/\b'.preg_quote((string) $pid, '/').'\b/', $stdout) === 1;
-        }
-        if (function_exists('posix_kill')) {
-            return @posix_kill($pid, 0);
-        }
-        $kill = $this->which('kill');
-        if ($kill === null) {
-            return false;
-        }
-        [$code] = $this->capture($kill, ['-0', (string) $pid]);
-
-        return $code === 0;
+        // Знання про живий процес переїхало в `lib/System/ProcessState.php`:
+        // те саме питання ставить сторінка, і дві різні відповіді вже дали
+        // розходження між платформами (аудит A-06).
+        return (new ProcessState())->alive($pid);
     }
 
     private function cleanup(string $info, string $port): void

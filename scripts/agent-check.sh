@@ -201,6 +201,9 @@ touched_map() {
         scripts/generate-command-docs.php)
             printf 'test|tests/command-registry.sh|генератор довідки команд\n' ;;
         web/*)
+            # ЛІНТЕР ПЕРШИЙ · він читає JavaScript як мову й коштує секунди,
+            # тоді як тести нижче лише ВИКОНУЮТЬ код і бачать самі наслідки.
+            printf 'test|tests/web-lint.sh|лінтер JavaScript сторінки\n'
             printf 'test|tests/web-server.sh|сервер і сторінка\n'
             printf 'test|tests/web-actions.sh|дії сторінки\n'
             printf 'test|tests/web-steps.sh|кроки сторінки\n'
@@ -302,7 +305,12 @@ touched_map() {
             printf 'test|tests/session-lifecycle.sh|життєвий цикл сесії\n'
             printf 'test|tests/watch-session.sh|спостереження сесії\n'
             printf 'test|tests/rotation.sh|ротація завершених даних\n' ;;
+        lib/System/*)
+            printf 'test|tests/process-state.sh|спільний вимірювач живого процесу\n'
+            printf 'test|tests/cli-system-parity.sh|парність system\n'
+            printf 'test|tests/web-server.sh|сервер сторінки\n' ;;
         lib/Ui/*|lib/Web/*)
+            printf 'test|tests/process-state.sh|живий процес у знімку сторінки\n'
             printf 'test|tests/web-server.sh|сервер UI\n'
             printf 'test|tests/web-actions.sh|дії UI\n'
             printf 'test|tests/web-steps.sh|кроки UI\n'
@@ -328,6 +336,10 @@ touched_map() {
             printf 'test|tests/judge-flow.sh|наскрізний маршрут судді\n'
             printf 'test|tests/no-silent-failures.sh|видимі причини відмов\n'
             printf 'test|tests/step-report.sh|зміст звіту кроку\n' ;;
+        lib/Cli/Command/System/*)
+            printf 'test|tests/process-state.sh|живий процес у команді сервера\n'
+            printf 'test|tests/cli-system-parity.sh|парність system\n'
+            printf 'test|tests/web-server.sh|сервер сторінки\n' ;;
         lib/Cli/*|lib/autoload.php)
             printf 'test|tests/cli-kernel.sh|kernel і router\n'
             printf 'test|tests/command-registry.sh|реєстр команд\n'
@@ -391,6 +403,14 @@ touched_map() {
             printf 'test|tests/registry-hygiene.sh|гігієна реєстрів\n' ;;
         cli/*)
             printf 'test|tests/cli-kernel.sh|загальний CLI kernel-контракт\n' ;;
+        .gitignore|.gitattributes)
+            # ЩО САМЕ ЛЕЖИТЬ У ПУБЛІЧНОМУ РЕПОЗИТОРІЇ · питання не стилю, а
+            # безпеки: саме `.gitignore` тримає `.env`, `state/` і `output/`
+            # поза історією. Профіль `docs` перевіряє контракт `.env` і
+            # відсутність секретів у відстежуваних файлах.
+            printf 'profile|docs|склад репозиторію, контракт .env і секрети\n' ;;
+        eslint.config.mjs|package.json|package-lock.json)
+            printf 'test|tests/web-lint.sh|лінтер JavaScript сторінки\n' ;;
         phpstan.neon)
             printf 'test|tests/phpstan-scope.sh|обсяг статичного аналізу\n' ;;
         bdo)
@@ -1958,6 +1978,8 @@ tests/quarantine-recovery.sh
 tests/glossary-confirmed.sh
 tests/gate-skip-visibility.sh
 tests/phpstan-scope.sh
+tests/process-state.sh
+tests/web-lint.sh
 tests/worker-reference.sh
 tests/schema-provider-compat.sh
 tests/mechanical-final-check.sh

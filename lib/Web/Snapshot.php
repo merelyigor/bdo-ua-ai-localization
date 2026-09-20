@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Bdo\Translate\Web;
 
 use Bdo\Translate\Session\Ledger;
+use Bdo\Translate\System\ProcessState;
 use Bdo\Translate\Ui\Clock;
 use Bdo\Translate\Ui\Labels;
 
@@ -1595,15 +1596,10 @@ final class Snapshot
 
     private function pidAlive(int $pid): bool
     {
-        if ($pid <= 0) {
-            return false;
-        }
-        if (function_exists('posix_kill')) {
-            return posix_kill($pid, 0);
-        }
-        // Без POSIX-розширення питаємо систему тим самим способом, що й bash.
-        exec('kill -0 '.escapeshellarg((string) $pid).' 2>/dev/null', $out, $code);
-
-        return $code === 0;
+        // Відповідь спільна з командою сервера · див. `lib/System/ProcessState.php`.
+        // Тут стояв власний `kill -0`, і на рідному Windows такої команди немає
+        // взагалі: живий виклик моделі виглядав би завершеним, а картка ролі
+        // зникала б з екрана посеред роботи (аудит A-06).
+        return (new ProcessState())->alive($pid);
     }
 }

@@ -1,0 +1,11 @@
+{
+  "name": "bdo-ua-ai-localization",
+  "private": true,
+  "description": "Перевірка якості JavaScript сторінки. Набір перекладу написаний на PHP · Node тут потрібен ЛИШЕ для лінтера й не бере участі в роботі.",
+  "scripts": {
+    "lint": "eslint web"
+  },
+  "devDependencies": {
+    "eslint": "10.11.0"
+  }
+}

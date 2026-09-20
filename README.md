@@ -15,7 +15,9 @@
 ## Швидкий старт
 
 Потрібні PHP CLI 8.3+, Bash для розробницької оснастки, `jq`, `curl`,
-ShellCheck, Agent API key і локальний runtime моделей. Модель, endpoint, схеми й
+ShellCheck, Agent API key і локальний runtime моделей. Node потрібен ЛИШЕ
+розробникові: `npm ci` ставить лінтер JavaScript сторінки. Сам набір на Node не
+працює й без нього перекладає так само. Модель, endpoint, схеми й
 температури задає [`config/roles.json`](config/roles.json); не дублюйте ці
 параметри в README.
 

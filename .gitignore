@@ -39,3 +39,8 @@ legacy/*.zip
 
 # Тимчасові worktree виконавців · робочий матеріал, а не код проєкту.
 .claude/worktrees/
+
+# Лінтер JavaScript. Сам набір на Node не працює · це оснастка розробки, тому
+# в історію їде лише `package.json` і `package-lock.json`, а 14 МБ пакетів
+# ставить `npm ci` (локально й у CI).
+/node_modules/

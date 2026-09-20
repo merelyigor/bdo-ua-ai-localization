@@ -58,6 +58,12 @@ jobs:
           bash --version | head -1
           php -v | head -1
 
+      # ЛІНТЕР СТОРІНКИ СТАВИТЬСЯ ТУТ, А НЕ ПРОПУСКАЄТЬСЯ. Без нього
+      # `tests/web-lint.sh` вийшов би кодом «не виконано», а пропуски в CI
+      # заборонені · зелений прогін нічого не казав би про JavaScript.
+      - name: Лінтер JavaScript
+        run: npm ci --no-audit --no-fund
+
       - name: Теки прогону
         run: mkdir -p output state
 
@@ -194,6 +200,61 @@ jobs:
       # пік · 51 MB, тож 1G це запас, а не потреба.
       - name: PHPStan level 3
         run: phpstan analyse -c phpstan.neon --no-progress --memory-limit=1G
+
+  # МІНІМАЛЬНА ВЕРСІЯ · ЦЕ ОБІЦЯНКА, А НЕ ПОБАЖАННЯ. README вимагає PHP 8.3+,
+  # а весь CI досі працював на 8.5: синтаксис або функція з 8.4 проїхали б
+  # зеленими й зламались би вже в того, хто поставив заявлений мінімум.
+  # Дублювати тут повний gate сенсу немає · досить довести, що код ЧИТАЄТЬСЯ і
+  # ЗАПУСКАЄТЬСЯ на нижній межі.
+  php_83_compat:
+    name: PHP 8.3 (мінімальна заявлена)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: PHP 8.3
+        uses: shivammathur/setup-php@v2
+        # GitHub action inputs; JetBrains cannot resolve remote action metadata here.
+        #noinspection UndefinedParamsPresent
+        with:
+          php-version: '8.3'
+          extensions: curl, json, mbstring, posix, pcntl
+          coverage: none
+
+      - name: Синтаксис усього робочого PHP
+        run: |
+          set -euo pipefail
+          count=0
+          for file in $(git ls-files '*.php') bdo; do
+            case "$file" in legacy/*) continue ;; esac
+            php -l "$file" >/dev/null
+            count=$((count + 1))
+          done
+          echo "php -l на 8.3: $count файлів"
+
+      - name: Теки прогону
+        run: mkdir -p output state
+
+      - name: Синтетична ціль (DEV, мертвий порт)
+        run: |
+          set -euo pipefail
+          printf '%s\n' \
+            'BDO_ENV=DEV' \
+            'BDO_API_TARGET=legacy' \
+            'BDO_API_BASE_DEV=http://127.0.0.1:1' \
+            'BDO_API_KEY_DEV=ci-not-a-real-key' > "$RUNNER_TEMP/bdo-ci.env"
+          echo "TRANSLATE_ENV_FILE=$RUNNER_TEMP/bdo-ci.env" >> "$GITHUB_ENV"
+
+      # Читабельність без запуску нічого не доводить: набір мусить СТАРТУВАТИ.
+      # Беремо те, що не лізе ні в мережу, ні в Ollama, ні в GUI.
+      - name: Набір стартує на 8.3
+        run: |
+          set -euo pipefail
+          ./bdo help >/dev/null
+          ./bdo env
+          php tests/pipeline-unit.php
+          php tests/pipeline-faults.php
 
   windows_native:
     name: Windows native PHP smoke
