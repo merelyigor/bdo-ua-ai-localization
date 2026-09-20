@@ -67,7 +67,7 @@ final class ModelsCommand implements Command, CommandHelp
     }
 
     /** @return array<string,mixed> */
-    private function catalogData(RuntimeModels $catalog, array $config, string $stateDir): array
+    private function catalogData(RuntimeModels $catalog, array $config, string $stateDir, bool $probeLoaded = true): array
     {
         $previous = $this->readCatalog($stateDir);
         $previousModels = [];
@@ -102,7 +102,7 @@ final class ModelsCommand implements Command, CommandHelp
         //
         // Збій проби не має права завалити перелік · він лишає рівні
         // невідомими, і це видно на екрані як було.
-        if (getenv('BDO_MODEL_PROBE') !== 'off') {
+        if ($probeLoaded && getenv('BDO_MODEL_PROBE') !== 'off') {
             foreach ($models as $index => $model) {
                 if (($model['thinking'] ?? false) !== true || ($model['loaded'] ?? '') !== 'так') {
                     continue;
@@ -318,7 +318,7 @@ final class ModelsCommand implements Command, CommandHelp
             return $this->failure('models load: використання `models load <runtime> <model>`', $output, 2);
         }
         $message = $catalog->load($arguments[0], $arguments[1]);
-        $data = $this->catalogData($catalog, $config, $stateDir);
+        $data = $this->catalogData($catalog, $config, $stateDir, false);
         $this->writeCatalog($stateDir, $data);
         $probeMessage = '';
         $entry = $this->findModel($data, $arguments[0], $arguments[1]);

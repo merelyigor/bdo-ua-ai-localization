@@ -166,8 +166,8 @@ php -r '$d=json_decode($argv[1],true); $models=$d["models"]??[]; if (!is_string(
     || fail 'models list --json не повернув повний каталог'
 php -r '$d=json_decode($argv[1],true); foreach ($d["models"] as $m) { if (!array_key_exists("thinking",$m) || !isset($m["thinking_reason"],$m["thinking_levels"])) { fwrite(STDERR,"catalog entry не має capability thinking\n"); exit(1); } }' "$json_output" \
     || fail 'catalog не матеріалізував здатність thinking'
-php -r '$d=json_decode($argv[1],true); $want=["ollama/ollama-model"=>"not_tested","omlx/omlx-model"=>"not_tested","omlx/omlx-not-tested"=>"not_tested","omlx/omlx-no-thinking"=>"unsupported"]; foreach ($d["models"] as $m) { $key=($m["runtime"]??"")."/".($m["model"]??""); if (isset($want[$key]) && ($m["thinking_levels"]??"")!==$want[$key]) { fwrite(STDERR,"початковий стан {$key} неочікуваний\n"); exit(1); } unset($want[$key]); } if ($want) { fwrite(STDERR,"початкові стани відсутні\n"); exit(1); }' "$json_output" \
-    || fail 'catalog не розрізняє supported, unsupported і not_tested до probe'
+php -r '$d=json_decode($argv[1],true); $want=["ollama/ollama-model"=>"supported","omlx/omlx-model"=>"not_tested","omlx/omlx-not-tested"=>"not_tested","omlx/omlx-no-thinking"=>"unsupported"]; foreach ($d["models"] as $m) { $key=($m["runtime"]??"")."/".($m["model"]??""); if (isset($want[$key]) && ($m["thinking_levels"]??"")!==$want[$key]) { fwrite(STDERR,"початковий стан {$key} неочікуваний\n"); exit(1); } unset($want[$key]); } if ($want) { fwrite(STDERR,"початкові стани відсутні\n"); exit(1); }' "$json_output" \
+    || fail 'catalog не розрізняє supported, unsupported і not_tested для loaded та unloaded моделей'
 test -s "$WORK/state/model-catalog.json" || fail 'models list --json не записав state/model-catalog.json'
 php -r '$d=json_decode($argv[1],true); $s=$d["settings"]??[]; if (($s["think"]??null)!==false || array_key_exists("think_limit_bytes", $s)) { fwrite(STDERR,"default model settings містять застарілу байтову ручку\n"); exit(1); }' "$json_output" \
     || fail 'catalog не повернув чисті think settings'
