@@ -166,4 +166,60 @@ if (! str_contains($fresh, "ще не було")) {
 grep -Fq 'callsView.reason' "$ROOT/web/index.html" \
     || fail 'екран прогону не показує причини порожнього списку'
 
-echo 'web steps: OK · крок пройдено за роллю навіть без свого стану, пропущений названо словом, виклики підписані пачкою.'
+# --- 7. ТЕСТОВА пачка не має права показувати зелений «запис» ---------------
+# 2026-09-20 власник прогнав пачку без запису і побачив крок «запис» зеленою
+# галочкою · рівно так само, як після справжнього запису в PROD. Різниця між
+# «поїхало на сервер» і «не поїхало нічого» мусить бути видна кольором І словом.
+STATE2="$TMP/state-dry"
+BATCH2=20260920_055926_6e2f38
+mkdir -p "$STATE2/batches/$BATCH2"
+echo "$BATCH2" > "$STATE2/current-batch"
+: > "$STATE2/model-calls.jsonl"
+printf '%s\n' \
+    '{"at":"2026-09-20T03:02:40+00:00","event":"state:committing","state":"committing"}' \
+    '{"at":"2026-09-20T03:02:42+00:00","event":"state:committed","state":"committed"}' \
+    > "$STATE2/batches/$BATCH2/journal.jsonl"
+
+commit_step() {
+    php -r '
+    require $argv[1];
+    $d = (new Bdo\Translate\Web\Snapshot($argv[2]))->toArray();
+    foreach ($d["steps"] as $s) {
+        if ($s["key"] === "committing") { echo $s["state"], "|", $s["label"]; return; }
+    }
+    echo "немає|немає";
+    ' "$ROOT/lib/autoload.php" "$STATE2"
+}
+
+cat > "$STATE2/batches/$BATCH2/manifest.json" <<JSON
+{"id": "$BATCH2", "rows": 50, "state": "verified", "mode": "patch", "write": false,
+ "updated_at": "2026-09-20T03:02:42+00:00"}
+JSON
+got="$(commit_step)"
+test "$got" = "dry|без запису" \
+    || fail "тестова пачка показала крок запису як «${got}» замість «dry|без запису»"
+
+# Бойова пачка лишається зеленою.
+cat > "$STATE2/batches/$BATCH2/manifest.json" <<JSON
+{"id": "$BATCH2", "rows": 50, "state": "verified", "mode": "patch", "write": true,
+ "updated_at": "2026-09-20T03:02:42+00:00"}
+JSON
+got="$(commit_step)"
+test "$got" = "done|запис" \
+    || fail "бойова пачка втратила зелений крок запису: «${got}»"
+
+# Стара пачка без поля `write` · невідоме не видаємо за тест.
+cat > "$STATE2/batches/$BATCH2/manifest.json" <<JSON
+{"id": "$BATCH2", "rows": 50, "state": "verified", "mode": "patch",
+ "updated_at": "2026-09-20T03:02:42+00:00"}
+JSON
+got="$(commit_step)"
+test "$got" = "done|запис" \
+    || fail "пачку без поля «write» показано як тестову: «${got}»"
+
+grep -Fq "dry: 'тестовий прогін" "$ROOT/web/index.html" \
+    || fail 'сторінка не називає тестовий запис словом · самого кольору замало'
+grep -Fq '.step.dry{' "$ROOT/web/app.css" \
+    || fail 'тестовий крок запису не має власного кольору'
+
+echo 'web steps: OK · крок пройдено за роллю навіть без свого стану, пропущений названо словом, виклики підписані пачкою, тестовий запис не зелений.'

@@ -883,6 +883,11 @@ final class Snapshot
      * Третій стан named явно: `skipped` означає «пачка пройшла цей крок і він
      * не знадобився». Сірий колір без слова заборонений · він змушує гадати.
      *
+     * Четвертий · `dry`: крок запису в ТЕСТОВІЙ пачці. Зелена галочка там
+     * означала б, що рядки поїхали на сервер, хоча `write:false` забороняє це
+     * за побудовою (власник 2026-09-20: «зробив тестовий прогін, а запис
+     * зеленим · це збиває з толку»). Колір попередження і слово «без запису».
+     *
      * @return list<array{key:string,label:string,role:string,state:string}>
      */
     private function steps(array $manifest): array
@@ -933,6 +938,11 @@ final class Snapshot
             $reached = count($order) - 1;
         }
 
+        // Право писати · лише коли воно зафіксоване явно. `null` (пачки до
+        // появи поля) тестом не вважається: невідоме не має права виглядати
+        // як «без запису».
+        $dryRun = array_key_exists('write', $manifest) && $manifest['write'] === false;
+
         $out = [];
         foreach ($order as $i => $step) {
             $done = (isset($seen[$step['key']]) || ($step['role'] !== '' && isset($worked[$step['role']])))
@@ -946,9 +956,14 @@ final class Snapshot
             } else {
                 $status = 'pending';
             }
+            $label = $step['label'];
+            if ($dryRun && $step['key'] === 'committing' && in_array($status, ['now', 'done'], true)) {
+                $status = 'dry';
+                $label = 'без запису';
+            }
             $out[] = [
                 'key' => $step['key'],
-                'label' => $step['label'],
+                'label' => $label,
                 'role' => $step['role'],
                 'state' => $status,
             ];

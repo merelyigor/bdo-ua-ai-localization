@@ -187,11 +187,16 @@
     done: 'зроблено',
     now: 'іде зараз',
     skipped: 'не знадобився',
-    pending: 'попереду'
+    pending: 'попереду',
+    dry: 'тестовий прогін · на сервер не пішло нічого'
   };
 
   function stepStatusIcon(state) {
-    return B.icon(state === 'done' ? 'pass' : (state === 'skipped' ? 'dot' : 'circle'), 'step-status-icon');
+    if (state === 'done') { return B.icon('pass', 'step-status-icon'); }
+    // Колба · знак проби, а не роботи: тестовий запис не має права виглядати
+    // галочкою поруч із бойовими кроками.
+    if (state === 'dry') { return B.icon('flask', 'step-status-icon'); }
+    return B.icon(state === 'skipped' ? 'dot' : 'circle', 'step-status-icon');
   }
 
   function renderRunContext(s, b, completed, resume) {
@@ -632,7 +637,9 @@
       var steps = s.steps || [];
       if (!b.id || !steps.length) { wrap.style.display = 'none'; return; }
       var passed = steps.filter(function (st) {
-        return st.state === 'done' || st.state === 'skipped';
+        // `dry` · крок запису в тестовій пачці: він ПРОЙДЕНИЙ, просто без
+        // наслідку на сервері, тому смуга має дійти до кінця.
+        return st.state === 'done' || st.state === 'skipped' || st.state === 'dry';
       }).length;
       wrap.style.display = 'block';
       wrap.title = 'пройдено кроків ' + B.num(passed) + ' з ' + B.num(steps.length);

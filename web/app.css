@@ -199,6 +199,9 @@ button:hover{background:var(--s2)}
 .step.done{color:var(--ok-tx);background:var(--ok-bg);border-color:var(--ok-tx)}
 .step.now{color:var(--acc-tx);font-weight:500;background:var(--acc-bg);border-color:var(--bda)}
 .step.now .step-status-icon{animation:step-spin 1.2s linear infinite}
+/* Тестовий запис · попереджувальний токен, той самий, що й у мітки «тестова»
+   в переліку сесій: одна подія має один колір на всіх екранах. */
+.step.dry{color:var(--wr-tx);background:var(--wr-bg);border-color:var(--wr-tx)}
 .step.skipped{color:var(--ts);opacity:.7}
 .step.skipped .n{text-decoration:line-through}
 .step.pending{color:var(--tm)}
