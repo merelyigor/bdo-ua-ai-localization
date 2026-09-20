@@ -107,7 +107,40 @@ grep -Fq '"current":"Старий щит"' "$TMP/qa-php/out" || fail 'qa: пот
 pair terminology terminology-payload "$TMP/rows.json" --no-resolve
 if grep -Fq 'source_identity' "$TMP/terminology-php/out"; then fail 'terminology: payload містить source_identity'; fi
 
-pair names names-payload "$TMP/rows.json" "$TMP/candidate.json" "$TMP/validate.json"
-grep -Fq 'ужий' "$TMP/names-php/out" || fail 'names: наказ не зібрано'
+# --- Прохід по назвах: ДВІ ПОЛОВИНИ ОДНОГО ПРАВИЛА -------------------------
+#
+# Правило звучить так: наказ «ужий X» складається лише тоді, коли назви X у
+# тексті СПРАВДІ немає. Якщо вона вже стоїть · дослівно або у відмінковій
+# формі · наказу не буде, бо кликати модель переставляти правильний текст
+# означає його псувати (сервер відхиляє такі рядки помилково, D53).
+#
+# Перевірка довго стежила лише за половиною «наказ складається», і стежила на
+# прикладі, де назва в тексті БУЛА. Після того, як код навчився таку назву
+# бачити, перевірка стала вимагати вчорашньої поведінки й падала на зеленому
+# коді (знайдено в аудиті 2026-09-20). Тепер перевіряються обидві половини, і
+# кожна на своєму прикладі.
+
+# 1. Назви в тексті НЕМАЄ · наказ мусить скластися.
+cat > "$TMP/candidate-missing.json" <<JSON
+[{"identity_hash":"$H1","text":"Острів Ліхтарів і сталевий клинок"},{"identity_hash":"$H2","text":"Невідомий щит"}]
+JSON
+pair names names-payload "$TMP/rows.json" "$TMP/candidate-missing.json" "$TMP/validate.json"
+grep -Fq 'ужий «Залізний меч» для «Iron»' "$TMP/names-php/out" \
+    || fail "names: наказ не зібрано там, де назви в тексті немає: $(cat "$TMP/names-php/out")"
+
+# 2. Назва стоїть ДОСЛІВНО · наказу бути не повинно, і код каже це вголос.
+pair names-literal names-payload "$TMP/rows.json" "$TMP/candidate.json" "$TMP/validate.json"
+test "$(jq -c '.items' "$TMP/names-literal-php/out")" = '[]' \
+    || fail "names: на дослівно вжитій назві складено зайвий наказ: $(cat "$TMP/names-literal-php/out")"
+grep -Fq 'уже виконано в тексті' "$TMP/names-literal-php/err" \
+    || fail 'names: зникнення наказу не названо словами · це виглядало б як утрата вимоги'
+
+# 3. Назва у ВІДМІНКОВІЙ формі · те саме: наказу немає.
+cat > "$TMP/candidate-inflected.json" <<JSON
+[{"identity_hash":"$H1","text":"Острів Ліхтарів і Залізного меча"},{"identity_hash":"$H2","text":"Невідомий щит"}]
+JSON
+pair names-inflected names-payload "$TMP/rows.json" "$TMP/candidate-inflected.json" "$TMP/validate.json"
+test "$(jq -c '.items' "$TMP/names-inflected-php/out")" = '[]' \
+    || fail "names: відмінкову форму не зараховано, складено зайвий наказ: $(cat "$TMP/names-inflected-php/out")"
 
 printf '%s\n' 'cli payload behavior: 4 PHP-команди, stdout/stderr/коди й файли: OK'
