@@ -63,4 +63,17 @@ grep -Fq "$TMP/missing.env" "$TMP/env.err" || fail 'EnvCommand не переда
 
 grep -Fq 'Bdo\Translate\Cli\Router' bdo \
     || fail 'bdo не передає перенесені команди в Cli\Kernel через Router'
+
+# Runtime-конфіг із `.env` мусить доходити до PHP-процесу без shell export.
+cat >"$TMP/runtime.env" <<'EOF'
+BDO_RUN_MAX_BATCHES=1000
+EOF
+runtime_value="$(TRANSLATE_ENV_FILE="$TMP/runtime.env" php -r '
+require "lib/autoload.php";
+putenv("BDO_RUN_MAX_BATCHES");
+(new \Bdo\Translate\Cli\Router())->run(["help"]);
+echo "runtime=".(string) getenv("BDO_RUN_MAX_BATCHES");
+')"
+grep -Fq 'runtime=1000' <<<"$runtime_value" \
+    || fail 'Router не матеріалізував runtime-настройку з .env'
 printf 'cli kernel: help/env dispatch, errors, pipe color, registry failure and subprocess code: OK\n'

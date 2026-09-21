@@ -153,18 +153,32 @@ TMP="$(mktemp -d)"
 export BDO_STATE_DIR="$TMP/state"
 mkdir -p "$BDO_STATE_DIR"
 export BDO_WEB_DEFAULT_PORT=$(( 45000 + RANDOM % 3000 ))
+cat >"$TMP/web.env" <<'ENV'
+BDO_RUN_MAX_BATCHES=1000
+ENV
 cleanup() {
     php "$ROOT/cli/bdo.php" web --stop >/dev/null 2>&1 || true
     rm -rf "$TMP"
 }
 trap cleanup EXIT
 
-out="$(php "$ROOT/cli/bdo.php" web --background --no-open 2>&1)" || fail "сервер не запустився: $out"
+out="$(TRANSLATE_ENV_FILE="$TMP/web.env" php "$ROOT/cli/bdo.php" web --background --no-open 2>&1)" || fail "сервер не запустився: $out"
 URL="$(printf '%s\n' "$out" | sed -n 's~.*\(http://127\.0\.0\.1:[0-9]*/?t=[0-9a-f]*\).*~\1~p' | head -1)"
 PORT="$(printf '%s' "$URL" | sed -n 's~.*127\.0\.0\.1:\([0-9]*\)/.*~\1~p')"
 TOKEN="$(printf '%s' "$URL" | sed -n 's~.*t=\([0-9a-f]*\).*~\1~p')"
 test -n "$PORT" && test -n "$TOKEN" || fail "не розібрав посилання: $out"
 BASE="http://127.0.0.1:$PORT"
+
+# Сервер підхопив runtime-конфіг із `.env`, а не лише змінні shell-процесу.
+# Це regression для D225: без Router::loadRuntime web бачив би запасні дефолти.
+runtime_value="$(TRANSLATE_ENV_FILE="$TMP/web.env" php -r '
+require $argv[1];
+putenv("BDO_RUN_MAX_BATCHES");
+(new \Bdo\Translate\Cli\Router())->run(["help"]);
+echo "runtime=".(string) getenv("BDO_RUN_MAX_BATCHES");
+' "$ROOT/lib/autoload.php")"
+grep -Fq 'runtime=1000' <<<"$runtime_value" \
+    || fail 'web runtime не підхопив BDO_RUN_MAX_BATCHES із .env'
 
 post() {
     local path="$1" body="$2"

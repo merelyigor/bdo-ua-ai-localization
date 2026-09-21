@@ -19,10 +19,32 @@ final class ApiEnvironment
     public const BDO_API_BASE_PROD_DEFAULT = 'https://bdo-ua.com.ua/api/agent/v1';
 
     /**
+     * Матеріалізувати локальний `.env` у поточному PHP-процесі.
+     *
+     * Дочірні команди web успадковують лише оточення батька. Раніше файл
+     * переносив у процес тільки API-ціль, тому runtime-настройки на кшталт
+     * `BDO_RUN_MAX_BATCHES` непомітно замінювались запасними значеннями.
+     * Явні змінні процесу мають пріоритет: файл лише доповнює їх.
+     */
+    public static function loadRuntime(string $root): void
+    {
+        $envFile = getenv('TRANSLATE_ENV_FILE') ?: $root.'/.env';
+        if (! is_file($envFile)) {
+            return;
+        }
+        foreach (self::read($envFile) as $name => $value) {
+            if (getenv($name) === false) {
+                putenv($name.'='.$value);
+            }
+        }
+    }
+
+    /**
      * @return array{base:string,key:string,environment:string,env:string,target:string,env_file:string,target_from_file:string}
      */
     public static function load(string $root): array
     {
+        self::loadRuntime($root);
         $base = getenv('BDO_API_BASE');
         $key = getenv('BDO_API_KEY');
         $environment = getenv('BDO_API_ENV');

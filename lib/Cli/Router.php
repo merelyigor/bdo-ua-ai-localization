@@ -182,6 +182,9 @@ final class Router
 
     public function run(array $arguments): int
     {
+        // Web і його дочірні `./bdo`-команди мають бачити всі runtime-настройки
+        // з локального `.env`, а не лише змінні, які випадково були export-нуті.
+        ApiEnvironment::loadRuntime($this->root());
         $group = (string) ($arguments[0] ?? '');
         if ($group === '') {
             return $this->php('web', [], false);
