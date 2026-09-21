@@ -52,7 +52,7 @@ if ($path === '/taxonomy') {
 }
 if ($path === '/rows') {
     $query = (string) parse_url((string) ($_SERVER['REQUEST_URI'] ?? '/'), PHP_URL_QUERY);
-    if (str_contains($query, 'seen_case=1')) {
+    if (str_contains($query, 'seen_case=1') && ! str_contains($query, 'deep_seen_case=1')) {
         $second = str_contains($query, 'cursor=seen-next');
         $start = $second ? 121 : 101;
         $rows = [];
@@ -66,6 +66,24 @@ if ($path === '/rows') {
         echo json_encode([
             'data' => ['rows' => $rows],
             'meta' => ['has_more' => ! $second, 'next_cursor' => $second ? null : 'seen-next', 'total_matching' => 40],
+        ], JSON_THROW_ON_ERROR);
+        return;
+    }
+    if (str_contains($query, 'deep_seen_case=1')) {
+        preg_match('/cursor=deep-(\d+)/', $query, $match);
+        $page = isset($match[1]) ? (int) $match[1] : 0;
+        $start = ($page * 5) + 1;
+        $rows = [];
+        for ($i = $start; $i < $start + 5; $i++) {
+            $rows[] = [
+                'identity_hash' => str_pad(dechex($i), 64, '0', STR_PAD_LEFT),
+                'source_hash' => hash('sha256', 'Deep source '.$i),
+                'source_text' => 'Deep source '.$i,
+            ];
+        }
+        echo json_encode([
+            'data' => ['rows' => $rows],
+            'meta' => ['has_more' => $page < 50, 'next_cursor' => $page < 50 ? 'deep-'.($page + 1) : null, 'total_matching' => 255],
         ], JSON_THROW_ON_ERROR);
         return;
     }
@@ -136,6 +154,18 @@ SECOND_ROWS="$(sed -n 's/^Збережено: //p' "$TMP/seen-second.out" | tail
 test "$(jq '.data.rows | length' "$SECOND_ROWS")" = 0 || fail 'вичерпана тестова вибірка знову повернула вже бачені рядки'
 jq -e --arg q "$SEEN_QUERY" '.query == $q and (.identities | length) == 40' "$STATE/run-seen.json" >/dev/null \
     || fail 'run-seen не зберіг попередні та нові 40 identity'
+
+# 2в. Малий тестовий розмір не має зупинятися на 10 сторінках, якщо перші
+# сторінки вже бачилися в dry-run. За замовчуванням обхід має дійти до першого
+# нового рядка навіть після 250 уже відомих identity.
+DEEP_QUERY='patch=active&missing=machine&deep_seen_case=1'
+DEEP_IDENTITIES="$(php -r '$a=[];for($i=1;$i<=250;$i++){$a[]=str_pad(dechex($i),64,"0",STR_PAD_LEFT);}echo json_encode(["query"=>$argv[1],"identities"=>$a],JSON_THROW_ON_ERROR);' "$DEEP_QUERY")"
+printf '%s\n' "$DEEP_IDENTITIES" > "$STATE/run-seen.json"
+TRANSLATE_ENV_FILE="$TMP/env" BDO_DRY_RUN=1 BDO_STATE_DIR="$STATE" php "$ROOT/cli/bdo.php" fetch-rows 5 "$DEEP_QUERY" >"$TMP/deep-seen.out" 2>"$TMP/deep-seen.err" \
+    || fail "глибокий seen-case впав: $(cat "$TMP/deep-seen.err")"
+DEEP_ROWS="$(sed -n 's/^Збережено: //p' "$TMP/deep-seen.out" | tail -1)"
+test "$(jq '.data.rows | length' "$DEEP_ROWS")" = 5 || fail 'малий fetch не дійшов до нової сторінки після 250 seen identity'
+test "$(grep -c '^/rows$' "$TMP/rows.log")" -ge 53 || fail 'малий fetch не обійшов достатню кількість уже бачених сторінок'
 kill "$SERVER" 2>/dev/null || true
 SERVER=''
 # Шлях запису делегує сам запис у `Api\TranslationWriter`, і журнал спроб

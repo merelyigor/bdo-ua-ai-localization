@@ -97,7 +97,17 @@ final class FetchRowsCommand implements Command, \Bdo\Translate\Cli\CommandHelp
         if ($trackSeen && $seenIdentities === []) {
             $seenIdentities = $this->currentBatchIdentities($stateDir, $extra);
         }
-        $maxPages = max(0, (int) (getenv('BDO_FETCH_MAX_PAGES') ?: '10'));
+        $configuredMaxPages = getenv('BDO_FETCH_MAX_PAGES');
+        if ($configuredMaxPages !== false && preg_match('/^[0-9]+$/', $configuredMaxPages)) {
+            $maxPages = (int) $configuredMaxPages;
+        } else {
+            // У dry-run перші сторінки можуть уже бути в `run-seen.json`.
+            // Ліміт у 10 сторінок був достатнім для пачки 50, але для пачки 5
+            // з 250 уже баченими рядками він зупинявся до першого нового.
+            $pageSize = max(1, min(50, (int) $batch));
+            $seenPages = (int) ceil(count($seenIdentities) / $pageSize);
+            $maxPages = max(10, $seenPages + 1);
+        }
         $cursor = '';
         $remaining = (int) $batch;
         $page = 0;
