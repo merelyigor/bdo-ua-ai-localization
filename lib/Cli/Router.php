@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Bdo\Translate\Cli;
 
 use Bdo\Translate\Cli\Command\Api\ApiEnvironment;
+use Bdo\Translate\Run\Actions;
 
 /**
  * Зовнішній маршрутизатор `./bdo`.
@@ -254,7 +255,7 @@ final class Router
         }
         if ($sub === 'start') {
             return $this->nestedPhp('mode', 'start', [
-                (string) ($arguments[1] ?? ''), (string) ($arguments[2] ?? '50'), (string) ($arguments[3] ?? 'active'), (string) ($arguments[4] ?? ''),
+                (string) ($arguments[1] ?? ''), (string) ($arguments[2] ?? Actions::BATCH_SIZE), (string) ($arguments[3] ?? 'active'), (string) ($arguments[4] ?? ''),
             ]);
         }
 
@@ -397,7 +398,7 @@ dispatcher, цим flow і документацією.
 Повна послідовність із причинами · WORKFLOW.md
 FLOW
             ;
-            $this->stdout(str_replace('__BDO_BATCH_SIZE__', '50', $flow));
+            $this->stdout(str_replace('__BDO_BATCH_SIZE__', (string) Actions::BATCH_SIZE, $flow));
             return 0;
         }
         if (count($arguments) > 1) {

@@ -53,12 +53,12 @@ final class RunSpecCommand implements Command, \Bdo\Translate\Cli\CommandHelp
 
         if ($action === 'plan') {
             $parent = (string) ($arguments[2] ?? '');
-            $size = (string) ($arguments[3] ?? '50');
+            $size = (string) ($arguments[3] ?? RunSpec::DEFAULT_BATCH_SIZE);
             if ($parent === '') {
                 throw new RuntimeException('plan потребує ідентифікатор прогону');
             }
             if ($size === '') {
-                $size = '50';
+                $size = (string) RunSpec::DEFAULT_BATCH_SIZE;
             }
             $json = json_encode([
                 'ok' => true,

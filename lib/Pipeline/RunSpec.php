@@ -9,6 +9,12 @@ use InvalidArgumentException;
 /** Immutable, preset-only policy for an unattended translation run. */
 final class RunSpec
 {
+    public const DEFAULT_BATCH_SIZE = 50;
+
+    public const MIN_BATCH_SIZE = 5;
+
+    public const MAX_BATCH_SIZE = 100;
+
     private const PRESETS = [
         'patch' => [
             'channel' => 'machine',
@@ -73,7 +79,7 @@ final class RunSpec
     /** @param array<string,mixed> $data */
     private function __construct(private readonly array $data) {}
 
-    public static function create(string $mode, string $environment, string $parentSession, int $batchSize = 50): self
+    public static function create(string $mode, string $environment, string $parentSession, int $batchSize = self::DEFAULT_BATCH_SIZE): self
     {
         if (! isset(self::PRESETS[$mode])) {
             throw new InvalidArgumentException("Невідомий режим: $mode");
@@ -81,7 +87,7 @@ final class RunSpec
         if (! in_array($environment, ['PROD', 'DEV'], true)) {
             throw new InvalidArgumentException("Невідоме середовище: $environment");
         }
-        if ($batchSize < 5 || $batchSize > 100) {
+        if ($batchSize < self::MIN_BATCH_SIZE || $batchSize > self::MAX_BATCH_SIZE) {
             throw new InvalidArgumentException('Розмір пачки має бути від 5 до 100.');
         }
         if ($parentSession === '') {

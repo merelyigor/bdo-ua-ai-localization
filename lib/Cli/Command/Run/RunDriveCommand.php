@@ -816,7 +816,7 @@ final class RunDriveCommand implements Command, \Bdo\Translate\Cli\CommandHelp
         $remaining = max(0, $remaining - $waiting);
         if ($waiting > 0) $envelope['waiting_human'] = $waiting;
         if ($remaining > 0) {
-            $envelope['kind'] = 'continue_run'; $envelope['remaining'] = $remaining; $envelope['goal'] = ['mode' => $goal['mode'] ?? '', 'patch' => $goal['patch'] ?? '', 'domain' => $goal['domain'] ?? '']; $envelope['hint'] = "Ціль ще не досягнута: лишилось {$remaining} рядків.";
+            $envelope['kind'] = 'continue_run'; $envelope['remaining'] = $remaining; $envelope['goal'] = ['mode' => $goal['mode'] ?? '', 'patch' => $goal['patch'] ?? '', 'domain' => $goal['domain'] ?? '', 'batch_size' => $goal['batch_size'] ?? null]; $envelope['hint'] = "Ціль ще не досягнута: лишилось {$remaining} рядків.";
             return $envelope;
         }
         $patchRemaining = 0;
@@ -825,7 +825,7 @@ final class RunDriveCommand implements Command, \Bdo\Translate\Cli\CommandHelp
             if ($patchRemaining < 0) { $this->emit($output, false, 'verified', ['kind' => 'retry', 'reason' => 'goal_status_unavailable', 'path' => $goalPath]); return null; }
         }
         if (($goal['domain'] ?? '') !== '' && $patchRemaining > 0) {
-            $envelope['kind'] = 'continue_run'; $envelope['remaining'] = $patchRemaining; $envelope['goal'] = ['mode' => $goal['mode'] ?? '', 'patch' => $goal['patch'] ?? '', 'domain' => '']; $envelope['hint'] = sprintf('Категорію %s завершено, але в патчі лишилось %d рядків · далі патчем без категорії.', (string) $goal['domain'], $patchRemaining);
+            $envelope['kind'] = 'continue_run'; $envelope['remaining'] = $patchRemaining; $envelope['goal'] = ['mode' => $goal['mode'] ?? '', 'patch' => $goal['patch'] ?? '', 'domain' => '', 'batch_size' => $goal['batch_size'] ?? null]; $envelope['hint'] = sprintf('Категорію %s завершено, але в патчі лишилось %d рядків · далі патчем без категорії.', (string) $goal['domain'], $patchRemaining);
             return $envelope;
         }
         $envelope['kind'] = 'goal_complete'; $envelope['goal'] = ['mode' => $goal['mode'] ?? '', 'patch' => $goal['patch'] ?? '', 'domain' => $goal['domain'] ?? '']; $envelope['hint'] = $waiting > 0 ? "Ціль досягнута для машини: лишилось лише {$waiting} рядків із вичерпаними спробами · вони чекають людину (./bdo quarantine)." : 'Ціль досягнута: рядків за цим фільтром більше немає.';

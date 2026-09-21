@@ -45,7 +45,7 @@ selected → awaiting_terminology → prepared → awaiting_worker
 | `child` | виклик `cli/model/client.php` із роллю, payload і шляхом відповіді |
 | `continue` | наступний крок із причиною в журналі |
 | `retry` | backoff; після ліміту без руху — `blocked` |
-| `continue_run` | наступна пачка за перевіреними полями `goal` |
+| `continue_run` | наступна пачка за перевіреними полями `goal`; `goal.batch_size` зберігає вибір власника |
 | `complete` / `goal_complete` | завершення прогону |
 | `blocked` | зупинка з машиночитаною причиною |
 

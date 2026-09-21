@@ -286,6 +286,11 @@ final class RunLoopCommand implements Command, \Bdo\Translate\Cli\CommandHelp
         $mode = (string) ($goal['mode'] ?? '');
         $patch = (string) ($goal['patch'] ?? '');
         $domain = (string) ($goal['domain'] ?? '');
+        // Розмір є властивістю всього прогону, а не лише першої пачки.
+        // Старі run-goal без цього поля сумісно повертаються до дефолту.
+        $batchSize = Actions::rowsPerBatch([
+            'rows' => (string) ($goal['batch_size'] ?? Actions::BATCH_SIZE),
+        ]);
         if (! in_array($mode, ['patch', 'manual', 'proposal', 'improve'], true)) {
             $output->stderr("ЗУПИНКА: невідомий режим цілі «{$mode}».\n");
 
@@ -298,8 +303,8 @@ final class RunLoopCommand implements Command, \Bdo\Translate\Cli\CommandHelp
             return ['code' => 1, 'stop' => true, 'spin' => 0];
         }
         $startDomain = $domain;
-        $this->log("починаю наступну пачку: {$mode} ".Actions::BATCH_SIZE." {$startPatch} {$startDomain}", $output);
-        $result = $this->timedProcess('mode.start', [PHP_BINARY, $this->root.'/cli/bdo.php', 'run-mode', $mode, (string) Actions::BATCH_SIZE, $startPatch, $startDomain]);
+        $this->log("починаю наступну пачку: {$mode} {$batchSize} {$startPatch} {$startDomain}", $output);
+        $result = $this->timedProcess('mode.start', [PHP_BINARY, $this->root.'/cli/bdo.php', 'run-mode', $mode, (string) $batchSize, $startPatch, $startDomain]);
         if ($result['stderr'] !== '') {
             $output->stderr($result['stderr']);
         }

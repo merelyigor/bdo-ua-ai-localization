@@ -23,6 +23,14 @@ if ($path === '/taxonomy') {
     return;
 }
 if ($path === '/rows') {
+    if ((int) ($query['limit'] ?? 0) === 5) {
+        $rows = [];
+        for ($i = 0; $i < 50; $i++) {
+            $rows[] = ['identity_hash' => str_pad((string) $i, 64, '0', STR_PAD_LEFT), 'source_text' => 'Over-sized page '.$i, 'classification' => ['domain' => 'item', 'semantic_type' => 'name'], 'glossary' => ['terms' => []]];
+        }
+        echo json_encode(['data' => ['rows' => $rows], 'meta' => ['total_matching' => 50, 'has_more' => false, 'next_cursor' => null]]);
+        return;
+    }
     echo json_encode(['data' => ['rows' => [
         ['identity_hash' => str_repeat('a', 64), 'source_text' => 'Iron Sword', 'classification' => ['domain' => 'item', 'semantic_type' => 'name'], 'glossary' => ['terms' => [['ukrainian' => 'Залізний меч']]]],
         ['identity_hash' => str_repeat('b', 64), 'source_text' => 'Set Effect', 'classification' => ['domain' => 'system', 'semantic_type' => 'name'], 'glossary' => ['terms' => []]],
@@ -125,6 +133,12 @@ for repeat in 1 2 3 4 5; do
 done
 rows="$(ls -t "$ROOT"/output/rows_*.json | head -1)"
 test "$(jq '.data.rows | length' "$rows")" -eq 2 || fail 'fetch не зберіг рядки'
+
+# API може проігнорувати limit=5 і повернути стандартну сторінку з 50 рядків.
+# Логічна пачка все одно мусить залишитися рівно на вибраному розмірі.
+run_case fetch-size-5 fetch-rows setup_fetch 5
+rows="$(ls -t "$ROOT"/output/rows_*.json | head -1)"
+test "$(jq '.data.rows | length' "$rows")" -eq 5 || fail 'fetch роздув пачку 5 рядків до розміру API-сторінки'
 
 # ПРАВИЛО: PHP бере ОДНУ зону часу · ту саму, що й `date`.
 # САБОТАЖ, який це валить: прибити зону літералом у PHP · тоді на будь-якій

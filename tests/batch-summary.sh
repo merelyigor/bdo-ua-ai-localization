@@ -36,7 +36,7 @@ jq -e '.next.run.rows == 1 and .next.run.target_written == 1' <<< "$second" >/de
 # лишався 141 рядок. Ціль жила лише в тексті чату, тому після стискання сесії
 # продовжувати не було кому. Тепер вона лежить у `state/run-goal.json`, і
 # конверт наприкінці пачки каже РІВНО наступний крок.
-printf '{"mode":"patch","patch":"7","domain":"knowledge","channel":"machine","query":"patch=7&missing=machine&domain=knowledge"}\n' \
+printf '{"mode":"patch","patch":"7","domain":"knowledge","channel":"machine","query":"patch=7&missing=machine&domain=knowledge","batch_size":5}\n' \
     > "$TMP/state/run-goal.json"
 
 # Офлайн залишок невідомий · конверт мусить лишитись старим `complete`.
@@ -53,6 +53,7 @@ export BDO_GOAL_REMAINING_STUB=141
 withwork="$(BDO_STATE_DIR="$TMP/state" BDO_PIPELINE_OFFLINE=1 php "$ROOT/cli/bdo.php" run-drive)"
 jq -e '.next.kind == "continue_run" and .next.remaining == 141
     and .next.goal.mode == "patch" and .next.goal.patch == "7" and .next.goal.domain == "knowledge"
+    and .next.goal.batch_size == 5
     and (.next | has("command") | not)' <<< "$withwork" >/dev/null \
     || { echo "FAIL: залишок 141 не дав continue_run: $withwork"; exit 1; }
 

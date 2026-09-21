@@ -273,6 +273,7 @@ for case_name in numeric improve; do
     assert_json_fragment "$sh_state/run-goal.json" '"patch":"'$patch'"' "$case_name goal"
     assert_json_fragment "$sh_state/run-goal.json" '"domain":"'$domain'"' "$case_name goal"
     assert_json_fragment "$sh_state/run-goal.json" '"channel":"machine"' "$case_name goal"
+    assert_json_fragment "$sh_state/run-goal.json" '"batch_size":'$size "$case_name goal batch size"
     assert_json_fragment "$sh_state/run-goal.json" "patch=$patch" "$case_name goal query"
     assert_json_fragment "$sh_state/run-goal.json" "domain=$domain" "$case_name goal query"
     manifest_projection "$sh_state/batches/$sh_batch/manifest.json" >"$TMP/$case_name.args.manifest.sh"

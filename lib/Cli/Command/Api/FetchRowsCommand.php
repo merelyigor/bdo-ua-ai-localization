@@ -9,6 +9,7 @@ use Bdo\Translate\Cli\Command;
 use Bdo\Translate\Cli\Output;
 use Bdo\Translate\Http\Client;
 use Bdo\Translate\Http\Request;
+use Bdo\Translate\Pipeline\RunSpec;
 use Bdo\Translate\Pipeline\RowAttempts;
 use RuntimeException;
 
@@ -20,9 +21,11 @@ use RuntimeException;
  */
 final class FetchRowsCommand implements Command, \Bdo\Translate\Cli\CommandHelp
 {
-    public const MIN_BATCH = 5;
+    public const DEFAULT_BATCH = RunSpec::DEFAULT_BATCH_SIZE;
 
-    public const MAX_BATCH = 100;
+    public const MIN_BATCH = RunSpec::MIN_BATCH_SIZE;
+
+    public const MAX_BATCH = RunSpec::MAX_BATCH_SIZE;
 
     private ?string $resultPath = null;
 
@@ -38,7 +41,7 @@ final class FetchRowsCommand implements Command, \Bdo\Translate\Cli\CommandHelp
         $environment = ApiEnvironment::load($root);
         $target = getenv('BDO_API_TARGET') === 'hub' ? 'ХАБ ' : '';
         $output->stderr("Ціль: {$target}".(string) getenv('BDO_ENV')." ({$environment['base']})\n");
-        $batch = (string) ($arguments[0] ?? '50');
+        $batch = (string) ($arguments[0] ?? self::DEFAULT_BATCH);
         $extra = (string) ($arguments[1] ?? '');
         if (! preg_match('/^[0-9]+$/', $batch) || (int) $batch < self::MIN_BATCH || (int) $batch > self::MAX_BATCH) {
             $output->stderr("Розмір логічної пачки має бути від 5 до 100.\n");
@@ -127,7 +130,12 @@ final class FetchRowsCommand implements Command, \Bdo\Translate\Cli\CommandHelp
                     && ! isset($seenIdentities[(string) ($row['identity_hash'] ?? '')]),
             ));
             $filtered = $attempts->filterRows($pageRows, RowAttempts::maxAttempts());
-            $aggregate['data']['rows'] = array_merge($aggregate['data']['rows'], $filtered['kept']);
+            // Сервер може повернути сторінку більшою за запитаний `limit`
+            // (наприклад, старий endpoint завжди віддає 50). Логічний розмір
+            // пачки задає власник, тому зайві рядки не мають потрапити в
+            // manifest навіть тоді, коли транспорт проігнорував limit.
+            $kept = array_slice($filtered['kept'], 0, $remaining);
+            $aggregate['data']['rows'] = array_merge($aggregate['data']['rows'], $kept);
             if (isset($pageData['meta'])) {
                 $aggregate['meta'] = $pageData['meta'];
             }
@@ -138,7 +146,7 @@ final class FetchRowsCommand implements Command, \Bdo\Translate\Cli\CommandHelp
                 file_put_contents($excludedFile, json_encode($excluded, JSON_UNESCAPED_SLASHES));
                 $output->stderr(sprintf("Пропущено %d рядків із вичерпаними спробами (BDO_ROW_MAX_ATTEMPTS); вони чекають людину: ./bdo quarantine\n", count($filtered['dropped'])));
             }
-            $got = count($filtered['kept']);
+            $got = count($kept);
             $remaining -= $got;
             $meta = is_array($pageData['meta'] ?? null) ? $pageData['meta'] : [];
             $hasMore = (bool) ($meta['has_more'] ?? false);

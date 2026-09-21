@@ -11,6 +11,7 @@ use Bdo\Translate\Cli\Command\Api\FetchRowsCommand;
 use Bdo\Translate\Cli\Command\Batch\BatchNewCommand;
 use Bdo\Translate\Cli\Output;
 use Bdo\Translate\Pipeline\RunSpec;
+use Bdo\Translate\Run\Actions;
 use RuntimeException;
 
 /** Оркеструє одну пачку прогону без shell-посередника. */
@@ -22,14 +23,14 @@ final class RunModeCommand implements Command, \Bdo\Translate\Cli\CommandHelp
     {
         $root = dirname(__DIR__, 4);
         $mode = (string) ($arguments[0] ?? '');
-        $size = (string) ($arguments[1] ?? '50');
+        $size = (string) ($arguments[1] ?? Actions::BATCH_SIZE);
         $patch = (string) ($arguments[2] ?? 'active');
         $domain = (string) ($arguments[3] ?? '');
         if ($mode === '') {
             throw new RuntimeException('Потрібен режим patch|manual|proposal|improve');
         }
         if ($size === '') {
-            $size = '50';
+            $size = (string) Actions::BATCH_SIZE;
         }
         if ($patch === '') {
             $patch = 'active';
@@ -160,6 +161,7 @@ final class RunModeCommand implements Command, \Bdo\Translate\Cli\CommandHelp
             'domain' => $domain,
             'channel' => $channel,
             'query' => $query,
+            'batch_size' => (int) $size,
         ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR)."\n";
         if (@file_put_contents($goalPath, $goal, LOCK_EX) === false) {
             $output->stderr('Не вдалося записати файл стану: '.$goalPath."\n");

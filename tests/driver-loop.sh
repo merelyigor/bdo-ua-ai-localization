@@ -139,6 +139,15 @@ grep -Fqx 'run-mode patch 50 7 quest' "$WORK/php/state/calls.log" \
 ! grep -Fq 'rm -rf' "$WORK/php/state/calls.log" \
     || fail 'рушій виконав команду з конверта'
 
+# Вибраний розмір живе в цілі прогону й мусить перейти в наступну пачку.
+scenario_both \
+    '{"ok":true,"state":"verified","next":{"kind":"continue_run","remaining":120,"goal":{"mode":"patch","patch":"7","domain":"quest","batch_size":5}}}' \
+    '{"ok":true,"state":"verified","next":{"kind":"goal_complete"}}'
+run_both
+expect_codes 0
+grep -Fqx 'run-mode patch 5 7 quest' "$WORK/php/state/calls.log" \
+    || fail 'рушій втратив вибраний розмір пачки на наступному кроці'
+
 # 3. Unknown mode and suspicious domain are named failures.
 scenario_both '{"ok":true,"state":"verified","next":{"kind":"continue_run","remaining":10,"goal":{"mode":"чужий-режим","patch":"7","domain":""}}}'
 run_both; expect_codes 1; expect_each 'невідомий режим'
