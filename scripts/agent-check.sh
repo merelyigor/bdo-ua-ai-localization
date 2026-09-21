@@ -5,6 +5,7 @@
 #   preflight  середовище, layout і правила перед роботою
 #   touched   лише перевірки, яких стосуються змінені шляхи
 #   docs       rules, plans, env contract, links і secret scan
+#   routing    conditional rule registry and live destinations
 #   shell      bash syntax, ShellCheck і PHP syntax
 #   agents     OpenCode config, prompts, model allowlist і routing guard
 #   runtime    локальна Ollama-модель, явно й окремо
@@ -17,6 +18,7 @@ cd "$ROOT"
 
 readonly RULE_FILES=(AGENTS.md .cursorrules CLAUDE.md QWEN.md)
 readonly RULE_REFERENCE='docs/AI_AGENT_RULES_REFERENCE.md'
+readonly RULE_ROUTING="${BDO_RULE_ROUTING_FILE:-docs/AGENT_RULE_ROUTING.md}"
 # Стеля піднята з 201 до 220 рішенням власника 2026-09-12 разом зі зміною
 # моделі роботи: карта правил узяла на себе контракт делегування (спосіб
 # питається перед роботою, думання не делегується, коміт лише з головної
@@ -30,12 +32,13 @@ readonly RULE_REFERENCE='docs/AI_AGENT_RULES_REFERENCE.md'
 # 300 лишає запас, і це теж свідоме рішення, а не підгонка під червоне.
 # СТЕЛЯ КАРТИ ПРАВИЛ · ХРАПОВИК, А НЕ ДЕКОРАЦІЯ.
 #
-# 350 було числом, яке ніколи не спрацьовувало: карта роками жила на 267 і
-# спокійно росла б далі. Після переписування 2026-09-21 стеля стоїть біля
-# фактичного розміру й може лише ЗМЕНШУВАТИСЬ · перевірка нижче валить гейт
+# 215 було числом, яке залишилось після попередньої карти: нова карта після
+# переписування 2026-09-21 має 165 рядків, тому стеля стоїть біля фактичного
+# розміру й може лише ЗМЕНШУВАТИСЬ ·
+# перевірка нижче валить гейт
 # і тоді, коли карта переросла стелю, і тоді, коли стеля стала завеликою.
 # Карта правил є контекстом КОЖНОЇ сесії, тому її зростання коштує щоразу.
-readonly RULE_MAP_MAX_LINES=215
+readonly RULE_MAP_MAX_LINES=190
 readonly RULE_MAP_SLACK=25
 
 fail() { printf 'FAIL: %s\n' "$1" >&2; exit 1; }
@@ -251,6 +254,7 @@ touched_map() {
         docs/*|*.md|.cursorrules)
             printf 'profile|docs|документи, посилання й норматив\n' ;;
         lib/Api/*)
+            printf 'profile|api|API transport, contract і taxonomy smoke\n'
             printf 'test|tests/cli-api-reports.sh|контракт API reports\n'
             printf 'test|tests/cli-api-glossary.sh|контракт API glossary\n'
             printf 'test|tests/cli-api-fetch.sh|контракт API fetch\n'
@@ -270,6 +274,7 @@ touched_map() {
             printf 'test|tests/cli-batch-clean-parity.sh|парність batch clean\n'
             printf 'test|tests/cli-batch-heal-parity.sh|парність batch heal\n' ;;
         lib/Http/*)
+            printf 'profile|api|HTTP client для Agent API\n'
             printf 'test|tests/http-client.sh|HTTP client\n'
             printf 'test|tests/http-retry.sh|повтор HTTP-запиту\n' ;;
         lib/Model/*)
@@ -335,6 +340,7 @@ touched_map() {
             printf 'test|tests/cli-audit-reports.sh|звіти обслуговування\n'
             printf 'test|tests/audit-response-shape.sh|форма відповіді в аудиті\n' ;;
         lib/Cli/Command/Api/*)
+            printf 'profile|api|CLI API-команди й live contract smoke\n'
             printf 'test|tests/cli-api-fetch.sh|прямий regression API fetch-команд\n'
             printf 'test|tests/domain-filter.sh|фільтр категорії\n'
             printf 'test|tests/patch-argument.sh|номер патча\n'
@@ -357,6 +363,10 @@ touched_map() {
             printf 'test|tests/process-state.sh|живий процес у команді сервера\n'
             printf 'test|tests/cli-system-parity.sh|парність system\n'
             printf 'test|tests/web-server.sh|сервер сторінки\n' ;;
+        lib/Cli/Command/Write/*)
+            printf 'profile|api|write-channel API contract і live smoke\n'
+            printf 'test|tests/cli-write-parity.sh|парність write через API\n'
+            printf 'test|tests/write-channel-rights.sh|права write-каналу\n' ;;
         lib/Cli/*|lib/autoload.php)
             printf 'test|tests/cli-kernel.sh|kernel і router\n'
             printf 'test|tests/command-registry.sh|реєстр команд\n'
@@ -366,6 +376,7 @@ touched_map() {
             printf 'test|tests/pipeline-faults.php|загальний lib fault-контракт\n'
             printf 'test|tests/cli-kernel.sh|виклик lib через kernel\n' ;;
         cli/api/*)
+            printf 'profile|api|API entrypoint і target smoke\n'
             printf 'test|tests/cli-api-reports.sh|парність API reports\n'
             printf 'test|tests/cli-api-glossary.sh|парність API glossary\n'
             printf 'test|tests/cli-api-fetch.sh|парність API fetch\n'
@@ -402,6 +413,7 @@ touched_map() {
             printf 'test|tests/run-stop.sh|зупинка run\n'
             printf 'test|tests/run-target-env.sh|ціль run\n' ;;
         cli/runtime/*)
+            printf 'profile|api|вибір цілі API\n'
             printf 'test|tests/run-target-env.sh|ціль runtime\n'
             printf 'test|tests/api-target-switch.sh|перемикання цілі API\n' ;;
         cli/system/*)
@@ -699,6 +711,14 @@ readonly RULE_ANCHORS=(
     'самим шляхом, що й робота|перевірка йде шляхом роботи'
     'tests/tui-live.sh|жива перевірка вікна в PTY'
     'Зовнішній серверний проєкт · лише read-only довідник|серверний проєкт лише read-only'
+    # Додано 2026-09-21 після того, як переписування карти тихо винесло пʼять
+    # правил власника, яких не стерегла жодна прив'язка. Правило без
+    # прив'язки переживає рівно одне переписування.
+    'ПОРОЖНІЙ РОЗДІЛ КРАЩИЙ ЗА ВИГАДАНУ РОБОТУ|заборона вигадувати роботу в розділі дій власника'
+    'не завершується порадою|відповідь не перекладає запуск команд на власника'
+    'НЕ запускає `./bdo` чи bash|власник не працює в терміналі'
+    './bdo review|єдиний екран стану реєстрів'
+    'є КОНФІГУРАЦІЄЮ, а не промптом|режим прогону не є промптом'
 )
 
 # Пошук ПО ЗМІСТУ, а не по рядку: текст файла сплющується в один потік, тому
@@ -748,6 +768,35 @@ check_rule_cross_references() {
         || fail "карта правил посилається на неіснуючі розділи довідника: $missing"
 }
 
+check_rule_routing() {
+    local routing="$RULE_ROUTING" link target resolved ref missing
+    test -f "$routing" || fail "немає $routing · registry умовних правил"
+    grep -Fq 'IF trigger' "$routing" \
+        || fail "$routing не має таблиці IF trigger → THEN READ/APPLY"
+    grep -Fq 'Не завантажувати автоматично' "$routing" \
+        || fail "$routing не називає контекст, який не треба завантажувати"
+
+    while IFS= read -r link; do
+        target="$(printf '%s' "$link" | sed 's/^](//; s/)$//; s/#.*$//')"
+        case "$target" in
+            ''|'#*'|http://*|https://*|mailto:*) continue ;;
+            ../*) resolved="$ROOT/$(printf '%s' "$target" | sed 's#^../##')" ;;
+            *) resolved="$ROOT/docs/$target" ;;
+        esac
+        test -e "$resolved" || fail "$routing має мертве посилання: $target"
+    done < <(grep -oE '\]\([^)]*\)' "$routing")
+
+    missing="$(
+        grep -oE '§[0-9]+(\.[0-9]+)?' "$routing" | sort -u | while IFS= read -r ref; do
+            grep -Fq -- "## $ref " "$RULE_REFERENCE" && continue
+            grep -Fq -- "- $ref " "$RULE_REFERENCE" && continue
+            printf '%s ' "$ref"
+        done
+    )"
+    test -z "$missing" || fail "$routing посилається на неіснуючі розділи довідника: $missing"
+    note 'conditional routing: destinations і §-посилання існують'
+}
+
 check_rules() {
     step 'Rule-файли та норматив'
     local file lines duplicate bad_number
@@ -761,7 +810,7 @@ check_rules() {
     lines="$(wc -l < AGENTS.md | tr -d ' ')"
     test "$lines" -le "$RULE_MAP_MAX_LINES" \
         || fail "AGENTS.md має $lines рядків із лімітом $RULE_MAP_MAX_LINES · винеси деталі в довідник, а не піднімай стелю"
-    test "$lines" -gt "$((RULE_MAP_MAX_LINES - RULE_MAP_SLACK))" \
+    test "$lines" -ge "$((RULE_MAP_MAX_LINES - RULE_MAP_SLACK))" \
         || fail "карта скоротилась до $lines рядків, а стеля досі $RULE_MAP_MAX_LINES · опусти RULE_MAP_MAX_LINES до $((lines + RULE_MAP_SLACK))"
     duplicate="$(perl -ne 'print "$1\n" if /^- §(\d+\.\d+)/' "$RULE_REFERENCE" | sort | uniq -d | sed -n '1p')"
     test -z "$duplicate" || fail "дублікат номера §$duplicate"
@@ -769,6 +818,7 @@ check_rules() {
     test -z "$bad_number" || fail "номер правила не відповідає секції: $bad_number"
     check_rule_anchors
     check_rule_cross_references
+    check_rule_routing
     grep -Fq '§4.2 `git push` агенту НЕ дозволений' "$RULE_REFERENCE" \
         || fail "у $RULE_REFERENCE немає §4.2 про push"
     grep -Fq '§10.9 Пропорційна локальна перевірка' "$RULE_REFERENCE" \
@@ -2273,7 +2323,7 @@ case "$profile" in
     # запускає жодної перевірки, тобто спільних `output/` і `state/` не чіпає.
     # Із замком тест карти було неможливо запустити ЗСЕРЕДИНИ гейта: він падав
     # на «гейт уже працює в цьому дереві» щоразу, коли сам себе й перевіряв.
-    selftest) : ;;
+    selftest|routing) : ;;
     touched|docs|shell|agents|runtime|api)
         [ "${BDO_GATE_TOUCHED_PLAN_ONLY:-0}" = 1 ] || gate_lock_take "$profile" ;;
 esac
@@ -2295,8 +2345,9 @@ case "$profile" in
         touched_run_tests "$selftest_list"
         rm -f "$selftest_list"
         ;;
+    routing) check_rule_routing ;;
     docs|shell|agents|runtime|api) run_gate_profile "$profile" ;;
-    *) printf 'Usage: %s {preflight|touched|docs|shell|agents|runtime|api}\n' "$0" >&2; exit 2 ;;
+    *) printf 'Usage: %s {preflight|touched|selftest|routing|docs|shell|agents|runtime|api}\n' "$0" >&2; exit 2 ;;
 esac
 
 gate_report_skips

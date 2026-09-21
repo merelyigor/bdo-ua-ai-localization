@@ -60,17 +60,30 @@ assert_rejected() {
         || fail "невідомий шлях не назвав дефект карти: $out"
 }
 
+assert_no_profile() {
+    local path="$1" forbidden="$2" out chosen
+    out="$(plan "$path")" || fail "карта впала для $path"
+    chosen="$(sed -n 's/^ *обрано: //p' <<<"$out")"
+    if grep -Fq "$forbidden" <<<"$chosen"; then
+        fail "для $path несподівано обрано профіль $forbidden: $chosen"
+    fi
+}
+
 # Один представник кожної гілки карти: тест не дає видалити шлях із карти або
 # звести цілий шар до мовчазного пропуску.
 assert_plan 'web/app.css' 'tests/web-server.sh'
+assert_no_profile 'web/app.css' 'api'
 assert_plan 'docs/example.md' 'docs'
+assert_no_profile 'docs/example.md' 'api'
 assert_plan 'tests/web-actions.sh' 'tests/web-actions.sh'
 assert_rejected 'tests/fixtures/input.json'
 assert_plan 'roles/translator.md' 'agents'
 assert_plan 'config/roles.json' 'agents'
 assert_plan 'lib/Api/Response.php' 'tests/cli-api-reports.sh'
+assert_plan 'lib/Api/Response.php' 'api'
 assert_plan 'lib/Batch/Row.php' 'tests/pipeline-unit.php'
 assert_plan 'lib/Http/Client.php' 'tests/http-client.sh'
+assert_plan 'lib/Http/Client.php' 'api'
 assert_plan 'lib/Model/RowAlias.php' 'tests/model-client.sh'
 assert_plan 'lib/Payload/Items.php' 'tests/cli-payload-parity.sh'
 assert_plan 'lib/Pipeline/StateMachine.php' 'tests/pipeline-unit.php'
@@ -81,10 +94,12 @@ assert_plan 'lib/Ui/Text.php' 'tests/web-server.sh'
 assert_plan 'lib/Web/Runner.php' 'tests/web-server.sh'
 assert_plan 'lib/Cli/Router.php' 'tests/cli-kernel.sh'
 assert_plan 'lib/Cli/Command/Api/FetchRowsCommand.php' 'tests/cli-api-fetch.sh'
+assert_plan 'lib/Cli/Command/Api/FetchRowsCommand.php' 'api'
 assert_plan 'lib/Cli/Command/Run/RunDriveCommand.php' 'tests/cli-run-drive-parity.sh'
 assert_plan 'lib/Cli/Command/Run/RunDriveCommand.php' 'tests/driver-loop.sh'
 assert_plan 'lib/autoload.php' 'tests/cli-kernel.sh'
 assert_plan 'cli/api/fetch-rows.sh' 'tests/cli-api-reports.sh'
+assert_plan 'cli/api/fetch-rows.sh' 'api'
 assert_plan 'cli/batch/batch-clean.sh' 'tests/cli-batch-clean-parity.sh'
 assert_plan 'cli/heal/heal-plan.sh' 'tests/cli-batch-heal-parity.sh'
 assert_plan 'cli/model/client.php' 'tests/model-client.sh'
@@ -92,6 +107,7 @@ assert_plan 'cli/prepare/qa-payload.sh' 'tests/cli-prepare-parity.sh'
 assert_plan 'cli/quality/merge-items.sh' 'tests/cli-quality-parity.sh'
 assert_plan 'cli/run/run-drive.sh' 'tests/cli-run-foundation-parity.sh'
 assert_plan 'cli/runtime/check-runtime.sh' 'tests/run-target-env.sh'
+assert_plan 'cli/runtime/check-runtime.sh' 'api'
 assert_plan 'cli/system/web.sh' 'tests/cli-system-parity.sh'
 assert_plan 'cli/write/write-translations.sh' 'tests/cli-write-parity.sh'
 assert_plan 'cli/command-registry.json' 'tests/command-registry.sh'
@@ -135,5 +151,22 @@ grep -Fq 'шлях не має селективної перевірки' <<<"$m
     || fail "falsification не оголосила web/app.css невідомим: $missing"
 grep -Fq 'карта gate touched неповна' <<<"$missing" \
     || fail "falsification не зупинила неповну карту: $missing"
+
+# Falsification: умовне посилання на неіснуючий destination мусить зламати
+# routing gate. Перевіряємо той самий routing checker через тимчасову копію, не
+# торкаючись tracked документа.
+broken_routing="$tmp/AGENT_RULE_ROUTING.md"
+sed 's#](API.md)#](missing-api.md)#' \
+    "$ROOT/docs/AGENT_RULE_ROUTING.md" > "$broken_routing"
+set +e
+routing_out="$(BDO_RULE_ROUTING_FILE="$broken_routing" bash "$ROOT/scripts/agent-check.sh" routing 2>&1)"
+routing_code=$?
+set -e
+test "$routing_code" -ne 0 || fail 'falsification мертвого routing destination пройшла зеленим'
+grep -Fq 'має мертве посилання' <<<"$routing_out" \
+    || fail "routing falsification не назвала мертве посилання: $routing_out"
+restored_out="$(BDO_RULE_ROUTING_FILE="$ROOT/docs/AGENT_RULE_ROUTING.md" bash "$ROOT/scripts/agent-check.sh" routing 2>&1)"
+restored_code=$?
+test "$restored_code" -eq 0 || fail "відновлений routing destination не пройшов: $restored_out"
 
 printf 'gate touched map: усі гілки, unknown fallback, порожнє дерево і map falsification пройдені\n'
