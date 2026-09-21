@@ -31,7 +31,7 @@ final class NormalizeCandidateCommand implements Command, \Bdo\Translate\Cli\Com
         $cased = 0;
         $items = [];
         foreach (Candidate::fromFile($candidateFile)->all() as $hash => $text) {
-            $clean = Homoglyphs::fix($text);
+            $clean = Homoglyphs::fix($text, $rows?->getOrEmpty($hash)->sourceText() ?? '');
             if ($clean !== $text) {
                 $fixed++;
                 $output->stderr("  ".substr($hash, 0, 12)."  {$text} -> {$clean}\n");

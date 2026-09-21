@@ -74,7 +74,19 @@ grep -Fq 'qa-payload.json' "$ROOT/lib/Cli/Command/Run/RunDriveCommand.php" || fa
 healing_body="$(awk '/private function healing\(/{on=1} on{print} on && /^    private function [a-z]/ && !/healing\(/{exit}' \
     "$ROOT/lib/Cli/Command/Run/RunDriveCommand.php")"
 test -n "$healing_body" || fail 'не знайдено гілку лікування в рушії'
-grep -Fq 'judgeOrCommit' <<<"$healing_body" || fail 'після лікування пачка не йде до судді'
+#    2026-09-21 між лікуванням і суддею стало КОЛО РЕМОНТУ: поки лишаються
+#    механічні дефекти, рядок іде на новий ремонт, і лише потім до судді.
+#    Перевірка стереже ту саму властивість через один переступ · окремого
+#    контрольного QA як і раніше немає, а шлях однаково закінчується суддею.
+if ! grep -Fq 'judgeOrCommit' <<<"$healing_body"; then
+    grep -Fq 'repairRoundOrJudge' <<<"$healing_body" \
+        || fail 'після лікування пачка не йде ні до судді, ні в коло ремонту'
+    repair_body="$(awk '/private function repairRoundOrJudge\(/{on=1} on{print} on && /^    private function [a-z]/ && !/repairRoundOrJudge\(/{exit}' \
+        "$ROOT/lib/Cli/Command/Run/RunDriveCommand.php")"
+    test -n "$repair_body" || fail 'не знайдено коло ремонту в рушії'
+    grep -Fq 'judgeOrCommit' <<<"$repair_body" \
+        || fail 'коло ремонту не повертає пачку до судді · рядок зависне між кроками'
+fi
 if grep -Fq 'awaiting_control_qa' <<<"$healing_body"; then fail 'лікування досі диспетчерить контрольний QA'; fi
 grep -Fq 'awaiting_control_qa' "$ROOT/lib/Pipeline/StateMachine.php" || fail 'стан прибрано з машини · старі пачки застрягнуть'
 # ГОЛОВНА перевірка цього блоку, і саме її бракувало 2026-08-28: код почав робити

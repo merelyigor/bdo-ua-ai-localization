@@ -53,6 +53,21 @@ final class Homoglyphs
     private const DIGITS = ['3' => 'З', '0' => 'О', '6' => 'б', '4' => 'ч'];
 
     /**
+     * Кирилична літера => латинське написання, яким її транслітерують.
+     *
+     * Таблиця служить ЛИШЕ для порівняння зіпсованого слова з оригіналом, а не
+     * для перекладу: результат нікуди не потрапляє, крім рівності двох кістяків.
+     */
+    private const TRANSLIT = [
+        'а' => 'a', 'б' => 'b', 'в' => 'v', 'г' => 'h', 'ґ' => 'g', 'д' => 'd',
+        'е' => 'e', 'є' => 'ye', 'ж' => 'zh', 'з' => 'z', 'и' => 'y', 'і' => 'i',
+        'ї' => 'yi', 'й' => 'y', 'к' => 'k', 'л' => 'l', 'м' => 'm', 'н' => 'n',
+        'о' => 'o', 'п' => 'p', 'р' => 'r', 'с' => 's', 'т' => 't', 'у' => 'u',
+        'ф' => 'f', 'х' => 'h', 'ц' => 'ts', 'ч' => 'ch', 'ш' => 'sh',
+        'щ' => 'shch', 'ь' => '', 'ю' => 'yu', 'я' => 'ya',
+    ];
+
+    /**
      * Слова зі змішаними абетками.
      *
      * Повертає ВСІ такі слова, зокрема ті, які код виправити не може.
@@ -83,16 +98,25 @@ final class Homoglyphs
             if ($source !== '' && str_contains($source, $word)) {
                 continue;
             }
-            $found[] = ['word' => $word, 'fixed' => self::fixWord($word)];
+            $found[] = [
+                'word' => $word,
+                'fixed' => self::restoreFromSource($word, $source) ?? self::fixWord($word),
+            ];
         }
 
         return $found;
     }
 
-    /** Замінити латинські двійники в змішаних словах. Решту тексту не чіпає. */
-    public static function fix(string $text): string
+    /**
+     * Замінити латинські двійники в змішаних словах. Решту тексту не чіпає.
+     *
+     * `$source` обовʼязковий для відновлення недописаної транслітерації: без
+     * оригіналу код бачить лише двійники й не знає правильного написання
+     * назви. Тому нормалізація кандидата передає сюди текст джерела.
+     */
+    public static function fix(string $text, string $source = ''): string
     {
-        foreach (self::find($text) as $hit) {
+        foreach (self::find($text, $source) as $hit) {
             $text = str_replace($hit['word'], $hit['fixed'], $text);
         }
 
@@ -130,6 +154,66 @@ final class Homoglyphs
         $digits = implode('', array_keys(self::DIGITS));
 
         return '/^['.$digits.'](?=\p{Cyrillic})|(?<=\p{Cyrillic})['.$digits.'](?=\p{Cyrillic})/u';
+    }
+
+    /**
+     * Недописана транслітерація власної назви: повернути написання з оригіналу.
+     *
+     * Клас знайдено виміром 2026-09-21: `Illezra` доходило до фінального
+     * тексту як `Ілlezra` · модель почала транслітерувати назву кирилицею й
+     * кинула на середині слова. Заміна латинських двійників кириличними тут
+     * НЕ ПОМАГАЄ і робить гірше: `l`, `z`, `r` кириличних двійників не мають,
+     * тому `fixWord()` віддавав так само змішане `Ілlеzrа`, ремонт не міг
+     * закрити дефект жодною спробою, і рядок ішов до людини. У пачці
+     * `20260921_114432` таких було 6 із 20.
+     *
+     * Правильна відповідь лежить в ОРИГІНАЛІ: якщо прибрати різницю абеток,
+     * зіпсоване слово збігається з токеном джерела дослівно. Відповідність
+     * вимагається ТОЧНА і ЄДИНА · назва береться з даних, а не вигадується.
+     * Відмінена форма (`Ілlezрі`) збігу не дає й лишається ремонту.
+     *
+     * Вимірено на 60 рядках із дефектом абетки: 33 закриваються цим кодом
+     * повністю, без жодного виклику моделі.
+     */
+    private static function restoreFromSource(string $word, string $source): ?string
+    {
+        if ($source === '') {
+            return null;
+        }
+        $skeleton = self::skeleton($word);
+        if ($skeleton === '') {
+            return null;
+        }
+        preg_match_all('/[\p{L}0-9]+/u', $source, $m);
+        $match = null;
+        foreach ($m[0] ?? [] as $token) {
+            if ($token === $word || preg_match('/\p{Cyrillic}/u', $token) === 1) {
+                continue;
+            }
+            if (self::skeleton($token) !== $skeleton) {
+                continue;
+            }
+            if ($match !== null && $match !== $token) {
+                // Два різні токени з тим самим кістяком · вибір неоднозначний,
+                // а вгадувати назву заборонено.
+                return null;
+            }
+            $match = $token;
+        }
+
+        return $match;
+    }
+
+    /** Написання без різниці абеток: кирилиця зводиться до латиниці. */
+    private static function skeleton(string $word): string
+    {
+        $out = '';
+        foreach (preg_split('//u', $word, -1, PREG_SPLIT_NO_EMPTY) ?: [] as $char) {
+            $lower = mb_strtolower($char, 'UTF-8');
+            $out .= self::TRANSLIT[$lower] ?? $lower;
+        }
+
+        return $out;
     }
 
     private static function fixWord(string $word): string
