@@ -87,6 +87,10 @@ global.sessionStorage = localStorage;
 global.history = { replaceState() {} };
 global.fetch = () => Promise.resolve({ status: 200, json: () => Promise.resolve({}) });
 global.confirm = () => true;
+// Хедер оновлює статус моделі таймером у браузері. У синхронному harness це
+// не повинно тримати Node-процес живим після завершення перевірки.
+global.setInterval = () => 0;
+global.clearInterval = () => {};
 
 function die(message) {
   console.error(message);

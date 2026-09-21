@@ -986,8 +986,8 @@ test -s "$ROOT/web/assets/bdo-background.webp" \
 # бачив порожнє місце й не знав, з якими параметрами працює модель. Тепер їх
 # віддає САМА навігація · вона спільна для всіх екранів, тому забути новий
 # екран неможливо за побудовою.
-# САБОТАЖ: прибрати запит `/api/model` із `renderNav` · блок червоніє.
-sed -n '/function renderNav(/,/^  }/p' "$APP" | grep -Fq "get('/api/model')" \
+# САБОТАЖ: прибрати первинне або повторне читання `/api/model` · блок червоніє.
+grep -Fq "get('/api/model')" "$APP" \
     || fail 'навігація не бере параметри моделі · на екранах поза прогоном хедер знову буде порожній'
 # СТАН ЗВʼЯЗКУ Й ПАРАМЕТРИ · ОДИН ПРАВИЙ СТОВПЧИК (вимога власника 2026-09-18).
 #
@@ -999,11 +999,19 @@ sed -n '/function renderNav(/,/^  }/p' "$APP" | grep -Fq "get('/api/model')" \
 # Беремо саме вікно з трьох рядків після відкриття стовпчика: `sed` до першого
 # `</span>` обривався на самому індикаторі, і перевірка параметрів падала на
 # справному коді.
-nav_side="$(grep -A 3 'class="nav-side"' "$APP")"
+nav_side="$(grep -A 5 'class="nav-side"' "$APP")"
 grep -Fq 'class="sp"' <<<"$nav_side" \
     || fail 'стан звʼязку поза правим стовпчиком шапки · на вужчому вікні він знову впаде під бренд'
 grep -Fq 'class="nav-model" id="navModel"' <<<"$nav_side" \
     || fail 'параметри моделі поза правим стовпчиком шапки'
+grep -Fq 'nav-model-status' "$APP" \
+    || fail 'хедер не показує короткий статус моделі'
+grep -Fq 'watchModelHeader' "$APP" \
+    || fail 'статус моделі не оновлюється після першого кадру'
+grep -Fq "'status_detail' => \$statusDetail" "$ROOT/lib/Web/Snapshot.php" \
+    || fail 'API не віддає пояснення статусу моделі'
+grep -Fq "'runtime' => (string) (\$argv[3] ?? '')" "$ROOT/lib/Web/Runner.php" \
+    || fail 'стан завантаження моделі не зберігає runtime цілі'
 grep -Fq "rows.push({key: 'think', value: model.think ? 'true' : 'false'" "$APP" \
     || grep -Fq "rows.push({key: 'think', value: effectiveThink ? 'true' : 'false'" "$APP" \
     || fail 'глобальний стан thinking не показується серед параметрів хедера'

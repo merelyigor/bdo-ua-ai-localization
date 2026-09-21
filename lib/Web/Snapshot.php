@@ -105,6 +105,7 @@ final class Snapshot
         $runtime = (string) ($selection['global']['runtime'] ?? '');
         $declared = [];
         $thinkingSupported = null;
+        $selectedEntry = null;
         foreach ($catalog['models'] ?? [] as $entry) {
             if (! is_array($entry)) {
                 continue;
@@ -118,6 +119,7 @@ final class Snapshot
                 // конкретний рівень (`low`/`high`). Неперевірені рівні не
                 // повинні перетворювати підтримувану модель на `think:false`.
                 $thinkingSupported = ($entry['thinking'] ?? false) === true;
+                $selectedEntry = $entry;
                 break;
             }
         }
@@ -197,12 +199,50 @@ final class Snapshot
         // запиту, навіть коли глобальна настройка власника лишилась увімкненою.
         $effectiveThink = $think === true && $thinkingSupported === false ? false : $think;
 
+        // КОРОТКИЙ СТАН МОДЕЛІ ДЛЯ ХЕДЕРА · джерело має бути тим самим, що й
+        // каталог моделей та живий виклик. Не вгадуємо «working» за текстом
+        // відповіді: `current-call.json` має живий pid і є єдиним знаком
+        // фактичної роботи моделі.
+        $status = 'unknown';
+        $statusDetail = 'статус моделі ще не визначено';
+        if (is_array($selectedEntry)) {
+            $load = $this->readJson('model-load.json');
+            $activeCall = $this->callActive();
+            $activeModel = is_array($activeCall) ? (string) ($activeCall['model'] ?? '') : '';
+            $activeRuntime = is_array($activeCall) ? (string) ($activeCall['provider'] ?? '') : '';
+            $activeMatches = is_array($activeCall)
+                && ($activeModel === '' || $activeModel === $want)
+                && ($activeRuntime === '' || $runtime === '' || $activeRuntime === $runtime);
+            $loadRuntime = is_array($load) ? (string) ($load['runtime'] ?? '') : '';
+            $loadModel = is_array($load) ? (string) ($load['model'] ?? '') : '';
+            $loadingMatches = is_array($load)
+                && ($load['status'] ?? '') === 'loading'
+                && $this->pidAlive((int) ($load['pid'] ?? 0))
+                && ($loadModel === '' || $loadModel === $want)
+                && ($loadRuntime === '' || $runtime === '' || $loadRuntime === $runtime);
+            if ($activeMatches) {
+                $status = 'working';
+                $statusDetail = 'модель зараз обробляє виклик';
+            } elseif ($loadingMatches) {
+                $status = 'loading';
+                $statusDetail = 'модель завантажується';
+            } elseif (($selectedEntry['loaded'] ?? '') === 'так') {
+                $status = 'loaded';
+                $statusDetail = 'модель завантажена';
+            } else {
+                $status = 'unloaded';
+                $statusDetail = 'модель не завантажена';
+            }
+        }
+
         return [
             'name' => $want,
             'runtime' => $runtime,
             'params' => $params,
             'think' => $think,
             'think_effective' => $effectiveThink,
+            'status' => $status,
+            'status_detail' => $statusDetail,
         ];
     }
 

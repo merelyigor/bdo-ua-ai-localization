@@ -157,6 +157,8 @@ final class Runner
             'version' => 1,
             'status' => 'loading',
             'pid' => 0,
+            'runtime' => (string) ($argv[3] ?? ''),
+            'model' => (string) ($argv[4] ?? ''),
             'command' => implode(' ', $argv),
             'started_at' => $started,
         ];

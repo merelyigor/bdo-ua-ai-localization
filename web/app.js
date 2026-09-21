@@ -327,7 +327,8 @@
       // тримається за будь-якої ширини, а висота шапки не росте, бо параметри
       // в цьому стовпчику стоять В ОДИН рядок.
       + '<span class="nav-side">'
-      + '<span class="sp"><span class="dot" id="dot"></span><span id="link">зʼєднання…</span></span>'
+      + '<span class="sp"><span class="dot" id="dot"></span><span id="link">зʼєднання…</span>'
+      + '<span id="navModelStatus"></span></span>'
       + '<span class="nav-model" id="navModel"></span>'
       + '</span>'
       + (current === '/' ? '<div class="nav-run-context" id="navRunContext" aria-hidden="true">'
@@ -352,7 +353,7 @@
     // Ключ може бути ще не введений: тоді запит просто мовчить, а хедер
     // заповниться після того, як сторінка його отримає.
     if (token) {
-      get('/api/model').then(renderModelParams).catch(function () {});
+      watchModelHeader();
     }
   }
 
@@ -361,9 +362,37 @@
   // названо підказкою, бо «модель» і «набір» це різні речі: частину параметрів
   // ми перекриваємо у запиті, і саме перекриття колись дало зациклення.
   var lastModelKey = '';
+  var modelHeaderTimer = null;
+
+  function modelStatusMarkup(model) {
+    var status = String((model && model.status) || 'unknown');
+    var allowed = {working: true, loading: true, loaded: true, unloaded: true, unknown: true};
+    if (!allowed[status]) { status = 'unknown'; }
+    var labels = {
+      working: 'working', loading: 'loading', loaded: 'loaded',
+      unloaded: 'unloaded', unknown: 'unknown'
+    };
+    var label = labels[status];
+    var detail = String((model && model.status_detail) || '');
+    return '<span class="nav-model-status nav-model-status-' + status + '" title="'
+      + esc(detail || label) + '" aria-label="model status: ' + label + '"><span class="nav-model-status-dot" aria-hidden="true"></span>'
+      + '<span>' + label + '</span></span>';
+  }
+
+  function watchModelHeader() {
+    var refresh = function () {
+      if (document.hidden) { return; }
+      get('/api/model').then(renderModelParams).catch(function () {});
+    };
+    refresh();
+    if (modelHeaderTimer) { clearInterval(modelHeaderTimer); }
+    modelHeaderTimer = setInterval(refresh, 2000);
+  }
+
   function renderModelParams(model) {
     var host = el('navModel');
     if (!host) { return; }
+    var statusHost = el('navModelStatus');
     var rows = ((model && model.params) || []).slice();
     // THINK · це глобальна настройка виклику, а не властивість Modelfile.
     // Показуємо її в тому самому рядку, щоб стан не губився між параметрами
@@ -380,10 +409,24 @@
     // на секунду. Без нього хедер перемальовувався на КОЖНОМУ тику · саме це
     // й спіймала перевірка `web-inner-html-guard`, написана вранці того самого
     // дня проти цього класу. Перевірка зловила автора правила.
-    var key = JSON.stringify([model && model.name, rows]);
+    var hasModel = !!(model && model.name);
+    var key = JSON.stringify([hasModel ? model.name : '', hasModel ? model.status : '', rows]);
     if (key === lastModelKey) { return; }
     lastModelKey = key;
-    if (!rows.length) { host.innerHTML = ''; return; }
+    if (!hasModel) {
+      host.innerHTML = '';
+      host.title = '';
+      if (statusHost) { statusHost.innerHTML = ''; }
+      return;
+    }
+    var status = modelStatusMarkup(model);
+    if (statusHost) { statusHost.innerHTML = status; }
+    if (!rows.length) {
+      host.innerHTML = '';
+      host.title = (model && model.name ? model.name : '')
+        + (model && model.runtime ? ' · ' + model.runtime : '');
+      return;
+    }
     // КОРОТКІ ПІДПИСИ · повні назви займали 463 пікселі, і блок цілком
     // переносився на другий рядок, роблячи шапку вдвічі вищою. Повна назва й
     // джерело лишаються в підказці, тому нічого не втрачено · скорочення тут

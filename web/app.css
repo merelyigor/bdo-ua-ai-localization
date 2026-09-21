@@ -353,6 +353,7 @@ button.is-loading,.model-actions button.is-loading{color:var(--wr-tx);border-col
 .nav a:hover{background:var(--s1)}
 .nav a[aria-current="page"]{background:var(--acc-bg);color:var(--acc-tx);border-color:var(--bda);font-weight:500}
 .nav .sp{margin-left:auto;display:flex;align-items:center;gap:6px;font-size:12px;color:var(--tm)}
+.nav .sp .nav-model-status{font-size:11px;white-space:nowrap}
 /* Чинні параметри моделі · довідка, а не керування, тому найтихіший рівень
    тексту зі шкали (11) і колір другорядного. Ключ виділено вагою, бо ока
    шукає саме його; значення читається поруч.
@@ -382,6 +383,12 @@ button.is-loading,.model-actions button.is-loading{color:var(--wr-tx);border-col
 .nav-model{display:flex;flex-wrap:wrap;gap:1px 7px;font-size:11px;line-height:1.35;
   color:var(--tm);align-items:center;justify-content:flex-end;min-width:0;white-space:nowrap}
 .nav-param{flex:0 0 auto}
+.nav-model-status{display:inline-flex;align-items:center;gap:4px;flex:0 0 auto;font-weight:500}
+.nav-model-status-dot{width:7px;height:7px;border-radius:50%;background:currentColor;flex:none}
+.nav-model-status-working{color:var(--acc-tx)}
+.nav-model-status-loading{color:var(--wr-tx)}
+.nav-model-status-loaded{color:var(--ok-tx)}
+.nav-model-status-unloaded,.nav-model-status-unknown{color:var(--tm)}
 
 /* Шапка має три стабільні зони: бренд, навігація і службова інформація.
    Раніше flex переносив `nav-side` під посилання, коли до нього додавались
