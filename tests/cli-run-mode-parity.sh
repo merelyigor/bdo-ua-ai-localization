@@ -365,16 +365,39 @@ for side in sh php; do
     test ! -e "$TMP/size4-$side/current-batch" || fail "size4 $side created batch"
 done
 
-# ПРАВИЛО: zero rows completes without budget, goal, or batch creation; fetch failures
-# become waiting_dependency. САБОТАЖ: skipping the structured result or hiding HTTP
-# failure must make these assertions red.
+# ПРАВИЛО: zero rows is a named no_work result without budget, goal, or batch
+# creation; fetch failures become waiting_dependency. САБОТАЖ: skipping the
+# structured result or hiding HTTP failure must make these assertions red.
 touch "$ZERO_FILE"
 run_side sh "$TMP/zero-sh" "$TMP/zero.sh.out" "$TMP/zero.sh.err" "$TMP/zero.sh.code" patch 50
 run_side php "$TMP/zero-php" "$TMP/zero.php.out" "$TMP/zero.php.err" "$TMP/zero.php.code" patch 50
 rm -f "$ZERO_FILE"
 compare_pair zero "$TMP/zero-sh" "$TMP/zero-php"
-grep -Fq '"state":"complete"' "$TMP/zero.sh.out" || fail 'zero rows was not complete'
+grep -Fq '"state":"no_work"' "$TMP/zero.sh.out" || fail 'zero rows was not no_work'
+test "$(<"$TMP/zero.sh.code")" = 3 || fail 'zero rows did not return code 3'
 test ! -e "$TMP/zero-php/current-batch" || fail 'zero rows created a batch'
+
+# Нова тестова вибірка може бути порожньою, коли `run-seen.json` уже бачив усі
+# рядки. Старий verified-покажчик не має тоді маскувати це під щойно готову
+# пачку на екрані.
+touch "$ZERO_FILE"
+for side in sh php; do
+    mkdir -p "$TMP/stale-$side/batches/20260921_010101_deadbeef"
+    printf '%s\n' '20260921_010101_deadbeef' >"$TMP/stale-$side/current-batch"
+    printf '%s\n' '{"id":"20260921_010101_deadbeef","state":"verified","rows":50}' \
+        >"$TMP/stale-$side/batches/20260921_010101_deadbeef/manifest.json"
+    printf '%s\n' '{"mode":"patch","patch":"active","query":"patch=active&missing=machine"}' \
+        >"$TMP/stale-$side/run-goal.json"
+done
+run_side sh "$TMP/stale-sh" "$TMP/stale.sh.out" "$TMP/stale.sh.err" "$TMP/stale.sh.code" patch 5
+run_side php "$TMP/stale-php" "$TMP/stale.php.out" "$TMP/stale.php.err" "$TMP/stale.php.code" patch 5
+rm -f "$ZERO_FILE"
+compare_pair stale "$TMP/stale-sh" "$TMP/stale-php"
+test "$(<"$TMP/stale.sh.code")" = 3 || fail 'порожня нова вибірка не повернула код no_work'
+grep -Fq '"state":"no_work"' "$TMP/stale.php.out" || fail 'no_work не названо у structured output'
+grep -Fq '"reason":"no_work"' "$TMP/stale.php.out" || fail 'причина no_work відсутня'
+test ! -e "$TMP/stale-php/current-batch" || fail 'стара завершена пачка лишилась current після no_work'
+test ! -e "$TMP/stale-php/run-goal.json" || fail 'стара ціль лишилась після no_work'
 
 touch "$FETCH_FAILURE_FILE"
 run_side sh "$TMP/fetch-failure-sh" "$TMP/fetch-failure.sh.out" "$TMP/fetch-failure.sh.err" "$TMP/fetch-failure.sh.code" patch 50
@@ -482,7 +505,8 @@ done
 touch "$ZERO_FILE"
 PATH="$NO_UNIX" TRANSLATE_ENV_FILE="$ENV_FILE" BDO_STATE_DIR="$TMP/no-unix-zero" \
     "$REAL_PHP" "$HARNESS/cli/bdo.php" run-mode patch 50 >"$TMP/no-unix-zero.out" 2>"$TMP/no-unix-zero.err" \
-    || fail 'direct PHP zero-row no-Unix proof'
+    && fail 'direct PHP zero-row no-Unix proof unexpectedly succeeded'
+test "$?" = 3 || fail 'direct PHP zero-row no-Unix proof returned wrong code'
 rm -f "$ZERO_FILE"
 mkdir -p "$TMP/no-unix-resume/batches/existing"
 printf 'local\n' >"$TMP/no-unix-resume/run-target"

@@ -125,6 +125,13 @@ final class RunModeCommand implements Command, \Bdo\Translate\Cli\CommandHelp
         }
         $count = count($rows);
         if ($count === 0) {
+            // Нова вибірка без рядків не має права залишати на екрані стару
+            // завершену пачку: `current-batch` інакше змусить Snapshot показати
+            // попередній результат так, ніби це щойно запущений прогін.
+            if ($current !== null && in_array($state, ['verified', 'failed_terminal'], true)) {
+                Workspace::closeCurrent($stateDir);
+            }
+            @unlink($stateDir.'/run-goal.json');
             $run = [];
             $summaryPath = $stateDir.'/run-summary.json';
             if (is_file($summaryPath)) {
@@ -139,15 +146,17 @@ final class RunModeCommand implements Command, \Bdo\Translate\Cli\CommandHelp
                 }
             }
             $this->json($output, [
-                'ok' => true,
+                'ok' => false,
                 'mode' => $mode,
                 'patch' => $patch,
-                'state' => 'complete',
+                'state' => 'no_work',
+                'reason' => 'no_work',
                 'rows' => 0,
                 'run' => $run['totals'] ?? [],
+                'hint' => 'За цим фільтром нових рядків немає · стара завершена пачка не є новим прогоном.',
             ]);
 
-            return 0;
+            return 3;
         }
 
         $budget = $this->advanceBudget($stateDir.'/run-batches.json', $environment['environment'].':'.$mode.':'.$patch.':'.$domain, $output);
