@@ -78,7 +78,37 @@ grep -Fq '`names`' "$ROOT/roles/translation-worker.md" \
 grep -Fq 'спершу шукай у `names`' "$ROOT/roles/translation-worker.md" \
     || fail 'промпт не наказує вживати усталене написання замість власної транслітерації'
 
-# 8. Відсутній дамп глосарія · не «назв немає», а сказана вголос причина.
+# 8. КАТАЛОГ СИЛЬНІШИЙ ЗА ВИВЕДЕННЯ · найдорожчий запобіжник цього кроку.
+#    2026-09-21 виведення дало `Ілезра` за більшістю вживань (32 проти 25),
+#    тоді як окремий термін назви має ЗАТВЕРДЖЕНИЙ відповідник `Іллезра` зі
+#    силою `mandatory`. Взяти власний підрахунок замість нього означало б
+#    переписати глосарій · рівно те, що заборонено. Тому термін має перевагу
+#    завжди, а виведення працює лише за порожнім полем.
+cat_work="$(mktemp -d)"
+trap 'rm -rf "$cat_work"' EXIT
+mkdir -p "$cat_work/state"
+{
+    printf '%s\n' '{"term_id":1,"canonical_source":"Illezra","ukrainian":"Іллезра","status":"approved","severity":"mandatory"}'
+    printf '%s\n' '{"term_id":2,"canonical_source":"Light of Illezra","ukrainian":"Світло Ілезри","status":"approved"}'
+    printf '%s\n' '{"term_id":3,"canonical_source":"Card of Illezra","ukrainian":"Карта Ілезри","status":"approved"}'
+    printf '%s\n' '{"term_id":4,"canonical_source":"Vessel of Illezra","ukrainian":"Піала Ілезри","status":"approved"}'
+    printf '%s\n' '{"term_id":5,"canonical_source":"Sword of Hadum","ukrainian":"Меч Хадума","status":"approved"}'
+    printf '%s\n' '{"term_id":6,"canonical_source":"Cape of Hadum","ukrainian":"Плащ Хадума","status":"approved"}'
+} > "$cat_work/state/glossary-full.json"
+printf '%s' '{"data":{"rows":[{"identity_hash":"'"$(printf 'b%.0s' {1..64})"'","source_text":"Illezra and Hadum appeared."}]}}' \
+    > "$cat_work/rows.json"
+cat_out="$(BDO_STATE_DIR="$cat_work/state" php "$ROOT/cli/bdo.php" names-usage-payload "$cat_work/rows.json" 2>&1)" \
+    || fail "крок упав на фікстурі каталогу: $cat_out"
+grep -Fq 'Illezra -> Іллезра' <<<"$cat_out" \
+    || fail "затверджений відповідник каталогу не переміг власний підрахунок: $cat_out"
+grep -Fq 'затверджений відповідник каталогу' <<<"$cat_out" \
+    || fail 'джерело написання не назване · незрозуміло, каталог це чи виведення'
+# Назва БЕЗ окремого терміна й далі виводиться з ужитку: перевага каталогу не
+# має вимикати сам механізм.
+grep -Fq 'Hadum -> Хадума' <<<"$cat_out" \
+    || fail "назва без терміна перестала виводитись з ужитку: $cat_out"
+
+# 9. Відсутній дамп глосарія · не «назв немає», а сказана вголос причина.
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
 printf '%s' '{"data":{"rows":[{"identity_hash":"'"$(printf 'a%.0s' {1..64})"'","source_text":"Illezra appeared."}]}}' \

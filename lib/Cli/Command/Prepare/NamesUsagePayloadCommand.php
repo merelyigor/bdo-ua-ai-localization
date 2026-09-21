@@ -61,10 +61,28 @@ final class NamesUsagePayloadCommand implements Command, \Bdo\Translate\Cli\Comm
             return 0;
         }
 
-        $forms = $this->collect($dump, array_keys($names));
+        [$forms, $exact] = $this->collect($dump, array_keys($names));
         $decided = [];
         $unknown = [];
+        $fromCatalogue = 0;
         foreach (array_keys($names) as $name) {
+            // КАТАЛОГ СИЛЬНІШИЙ ЗА ВИВЕДЕННЯ, і це не дрібниця. 2026-09-21
+            // виведення дало `Ілезра` за більшістю вживань (32 проти 25), тоді
+            // як окремий термін назви має ЗАТВЕРДЖЕНИЙ відповідник `Іллезра`
+            // зі силою `mandatory`. Виведення там, де є затверджене значення,
+            // означало б переписування глосарія власним підрахунком · рівно
+            // те, що заборонено. Тому спершу дивимось у термін, і лише за
+            // порожнім полем виводимо.
+            if (isset($exact[$name]) && $exact[$name] !== '') {
+                $decided[] = [
+                    'source' => $name,
+                    'ukrainian' => $exact[$name],
+                    'evidence' => 'затверджений відповідник каталогу',
+                ];
+                $fromCatalogue++;
+
+                continue;
+            }
             $verdict = NameUsage::decide($name, $forms[$name] ?? []);
             if ($verdict['canonical'] === '') {
                 $unknown[$name] = $verdict['reason'];
@@ -78,9 +96,10 @@ final class NamesUsagePayloadCommand implements Command, \Bdo\Translate\Cli\Comm
             ];
         }
         $output->stderr(sprintf(
-            "Назв у пачці %d: написання виведено для %d, лишилось невідомими %d.\n",
+            "Назв у пачці %d: із каталогу %d, виведено з ужитку %d, лишилось невідомими %d.\n",
             count($names),
-            count($decided),
+            $fromCatalogue,
+            count($decided) - $fromCatalogue,
             count($unknown),
         ));
         foreach ($decided as $item) {
@@ -95,10 +114,13 @@ final class NamesUsagePayloadCommand implements Command, \Bdo\Translate\Cli\Comm
     }
 
     /**
-     * Форми кожної назви з затверджених записів дампа.
+     * Форми кожної назви з затверджених записів дампа і точні терміни назв.
+     *
+     * Один прохід дає обидві відповіді: дамп важить десятки мегабайт, і читати
+     * його двічі лише щоб розділити дві структури, було б марною хвилиною.
      *
      * @param list<string> $names
-     * @return array<string,array<string,int>>
+     * @return array{0:array<string,array<string,int>>,1:array<string,string>}
      */
     private function collect(string $dump, array $names): array
     {
@@ -107,6 +129,8 @@ final class NamesUsagePayloadCommand implements Command, \Bdo\Translate\Cli\Comm
             throw new RuntimeException('Не вдалося прочитати дамп глосарія: '.$dump);
         }
         $forms = [];
+        $exact = [];
+        $wanted = array_fill_keys($names, true);
         while (($line = fgets($handle)) !== false) {
             $entry = json_decode(trim($line, ",\n\r \t"), true);
             if (! is_array($entry)) {
@@ -122,6 +146,9 @@ final class NamesUsagePayloadCommand implements Command, \Bdo\Translate\Cli\Comm
             if ($source === '' || $ukrainian === '') {
                 continue;
             }
+            if (isset($wanted[$source])) {
+                $exact[$source] = $ukrainian;
+            }
             foreach ($names as $name) {
                 if (! str_contains($source, $name)) {
                     continue;
@@ -136,7 +163,7 @@ final class NamesUsagePayloadCommand implements Command, \Bdo\Translate\Cli\Comm
         }
         fclose($handle);
 
-        return $forms;
+        return [$forms, $exact];
     }
 
     /** Повернути дослівну довідку legacy-маршруту. */
