@@ -29,6 +29,7 @@
 | Потрібна зміна в API на серверному боці | [API_CHANGE_HANDOFF.md](API_CHANGE_HANDOFF.md) · формат передачі |
 | Плани, реєстр і черга | [plans/README.md](plans/README.md), [plans/BACKLOG.md](plans/BACKLOG.md) |
 | Зріз стану коду на дату | [TECHNICAL_AUDIT_2026-09-20.md](TECHNICAL_AUDIT_2026-09-20.md) · разовий аудит, а не норматив: його висновки перевіряються окремо, і чинним лишається те, що доведене тестом або гейтом |
+| Історія якості перекладу сесії `20260919_061647` | [handoff/2026-09-21_TRANSLATION_QUALITY_HISTORY_20260919_061647.md](handoff/2026-09-21_TRANSLATION_QUALITY_HISTORY_20260919_061647.md) · timeline пачок, моделей, verdict-ів і Git-комітів |
 
 ## Інтерфейс
 
