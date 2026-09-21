@@ -481,7 +481,57 @@ final class RunDriveCommand implements Command, \Bdo\Translate\Cli\CommandHelp
         copy($this->workspace->path('healed.json'), $this->workspace->path('final-candidate.json'));
         $this->refreshMechanicalVerdicts();
 
-        return $this->judgeOrCommit($output);
+        return $this->repairRoundOrJudge($output);
+    }
+
+    /**
+     * ЩЕ ОДИН КОЛО РЕМОНТУ, ПОКИ МЕХАНІЧНИЙ ДЕФЕКТ ЛИШАЄТЬСЯ.
+     *
+     * До 2026-09-21 ремонт був ОДНОРАЗОВИЙ: драйвер застосовував правки й одразу
+     * йшов до судді, хоч би скільки дефектів лишилось. А до людини рядок
+     * відправляє саме механічний дефект · `ChannelRouter` віддає такий рядок у
+     * `proposal` незалежно від вироку. Тобто кожен недоремонтований рядок ставав
+     * ручною роботою на сервісі.
+     *
+     * Виміряно на сесії `20260919_061647`: 265 рядків пішли в модерацію, і в
+     * пізніх пачках це 38 механічних дефектів · 24 гомогліфи, 9 розбіжностей у
+     * переносах, 5 вигаданих токенів. Друге коло ремонту саме для них.
+     *
+     * Нового механізму тут НЕМАЄ · `HealPlanCommand` уже ідемпотентний: він
+     * рахує дефекти на ПОТОЧНОМУ тексті, веде бюджет спроб на кожен рядок у
+     * `heal-attempts.json` і сам оголошує рядок безнадійним, коли бюджет
+     * вичерпано. Бракувало рівно одного · щоб драйвер покликав його ще раз.
+     *
+     * Саме бюджет і робить цикл скінченним: випадок, який код полагодити не
+     * може за побудовою (латинські `l` і `z` кириличних двійників не мають,
+     * тому `Іllezra` не виправляється ніколи), після `BDO_HEAL_MAX_ATTEMPTS`
+     * спроб іде до людини, а не крутиться вічно.
+     */
+    private function repairRoundOrJudge(Output $output): int
+    {
+        $rows = $this->workspace->path('rows.json');
+        $healed = $this->workspace->path('healed.json');
+        $repairPath = $this->workspace->path('heal-repair-payload.json');
+        if (getenv('BDO_HEAL_ROUNDS') === 'off' || ! is_file($healed)) {
+            return $this->judgeOrCommit($output);
+        }
+        $validate = is_file($this->workspace->path('validate-path'))
+            ? trim((string) file_get_contents($this->workspace->path('validate-path')))
+            : '';
+        // План рахується на ВИХОДІ ремонту, а не на тому, що бачив QA · інакше
+        // друге коло повторювало б перше з тими самими дефектами.
+        try { $this->call(new HealPlanCommand(), [$rows, $healed, $this->workspace->path('final-verdicts.json'), $validate]); }
+        catch (\Throwable) { return $this->judgeOrCommit($output); }
+        if (! is_file($repairPath) || Items::count($repairPath) === 0) {
+            return $this->judgeOrCommit($output);
+        }
+        // Ремонт переписує `healed.json`, тому база наступного кола · свіжий
+        // `heal-merged.json`, який щойно склав план. Файл правок прибираємо:
+        // інакше `healing()` вирішить, що відповідь ролі вже є.
+        @unlink($this->workspace->path('fixes.json'));
+        $this->call(new BuildSchemaCommand(), ['--edits', $this->workspace->path('heal-repair-subset.json')]);
+
+        return $this->child($output, 'healing', 'translation-repair', $repairPath, $this->workspace->path('fixes.json'));
     }
 
     /**

@@ -69,7 +69,13 @@ final class HealPlanCommand implements Command, \Bdo\Translate\Cli\CommandHelp
             ? Response::fromFile($validateFile, 'validate')
             : null;
         $attemptsFile = $workspace->path('heal-attempts.json');
-        $maxAttempts = max(1, (int) (getenv('BDO_HEAL_MAX_ATTEMPTS') ?: '1'));
+        // ТРИ СПРОБИ, А НЕ ОДНА (рішення власника 2026-09-21: автономність
+        // важливіша за вартість викликів). Одна спроба означала, що будь-який
+        // недоремонтований рядок ставав ручною роботою на сервісі · саме це й
+        // дало 265 рядків у модерації на сесії `20260919_061647`. Бюджет
+        // лишається скінченним: безнадійний випадок однаково йде до людини,
+        // але після трьох спроб, а не після першої.
+        $maxAttempts = max(1, (int) (getenv('BDO_HEAL_MAX_ATTEMPTS') ?: '3'));
         $mergedFile = $workspace->path('heal-merged.json');
         $repairFile = $workspace->path('heal-repair-payload.json');
 
