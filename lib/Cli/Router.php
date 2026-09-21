@@ -123,6 +123,7 @@ final class Router
                 'qa' => ['command' => 'qa-payload', 'help' => 'qa-payload'],
                 'terminology' => ['command' => 'terminology-payload', 'help' => 'terminology-payload'],
                 'judge' => ['command' => 'judge-payload', 'help' => 'judge-payload'],
+                'names-usage' => ['command' => 'names-usage-payload', 'help' => 'names-usage-payload'],
             ],
             'terms' => [
                 'describe' => ['command' => 'term-notes-describe', 'help' => 'term-notes-describe'],
@@ -321,7 +322,7 @@ final class Router
     {
         $sub = (string) ($arguments[0] ?? '');
         if (! isset(self::nestedRoutes()['payload'][$sub])) {
-            return $this->error('payload: потрібно worker, qa, terminology або judge');
+            return $this->error('payload: потрібно worker, qa, terminology, judge або names-usage');
         }
         return $this->nestedPhp('payload', $sub, array_slice($arguments, 1));
     }

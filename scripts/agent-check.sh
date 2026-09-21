@@ -250,7 +250,8 @@ touched_map() {
             printf 'profile|agents|ролі, prompts і конфігурація ролей\n'
             printf 'test|tests/schema-provider-compat.sh|сумісність schema провайдерів\n'
             printf 'test|tests/glossary-provenance.sh|походження правил глосарія\n'
-            printf 'test|tests/worker-reference.sh|довідковий текст воркера\n' ;;
+            printf 'test|tests/worker-reference.sh|довідковий текст воркера\n'
+            printf 'test|tests/name-usage.sh|усталене написання власних назв\n' ;;
         docs/*|*.md|.cursorrules)
             printf 'profile|docs|документи, посилання й норматив\n' ;;
         lib/Api/*)
@@ -289,7 +290,8 @@ touched_map() {
             printf 'test|tests/terminology-chunks.sh|chunks термінології\n'
             printf 'test|tests/schema-provider-compat.sh|сумісність schema провайдерів\n'
             printf 'test|tests/glossary-provenance.sh|походження правил глосарія\n'
-            printf 'test|tests/worker-reference.sh|довідковий текст воркера\n' ;;
+            printf 'test|tests/worker-reference.sh|довідковий текст воркера\n'
+            printf 'test|tests/name-usage.sh|усталене написання власних назв\n' ;;
         lib/Pipeline/*)
             printf 'test|tests/lineage.sh|слід рядка\n'
             printf 'test|tests/pipeline-unit.php|unit-контракти pipeline\n'
@@ -308,7 +310,11 @@ touched_map() {
             printf 'test|tests/lineage.sh|слід рядка\n'
             printf 'test|tests/qa-memory-only.sh|memory-only QA\n'
             printf 'test|tests/names-pass.sh|перевірка імен\n'
-            printf 'test|tests/glossary-confirmed.sh|підтвердження вжитої назви\n' ;;
+            printf 'test|tests/glossary-confirmed.sh|підтвердження вжитої назви\n'
+            printf 'test|tests/name-usage.sh|усталене написання власних назв\n' ;;
+        lib/Glossary/*)
+            printf 'test|tests/name-usage.sh|усталене написання власних назв\n'
+            printf 'test|tests/mechanical-final-check.sh|фінальна mechanical-перевірка\n' ;;
         lib/Run/*)
             printf 'test|tests/run-pause.sh|пауза прогону\n'
             printf 'test|tests/cli-run-foundation-parity.sh|парність run foundation\n'
@@ -352,7 +358,8 @@ touched_map() {
         lib/Cli/Command/Prepare/*)
             printf 'test|tests/glossary-unknown-state.sh|«поля немає» не стає «порожньо»\n'
             printf 'test|tests/schema-provider-compat.sh|сумісність schema провайдерів\n'
-            printf 'test|tests/worker-reference.sh|довідковий текст воркера\n' ;;
+            printf 'test|tests/worker-reference.sh|довідковий текст воркера\n'
+            printf 'test|tests/name-usage.sh|усталене написання власних назв\n' ;;
         lib/Cli/Command/Run/*)
             printf 'test|tests/cli-run-drive-parity.sh|парність run drive\n'
             printf 'test|tests/driver-loop.sh|цикл драйвера\n'

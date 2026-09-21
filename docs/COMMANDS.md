@@ -43,7 +43,7 @@
 | `./bdo memory find&#124;apply&#124;expand` | памʼять перекладів: пошук, застосування, збірка |
 | `./bdo glossary gaps&#124;resolve` | прогалини глосарію (ВИРОК) і запит терміна |
 | `./bdo schema build&#124;qa&#124;clear&#124;show` | staged-схема constrained decoding |
-| `./bdo payload worker&#124;qa&#124;terminology&#124;judge` | компактний payload для ролі |
+| `./bdo payload worker&#124;qa&#124;terminology&#124;judge&#124;names-usage` | компактний payload для ролі |
 
 ## ПЕРЕВІРКА Й ЛІКУВАННЯ
 

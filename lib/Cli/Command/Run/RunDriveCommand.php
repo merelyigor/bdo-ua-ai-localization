@@ -26,6 +26,7 @@ use Bdo\Translate\Cli\Command\Prepare\MemoryLookupCommand;
 use Bdo\Translate\Cli\Command\Prepare\NamesPayloadCommand;
 use Bdo\Translate\Cli\Command\Prepare\QaPayloadCommand;
 use Bdo\Translate\Cli\Command\Prepare\TerminologyPayloadCommand;
+use Bdo\Translate\Cli\Command\Prepare\NamesUsagePayloadCommand;
 use Bdo\Translate\Cli\Command\Prepare\WorkerPayloadCommand;
 use Bdo\Translate\Cli\Command\Quality\BuildItemsCommand;
 use Bdo\Translate\Cli\Command\Quality\CheckRussianismsCommand;
@@ -224,6 +225,15 @@ final class RunDriveCommand implements Command, \Bdo\Translate\Cli\CommandHelp
             }
             if (getenv('BDO_PIPELINE_OFFLINE') !== '1') {
                 $this->optionalCapture(new GlossaryConceptsCommand(), []);
+            }
+            // Усталене написання назв виводиться ДО payload: без нього роль
+            // лишається без відповіді на назву, якої немає в каталозі, і
+            // вигадує напівтранслітерацію (`Illezra` -> `Ілlezra`, D229/D231).
+            // Крок не викликає ні модель, ні мережу, тому провал не спиняє
+            // прогін: payload просто йде без блоку назв.
+            $names = $this->optionalCapture(new NamesUsagePayloadCommand(), [$selected]);
+            if (($names['code'] ?? 1) === 0) {
+                $this->write($this->workspace->path('name-usage.json'), $this->lastJson($names['stdout'])."\n");
             }
             $result = $this->capture(new WorkerPayloadCommand(), $args);
             if ($result['code'] !== 0) {

@@ -205,7 +205,7 @@ final class Homoglyphs
     }
 
     /** Написання без різниці абеток: кирилиця зводиться до латиниці. */
-    private static function skeleton(string $word): string
+    public static function skeleton(string $word): string
     {
         $out = '';
         foreach (preg_split('//u', $word, -1, PREG_SPLIT_NO_EMPTY) ?: [] as $char) {

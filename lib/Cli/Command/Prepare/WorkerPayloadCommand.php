@@ -45,9 +45,10 @@ final class WorkerPayloadCommand implements Command, \Bdo\Translate\Cli\CommandH
         $stateDir = getenv('BDO_STATE_DIR') ?: dirname(__DIR__, 4).'/state';
         $contextFile = '';
         $termsFile = '';
+        // Робоча тека потрібна й без контексту: у ній лежить `name-usage.json`.
+        $workspace = Workspace::current($stateDir);
         $temporaryContext = false;
         if ($wantContext) {
-            $workspace = Workspace::current($stateDir);
             if ($workspace !== null) {
                 $contextFile = $workspace->path('context.json');
                 $termsFile = $workspace->path('terms.json');
@@ -179,14 +180,24 @@ final class WorkerPayloadCommand implements Command, \Bdo\Translate\Cli\CommandH
                     $sharedTerms = array_slice($sharedTerms, 0, $termLimit);
                 }
             }
+            // Усталене написання назв · окремий блок, а не термін глосарія:
+            // це ВИВЕДЕНИЙ із затверджених перекладів звичай проєкту, і роль
+            // мусить бачити різницю між ним і затвердженим відповідником.
+            $sharedNames = [];
+            $namesFile = $workspace?->path('name-usage.json') ?? '';
+            if ($namesFile !== '' && is_file($namesFile)) {
+                $sharedNames = json_decode((string) file_get_contents($namesFile), true) ?: [];
+            }
             $result = ['examples' => $sharedExamples, 'items' => $payload];
+            if ($sharedNames !== []) $result = ['names' => $sharedNames] + $result;
             if ($sharedTerms !== []) $result = ['terms' => $sharedTerms] + $result;
             if ($sharedConcepts !== []) $result = ['concepts' => $sharedConcepts] + $result;
             $output->stdout(json_encode($result, JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR)."\n");
             $output->stderr(sprintf(
-                "payload воркера: %d рядків | глосарій %d | без відповідника %d | нерозпізнані назви %d | приклади %d спільних (рядків із прикладами %d, відкинуто понад стелю %d) | межі довжини %d\n",
+                "payload воркера: %d рядків | глосарій %d | без відповідника %d | нерозпізнані назви %d | приклади %d спільних (рядків із прикладами %d, відкинуто понад стелю %d) | межі довжини %d | усталені назви %d\n",
                 count($payload), $stats['glossary'], $stats['pending'], $stats['unresolved'],
-                count($sharedExamples), $stats['examples'], $exampleDropped, $stats['limits']));
+                count($sharedExamples), $stats['examples'], $exampleDropped, $stats['limits'],
+                count($sharedNames)));
         } finally {
             if ($temporaryContext && $contextFile !== '') @unlink($contextFile);
         }

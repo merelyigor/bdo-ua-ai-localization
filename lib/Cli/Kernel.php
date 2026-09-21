@@ -63,6 +63,7 @@ use Bdo\Translate\Cli\Command\Prepare\MemoryLookupCommand;
 use Bdo\Translate\Cli\Command\Prepare\NamesPayloadCommand;
 use Bdo\Translate\Cli\Command\Prepare\QaPayloadCommand;
 use Bdo\Translate\Cli\Command\Prepare\TerminologyPayloadCommand;
+use Bdo\Translate\Cli\Command\Prepare\NamesUsagePayloadCommand;
 use Bdo\Translate\Cli\Command\Prepare\WorkerPayloadCommand;
 use Bdo\Translate\Cli\Command\Run\RunSpecCommand;
 use Bdo\Translate\Cli\Command\Run\RunModeCommand;
@@ -179,6 +180,7 @@ final class Kernel
             'glossary-gaps' => new GlossaryGapsCommand(),
             'memory-lookup' => new MemoryLookupCommand(),
             'memory-expand' => new MemoryExpandCommand(),
+            'names-usage-payload' => new NamesUsagePayloadCommand(),
             'worker-payload' => new WorkerPayloadCommand(),
             'qa-payload' => new QaPayloadCommand(),
             'terminology-payload' => new TerminologyPayloadCommand(),
