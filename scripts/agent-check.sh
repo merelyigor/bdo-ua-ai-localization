@@ -400,7 +400,8 @@ touched_map() {
             printf 'test|tests/heal-attempts.sh|спроби heal\n' ;;
         cli/model/*)
             printf 'test|tests/model-client.sh|клієнт моделі\n'
-            printf 'test|tests/model-transports.sh|транспорти моделі\n' ;;
+            printf 'test|tests/model-transports.sh|транспорти моделі\n'
+            printf 'test|tests/model-json-salvage.sh|рятунок JSON із зайвим текстом\n' ;;
         cli/prepare/*)
             printf 'test|tests/cli-prepare-parity.sh|парність prepare\n'
             printf 'test|tests/cli-payload-parity.sh|парність payload\n'

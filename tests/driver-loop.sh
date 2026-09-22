@@ -51,9 +51,17 @@ exit((new Bdo\Translate\Cli\Kernel())->run($arguments));
 PHP
     cat > "$base/cli/model/client.php" <<'PHP'
 <?php
-file_put_contents(dirname(__DIR__, 2).'/state/roles.log', ($argv[1] ?? '')."\n", FILE_APPEND);
+$log = dirname(__DIR__, 2).'/state/roles.log';
+file_put_contents($log, ($argv[1] ?? '')."\n", FILE_APPEND);
 if (getenv('FAKE_CHILD_FAILS') === '1') {
     fwrite(STDERR, "empty_content: тест\n");
+    exit(1);
+}
+// Зрив ЛИШЕ на першому виклику · так виглядає випадковість семплювання, через
+// яку ніч 2026-09-22 втратила прогін: другий запит тим самим payload проходить.
+if (getenv('FAKE_CHILD_FAILS_ONCE') === '1'
+    && count(file($log, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) ?: []) === 1) {
+    fwrite(STDERR, "not_json: тест\n");
     exit(1);
 }
 file_put_contents($argv[3], "[]\n");
@@ -191,6 +199,35 @@ scenario_both '{"ok":true,"state":"awaiting_worker","next":{"kind":"child","role
 FAKE_CHILD_FAILS=1 run_both; unset FAKE_CHILD_FAILS
 grep -Fq 'вирок not_json · модель тест-модель' "$WORK/php/state/run-transcript.log" \
     || fail 'зупинка не називає вироку й моделі · «модель чи набір» знову доведеться з'"'"'ясовувати руками'
+# 6.1. ОДНА ВИПАДКОВІСТЬ НЕ КОШТУЄ ПРОГОНУ. Ніч 2026-09-22: терміни, переклад і
+# якість пройшли, а на ремонті модель один раз віддала JSON із зайвим словом
+# попереду · цикл спинив увесь прогін патчу. Друга спроба тим самим payload
+# коштує один виклик і рятує ніч.
+printf '%s\n' '{"at":"2026-01-01T00:00:00+00:00","role":"translation-worker","verdict":"not_json","model":"тест-модель","ms":2000,"out":99}' \
+    > "$WORK/php/state/model-calls.jsonl"
+scenario_both \
+    '{"ok":true,"state":"awaiting_worker","next":{"kind":"child","role":"translation-worker","payload_path":"p","response_path":"r"}}' \
+    '{"ok":true,"state":"verified","next":{"kind":"goal_complete"}}'
+FAKE_CHILD_FAILS_ONCE=1 run_both; unset FAKE_CHILD_FAILS_ONCE
+expect_codes 0
+test "$(grep -c . "$WORK/php/state/roles.log")" = 2 \
+    || fail "зрив форми не отримав другої спроби: викликів $(grep -c . "$WORK/php/state/roles.log")"
+expect_each 'спроба 2 із 2'
+# ПОВТОР МУСИТЬ БУТИ ВИДНО в журналі прогону, інакше мовчазна друга спроба
+# ховає те, що модель зривається (D29).
+grep -Fq 'спроба 2 із 2' "$WORK/php/state/run-transcript.log" \
+    || fail 'повтор ролі не потрапив у журнал прогону · зриви моделі стануть невидимими'
+
+# 6.2. ДЕТЕРМІНОВАНИЙ ЗРИВ ДРУГОЇ СПРОБИ НЕ ОТРИМУЄ. Обрив на стелі дасть той
+# самий обрив і лише сховає причину · саме цим набір уже платив (D29).
+printf '%s\n' '{"at":"2026-01-01T00:00:00+00:00","role":"translation-worker","verdict":"truncated","model":"тест-модель","ms":2000,"out":99}' \
+    > "$WORK/php/state/model-calls.jsonl"
+scenario_both '{"ok":true,"state":"awaiting_worker","next":{"kind":"child","role":"translation-worker","payload_path":"p","response_path":"r"}}'
+FAKE_CHILD_FAILS=1 run_both; unset FAKE_CHILD_FAILS
+expect_codes 1
+test "$(grep -c . "$WORK/php/state/roles.log")" = 1 \
+    || fail "детермінований обрив покликали повторно: викликів $(grep -c . "$WORK/php/state/roles.log")"
+
 scenario_both 'без конверта'; FAKE_DRIVE_SIGNAL=130 run_both; unset FAKE_DRIVE_SIGNAL; expect_codes 1; expect_each 'перервано ззовні'
 scenario_both 'без конверта'; FAKE_DRIVE_SIGNAL=143 run_both; unset FAKE_DRIVE_SIGNAL; expect_codes 1; expect_each 'перервано ззовні'
 

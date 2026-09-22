@@ -329,9 +329,12 @@ $thinkingLoopDetected = false;
 $answerRepeatFragment = '';
 $answerRepeatCount = 0;
 $answerLoopDetected = false;
+// Відповідь, врятована з-під зайвого тексту, лишає слід у журналі: рятунок
+// мусить бути ВИДНО, інакше він нічим не кращий за тихий збій.
+$jsonSalvage = '';
 $journalAnswerPath = $responsePath;
 $journalThinkingPath = $responsePath.'.thinking.txt';
-$journal = static function (string $verdict) use ($callsFile, $role, $model, $provider, $started, $currentBatch, $runState, $rows, $payloadBytes, $relative, $payloadPath, &$journalAnswerPath, &$journalThinkingPath, &$stats, $numPredict, $timeout, $think, &$thinkObserved, &$thinkMismatch, &$attempt, &$thinkingBytes, &$thinkingChunks, &$thinkingRepeatFragment, &$thinkingRepeatCount, &$thinkingLoopDetected, &$answerRepeatFragment, &$answerRepeatCount, &$answerLoopDetected, &$thinkingTokensEstimate, &$answerTokensEstimate): void {
+$journal = static function (string $verdict) use ($callsFile, $role, $model, $provider, $started, $currentBatch, $runState, $rows, $payloadBytes, $relative, $payloadPath, &$journalAnswerPath, &$journalThinkingPath, &$stats, $numPredict, $timeout, $think, &$thinkObserved, &$thinkMismatch, &$attempt, &$thinkingBytes, &$thinkingChunks, &$thinkingRepeatFragment, &$thinkingRepeatCount, &$thinkingLoopDetected, &$answerRepeatFragment, &$answerRepeatCount, &$answerLoopDetected, &$thinkingTokensEstimate, &$answerTokensEstimate, &$jsonSalvage): void {
     $dir = dirname($callsFile);
     if (! is_dir($dir) && ! mkdir($dir, 0777, true) && ! is_dir($dir)) {
         return;
@@ -357,6 +360,7 @@ $journal = static function (string $verdict) use ($callsFile, $role, $model, $pr
         'model' => $model,
         'provider' => $provider,
         'verdict' => $verdict,
+        'json_salvaged' => $jsonSalvage,
         'ms' => (int) round((microtime(true) - $started) * 1000),
         'in' => $stats['in'],
         'out' => $stats['out'],
@@ -714,7 +718,18 @@ if ($content === '') {
 
 $decoded = json_decode($content, true);
 if (! is_array($decoded)) {
-    $fail('not_json', substr($content, 0, 200));
+    // Зайве СЛОВО перед `{` не є зіпсованою відповіддю. 2026-09-22 нічний
+    // прогін спинився саме так: тринадцять правильних правок і голе `items`
+    // попереду. Рятунок вузький і названий вголос · обрив і дві структури
+    // поспіль ним не проходять (`bdo_salvage_child_json`).
+    require_once __DIR__.'/unwrap.php';
+    $salvaged = bdo_salvage_child_json($content);
+    if ($salvaged === null) {
+        $fail('not_json', substr($content, 0, 200));
+    }
+    $decoded = $salvaged['value'];
+    $jsonSalvage = $salvaged['note'];
+    fwrite(STDERR, 'УВАГА: відповідь ролі не була чистим JSON · врятовано: '.$jsonSalvage."\n");
 }
 // Конверт `{"items":[…]}` розпаковуємо в масив · саме такий вигляд очікують
 // `./bdo items` і решта конвеєра. Правило живе окремо, бо його

@@ -598,6 +598,10 @@ variant_prepare() {
     ln -s "$ROOT/lib" "$VAR_ROOT/$name/lib"
     ln -s "$ROOT/roles" "$VAR_ROOT/$name/roles"
     cp "$ROOT/cli/model/client.php" "$VAR_ROOT/$name/cli/model/client.php"
+    # Клієнт підключає сусідній `unwrap.php` (розгортання конверта й рятунок
+    # відповіді з-під зайвого тексту). Без нього саботажна копія падала б на
+    # відсутньому файлі · тобто «червоний» доводив би не те, що перевіряють.
+    cp "$ROOT/cli/model/unwrap.php" "$VAR_ROOT/$name/cli/model/unwrap.php"
 }
 variant_run() {
     local name="$1" scenario="$2"

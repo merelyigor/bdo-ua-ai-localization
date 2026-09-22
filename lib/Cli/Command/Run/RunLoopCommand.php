@@ -19,6 +19,29 @@ final class RunLoopCommand implements Command, \Bdo\Translate\Cli\CommandHelp
     // make the migrated process guard fail.
     private const TIMED_STEPS = ['drive', 'mode.start'];
 
+    /**
+     * Скільки разів кликати ту саму роль, перш ніж спинити прогін.
+     *
+     * Ніч 2026-09-22: прогін патчу пройшов терміни, переклад, якість · і вмер на
+     * ремонті, бо модель ОДИН раз віддала JSON із зайвим словом попереду.
+     * Одна випадковість семплювання коштувала цілої ночі, хоча наступний запит
+     * тим самим payload майже напевно пройшов би.
+     */
+    private const CHILD_ATTEMPTS = 2;
+
+    /**
+     * Вироки, які варті другої спроби · і ТІЛЬКИ вони.
+     *
+     * Це зриви ФОРМИ відповіді: модель дійшла до кінця, але написала не те. Вони
+     * залежать від випадковості семплювання, тому другий запит справді інший.
+     *
+     * Решта сюди не потрапляє навмисно. `truncated` і `context_overflow` ·
+     * детерміновані: той самий payload дасть той самий обрив, і мовчазний повтор
+     * лише сховає причину (D29). `unknown_id` і `model_error` не зміняться від
+     * повторення поготів.
+     */
+    private const CHILD_RETRY_VERDICTS = ['not_json', 'empty_content'];
+
     private string $root;
     private string $stateDir;
     private string $transcript;
@@ -226,15 +249,25 @@ final class RunLoopCommand implements Command, \Bdo\Translate\Cli\CommandHelp
         $response = (string) ($next['response_path'] ?? '');
         $this->log("{$state} · роль {$role}", $output);
         $this->report(['--before', $role, $payload], $output);
-        $result = $this->timedProcess('model.'.$role, [PHP_BINARY, $this->root.'/cli/model/client.php', $role, $payload, $response], true, ['BDO_RUN_STATE' => $state]);
-        if ($result['code'] !== 0) {
-            $this->stop("роль {$role} не дала відповіді · ".$this->lastCallVerdict($role), $output);
+        for ($attempt = 1; $attempt <= self::CHILD_ATTEMPTS; $attempt++) {
+            $result = $this->timedProcess('model.'.$role, [PHP_BINARY, $this->root.'/cli/model/client.php', $role, $payload, $response], true, ['BDO_RUN_STATE' => $state]);
+            if ($result['code'] === 0) {
+                $this->report(['--after', $role, $payload, $response], $output);
 
-            return ['code' => 1, 'stop' => true, 'spin' => 0];
+                return ['code' => 0, 'stop' => false, 'spin' => 0];
+            }
+            $verdict = (string) ($this->lastCallRecord($role)['verdict'] ?? '');
+            if ($attempt >= self::CHILD_ATTEMPTS || ! in_array($verdict, self::CHILD_RETRY_VERDICTS, true)) {
+                break;
+            }
+            $this->log(
+                "{$state} · роль {$role} зірвалась ({$verdict}) · спроба ".($attempt + 1).' із '.self::CHILD_ATTEMPTS,
+                $output,
+            );
         }
-        $this->report(['--after', $role, $payload, $response], $output);
+        $this->stop("роль {$role} не дала відповіді · ".$this->lastCallVerdict($role), $output);
 
-        return ['code' => 0, 'stop' => false, 'spin' => 0];
+        return ['code' => 1, 'stop' => true, 'spin' => 0];
     }
 
     /** @param array<string,mixed> $next @return array{code:int,stop:bool,spin:int} */
@@ -396,30 +429,43 @@ final class RunLoopCommand implements Command, \Bdo\Translate\Cli\CommandHelp
      */
     private function lastCallVerdict(string $role): string
     {
+        $record = $this->lastCallRecord($role);
+        if ($record === null) {
+            return 'у журналі викликів немає запису про цю роль';
+        }
+        $verdict = (string) ($record['verdict'] ?? '');
+        $model = (string) ($record['model'] ?? '');
+        $seconds = (int) round(((int) ($record['ms'] ?? 0)) / 1000);
+
+        return sprintf(
+            'вирок %s · модель %s · %d с · вихідних токенів %d',
+            $verdict !== '' ? $verdict : 'без вироку',
+            $model !== '' ? $model : 'невідома',
+            $seconds,
+            (int) ($record['out'] ?? 0),
+        );
+    }
+
+    /**
+     * Останній запис журналу про цю роль · джерело і вироку, і рішення про повтор.
+     *
+     * @return array<string,mixed>|null
+     */
+    private function lastCallRecord(string $role): ?array
+    {
         $path = rtrim($this->stateDir, '/').'/model-calls.jsonl';
         if (! is_file($path)) {
-            return 'журналу викликів немає';
+            return null;
         }
         $lines = @file($path, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) ?: [];
         for ($index = count($lines) - 1; $index >= 0; $index--) {
             $record = json_decode($lines[$index], true);
-            if (! is_array($record) || (string) ($record['role'] ?? '') !== $role) {
-                continue;
+            if (is_array($record) && (string) ($record['role'] ?? '') === $role) {
+                return $record;
             }
-            $verdict = (string) ($record['verdict'] ?? '');
-            $model = (string) ($record['model'] ?? '');
-            $seconds = (int) round(((int) ($record['ms'] ?? 0)) / 1000);
-
-            return sprintf(
-                'вирок %s · модель %s · %d с · вихідних токенів %d',
-                $verdict !== '' ? $verdict : 'без вироку',
-                $model !== '' ? $model : 'невідома',
-                $seconds,
-                (int) ($record['out'] ?? 0),
-            );
         }
 
-        return 'у журналі викликів немає запису про цю роль';
+        return null;
     }
 
     /**
