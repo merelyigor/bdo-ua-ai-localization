@@ -85,15 +85,6 @@
       <div id="models" aria-busy="true"><div class="models-loading-state" role="status" aria-live="polite"><span class="spin"></span><span>беру перелік моделей…</span></div></div>
     </div>
 
-    <div class="panel role-models-panel">
-      <div class="bar section-bar">
-        <span class="panel-icon" data-icon="roles" aria-hidden="true"></span>
-        <span class="section-title">моделі ролей</span>
-        <span class="empty">усі ролі працюють однією обраною моделлю</span>
-      </div>
-      <div class="section-note">Модель у наборі одна: обрана модель застосовується до всіх ролей одразу.</div>
-      <div id="selection-roles"><div class="load"><span class="spin"></span>беру вибір ролей…</div></div>
-    </div>
   </div>
 </div>
 <script src="/app.js"></script>
@@ -203,32 +194,12 @@
     return body.hint ? String(body.hint) : 'дія не виконана';
   }
 
-  // Емодзі тут НЕ прикраса: блок ролей читався як суцільний сірий стовпчик, і
-  // око не чіплялось ні за що (власник 2026-09-14). Значок дає рядку впізнаване
-  // обличчя, а назва ролі лишається текстом · пошук і копіювання не ламаються.
-  function roleIcon(role) {
-    var icons = {
-      'translation-terminology': 'book',
-      'translation-worker': 'pen',
-      'translation-qa': 'search',
-      'translation-repair': 'wrench',
-      'translation-names': 'tag',
-      'translation-judge': 'scale',
-      'translation-glossary': 'library',
-      'translation-smoke': 'flask'
-    };
-    return B.icon(icons[role] || 'dot', 'role-icon');
-  }
 
-  function sourceLabel(source) {
-    return ({role_selection:'перевизначення ролі', global_selection:'загальний вибір', role_config:'модель ролі', provider_default:'default_model провайдера', config_default:'default_model набору', missing:'модель не названа'})[source] || source;
-  }
 
   function renderSelection(data) {
     var catalog = data.catalog;
     if (!catalog) {
       B.el('selection').innerHTML = '<div class="empty">чинний вибір буде видно після першого оновлення каталогу</div>';
-      B.el('selection-roles').innerHTML = '<div class="empty">вибір ролей буде видно після першого оновлення каталогу</div>';
       return;
     }
     var selection = data.selection || {};
@@ -239,39 +210,7 @@
       + '<span class="global-selection-model mono">' + B.esc(choiceLabel(globalChoice)) + '</span>'
       + (globalChoice ? ' <button class="global-selection-clear" type="button" data-action="models.clear">скинути вибір</button>' : '')
       + '</div>';
-    var html = '';
-    var roles = catalog.roles || [];
-    // МОДЕЛЬ ОДНА · рядок на кожну роль був би вісьмома копіями того самого
-    // тексту. Поки всі ролі сходяться, показуємо ОДИН рядок; список вертається
-    // лише якщо вони чомусь розійшлись · тоді це вже не шум, а сигнал.
-    var used = {};
-    roles.forEach(function (role) { used[role.runtime + ' / ' + (role.model || '—')] = role.source; });
-    var distinct = Object.keys(used);
-    if (!roles.length) {
-      html += '<div class="empty">ролей у конфігурації немає</div>';
-    } else if (distinct.length === 1) {
-      html += '<div class="row model-role-row">'
-        + '<span class="role-model-name">' + roleIcon('translation-worker')
-        + '<span>усі ролі · ' + B.num(roles.length) + '</span><br><span class="empty">'
-        + B.esc(sourceLabel(used[distinct[0]])) + '</span></span>'
-        + '<span class="mono role-model-current" title="' + B.esc(distinct[0]) + '">' + B.esc(distinct[0]) + '</span>'
-        + '<span class="empty role-model-next">з наступного виклику</span>'
-        + '</div>';
-    } else {
-      html += '<div class="empty">ролі розійшлися по моделях · так бути не мало</div>';
-      roles.forEach(function (role) {
-        html += '<div class="row model-role-row" data-role-row="' + B.esc(role.role) + '">'
-          + '<span class="role-model-name">' + roleIcon(role.role) + '<span class="mono">' + B.esc(role.role) + '</span><br><span class="empty">'
-          + B.esc(sourceLabel(role.source)) + '</span></span>'
-          + '<span class="mono role-model-current" title="'
-          + B.esc(role.runtime + ' / ' + (role.model || '—')) + '">'
-          + B.esc(role.runtime + ' / ' + (role.model || '—')) + '</span>'
-          + '<span class="empty role-model-next">з наступного виклику</span>'
-          + '</div>';
-      });
-    }
     B.el('selection').innerHTML = globalHtml;
-    B.el('selection-roles').innerHTML = html;
   }
 
   var thinkingSaveSeq = 0;
