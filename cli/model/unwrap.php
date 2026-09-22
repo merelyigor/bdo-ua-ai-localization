@@ -35,6 +35,54 @@ function bdo_unwrap_child_json(mixed $decoded): mixed
 }
 
 /**
+ * Кінець збалансованої структури, що починається на позиції `$start`.
+ *
+ * Лічильник знає про рядки й екранування: дужка всередині тексту структурною
+ * не є. Незбалансована (тобто обірвана) структура дає `null` · зшивати її
+ * означало б вигадати кінець.
+ */
+function bdo_json_region_end(string $text, int $start): ?int
+{
+    $open = $text[$start] ?? '';
+    if ($open !== '{' && $open !== '[') {
+        return null;
+    }
+    $close = $open === '{' ? '}' : ']';
+    $depth = 0;
+    $inString = false;
+    $escaped = false;
+    for ($index = $start, $length = strlen($text); $index < $length; $index++) {
+        $char = $text[$index];
+        if ($inString) {
+            if ($escaped) {
+                $escaped = false;
+            } elseif ($char === '\\') {
+                $escaped = true;
+            } elseif ($char === '"') {
+                $inString = false;
+            }
+
+            continue;
+        }
+        if ($char === '"') {
+            $inString = true;
+
+            continue;
+        }
+        if ($char === $open) {
+            $depth++;
+        } elseif ($char === $close) {
+            $depth--;
+            if ($depth === 0) {
+                return $index;
+            }
+        }
+    }
+
+    return null;
+}
+
+/**
  * Дістати відповідь, коли модель дописала зайве ПОЗА обʼєктом JSON.
  *
  * НАВІЩО. 2026-09-22 нічний прогін патчу спинився на ремонті: модель віддала
@@ -72,41 +120,7 @@ function bdo_salvage_child_json(string $raw): ?array
     if ($start === null) {
         return null;
     }
-    $open = $text[$start];
-    $close = $open === '{' ? '}' : ']';
-    $depth = 0;
-    $inString = false;
-    $escaped = false;
-    $end = null;
-    for ($index = $start, $length = strlen($text); $index < $length; $index++) {
-        $char = $text[$index];
-        if ($inString) {
-            if ($escaped) {
-                $escaped = false;
-            } elseif ($char === '\\') {
-                $escaped = true;
-            } elseif ($char === '"') {
-                $inString = false;
-            }
-
-            continue;
-        }
-        if ($char === '"') {
-            $inString = true;
-
-            continue;
-        }
-        if ($char === $open) {
-            $depth++;
-        } elseif ($char === $close) {
-            $depth--;
-            if ($depth === 0) {
-                $end = $index;
-
-                break;
-            }
-        }
-    }
+    $end = bdo_json_region_end($text, $start);
     if ($end === null) {
         return null;
     }
@@ -131,6 +145,67 @@ function bdo_salvage_child_json(string $raw): ?array
             strlen($after),
         ),
     ];
+}
+
+/**
+ * Цілі елементи з ОБІРВАНОЇ відповіді.
+ *
+ * НАВІЩО. Модель пише масив елемент за елементом. Коли генерацію обриває вікно
+ * або стеля, останній елемент лишається недописаним · але всі попередні вже
+ * цілі й правильні. Доти набір викидав УСЮ відповідь: дванадцять готових
+ * виправлень зникали разом із тринадцятим недописаним.
+ *
+ * Це НЕ вигадування: жоден символ не додається, беруться лише елементи, які
+ * модель ДОПИСАЛА до кінця. Недописаний хвіст відрізається й лічиться вголос,
+ * а рядки, яких так і не прийшло, лишаються невиконаними · їх бере наступний
+ * крок або наступний прогін.
+ *
+ * @return list<mixed>|null Null · цілих елементів немає зовсім.
+ */
+function bdo_partial_child_json(string $raw): ?array
+{
+    $text = trim($raw);
+    if (preg_match('/```(?:json)?\s*(.+)$/s', $text, $fence) === 1) {
+        $text = trim($fence[1]);
+    }
+    // Масив елементів або лежить під ключем `items`, або є всією відповіддю.
+    $at = strpos($text, '"items"');
+    if ($at !== false) {
+        $at = strpos($text, '[', $at);
+    }
+    if ($at === false || $at === null) {
+        $at = strpos($text, '[');
+    }
+    if ($at === false) {
+        return null;
+    }
+    $items = [];
+    $index = $at + 1;
+    $length = strlen($text);
+    while ($index < $length) {
+        $char = $text[$index];
+        if ($char === ' ' || $char === "\n" || $char === "\r" || $char === "\t" || $char === ',') {
+            $index++;
+
+            continue;
+        }
+        if ($char !== '{') {
+            break;
+        }
+        $end = bdo_json_region_end($text, $index);
+        if ($end === null) {
+            // Саме тут обірвало: далі йде недописаний елемент і нічого більше.
+            break;
+        }
+        $decoded = json_decode(substr($text, $index, $end - $index + 1), true);
+        if (! is_array($decoded)) {
+            break;
+        }
+        $items[] = $decoded;
+        $index = $end + 1;
+    }
+
+    return $items === [] ? null : $items;
 }
 
 if (PHP_SAPI === 'cli' && isset($argv[0]) && realpath($argv[0]) === realpath(__FILE__)) {

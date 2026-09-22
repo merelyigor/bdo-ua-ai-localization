@@ -29,9 +29,11 @@ if (str_contains($_SERVER["REQUEST_URI"], "/api/ps")) {
     return true;
 }
 $content = (string) @file_get_contents(getenv("SCENARIO_FILE"));
+// Причина завершення задається окремим файлом: обрив треба вміти підробити.
+$done = trim((string) @file_get_contents(getenv("SCENARIO_FILE").".done"));
 header("Content-Type: application/json");
 echo json_encode([
-    "done_reason" => "stop",
+    "done_reason" => $done !== "" ? $done : "stop",
     "prompt_eval_count" => 10,
     "eval_count" => 50,
     "message" => ["content" => $content],
@@ -65,6 +67,7 @@ JSON
 
 run() {
     printf '%s' "$1" > "$SCENARIO_FILE"
+    printf '%s' "${DONE_REASON:-stop}" > "$SCENARIO_FILE.done"
     rm -f "$RESPONSE"
     set +e
     # Потік вимкнено навмисно: тут перевіряється РОЗБІР зібраної відповіді, і
@@ -140,5 +143,32 @@ test -z "$(salvage_note)" || fail "чистий JSON позначено ряту
 # Слід невдалої відповіді не має пережити успішний виклик: інакше свіжий доказ
 # плутався б із позавчорашнім.
 test ! -f "$RESPONSE.failed.txt" || fail 'після успіху лишився файл невдалої відповіді від минулого виклику'
+
+
+# 7. ОБІРВАНА ВІДПОВІДЬ · цілі елементи беруться, недописаний хвіст ні. Модель
+#    пише масив елемент за елементом, і все, що вона дописала, правильне. Доти
+#    набір викидав усю відповідь: дванадцять готових виправлень зникали разом із
+#    тринадцятим недописаним, і пачка починалась спочатку.
+DONE_REASON=length run '{"items":[{"identity_hash":"aa","text":"Меч"},{"identity_hash":"bb","text":"Щит"},{"identity_hash":"cc","text":"Спи'
+unset DONE_REASON
+test "$CODE" = 0 || fail "обірвана відповідь не віддала жодного цілого елемента: $STDERR"
+php -r '
+$items = json_decode((string) file_get_contents($argv[1]), true);
+if (! is_array($items) || count($items) !== 2) {
+    fwrite(STDERR, "взято ".(is_array($items) ? count($items) : "не масив")." замість 2\n");
+    exit(1);
+}
+exit(0);
+' "$RESPONSE" || fail 'з обірваної відповіді взято не ті елементи'
+grep -Fq 'Спи' "$RESPONSE" && fail 'недописаний елемент потрапив у відповідь · це вигадування кінця'
+grep -Fq 'обрив' <<<"$STDERR" || fail "обрив не названо вголос: $STDERR"
+grep -Fq 'обрив' <<<"$(salvage_note)" || fail 'журнал не каже, що відповідь неповна'
+
+# 7.1. Обрив ДО першого цілого елемента лишається відмовою: брати нема чого, а
+#      вигадувати початок · тим паче.
+DONE_REASON=length run '{"items":[{"identity_hash":"aa","text":"Ме'
+unset DONE_REASON
+test "$CODE" != 0 || fail 'обрив без жодного цілого елемента визнано успіхом'
+grep -Fq 'truncated' <<<"$STDERR" || fail "обрив назвали не тією причиною: $STDERR"
 
 echo 'model json salvage: OK · зайве поза структурою не коштує прогону, обрив і дві структури лишаються відмовою, чиста відповідь сліду не лишає.'
