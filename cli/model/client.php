@@ -47,7 +47,19 @@ $responsePath = $argv[3] ?? '';
 $root = dirname(__DIR__, 2);
 
 /** Відмова з машинно-читаною причиною. Мовчазних виходів у цьому файлі немає. */
-$fail = static function (string $reason, string $detail = '') use (&$journal): never {
+$fail = static function (string $reason, string $detail = '') use (&$journal, &$liveAnswerText, &$responsePath, &$failedAnswerPath): never {
+    // НЕПРИДАТНА ВІДПОВІДЬ ЗБЕРІГАЄТЬСЯ · саме вона найцінніша для розбору.
+    //
+    // Доти на відмові лишались лише роздуми, а сам текст зникав: 2026-09-22
+    // відповідь ремонтника довелось відновлювати з тимчасового потокового
+    // журналу, який живе до наступного виклику. Без неї неможливо ні сказати,
+    // ЧИМ саме відповідь непридатна, ні зібрати справжні приклади поломок.
+    if (is_string($liveAnswerText) && trim($liveAnswerText) !== '' && is_string($responsePath) && $responsePath !== '') {
+        $path = $responsePath.'.failed.txt';
+        if (@file_put_contents($path, $liveAnswerText) !== false) {
+            $failedAnswerPath = $path;
+        }
+    }
     if (is_callable($journal)) {
         $journal($reason);
     }
@@ -332,9 +344,11 @@ $answerLoopDetected = false;
 // Відповідь, врятована з-під зайвого тексту, лишає слід у журналі: рятунок
 // мусить бути ВИДНО, інакше він нічим не кращий за тихий збій.
 $jsonSalvage = '';
+// Шлях до збереженої непридатної відповіді · порожній, поки відмови немає.
+$failedAnswerPath = '';
 $journalAnswerPath = $responsePath;
 $journalThinkingPath = $responsePath.'.thinking.txt';
-$journal = static function (string $verdict) use ($callsFile, $role, $model, $provider, $started, $currentBatch, $runState, $rows, $payloadBytes, $relative, $payloadPath, &$journalAnswerPath, &$journalThinkingPath, &$stats, $numPredict, $timeout, $think, &$thinkObserved, &$thinkMismatch, &$attempt, &$thinkingBytes, &$thinkingChunks, &$thinkingRepeatFragment, &$thinkingRepeatCount, &$thinkingLoopDetected, &$answerRepeatFragment, &$answerRepeatCount, &$answerLoopDetected, &$thinkingTokensEstimate, &$answerTokensEstimate, &$jsonSalvage): void {
+$journal = static function (string $verdict) use ($callsFile, $role, $model, $provider, $started, $currentBatch, $runState, $rows, $payloadBytes, $relative, $payloadPath, &$journalAnswerPath, &$journalThinkingPath, &$stats, $numPredict, $timeout, $think, &$thinkObserved, &$thinkMismatch, &$attempt, &$thinkingBytes, &$thinkingChunks, &$thinkingRepeatFragment, &$thinkingRepeatCount, &$thinkingLoopDetected, &$answerRepeatFragment, &$answerRepeatCount, &$answerLoopDetected, &$thinkingTokensEstimate, &$answerTokensEstimate, &$jsonSalvage, &$failedAnswerPath): void {
     $dir = dirname($callsFile);
     if (! is_dir($dir) && ! mkdir($dir, 0777, true) && ! is_dir($dir)) {
         return;
@@ -361,6 +375,9 @@ $journal = static function (string $verdict) use ($callsFile, $role, $model, $pr
         'provider' => $provider,
         'verdict' => $verdict,
         'json_salvaged' => $jsonSalvage,
+        // Текст, який не пройшов перевірок · `null`, коли відмова сталася до
+        // першого байта відповіді (модель мовчала, рантайм не відповів).
+        'failed_answer' => $failedAnswerPath !== '' ? $relative($failedAnswerPath) : null,
         'ms' => (int) round((microtime(true) - $started) * 1000),
         'in' => $stats['in'],
         'out' => $stats['out'],
@@ -597,6 +614,9 @@ $onChunk = function (string $text, bool $isThinking) use (
 // Залишок від попереднього виклику тієї ж ролі не має права видавати себе за
 // роздуми цього: файл дописується потоково, тому починати треба з порожнього.
 @unlink($responsePath.'.thinking.txt');
+// Те саме стосується непридатної відповіді: залишок від минулого виклику не має
+// права виглядати як свіжий доказ.
+@unlink($responsePath.'.failed.txt');
 
 try {
     while (true) {
