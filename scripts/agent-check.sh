@@ -256,7 +256,6 @@ touched_map() {
             printf 'profile|docs|документи, посилання й норматив\n' ;;
         lib/Api/*)
             printf 'profile|api|API transport, contract і taxonomy smoke\n'
-            printf 'test|tests/cli-api-glossary-batch.sh|контракт каталогу: пачка назв і три стани написання\n'
             printf 'test|tests/cli-api-reports.sh|контракт API reports\n'
             printf 'test|tests/cli-api-glossary.sh|контракт API glossary\n'
             printf 'test|tests/cli-api-fetch.sh|контракт API fetch\n'
@@ -315,7 +314,6 @@ touched_map() {
             printf 'test|tests/name-usage.sh|усталене написання власних назв\n' ;;
         lib/Glossary/*)
             printf 'test|tests/name-usage.sh|усталене написання власних назв\n'
-            printf 'test|tests/cli-api-glossary-batch.sh|контракт каталогу: пачка назв і три стани написання\n'
             printf 'test|tests/mechanical-final-check.sh|фінальна mechanical-перевірка\n' ;;
         lib/Run/*)
             printf 'test|tests/run-pause.sh|пауза прогону\n'
@@ -2274,6 +2272,10 @@ check_runtime() { run ./bdo runtime; }
 # означало б показати результат не того середовища, у якому працює прогін.
 check_api() {
     run ./bdo api
+    # Живий контракт каталогу назв. Тут, а не в селективній карті: тест
+    # потребує ключа, а `gate touched` у CI ключа не має й пропусків не
+    # дозволяє · саме так він і почервонів 2026-09-22.
+    run bash tests/cli-api-glossary-batch.sh
     # Перелік категорій зашитий у RunSpec, а джерелом правди є API. `market`
     # забули з першого дня, і `mode start ... market` падав би «Невідома
     # категорія» на реальному домені. Дрейф має падати тут, а не на прогоні.
