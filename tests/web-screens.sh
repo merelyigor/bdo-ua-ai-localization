@@ -72,11 +72,17 @@ grep -Fq 'captured_at' "$MODELS" || fail 'екран моделей не пок�
 grep -Fq 'вік переліку' "$MODELS" || fail 'екран моделей не показує вік каталогу'
 grep -Fq 'age(catalog.captured_at)' "$MODELS" || fail 'екран моделей не обчислює вік каталогу'
 grep -Fq 'data-action="models.refresh"' "$MODELS" || fail 'кнопка оновлення каталогу не є дією models.refresh'
-grep -Fq 'models.select.role' "$MODELS" || fail 'екран моделей не має дії вибору моделі для ролі'
+# МОДЕЛЬ У НАБОРІ ОДНА · рішення власника 2026-09-22. Окремого вибору для ролі
+# на екрані бути не повинно: два джерела правди давали розбіжність між показаним
+# і тим, чим працює прогін.
+grep -Fq 'models.select.role' "$MODELS" && fail 'екран моделей знову пропонує окремий вибір для ролі'
+grep -Fq "'<span>обрати</span></button>'" "$MODELS" || fail 'кнопка вибору моделі зникла з екрана'
+grep -Fq 'усі ролі працюють однією обраною моделлю' "$MODELS" \
+    || fail 'екран не каже, що модель одна на всі ролі'
 sed -n '/function renderModels(data)/,/function bindActions()/p' "$MODELS" \
     | grep -Fq 'var globalChoice = selection.global' \
     || fail 'renderModels не готує чинний globalChoice для підсвічування рядка'
-for action in models.refresh models.select models.select.role models.clear models.clear.role models.load models.unload models.settings; do
+for action in models.refresh models.select models.clear models.load models.unload models.lock models.unlock models.settings; do
     grep -Fq "$action" "$MODELS" || fail "екран моделей не називає дію $action"
 done
 php -r '
@@ -90,7 +96,7 @@ foreach ($matches[1] as $action) {
         fwrite(STDERR, "кнопка models має дію поза Actions: $action\\n"); exit(1);
     }
 }
-foreach (["models.refresh", "models.select", "models.select.role", "models.clear", "models.clear.role", "models.load", "models.unload", "models.settings"] as $action) {
+foreach (["models.refresh", "models.select", "models.clear", "models.load", "models.unload", "models.lock", "models.unlock", "models.settings"] as $action) {
     if (! in_array($action, $allowed, true)) { fwrite(STDERR, "немає плану для $action\\n"); exit(1); }
 }
 ' "$ROOT/lib/autoload.php" "$MODELS" || fail 'кнопка екрана моделей не має команди з Actions/реєстру'

@@ -7,6 +7,7 @@ namespace Bdo\Translate\Cli\Command;
 use Bdo\Translate\Cli\Command;
 use Bdo\Translate\Cli\CommandHelp;
 use Bdo\Translate\Cli\Output;
+use Bdo\Translate\Model\ModelLocks;
 use Bdo\Translate\Model\ModelRuntimeError;
 use Bdo\Translate\Model\ModelSelection;
 use Bdo\Translate\Model\ModelSettings;
@@ -37,7 +38,9 @@ final class ModelsCommand implements Command, CommandHelp
                 'load' => $this->load($catalog, $config, $stateDir, $rest, $output),
                 'unload' => $this->unload($catalog, $config, $stateDir, $rest, $output),
                 'settings' => $this->settings($config, $stateDir, $rest, $output),
-                default => $this->failure('models: потрібно list, select, clear, load, unload, probe або settings', $output, 2),
+                'lock' => $this->lockModel($catalog, $stateDir, $rest, $output, true),
+                'unlock' => $this->lockModel($catalog, $stateDir, $rest, $output, false),
+                default => $this->failure('models: потрібно list, select, clear, load, unload, probe, lock, unlock або settings', $output, 2),
             };
         } catch (ModelRuntimeError $exception) {
             return $this->failure($exception->reason.': '.$exception->getMessage(), $output);
@@ -84,6 +87,9 @@ final class ModelsCommand implements Command, CommandHelp
                 $model['thinking_probe'] = $old['thinking_probe'];
                 $model['thinking_levels'] = (string) ($old['thinking_probe']['status'] ?? $model['thinking_levels']);
             }
+            // Замок їде разом із рядком каталогу: сторінка малює його з тих
+            // самих даних, що й решту стану моделі, а не з окремого запиту.
+            $model['locked'] = ModelLocks::isLocked($stateDir, (string) $model['runtime'], (string) $model['model']);
             $models[] = $model;
         }
         // РІВНІ ПЕРЕВІРЯЮТЬСЯ ТОДІ, КОЛИ МОДЕЛЬ ЗАВАНТАЖЕНА (рішення власника
@@ -265,36 +271,90 @@ final class ModelsCommand implements Command, CommandHelp
         } else {
             return $this->failure('models select: використання `models select <runtime> <model> [--role <роль>]`', $output, 2);
         }
-        if ($role !== null && ! isset($config['roles'][$role])) {
-            return $this->failure('unknown_role: роль «'.$role.'» відсутня в '.$this->configPath(), $output);
+        // ОДНА МОДЕЛЬ НА ВЕСЬ НАБІР · рішення власника 2026-09-22. Окремий вибір
+        // для ролі знято: він давав два джерела правди й тиху розбіжність між
+        // тим, що показано, і тим, чим насправді працює прогін.
+        if ($role !== null) {
+            return $this->failure(
+                'role_selection_removed: модель у наборі одна · `models select <runtime> <model>` застосовується до всіх ролей',
+                $output,
+                2,
+            );
         }
         $entry = $catalog->assertModel($runtime, $model);
-        ModelSelection::save($stateDir, ['runtime' => $runtime, 'model' => $model], $role === '' ? null : $role);
+        ModelSelection::save($stateDir, ['runtime' => $runtime, 'model' => $model]);
+        // Лишок старого поролевого вибору прибирається тією ж дією: інакше він
+        // лежав би в стані як міна, а сторінка показувала б «джерело: роль».
+        foreach (array_keys(ModelSelection::read($stateDir)['roles'] ?? []) as $stale) {
+            ModelSelection::clear($stateDir, (string) $stale);
+        }
         $this->syncCatalogSelection($config, $stateDir);
-        $scope = $role === null || $role === '' ? 'загальний' : 'роль '.$role;
-        $output->stdout('Вибір збережено: '.$scope.' = '.$entry['runtime'].' / '.$entry['model']."\n");
+        $output->stdout('Вибір збережено: усі ролі = '.$entry['runtime'].' / '.$entry['model']."\n");
+        return 0;
+    }
+
+    /**
+     * Замкнути або відімкнути модель.
+     *
+     * Замкнена модель лишається у переліку · власник має бачити, що вона є й що
+     * вона свідомо вимкнена. Зникнення рядка читалося б як «рантайм її втратив».
+     *
+     * Замок при цьому СКИДАЄ вибір, якщо він указував саме на цю модель:
+     * інакше в стані лишався б вибір, яким не можна скористатись, і прогін
+     * падав би на кожному виклику замість того, щоб узяти модель із конфігурації.
+     */
+    private function lockModel(RuntimeModels $catalog, string $stateDir, array $arguments, Output $output, bool $lock): int
+    {
+        $name = $lock ? 'lock' : 'unlock';
+        if (count($arguments) !== 2) {
+            return $this->failure('models '.$name.': використання `models '.$name.' <runtime> <model>`', $output, 2);
+        }
+        [$runtime, $model] = [(string) $arguments[0], (string) $arguments[1]];
+        if (trim($runtime) === '' || trim($model) === '') {
+            return $this->failure('models '.$name.': рантайм і модель не можуть бути порожні', $output, 2);
+        }
+        if ($lock) {
+            ModelLocks::lock($stateDir, $runtime, $model);
+            $dropped = [];
+            $selection = ModelSelection::read($stateDir);
+            if (($selection['global']['runtime'] ?? null) === $runtime && ($selection['global']['model'] ?? null) === $model) {
+                ModelSelection::clear($stateDir);
+                $dropped[] = 'загальний вибір';
+            }
+            foreach (array_keys($selection['roles'] ?? []) as $role) {
+                if (($selection['roles'][$role]['runtime'] ?? null) === $runtime
+                    && ($selection['roles'][$role]['model'] ?? null) === $model) {
+                    ModelSelection::clear($stateDir, (string) $role);
+                    $dropped[] = 'роль '.$role;
+                }
+            }
+            $output->stdout('Модель замкнена: '.ModelLocks::key($runtime, $model)
+                .' · для перекладу не береться'
+                .($dropped === [] ? '' : '; скинуто '.implode(', ', $dropped))."\n");
+
+            return 0;
+        }
+        ModelLocks::unlock($stateDir, $runtime, $model);
+        $output->stdout('Замок знято: '.ModelLocks::key($runtime, $model)."\n");
+
         return 0;
     }
 
     private function clear(array $config, string $stateDir, array $arguments, Output $output): int
     {
-        $role = null;
         if ($arguments !== []) {
-            if (count($arguments) === 2 && $arguments[0] === '--role') {
-                $role = $arguments[1];
-            } elseif (count($arguments) === 1 && str_starts_with($arguments[0], '--role=')) {
-                $role = substr($arguments[0], 7);
-            } else {
-                return $this->failure('models clear: дозволено лише `--role <роль>`', $output, 2);
-            }
-            if (! isset($config['roles'][$role])) {
-                return $this->failure('unknown_role: роль «'.$role.'» відсутня в '.$this->configPath(), $output);
-            }
+            return $this->failure(
+                'role_selection_removed: модель у наборі одна · `models clear` скидає вибір для всіх ролей',
+                $output,
+                2,
+            );
         }
-        ModelSelection::clear($stateDir, $role);
+        ModelSelection::clear($stateDir);
+        foreach (array_keys(ModelSelection::read($stateDir)['roles'] ?? []) as $stale) {
+            ModelSelection::clear($stateDir, (string) $stale);
+        }
         $this->syncCatalogSelection($config, $stateDir);
-        $scope = $role === null ? 'загальний' : 'роль '.$role;
-        $output->stdout('Вибір скинуто: '.$scope.'; застосовується config/roles.json'."\n");
+        $output->stdout('Вибір скинуто; застосовується config/roles.json'."\n");
         return 0;
     }
 

@@ -89,9 +89,9 @@
       <div class="bar section-bar">
         <span class="panel-icon" data-icon="roles" aria-hidden="true"></span>
         <span class="section-title">моделі ролей</span>
-        <span class="empty">окремий вибір має перевагу над глобальним</span>
+        <span class="empty">усі ролі працюють однією обраною моделлю</span>
       </div>
-      <div class="section-note">Якщо для ролі нічого не обрано, вона використовує загальну модель.</div>
+      <div class="section-note">Модель у наборі одна: обрана модель застосовується до всіх ролей одразу.</div>
       <div id="selection-roles"><div class="load"><span class="spin"></span>беру вибір ролей…</div></div>
     </div>
   </div>
@@ -172,17 +172,6 @@
       : B.esc(label || '');
   }
 
-  // Назву моделі ріжемо ПОСЕРЕДИНІ, а не з кінця: розрізняльна частина
-  // (`:35b-Claude-4.7-q4_K`) стоїть саме в хвості, і обрізаний хвіст зробив би
-  // два різні рядки однаковими на вигляд. Рідний `select` у закритому стані
-  // переносити текст не вміє взагалі · це обмеження браузера, тому повна назва
-  // лишається в підказці `title`.
-  function shortModel(text, max) {
-    if (text.length <= max) { return text; }
-    var keepTail = Math.floor((max - 1) * 0.6);
-    var keepHead = max - 1 - keepTail;
-    return text.slice(0, keepHead) + '…' + text.slice(text.length - keepTail);
-  }
 
   // ВИВІД КОМАНДИ НЕ Є ПОВІДОМЛЕННЯМ. `models list --json` друкує весь каталог,
   // і показ `steps[0].output` вивалював на екран сирий JSON замість таблиці
@@ -194,13 +183,13 @@
       return ({
         'models.refresh': 'перелік оновлено',
         'models.select': 'модель обрано для всіх ролей',
-        'models.select.role': 'модель обрано для ролі',
         'models.clear': 'загальний вибір скинуто',
-        'models.clear.role': 'вибір ролі скинуто',
         'models.load': 'завантаження почато · після нього рівні перевіряться автоматично',
         'models.unload': 'модель вивантажено з памʼяті',
         'models.probe': 'пробу рівнів завершено · каталог оновлено',
-        'models.settings': 'налаштування роздумів збережено'
+        'models.settings': 'налаштування роздумів збережено',
+        'models.lock': 'модель замкнена · для перекладу не береться',
+        'models.unlock': 'замок знято'
       })[action] || 'готово';
     }
     var steps = body.steps || [];
@@ -245,10 +234,10 @@
     var selection = data.selection || {};
     var globalChoice = selection.global && selection.global.runtime && selection.global.model ? selection.global : null;
     var globalHtml = '<div class="global-selection' + (globalChoice ? ' is-active' : '') + '">'
-      + '<span class="global-selection-label"><span class="global-selection-title">загальний вибір</span>'
+      + '<span class="global-selection-label"><span class="global-selection-title">обрана модель</span>'
       + '<span class="global-selection-hint">для всіх ролей</span></span>'
       + '<span class="global-selection-model mono">' + B.esc(choiceLabel(globalChoice)) + '</span>'
-      + (globalChoice ? ' <button class="global-selection-clear" type="button" data-action="models.clear">скинути загальний</button>' : '')
+      + (globalChoice ? ' <button class="global-selection-clear" type="button" data-action="models.clear">скинути вибір</button>' : '')
       + '</div>';
     var html = '';
     var roles = catalog.roles || [];
@@ -261,7 +250,6 @@
         + B.esc(role.runtime + ' / ' + (role.model || '—')) + '">'
         + B.esc(role.runtime + ' / ' + (role.model || '—')) + '</span>'
         + '<span class="empty role-model-next">з наступного виклику</span>'
-        + (role.source === 'role_selection' ? ' <button type="button" data-action="models.clear.role" data-role="' + B.esc(role.role) + '">скинути для ролі</button>' : '')
         + '</div>';
     });
     B.el('selection').innerHTML = globalHtml;
@@ -408,8 +396,14 @@
       var isLoading = target && modelKey(target.runtime, target.model) === modelKey(model.runtime, model.model);
       var availability = model.reason
         ? '<span class="model-status model-status-unavailable">недоступна</span><div class="model-status-detail">' + B.esc(model.reason) + '</div>'
-        : '<span class="model-status model-status-available">доступна</span>';
-      var disabled = model.reason || isLoading ? ' disabled' : '';
+        : (model.locked === true
+          ? '<span class="model-status model-status-locked">замкнена</span><div class="model-status-detail">для перекладу не береться</div>'
+          : '<span class="model-status model-status-available">доступна</span>');
+      // ЗАМОК · власник вимикає модель, яка не потрібна для перекладу. Замкнена
+      // лишається в переліку (щоб було видно, що вона є й свідомо вимкнена), але
+      // обрати або завантажити її не можна, і в переліку моделей ролі її немає.
+      var locked = model.locked === true;
+      var disabled = model.reason || isLoading || locked ? ' disabled' : '';
       var disabledTitle = model.reason ? ' title="' + B.esc(model.reason) + '"' : '';
       var thinking = model.reason ? 'не перевірено' : (model.thinking === true ? 'підтримує' : 'не підтримує');
       var thinkingReason = model.reason || model.thinking_reason || 'здатність не підтверджена каталогом';
@@ -426,42 +420,17 @@
         : (String(model.loaded) === 'так' ? B.icon('check', 'model-loaded-icon') : B.icon('circle', 'model-loaded-icon')) + B.esc(model.loaded);
       var loadingDetail = isLoading && model.thinking === true
         ? '<div class="model-status-detail model-status-loading-detail">після прогрівання автоматично перевірю low · medium · high</div>' : '';
-      return '<tr class="model-row' + (isGlobal ? ' is-global-selected' : '') + (isLoading ? ' is-loading' : '') + '"' + (isLoading ? ' aria-busy="true"' : '') + '><td class="model-runtime">' + B.esc(model.runtime) + '</td><td class="model-name mono" title="' + B.esc(model.model) + '">' + B.esc(model.model) + (isGlobal ? '<span class="model-selected-badge">загальна</span>' : '') + '</td>'
+      return '<tr class="model-row' + (isGlobal ? ' is-global-selected' : '') + (isLoading ? ' is-loading' : '') + (locked ? ' is-locked' : '') + '"' + (isLoading ? ' aria-busy="true"' : '') + '><td class="model-runtime">' + B.esc(model.runtime) + '</td><td class="model-name mono" title="' + B.esc(model.model) + '">' + B.esc(model.model) + (isGlobal ? '<span class="model-selected-badge">загальна</span>' : '') + '</td>'
         + '<td class="model-size">' + B.esc(model.size) + '</td><td class="model-loaded">' + loadedIcon + '</td><td class="model-state">' + availability + '</td>'
         + '<td class="model-state"><span class="model-status">роздуми: ' + thinking + '</span><div class="model-status-detail">' + B.esc(thinkingReason) + '</div></td>'
         + '<td class="model-state"><span class="model-status">' + levelTitle + ': ' + levelStatus + '</span>' + loadingDetail + (!isLoading && model.thinking_probe ? '<div class="model-status-detail">' + probeDetail(model.thinking_probe) + ' · ' + B.esc(when(model.thinking_probe.probed_at)) + '</div>' + (levelReason ? '<div class="model-status-detail">' + B.esc(levelReason) + '</div>' : '') : '') + '</td>'
         + '<td class="model-actions-cell"><div class="model-actions">'
-        + '<button class="model-action-primary" type="button" data-action="models.select" data-runtime="' + B.esc(model.runtime) + '" data-model="' + B.esc(model.model) + '"' + disabled + disabledTitle + '>' + B.icon('star') + '<span>обрати загально</span></button>'
+        + '<button class="model-action-primary" type="button" data-action="models.select" data-runtime="' + B.esc(model.runtime) + '" data-model="' + B.esc(model.model) + '"' + disabled + disabledTitle + '>' + B.icon('star') + '<span>обрати</span></button>'
         + '<button class="model-action" aria-label="завантажити" title="' + B.esc(model.reason || 'завантажити') + '" type="button" data-action="models.load" data-runtime="' + B.esc(model.runtime) + '" data-model="' + B.esc(model.model) + '"' + disabled + '>' + B.icon('download') + '<span>завантажити</span></button>'
-        + '<button class="model-action" aria-label="вивантажити" title="' + B.esc(model.reason || 'вивантажити') + '" type="button" data-action="models.unload" data-runtime="' + B.esc(model.runtime) + '" data-model="' + B.esc(model.model) + '"' + disabled + '>' + B.icon('upload') + '<span>вивантажити</span></button></div></td></tr>';
+        + '<button class="model-action" aria-label="вивантажити" title="' + B.esc(model.reason || 'вивантажити') + '" type="button" data-action="models.unload" data-runtime="' + B.esc(model.runtime) + '" data-model="' + B.esc(model.model) + '"' + disabled + '>' + B.icon('upload') + '<span>вивантажити</span></button>'
+        + '<button class="model-action model-lock' + (locked ? ' is-locked' : '') + '" aria-pressed="' + (locked ? 'true' : 'false') + '" aria-label="' + (locked ? 'зняти замок' : 'замкнути модель') + '" title="' + (locked ? 'замкнена · зняти замок' : 'замкнути · модель не братиметься для перекладу') + '" type="button" ' + (locked ? 'data-action="models.unlock"' : 'data-action="models.lock"') + ' data-runtime="' + B.esc(model.runtime) + '" data-model="' + B.esc(model.model) + '">' + B.icon(locked ? 'lock' : 'unlock') + '<span>' + (locked ? 'замкнена' : 'замкнути') + '</span></button>' + '</div></td></tr>';
     }).join('');
     B.el('models').innerHTML = '<div class="model-table-wrap"><table class="model-table"><thead><tr><th>рантайм</th><th>модель</th><th>розмір</th><th>завантажена</th><th>стан</th><th>роздуми</th><th>рівні</th><th>дії</th></tr></thead><tbody>' + rows + '</tbody></table></div>';
-    var options = models.filter(function (m) { return !m.reason; }).map(function (m, index) {
-      var full = m.runtime + ' / ' + m.model;
-      return '<option value="model-' + index + '" data-runtime="' + B.esc(m.runtime) + '" data-model="' + B.esc(m.model) + '"'
-        + ' title="' + B.esc(full) + '">' + B.esc(shortModel(full, 46)) + '</option>';
-    }).join('');
-    Array.prototype.forEach.call(B.el('selection-roles').querySelectorAll('[data-role-row]'), function (row) {
-      var role = row.getAttribute('data-role-row');
-      var select = document.createElement('select');
-      select.className = 'roleModel';
-      // Кегль 12 зі шкали 11/12/13 і `flex:1` · селект бере вільну ширину рядка
-      // замість того, щоб вилазити за неї довгою назвою.
-      // `flex:1` БЕЗ мінімуму дав селектам схлопнутись до «об»: сусідні комірки
-      // рядка забирали всю ширину. Тому основа 260 px і право рости, а не
-      // стискатись у ніщо.
-      select.style.flex = '1 1 260px';
-      select.style.minWidth = '260px';
-      select.setAttribute('data-role', role);
-      select.innerHTML = '<option value="">обрати модель для ролі…</option>' + options;
-      var button = document.createElement('button');
-      button.type = 'button';
-      button.textContent = 'застосувати для ролі';
-      button.setAttribute('data-action', 'models.select.role');
-      button.setAttribute('data-role', role);
-      row.appendChild(select);
-      row.appendChild(button);
-    });
   }
 
   function bindActions() {
@@ -477,16 +446,6 @@
         if (action === 'models.settings') {
           payload.think = B.el('thinkToggle').checked;
           payload.think_level = B.el('thinkLevel').value;
-        }
-        if (action === 'models.select.role') {
-          var select = document.querySelector('.roleModel[data-role="' + CSS.escape(button.dataset.role) + '"]');
-          var option = select ? select.options[select.selectedIndex] : null;
-          if (!option || !option.dataset.runtime || !option.dataset.model) {
-            B.el('actionMsg').textContent = 'спершу обери модель для ролі';
-            return;
-          }
-          payload.runtime = option.dataset.runtime;
-          payload.model = option.dataset.model;
         }
         if (action === 'models.refresh') {
           Array.prototype.forEach.call(document.querySelectorAll('[data-action="models.refresh"]'), function (refresh) {

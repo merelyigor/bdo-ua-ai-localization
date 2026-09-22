@@ -215,6 +215,7 @@ touched_map() {
             # ЛІНТЕР ПЕРШИЙ · він читає JavaScript як мову й коштує секунди,
             # тоді як тести нижче лише ВИКОНУЮТЬ код і бачать самі наслідки.
             printf 'test|tests/web-lint.sh|лінтер JavaScript сторінки\n'
+            printf 'test|tests/model-lock.sh|замок на модель\n'
             printf 'test|tests/web-server.sh|сервер і сторінка\n'
             printf 'test|tests/web-actions.sh|дії сторінки\n'
             printf 'test|tests/web-steps.sh|кроки сторінки\n'
@@ -282,7 +283,8 @@ touched_map() {
             printf 'test|tests/model-client.sh|клієнт моделі\n'
             printf 'test|tests/model-transports.sh|транспорти моделі\n'
             printf 'test|tests/model-selection.sh|перелік і вибір моделей\n'
-            printf 'test|tests/model-catalog-partial.sh|зламана модель не ховає рантайм\n' ;;
+            printf 'test|tests/model-catalog-partial.sh|зламана модель не ховає рантайм\n'
+            printf 'test|tests/model-lock.sh|замок на модель\n' ;;
         lib/Payload/*)
             printf 'test|tests/cli-payload-parity.sh|парність payload\n'
             printf 'test|tests/prompt-payload-contract.sh|контракт prompt payload\n'
@@ -401,7 +403,8 @@ touched_map() {
         cli/model/*)
             printf 'test|tests/model-client.sh|клієнт моделі\n'
             printf 'test|tests/model-transports.sh|транспорти моделі\n'
-            printf 'test|tests/model-json-salvage.sh|рятунок JSON із зайвим текстом\n' ;;
+            printf 'test|tests/model-json-salvage.sh|рятунок JSON із зайвим текстом\n'
+            printf 'test|tests/model-lock.sh|замок на модель\n' ;;
         cli/prepare/*)
             printf 'test|tests/cli-prepare-parity.sh|парність prepare\n'
             printf 'test|tests/cli-payload-parity.sh|парність payload\n'
@@ -448,7 +451,8 @@ touched_map() {
             # відсутність секретів у відстежуваних файлах.
             printf 'profile|docs|склад репозиторію, контракт .env і секрети\n' ;;
         eslint.config.mjs|package.json|package-lock.json)
-            printf 'test|tests/web-lint.sh|лінтер JavaScript сторінки\n' ;;
+            printf 'test|tests/web-lint.sh|лінтер JavaScript сторінки\n'
+            printf 'test|tests/model-lock.sh|замок на модель\n' ;;
         phpstan.neon)
             printf 'test|tests/phpstan-scope.sh|обсяг статичного аналізу\n' ;;
         bdo)

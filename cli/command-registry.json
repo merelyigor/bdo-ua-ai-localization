@@ -254,7 +254,7 @@
           "що вміє поточна ціль API (перевіряється запитом)"
         ],
         [
-          "models list|select|clear|load|unload|probe|settings",
+          "models list|select|clear|load|unload|probe|lock|unlock|settings",
           "перелік моделей Ollama/oMLX, здатності роздумів, поведінкова проба й операційний вибір"
         ]
       ]
@@ -277,7 +277,7 @@
     "^\\.\\/bdo$",
     "^\\.\\/bdo help( [a-z-]+)?$",
     "^\\.\\/bdo (paths|platform|api|runtime)$",
-    "^\\.\\/bdo models( list( --json)?| (clear|reset)( --role( [a-zA-Z0-9_-]+|=[a-zA-Z0-9_-]+)?)?| select [^[:space:]]+( [^[:space:]]+)?( --role( [a-zA-Z0-9_-]+|=[a-zA-Z0-9_-]+)?)?| (load|unload|probe) [^[:space:]]+ [^[:space:]]+| settings --think [01]( --think-level (low|medium|high))?)?$",
+    "^\\.\\/bdo models( list( --json)?| (clear|reset)| select [^[:space:]]+( [^[:space:]]+)?| (load|unload|probe|lock|unlock) [^[:space:]]+ [^[:space:]]+| settings --think [01]( --think-level (low|medium|high))?)?$",
     "^\\.\\/bdo capabilities( --refresh)?$",
     "^\\.\\/bdo platform --fix$",
     "^\\.\\/bdo patch( (active|[0-9]{1,6}))?$",

@@ -69,8 +69,9 @@ final class Actions
     {
         return ['run.start', 'run.stop', 'run.pause', 'session.new', 'session.close', 'session.journals.drop',
             'session.delete', 'moderation.approve', 'moderation.reject',
-            'models.refresh', 'models.select', 'models.select.role', 'models.clear',
-            'models.clear.role', 'models.load', 'models.unload', 'models.probe', 'models.settings'];
+            'models.refresh', 'models.select', 'models.clear',
+            'models.load', 'models.unload', 'models.probe', 'models.settings',
+            'models.lock', 'models.unlock'];
     }
 
     /**
@@ -341,8 +342,17 @@ final class Actions
             case 'models.select':
                 return self::modelAction($payload, false, 'обрати модель для всього прогону');
 
-            case 'models.select.role':
-                return self::modelAction($payload, true, 'обрати модель для ролі');
+            case 'models.lock':
+                $plan = self::modelAction($payload, false, 'замкнути модель · для перекладу не братиметься');
+                $plan['steps'][0][2] = 'lock';
+
+                return $plan;
+
+            case 'models.unlock':
+                $plan = self::modelAction($payload, false, 'зняти замок з моделі');
+                $plan['steps'][0][2] = 'unlock';
+
+                return $plan;
 
             case 'models.clear':
                 return [
@@ -351,17 +361,6 @@ final class Actions
                     'detached' => false,
                     'needs_confirm' => false,
                     'label' => 'скинути загальний вибір моделі',
-                ];
-
-            case 'models.clear.role':
-                $role = self::role($payload['role'] ?? '');
-
-                return [
-                    'steps' => [['./bdo', 'models', 'clear', '--role', $role]],
-                    'env' => [],
-                    'detached' => false,
-                    'needs_confirm' => false,
-                    'label' => 'скинути вибір моделі для ролі',
                 ];
 
             case 'models.load':

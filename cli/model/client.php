@@ -92,6 +92,20 @@ try {
         $roleConfig['provider'] = $selection['runtime'];
         $roleConfig['model'] = $selection['model'];
     }
+    // ОСТАННЯ МЕЖА ЗАМКА · тут, перед самим викликом. Вибір міг лягти в стан до
+    // того, як власник замкнув модель, або прийти з конфігурації ролі; жоден із
+    // цих шляхів не проходить повз цю перевірку. Замок, який тримає лише кнопку
+    // на сторінці, замком не є.
+    $useRuntime = (string) ($roleConfig['provider'] ?? '');
+    $useModel = (string) ($roleConfig['model'] ?? ($config['default_model'] ?? ''));
+    if ($useRuntime !== '' && $useModel !== ''
+        && \Bdo\Translate\Model\ModelLocks::isLocked($stateDir, $useRuntime, $useModel)) {
+        throw new \Bdo\Translate\Model\ModelRuntimeError(
+            'model_locked',
+            'модель '.\Bdo\Translate\Model\ModelLocks::key($useRuntime, $useModel)
+            .' замкнена власником · переклад нею не запускається',
+        );
+    }
 } catch (\Bdo\Translate\Model\ModelRuntimeError $e) {
     fwrite(STDERR, $e->reason.': '.$e->getMessage()."\n");
     exit(1);

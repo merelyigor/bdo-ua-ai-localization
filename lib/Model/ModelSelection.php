@@ -32,10 +32,17 @@ final class ModelSelection
     }
 
     /** @return array{runtime:string,model:string}|null */
+    /**
+     * МОДЕЛЬ У НАБОРІ ОДНА · рішення власника 2026-09-22.
+     *
+     * Окремий вибір для ролі знято: власник обирає одну модель, і вона працює
+     * всюди. Лишок `roles` зі старого стану тут навмисно НЕ читається · інакше
+     * забутий торішній вибір тихо переважив би свіжий, і сторінка показувала б
+     * одне, а прогін брав інше.
+     */
     public static function forRole(string $stateDir, string $role): ?array
     {
-        $data = self::read($stateDir);
-        $choice = $data['roles'][$role] ?? $data['global'] ?? null;
+        $choice = self::read($stateDir)['global'] ?? null;
 
         return is_array($choice) ? $choice : null;
     }
@@ -44,6 +51,16 @@ final class ModelSelection
     public static function save(string $stateDir, array $choice, ?string $role = null): void
     {
         self::assertChoice($choice);
+        // ЗАМОК СИЛЬНІШИЙ ЗА ВИБІР. Кнопку на сторінці можна сховати, але межа
+        // мусить стояти тут: інакше замкнену модель можна обрати командою повз
+        // сторінку, і замок став би підказкою, а не забороною.
+        if (ModelLocks::isLocked($stateDir, $choice['runtime'], $choice['model'])) {
+            throw new ModelRuntimeError(
+                'model_locked',
+                'модель '.ModelLocks::key($choice['runtime'], $choice['model'])
+                .' замкнена власником · зніми замок на сторінці моделей, якщо вона потрібна',
+            );
+        }
         $data = self::read($stateDir);
         if ($role === null) {
             $data['global'] = $choice;

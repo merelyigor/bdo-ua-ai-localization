@@ -7,6 +7,7 @@
   --ok-bg:rgba(74,183,107,.16); --ok-tx:#72d98f;
   --wr-bg:rgba(215,164,72,.16); --wr-tx:#f3c86f;
   --dn-bg:rgba(215,74,74,.16); --dn-tx:#ff9f9f;
+  --lk-off:rgba(255,120,120,.45); --lk-on:#ff4d4d;
   --body-glow:rgba(34,79,113,.26); --panel-fill:linear-gradient(145deg,rgba(20,34,48,.94),rgba(11,22,34,.96));
   --surface-alpha:rgba(255,255,255,.025); --surface-hover:rgba(255,255,255,.045);
   --line-soft:rgba(165,188,207,.12); --gold-border:rgba(215,170,87,.5);
@@ -145,6 +146,7 @@
     --ok-bg:#e5f5e9; --ok-tx:#277341;
     --wr-bg:#fff2d8; --wr-tx:#946100;
     --dn-bg:#ffe7e7; --dn-tx:#a32d2d;
+    --lk-off:rgba(163,45,45,.42); --lk-on:#d31f1f;
     --body-glow:rgba(92,143,187,.14); --panel-fill:linear-gradient(145deg,rgba(255,255,255,.98),rgba(244,248,251,.98));
     --surface-alpha:rgba(23,33,43,.025); --surface-hover:rgba(23,33,43,.045);
     --line-soft:rgba(32,55,73,.12); --gold-border:rgba(168,117,24,.5);
@@ -165,6 +167,7 @@
     --ok-bg:rgba(74,183,107,.16); --ok-tx:#72d98f;
     --wr-bg:rgba(215,164,72,.16); --wr-tx:#f3c86f;
     --dn-bg:rgba(215,74,74,.16); --dn-tx:#ff9f9f;
+    --lk-off:rgba(255,120,120,.45); --lk-on:#ff4d4d;
     --body-glow:rgba(34,79,113,.26); --panel-fill:linear-gradient(145deg,rgba(20,34,48,.94),rgba(11,22,34,.96));
     --surface-alpha:rgba(255,255,255,.025); --surface-hover:rgba(255,255,255,.045);
     --line-soft:rgba(165,188,207,.12); --gold-border:rgba(215,170,87,.5);
@@ -309,9 +312,17 @@ button.is-loading,.model-actions button.is-loading{color:var(--wr-tx);border-col
 .model-actions button{width:100%;min-width:0;min-height:34px;padding:5px 8px;white-space:normal;line-height:1.25}
 .model-action-primary{background:var(--acc-bg);color:var(--acc-tx);border-color:var(--bda);font-weight:500}
 .model-action-primary:hover{filter:brightness(1.04)}
-.model-actions button:nth-child(1){grid-column:1;grid-row:1 / span 2;align-self:center}
+.model-actions button:nth-child(1){grid-column:1;grid-row:1 / span 3;align-self:center}
 .model-actions button:nth-child(2){grid-column:2;grid-row:1}
 .model-actions button:nth-child(3){grid-column:2;grid-row:2}
+.model-actions button:nth-child(4){grid-column:2;grid-row:3}
+/* ЗАМОК · блідо-червоний, поки відкритий, і яскраво-червоний, коли тримає.
+   Колір несе стан: замкнену модель видно з іншого кінця таблиці. */
+.model-lock{color:var(--lk-off);border-color:var(--lk-off)}
+.model-lock:hover{color:var(--lk-on);border-color:var(--lk-on)}
+.model-lock.is-locked{color:var(--lk-on);border-color:var(--lk-on);font-weight:600}
+.model-row.is-locked .model-name,.model-row.is-locked .model-size{opacity:.6}
+.model-status-locked{color:var(--lk-on)}
 .section-bar{margin-bottom:8px}
 .section-title{font-weight:500}
 .section-note{font-size:12px;color:var(--ts);margin:-2px 0 8px}

@@ -216,13 +216,40 @@ grep -Fq 'рантайм дає різні відповіді на однако�
 php -r '$d=json_decode(file_get_contents($argv[1]),true); $m=$d["models"]??[]; $found=[]; foreach($m as $x) { $found[($x["runtime"]??"")."/".($x["model"]??"")]=$x; } $want=["ollama/ollama-model"=>"supported","omlx/omlx-model"=>"not_deterministic","omlx/omlx-not-tested"=>"not_tested","omlx/omlx-no-thinking"=>"unsupported"]; foreach($want as $key=>$status) { if (($found[$key]["thinking_levels"]??"")!==$status) { fwrite(STDERR,"{$key} не має стану {$status}\n"); exit(1); } } if (($found["ollama/ollama-model"]["thinking_probe"]["supported_levels"]??[]) !== ["low","high"]) { fwrite(STDERR,"probe не зберегла саме low/high\n"); exit(1); } if (($found["omlx/omlx-model"]["thinking_probe"]["reason"]??"")==="" || !isset($found["ollama/ollama-model"]["thinking_probe"]["probed_at"])) exit(1);' "$WORK/state/model-catalog.json" \
     || fail 'результат probe не записаний поруч із моделлю або стани змішані'
 
-select_output="$(run_bdo models select omlx omlx-model --role translation-worker)"
-grep -Fq 'Вибір збережено: роль translation-worker = omlx / omlx-model' <<<"$select_output" || fail "select: $select_output"
-php -r '$s=json_decode(file_get_contents($argv[1]),true); exit(($s["roles"]["translation-worker"]["runtime"]??"")==="omlx" && ($s["roles"]["translation-worker"]["model"]??"")==="omlx-model" ? 0 : 1);' "$WORK/state/model-selection.json" \
+# МОДЕЛЬ У НАБОРІ ОДНА · рішення власника 2026-09-22. Окремий вибір для ролі
+# знято: він давав два джерела правди, і показане на сторінці могло розійтися з
+# тим, чим насправді працює прогін.
+set +e
+role_output="$(run_bdo models select omlx omlx-model --role translation-worker 2>&1)"
+role_code=$?
+set -e
+test "$role_code" != 0 || fail 'окремий вибір для ролі досі приймається'
+grep -Fq 'role_selection_removed' <<<"$role_output" || fail "відмова не названа: $role_output"
+
+select_output="$(run_bdo models select omlx omlx-model)"
+grep -Fq 'Вибір збережено: усі ролі = omlx / omlx-model' <<<"$select_output" || fail "select: $select_output"
+php -r '$s=json_decode(file_get_contents($argv[1]),true); exit(($s["global"]["runtime"]??"")==="omlx" && ($s["global"]["model"]??"")==="omlx-model" ? 0 : 1);' "$WORK/state/model-selection.json" \
     || fail 'вибір не збережений у state/model-selection.json'
+# ЗАБУТИЙ СТАРИЙ ВИБІР РОЛІ НЕ МАЄ ПРАВА ПЕРЕМАГАТИ. Стан міг лишитись від
+# попередніх версій, і мовчазна перевага зробила б показане на сторінці неправдою.
+php -r '
+$path = $argv[1];
+$data = json_decode((string) file_get_contents($path), true);
+$data["roles"]["translation-worker"] = ["runtime" => "ollama", "model" => "ollama-model"];
+file_put_contents($path, json_encode($data));
+' "$WORK/state/model-selection.json"
+php -r '
+require $argv[1];
+$choice = Bdo\Translate\Model\ModelSelection::forRole($argv[2], "translation-worker");
+if (($choice["model"] ?? "") !== "omlx-model") {
+    fwrite(STDERR, "лишок старого вибору ролі переміг обрану модель: ".($choice["model"] ?? "нічого")."\n");
+    exit(1);
+}
+' "$ROOT/lib/autoload.php" "$WORK/state" || fail 'забутий вибір ролі досі сильніший за обрану модель'
+run_bdo models select omlx omlx-model >/dev/null
+grep -Fq 'translation-worker' "$WORK/state/model-selection.json" \
+    && fail 'вибір моделі не прибрав лишку старого поролевого вибору'
 run_bdo models list --json >/dev/null
-php -r '$d=json_decode(file_get_contents($argv[1]),true); foreach ($d["roles"]??[] as $r) { if (($r["role"]??"")==="translation-worker" && ($r["source"]??"")==="role_selection" && ($r["model"]??"")==="omlx-model") exit(0); } fwrite(STDERR,"catalog не показав перевизначення ролі\n"); exit(1);' "$WORK/state/model-catalog.json" \
-    || fail 'catalog не показав чинний вибір для ролі'
 
 run_bdo models load omlx omlx-model | grep -Fq 'завантажена в памʼять' || fail 'oMLX load не дочекався loaded=true'
 run_bdo models load omlx omlx-not-tested | grep -Fq 'рівні thinking перевірено автоматично' || fail 'load не запустив автоматичну probe рівнів'
@@ -242,13 +269,15 @@ grep -Fq 'керування памʼяттю належить власнику'
 
 BDO_MODEL_SHOW=0 BDO_ROLES_CONFIG="$WORK/roles.json" BDO_STATE_DIR="$WORK/state" \
     php "$ROOT/cli/model/client.php" translation-worker "$WORK/payload.json" "$WORK/response.json" --schema "$WORK/schema.json" \
-    >/dev/null || fail 'client не застосував вибір ролі'
+    >/dev/null || fail 'client не застосував обрану модель'
 grep -Fq '"model":"omlx-model"' "$STATE_FILE.omlx-request" || fail 'client не взяв model/runtime зі state'
 
-run_bdo models clear --role translation-worker | grep -Fq 'застосовується config/roles.json' || fail 'role clear не скинув вибір'
-if [ -e "$WORK/state/model-selection.json" ] && grep -Fq 'translation-worker' "$WORK/state/model-selection.json"; then
-    fail 'role clear лишив вибір ролі'
-fi
+set +e
+clear_role="$(run_bdo models clear --role translation-worker 2>&1)"
+clear_role_code=$?
+set -e
+test "$clear_role_code" != 0 || fail 'скидання для окремої ролі досі приймається'
+grep -Fq 'role_selection_removed' <<<"$clear_role" || fail "відмова не названа: $clear_role"
 run_bdo models select ollama-model >/dev/null
 run_bdo models clear >/dev/null
 if [ -s "$WORK/state/model-selection.json" ] && grep -Eq 'global|roles' "$WORK/state/model-selection.json"; then
