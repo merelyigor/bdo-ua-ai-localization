@@ -455,6 +455,90 @@ $makeRequest = static function (bool|string $requestThink) use ($role, $model, $
 $request = $makeRequest($think);
 
 /**
+ * Роль-лагоджувач JSON · останній шар автономності.
+ *
+ * Кличеться ЛИШЕ тоді, коли детермінований рятунок не впорався: спершу код
+ * (миттєво й безкоштовно), потім друга спроба самої ролі, і лише потім оця.
+ * Тому її повільність ціни майже не має · вона працює рідко.
+ *
+ * Модель та сама, що й у решти набору (модель у наборі одна). Схема теж та
+ * сама, тому граматика рантайму тримає форму вже на рівні декодування.
+ *
+ * ДОВІРИ НЕМАЄ · Є ПЕРЕВІРКА. Кожне значення звіряється з поламаним текстом
+ * дослівно (`bdo_repair_unfaithful_value`), і перше вигадане скасовує ремонт
+ * цілком. Через це роль здатна лише переставити те, що модель уже написала, і
+ * не здатна переписати переклад.
+ *
+ * `BDO_JSON_REPAIR=off` вимикає шар цілком.
+ *
+ * @return array{items:mixed,note:string}|null Null · полагодити не вдалося.
+ */
+$repairJson = static function (string $broken) use ($root, $transport, $model, $schema, $numCtx, $timeout): ?array {
+    if (getenv('BDO_JSON_REPAIR') === 'off') {
+        fwrite(STDERR, "json-repair: вимкнено через BDO_JSON_REPAIR=off\n");
+
+        return null;
+    }
+    $promptPath = $root.'/roles/json-repair.md';
+    if (! is_file($promptPath)) {
+        fwrite(STDERR, "json-repair: немає {$promptPath}\n");
+
+        return null;
+    }
+    require_once __DIR__.'/unwrap.php';
+    try {
+        $reply = $transport->send(new \Bdo\Translate\Model\Transport\Request(
+            role: 'json-repair',
+            model: $model,
+            prompt: (string) file_get_contents($promptPath),
+            payload: (string) json_encode(['broken' => $broken], JSON_UNESCAPED_UNICODE),
+            schema: $schema,
+            stream: false,
+            // Роздуми тут зайві: це робота розділових знаків, а не міркування.
+            think: false,
+            temperature: 0.0,
+            numCtx: $numCtx,
+            numPredict: null,
+            timeout: $timeout,
+        ), null);
+    } catch (\Throwable $error) {
+        fwrite(STDERR, 'json-repair: виклик не вдався · '.$error->getMessage()."\n");
+
+        return null;
+    }
+    $text = trim($reply->content);
+    if ($text === '') {
+        fwrite(STDERR, "json-repair: порожня відповідь\n");
+
+        return null;
+    }
+    $decoded = json_decode($text, true);
+    if (! is_array($decoded)) {
+        $salvage = bdo_salvage_child_json($text);
+        if ($salvage === null) {
+            fwrite(STDERR, "json-repair: сам лагоджувач віддав не JSON\n");
+
+            return null;
+        }
+        $decoded = $salvage['value'];
+    }
+    $unfaithful = bdo_repair_unfaithful_value($decoded, $broken);
+    if ($unfaithful !== null) {
+        // Саме тут роль перестає бути небезпечною: вигаданий текст скасовує
+        // ремонт, і виклик чесно падає, а не їде з підміненим змістом.
+        fwrite(STDERR, 'json-repair: ВІДХИЛЕНО · у відповіді зʼявився власний текст лагоджувача: «'
+            .mb_substr($unfaithful, 0, 60)."»\n");
+
+        return null;
+    }
+    $items = bdo_unwrap_child_json($decoded);
+    $count = is_array($items) ? count($items) : 0;
+
+    return ['items' => $decoded, 'note' => 'роль json-repair, елементів '.$count.', кожне значення звірено з оригіналом'];
+};
+
+
+/**
  * Живий показ роботи моделі.
  *
  * Пише в stderr, і саме тому видно в панелі `tmux`: stdout клієнта лишається
@@ -775,11 +859,27 @@ if (! is_array($decoded)) {
     require_once __DIR__.'/unwrap.php';
     $salvaged = bdo_salvage_child_json($content);
     if ($salvaged === null) {
-        $fail('not_json', substr($content, 0, 200));
+        // ОСТАННІЙ ШАНС · РОЛЬ-ЛАГОДЖУВАЧ. Код знімає лише ті поломки, які ми
+        // вже бачили; форм поломки більше, ніж можна перелічити наперед, і
+        // модель узагальнює там, де перелік закінчується (рішення власника
+        // 2026-09-23: автономність дорожча за швидкість).
+        //
+        // Роль системна: вона не знає ні мови, ні предмета, ні навіщо цей текст.
+        // Її вихід НЕ БЕРЕТЬСЯ НА ВІРУ · кожне значення звіряється з оригіналом
+        // дослівно, тому переписати переклад вона фізично не може.
+        $repair = $repairJson($content);
+        if ($repair === null) {
+            $fail('not_json', substr($content, 0, 200));
+        }
+        $decoded = $repair['items'];
+        $jsonSalvage = $repair['note'];
+        fwrite(STDERR, 'УВАГА: форму відповіді полагодила роль json-repair · '.$jsonSalvage."\n");
     }
-    $decoded = $salvaged['value'];
-    $jsonSalvage = $salvaged['note'];
-    fwrite(STDERR, 'УВАГА: відповідь ролі не була чистим JSON · врятовано: '.$jsonSalvage."\n");
+    if ($salvaged !== null) {
+        $decoded = $salvaged['value'];
+        $jsonSalvage = $salvaged['note'];
+        fwrite(STDERR, 'УВАГА: відповідь ролі не була чистим JSON · врятовано: '.$jsonSalvage."\n");
+    }
 }
 // Конверт `{"items":[…]}` розпаковуємо в масив · саме такий вигляд очікують
 // `./bdo items` і решта конвеєра. Правило живе окремо, бо його

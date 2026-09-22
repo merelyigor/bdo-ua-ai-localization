@@ -252,7 +252,8 @@ touched_map() {
             printf 'test|tests/schema-provider-compat.sh|сумісність schema провайдерів\n'
             printf 'test|tests/glossary-provenance.sh|походження правил глосарія\n'
             printf 'test|tests/worker-reference.sh|довідковий текст воркера\n'
-            printf 'test|tests/name-usage.sh|усталене написання власних назв\n' ;;
+            printf 'test|tests/name-usage.sh|усталене написання власних назв\n'
+            printf 'test|tests/model-json-repair.sh|роль-лагоджувач JSON\n' ;;
         docs/*|*.md|.cursorrules)
             printf 'profile|docs|документи, посилання й норматив\n' ;;
         lib/Api/*)
@@ -404,6 +405,7 @@ touched_map() {
             printf 'test|tests/model-client.sh|клієнт моделі\n'
             printf 'test|tests/model-transports.sh|транспорти моделі\n'
             printf 'test|tests/model-json-salvage.sh|рятунок JSON із зайвим текстом\n'
+            printf 'test|tests/model-json-repair.sh|роль-лагоджувач JSON\n'
             printf 'test|tests/model-lock.sh|замок на модель\n' ;;
         cli/prepare/*)
             printf 'test|tests/cli-prepare-parity.sh|парність prepare\n'

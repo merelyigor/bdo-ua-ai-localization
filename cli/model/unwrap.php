@@ -208,6 +208,61 @@ function bdo_partial_child_json(string $raw): ?array
     return $items === [] ? null : $items;
 }
 
+/**
+ * Чи взяв лагоджувач КОЖНЕ значення дослівно з поламаного тексту.
+ *
+ * НАВІЩО. Роль `json-repair` бачить сирий текст відповіді й мусить лише
+ * переставити розділові знаки. Але модель · це модель: вона може дорогою
+ * «покращити» слово, дописати крапку, перекласти. Саме тому їй НЕ ДОВІРЯЮТЬ, а
+ * ПЕРЕВІРЯЮТЬ: кожен рядковий шматок результату мусить дослівно існувати в
+ * оригіналі. Тоді роль фізично не здатна змінити переклад · вона може лише
+ * переставити те, що вже було.
+ *
+ * Викинути елемент вона МОЖЕ (обірваний хвіст інакше не відрізати), і це
+ * безпечно: повноту там, де вона критична, вимагає драйвер.
+ *
+ * @param mixed $items Розібрана відповідь лагоджувача.
+ * @return string|null Null · усе дослівно; інакше перше вигадане значення.
+ */
+function bdo_repair_unfaithful_value(mixed $items, string $broken): ?string
+{
+    // Оригінал порівнюємо в РОЗЕКРАНОВАНОМУ вигляді: у сирому тексті лапки й
+    // переноси рядка стоять як `\"` і `\n`, а в розібраному значенні · уже як
+    // символи. Без цього кроку чесне значення виглядало б вигаданим.
+    $haystack = str_replace(
+        ['\\"', '\\\\', '\\/', '\\n', '\\r', '\\t'],
+        ['"', '\\', '/', "\n", "\r", "\t"],
+        $broken,
+    );
+    $haystack = preg_replace_callback(
+        '/\\\\u([0-9a-fA-F]{4})/',
+        static fn (array $m): string => mb_convert_encoding(pack('n', hexdec($m[1])), 'UTF-8', 'UTF-16BE'),
+        $haystack,
+    ) ?? $haystack;
+
+    $walk = static function (mixed $node) use (&$walk, $haystack, $broken): ?string {
+        if (is_string($node)) {
+            if ($node === '' || str_contains($haystack, $node) || str_contains($broken, $node)) {
+                return null;
+            }
+
+            return $node;
+        }
+        if (is_array($node)) {
+            foreach ($node as $value) {
+                $bad = $walk($value);
+                if ($bad !== null) {
+                    return $bad;
+                }
+            }
+        }
+
+        return null;
+    };
+
+    return $walk($items);
+}
+
 if (PHP_SAPI === 'cli' && isset($argv[0]) && realpath($argv[0]) === realpath(__FILE__)) {
     $raw = (string) stream_get_contents(STDIN);
     $decoded = json_decode($raw, true);
