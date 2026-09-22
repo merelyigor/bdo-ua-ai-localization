@@ -256,6 +256,7 @@ touched_map() {
             printf 'profile|docs|документи, посилання й норматив\n' ;;
         lib/Api/*)
             printf 'profile|api|API transport, contract і taxonomy smoke\n'
+            printf 'test|tests/cli-api-glossary-batch.sh|контракт каталогу: пачка назв і три стани написання\n'
             printf 'test|tests/cli-api-reports.sh|контракт API reports\n'
             printf 'test|tests/cli-api-glossary.sh|контракт API glossary\n'
             printf 'test|tests/cli-api-fetch.sh|контракт API fetch\n'
@@ -314,6 +315,7 @@ touched_map() {
             printf 'test|tests/name-usage.sh|усталене написання власних назв\n' ;;
         lib/Glossary/*)
             printf 'test|tests/name-usage.sh|усталене написання власних назв\n'
+            printf 'test|tests/cli-api-glossary-batch.sh|контракт каталогу: пачка назв і три стани написання\n'
             printf 'test|tests/mechanical-final-check.sh|фінальна mechanical-перевірка\n' ;;
         lib/Run/*)
             printf 'test|tests/run-pause.sh|пауза прогону\n'
