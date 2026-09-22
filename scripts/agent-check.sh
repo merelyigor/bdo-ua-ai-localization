@@ -281,7 +281,8 @@ touched_map() {
         lib/Model/*)
             printf 'test|tests/model-client.sh|клієнт моделі\n'
             printf 'test|tests/model-transports.sh|транспорти моделі\n'
-            printf 'test|tests/model-selection.sh|перелік і вибір моделей\n' ;;
+            printf 'test|tests/model-selection.sh|перелік і вибір моделей\n'
+            printf 'test|tests/model-catalog-partial.sh|зламана модель не ховає рантайм\n' ;;
         lib/Payload/*)
             printf 'test|tests/cli-payload-parity.sh|парність payload\n'
             printf 'test|tests/prompt-payload-contract.sh|контракт prompt payload\n'

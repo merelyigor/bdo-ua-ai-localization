@@ -226,7 +226,42 @@ final class RuntimeModels
                 $thinking = false;
                 $parameters = [];
                 if ($includeCapabilities) {
-                    $show = $this->requestJson('POST', $this->endpoint($settings).'/api/show', ['model' => $name], 'capabilities');
+                    // ОДНА ПОЛАМАНА МОДЕЛЬ НЕ ХОВАЄ КАТАЛОГ.
+                    //
+                    // 2026-09-22 власник побачив порожній каталог Ollama з
+                    // одним рядком «недоступна». Рантайм при цьому працював, і
+                    // моделей у ньому було девʼять: `/api/tags` віддав усі, але
+                    // `/api/show` для `qwen3.6:35b-a3b-coding-nvfp4` повернув
+                    // 404 · модель числиться в переліку, а розповісти про себе
+                    // не може. Виняток летів нагору, `list()` ловив його на
+                    // рівні РАНТАЙМУ, і вісім справних моделей зникали разом із
+                    // однією зламаною.
+                    //
+                    // Тому збій запиту про можливості лишається збоєм САМОЇ
+                    // моделі: рядок зберігається, причина називається вголос, а
+                    // сусідні моделі не страждають. Недоступність цілого
+                    // рантайму (`/api/tags`) і далі валить рантайм · це інший
+                    // випадок, і ховати його не можна.
+                    try {
+                        $show = $this->requestJson('POST', $this->endpoint($settings).'/api/show', ['model' => $name], 'capabilities');
+                    } catch (ModelRuntimeError $error) {
+                        $models[] = [
+                            'runtime' => $runtime,
+                            'model' => $name,
+                            'size' => trim((string) ($entry['remote_host'] ?? '')) !== ''
+                                ? 'на сервері'
+                                : $this->formatBytes((int) ($entry['size'] ?? 0)),
+                            'revision' => (string) ($entry['digest'] ?? $entry['modified_at'] ?? ''),
+                            'loaded' => isset($loaded[$name]) ? 'так' : 'ні',
+                            'reason' => $error->reason.': '.$error->getMessage(),
+                            'thinking' => false,
+                            'thinking_reason' => 'невідомо · модель не розповідає про себе',
+                            'thinking_levels' => 'not_tested',
+                            'parameters' => [],
+                        ];
+
+                        continue;
+                    }
                     $capabilities = is_array($show['capabilities'] ?? null) ? $show['capabilities'] : [];
                     $thinking = in_array('thinking', $capabilities, true);
                     // ПАРАМЕТРИ БЕРУТЬСЯ З ТІЄЇ САМОЇ ВІДПОВІДІ · зайвого запиту
