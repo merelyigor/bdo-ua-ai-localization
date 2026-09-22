@@ -318,6 +318,9 @@ button.is-loading,.model-actions button.is-loading{color:var(--wr-tx);border-col
 .model-actions button:nth-child(4){grid-column:2;grid-row:3}
 /* ЗАМОК · блідо-червоний, поки відкритий, і яскраво-червоний, коли тримає.
    Колір несе стан: замкнену модель видно з іншого кінця таблиці. */
+/* Іконка замка БІЛЬША за решту: вона несе стан, а не прикрашає кнопку, і
+   власник цілиться саме в неї (замала іконка · 2026-09-23). */
+.model-lock .icon{width:20px;height:20px;stroke-width:2.1}
 .model-lock{color:var(--lk-off);border-color:var(--lk-off)}
 .model-lock:hover{color:var(--lk-on);border-color:var(--lk-on)}
 .model-lock.is-locked{color:var(--lk-on);border-color:var(--lk-on);font-weight:600}

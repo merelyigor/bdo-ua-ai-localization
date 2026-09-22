@@ -38,8 +38,8 @@ final class ModelsCommand implements Command, CommandHelp
                 'load' => $this->load($catalog, $config, $stateDir, $rest, $output),
                 'unload' => $this->unload($catalog, $config, $stateDir, $rest, $output),
                 'settings' => $this->settings($config, $stateDir, $rest, $output),
-                'lock' => $this->lockModel($catalog, $stateDir, $rest, $output, true),
-                'unlock' => $this->lockModel($catalog, $stateDir, $rest, $output, false),
+                'lock' => $this->lockModel($config, $stateDir, $rest, $output, true),
+                'unlock' => $this->lockModel($config, $stateDir, $rest, $output, false),
                 default => $this->failure('models: потрібно list, select, clear, load, unload, probe, lock, unlock або settings', $output, 2),
             };
         } catch (ModelRuntimeError $exception) {
@@ -303,7 +303,7 @@ final class ModelsCommand implements Command, CommandHelp
      * інакше в стані лишався б вибір, яким не можна скористатись, і прогін
      * падав би на кожному виклику замість того, щоб узяти модель із конфігурації.
      */
-    private function lockModel(RuntimeModels $catalog, string $stateDir, array $arguments, Output $output, bool $lock): int
+    private function lockModel(array $config, string $stateDir, array $arguments, Output $output, bool $lock): int
     {
         $name = $lock ? 'lock' : 'unlock';
         if (count($arguments) !== 2) {
@@ -328,6 +328,8 @@ final class ModelsCommand implements Command, CommandHelp
                     $dropped[] = 'роль '.$role;
                 }
             }
+            $this->syncCatalogLocks($stateDir);
+            $this->syncCatalogSelection($config, $stateDir);
             $output->stdout('Модель замкнена: '.ModelLocks::key($runtime, $model)
                 .' · для перекладу не береться'
                 .($dropped === [] ? '' : '; скинуто '.implode(', ', $dropped))."\n");
@@ -335,6 +337,7 @@ final class ModelsCommand implements Command, CommandHelp
             return 0;
         }
         ModelLocks::unlock($stateDir, $runtime, $model);
+        $this->syncCatalogLocks($stateDir);
         $output->stdout('Замок знято: '.ModelLocks::key($runtime, $model)."\n");
 
         return 0;
@@ -359,6 +362,38 @@ final class ModelsCommand implements Command, CommandHelp
     }
 
     /** @param array<string,mixed> $config */
+    /**
+     * Перенести замки у ЗНЯТИЙ каталог, який читає сторінка.
+     *
+     * Сторінка малює перелік не з живих рантаймів, а з `state/model-catalog.json`.
+     * Поки замок писався лише у власний файл, знятий каталог лишався зі старим
+     * `locked`, і натиснутий замок не змінював НІЧОГО на екрані: наступний клік
+     * знову просив «замкнути», бо сторінка й далі вважала модель відкритою
+     * (спіймано власником 2026-09-23).
+     */
+    private function syncCatalogLocks(string $stateDir): void
+    {
+        $path = rtrim($stateDir, '/').'/model-catalog.json';
+        if (! is_file($path)) {
+            return;
+        }
+        $catalog = json_decode((string) file_get_contents($path), true);
+        if (! is_array($catalog) || ! is_array($catalog['models'] ?? null)) {
+            return;
+        }
+        foreach ($catalog['models'] as $index => $model) {
+            if (! is_array($model)) {
+                continue;
+            }
+            $catalog['models'][$index]['locked'] = ModelLocks::isLocked(
+                $stateDir,
+                (string) ($model['runtime'] ?? ''),
+                (string) ($model['model'] ?? ''),
+            );
+        }
+        $this->writeCatalog($stateDir, $catalog);
+    }
+
     private function syncCatalogSelection(array $config, string $stateDir): void
     {
         $path = rtrim($stateDir, '/').'/model-catalog.json';

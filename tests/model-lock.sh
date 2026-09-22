@@ -140,6 +140,27 @@ foreach ($models as $model) {
 }
 ' "$WORK/catalog.json" || fail 'каталог не показує замка так, як його бачить код'
 
+# 6.1. ЗАМОК МУСИТЬ ЗʼЯВИТИСЬ У ЗНЯТОМУ КАТАЛОЗІ ОДРАЗУ · без окремого
+#      оновлення переліку. Сторінка малює рядки саме з нього, і поки замок жив
+#      лише у власному файлі, натиснута кнопка не змінювала на екрані нічого:
+#      наступний клік знову просив «замкнути», бо сторінка вважала модель
+#      відкритою (спіймано власником 2026-09-23).
+locked_in_catalog() {
+    php -r '
+    $data = json_decode((string) file_get_contents($argv[1]), true);
+    foreach ($data["models"] ?? [] as $model) {
+        if (($model["model"] ?? "") === $argv[2]) { echo ($model["locked"] ?? false) ? "так" : "ні"; return; }
+    }
+    echo "немає";
+    ' "$WORK/state/model-catalog.json" "$1"
+}
+bdo models unlock ollama зайва >/dev/null
+test "$(locked_in_catalog зайва)" = 'ні' || fail 'знятий замок не дійшов до каталогу сторінки'
+bdo models lock ollama зайва >/dev/null
+test "$(locked_in_catalog зайва)" = 'так' \
+    || fail 'поставлений замок не дійшов до каталогу сторінки · кнопка не змінювала б нічого'
+test "$(locked_in_catalog потрібна)" = 'ні' || fail 'замок зачепив сусідню модель у каталозі'
+
 # 7. Сторінка мусить брати замок ІЗ ТИХ САМИХ даних, а не з окремого запиту, і
 #    показувати стан замка самим рядком · інакше замкнену модель не відрізнити.
 grep -Fq "var locked = model.locked === true;" "$ROOT/web/models.html" \
