@@ -79,6 +79,12 @@ grep -Fq 'models.select.role' "$MODELS" && fail 'екран моделей зн�
 grep -Fq "'<span>обрати</span></button>'" "$MODELS" || fail 'кнопка вибору моделі зникла з екрана'
 grep -Fq 'усі ролі працюють однією обраною моделлю' "$MODELS" \
     || fail 'екран не каже, що модель одна на всі ролі'
+# ОДНА МОДЕЛЬ · ОДИН РЯДОК. Поки всі ролі сходяться, вісім однакових рядків були
+# б копіями того самого тексту; список лишається тільки як СИГНАЛ розходження.
+grep -Fq "distinct.length === 1" "$MODELS" \
+    || fail 'екран знову малює рядок на кожну роль замість одного зведеного'
+grep -Fq 'ролі розійшлися по моделях' "$MODELS" \
+    || fail 'розходження ролей по моделях нічим не буде видно'
 sed -n '/function renderModels(data)/,/function bindActions()/p' "$MODELS" \
     | grep -Fq 'var globalChoice = selection.global' \
     || fail 'renderModels не готує чинний globalChoice для підсвічування рядка'

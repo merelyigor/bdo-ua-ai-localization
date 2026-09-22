@@ -241,17 +241,35 @@
       + '</div>';
     var html = '';
     var roles = catalog.roles || [];
-    if (!roles.length) { html += '<div class="empty">ролей у конфігурації немає</div>'; }
-    roles.forEach(function (role) {
-      html += '<div class="row model-role-row" data-role-row="' + B.esc(role.role) + '">'
-        + '<span class="role-model-name">' + roleIcon(role.role) + '<span class="mono">' + B.esc(role.role) + '</span><br><span class="empty">'
-        + B.esc(sourceLabel(role.source)) + '</span></span>'
-        + '<span class="mono role-model-current" title="'
-        + B.esc(role.runtime + ' / ' + (role.model || '—')) + '">'
-        + B.esc(role.runtime + ' / ' + (role.model || '—')) + '</span>'
+    // МОДЕЛЬ ОДНА · рядок на кожну роль був би вісьмома копіями того самого
+    // тексту. Поки всі ролі сходяться, показуємо ОДИН рядок; список вертається
+    // лише якщо вони чомусь розійшлись · тоді це вже не шум, а сигнал.
+    var used = {};
+    roles.forEach(function (role) { used[role.runtime + ' / ' + (role.model || '—')] = role.source; });
+    var distinct = Object.keys(used);
+    if (!roles.length) {
+      html += '<div class="empty">ролей у конфігурації немає</div>';
+    } else if (distinct.length === 1) {
+      html += '<div class="row model-role-row">'
+        + '<span class="role-model-name">' + roleIcon('translation-worker')
+        + '<span>усі ролі · ' + B.num(roles.length) + '</span><br><span class="empty">'
+        + B.esc(sourceLabel(used[distinct[0]])) + '</span></span>'
+        + '<span class="mono role-model-current" title="' + B.esc(distinct[0]) + '">' + B.esc(distinct[0]) + '</span>'
         + '<span class="empty role-model-next">з наступного виклику</span>'
         + '</div>';
-    });
+    } else {
+      html += '<div class="empty">ролі розійшлися по моделях · так бути не мало</div>';
+      roles.forEach(function (role) {
+        html += '<div class="row model-role-row" data-role-row="' + B.esc(role.role) + '">'
+          + '<span class="role-model-name">' + roleIcon(role.role) + '<span class="mono">' + B.esc(role.role) + '</span><br><span class="empty">'
+          + B.esc(sourceLabel(role.source)) + '</span></span>'
+          + '<span class="mono role-model-current" title="'
+          + B.esc(role.runtime + ' / ' + (role.model || '—')) + '">'
+          + B.esc(role.runtime + ' / ' + (role.model || '—')) + '</span>'
+          + '<span class="empty role-model-next">з наступного виклику</span>'
+          + '</div>';
+      });
+    }
     B.el('selection').innerHTML = globalHtml;
     B.el('selection-roles').innerHTML = html;
   }
