@@ -1,6 +1,6 @@
 [project]
 name = "bdo-ua-translate"
-version = "1.46.3"
+version = "1.46.4"
 description = "Конвеєр перекладу Black Desert Online українською через BDO UA Translate Agent API: локальні моделі, ролі, механічні перевірки, запис у шар."
 readme = "README.md"
 requires-python = ">=3.13"

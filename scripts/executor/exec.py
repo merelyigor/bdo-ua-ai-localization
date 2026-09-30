@@ -17,7 +17,7 @@ DEFAULTS = {'EXECUTOR_MODE': 'opencode', 'EXECUTOR_MODEL': 'opencode-go/deepseek
             'EXECUTOR_SCOUT_TIMEOUT': '900', 'EXECUTOR_SCOUT_MCP': 'playwright,context7', 'EXECUTOR_MAX_PARALLEL_SCOUT': '2',
             'EXECUTOR_CODEX_BIN': 'codex', 'EXECUTOR_CODEX_MIN_VERSION': '0.156.1'}
 REPORT_LINES, SCOUT_REPORT_LINES, TAIL_LINES, LOG_TAIL_LINES, POLL = 30, 40, 10, 80, 0.2
-VERSION = '1.5.1'
+VERSION = '1.6.0'
 WORKER_MODES, SCOUT_MODES = ('opencode', 'native'), ('codex', 'native')
 MODE_FILE = os.path.join('.executor', 'mode.env')
 WORKER_KEYS = ('EXECUTOR_MODE', 'EXECUTOR_MODEL')
@@ -382,6 +382,17 @@ def detect_client():
     env = os.environ
     return ('opencode' if env.get('OPENCODE') or env.get('OPENCODE_PID') else 'codex' if env.get('CODEX_THREAD_ID')
             else 'claude-code' if env.get('CLAUDECODE') else 'unknown')
+CLIENT_NAMES = {'claude-code': 'Claude', 'codex': 'Codex', 'opencode': 'OpenCode'}
+def labels(cfg, client):
+    # Підпис фонового запуску: власник бачить у чаті, хто саме працює — рушій і модель.
+    sub = 'субагент %s <модель>' % CLIENT_NAMES.get(client, 'клієнта')
+    worker = 'OpenCode %s' % cfg['model'] if cfg['worker_mode'] == 'opencode' else sub
+    scout = 'Codex %s %s' % (cfg['scout_model'], cfg['scout_effort']) if cfg['scout_mode'] == 'codex' else sub
+    return 'Виконавець · %s' % worker, 'Помічник · %s' % scout
+def announce(run_id, engine):
+    # Перший рядок живого виводу — у stderr: stdout починається з підсумку, його читають.
+    sys.stderr.write('exec.py: %s · %s\n' % (run_id, engine))
+    sys.stderr.flush()
 def route(cfg, me):
     worker = ('self' if same_model(me, cfg['model']) else 'run') if cfg['worker_mode'] == 'opencode' else 'prepare'
     scout = ('self' if same_model(me, cfg['scout_model']) else 'scout') if cfg['scout_mode'] == 'codex' else 'native'
@@ -417,6 +428,7 @@ def cmd_run(root, cfg, args):
     bin_argv = shlex.split(cfg['opencode_bin']) or die('EXECUTOR_OPENCODE_BIN порожній')
     before = snapshot(root)
     started = time.monotonic()
+    announce(run_id, 'OpenCode %s' % model)
     status, rc = spawn(root, run_dir, bin_argv, prompt, build_env(cfg['disable_mcp']), model, 'exec-%s' % run_id, cfg['idle_timeout'], started + timeout)
     chunks, tokens = events_summary(os.path.join(run_dir, 'events.jsonl'))
     exit_code = finalize(root, cfg, run_id, task, before, model, status, rc, int(time.monotonic() - started), chunks, tokens)
@@ -557,6 +569,7 @@ def cmd_scout(root, cfg, args):
     pw = os.path.join(root, '.playwright-mcp')
     pw_before, before = os.path.exists(pw), snapshot(root)
     last, started = os.path.join(run_dir, 'last.md'), time.monotonic()
+    announce(run_id, 'Codex %s %s' % (model, cfg['scout_effort']))
     deadline = started + (args.timeout or task['timeout'] or cfg['scout_timeout'])
     status, rc = spawn_argv(root, run_dir, codex_argv(cfg, root, last, model, prompt), os.environ.copy(), cfg['idle_timeout'], deadline)
     seconds = int(time.monotonic() - started)
@@ -670,6 +683,8 @@ def cmd_mode(root, cfg, args):
         print('MODE scout codex · %s %s · %s' % (cfg['scout_model'], cfg['scout_effort'], source(SCOUT_KEYS)))
     me, client = self_model(args), detect_client()
     print('CLIENT %s · self-model %s' % (client, me or 'не назване'))
+    for role, text in zip(('worker', 'scout'), labels(cfg, client)):
+        print('LABEL %s %s' % (role, text))
     way = route(cfg, me)
     print('ROUTE worker → %s' % {'self': 'сама (та сама модель)', 'run': 'exec.py run', 'prepare': 'exec.py prepare/finish'}[way['worker']])
     print('ROUTE scout → %s' % {'self': 'сама (та сама модель)', 'scout': 'exec.py scout', 'native': 'штатний субагент лише для читання'}[way['scout']])
