@@ -1,7 +1,7 @@
 # bdo-ua-translate-python · правила для агента-розробника
 
 Конвеєр перекладу Black Desert Online українською через BDO UA Translate Agent
-API на Python. Локальні моделі (Ollama, oMLX), ролі з промптами й схемами,
+API на Python. Локальні моделі (Ollama, oMLX, llama-swap), ролі з промптами й схемами,
 механічні перевірки, запис у шар. Наступник PHP-проєкту `bdo-ua-ai-localization`;
 його виміряні проблеми й наші відповіді · [`docs/LESSONS_FROM_PHP.md`](docs/LESSONS_FROM_PHP.md).
 
