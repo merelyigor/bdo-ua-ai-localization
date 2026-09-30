@@ -178,6 +178,9 @@ def pre_push(stdin_lines: Iterable[str], echo: Callable[[str], None]) -> int:
         if len(fields) != 4:
             continue
         local_sha = fields[1]
+        if set(local_sha) == {"0"}:
+            # Видалення віддаленої гілки не публікує нових комітів.
+            continue
         revisions = _git("rev-list", local_sha, "--not", "--remotes")
         if revisions.returncode != 0:
             echo("не вдалося перелічити коміти для pre-push")
