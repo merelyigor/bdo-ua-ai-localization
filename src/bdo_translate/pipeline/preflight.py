@@ -29,7 +29,7 @@ def _role_models(services: Services) -> list[tuple[str, str, str]]:
 
 
 async def _catalog(services: Services, provider: str) -> tuple[list[str] | None, str]:
-    """Повертає каталог провайдера з кешу або одного запиту."""
+    """Повертає каталог провайдера з кешу або одного запиту; кешується лише успішний каталог."""
     now = time.monotonic()
     cached = _CATALOG_CACHE.get(provider)
     if cached is not None and now - cached[0] < _CATALOG_TTL_SECONDS:
@@ -37,7 +37,7 @@ async def _catalog(services: Services, provider: str) -> tuple[list[str] | None,
     try:
         models = await services.transport(provider).models()
     except ModelCallError as error:
-        _CATALOG_CACHE[provider] = (now, None, error.reason)
+        _CATALOG_CACHE.pop(provider, None)
         return None, error.reason
     _CATALOG_CACHE[provider] = (now, models, "")
     return models, ""
