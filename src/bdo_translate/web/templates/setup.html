@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+{% from "_macros.html" import action_error %}
+
+{% block content %}
+  <header class="screen-title">
+    <h1>Підключення</h1>
+    <p class="hint">ключі й адреси зберігаються лише в локальному .env</p>
+  </header>
+  {{ action_error("setup_env_write", results.get("setup_env_write")) }}
+  {{ action_error("setup_env_clear", results.get("setup_env_clear")) }}
+  {% for action_name in ["setup_env_write", "setup_env_clear"] %}
+    {% set action_result = results.get(action_name) %}
+    {% if action_result and action_result.message and not action_result.error %}
+      <div class="empty" role="status">{{ action_result.message }}</div>
+    {% endif %}
+  {% endfor %}
+
+  <div class="empty">Середовище: {{ env }} · адреса API: {{ hosts[env] }}. Перемикач DEV/PROD · на «Старті».</div>
+
+  <section class="panel">
+    <div class="panel-heading">
+      <span class="panel-icon" aria-hidden="true">◉</span>
+      <div>
+        <span class="section-title">BDO UA Translate API</span>
+        <span class="panel-subtitle">ключ доступу до сайту перекладів</span>
+      </div>
+    </div>
+    <div class="source-slots">
+      {% for field in api_fields %}
+        <div class="source-slot">
+          <div class="source-slot-state">
+            <strong>{{ field.label }}</strong>
+            <span>{% if field.secret %}{{ "задано" if field.is_set else "не задано" }}{% else %}{{ field.value or "не задано" }}{% endif %}</span>
+            <span>{{ field.hint }}</span>
+          </div>
+          <form method="post" action="/action/setup_env_write" class="source-inline-form">
+            <input type="hidden" name="name" value="{{ field.name }}">
+            <input type="{% if field.secret %}password{% else %}url{% endif %}" name="value"{% if not field.secret %} value="{{ field.value }}"{% endif %} autocomplete="off" spellcheck="false" required>
+            <button type="submit" class="btn-quiet">зберегти</button>
+          </form>
+          {% if field.is_set %}
+            <form method="post" action="/action/setup_env_clear" class="source-clear-form">
+              <input type="hidden" name="name" value="{{ field.name }}">
+              <button type="submit" class="btn-quiet">прибрати</button>
+            </form>
+          {% endif %}
+        </div>
+      {% endfor %}
+    </div>
+  </section>
+
+  <section class="panel">
+    <div class="panel-heading">
+      <span class="panel-icon" aria-hidden="true">◉</span>
+      <div>
+        <span class="section-title">Локальні моделі</span>
+        <span class="panel-subtitle">Ollama та oMLX</span>
+      </div>
+    </div>
+    <div class="source-slots">
+      {% for field in local_fields %}
+        <div class="source-slot">
+          <div class="source-slot-state">
+            <strong>{{ field.label }}</strong>
+            <span>{% if field.secret %}{{ "задано" if field.is_set else "не задано" }}{% else %}{{ field.value or "не задано" }}{% endif %}</span>
+            <span>{{ field.hint }}</span>
+          </div>
+          <form method="post" action="/action/setup_env_write" class="source-inline-form">
+            <input type="hidden" name="name" value="{{ field.name }}">
+            <input type="{% if field.secret %}password{% else %}url{% endif %}" name="value"{% if not field.secret %} value="{{ field.value }}"{% endif %} autocomplete="off" spellcheck="false" required>
+            <button type="submit" class="btn-quiet">зберегти</button>
+          </form>
+          {% if field.is_set %}
+            <form method="post" action="/action/setup_env_clear" class="source-clear-form">
+              <input type="hidden" name="name" value="{{ field.name }}">
+              <button type="submit" class="btn-quiet">прибрати</button>
+            </form>
+          {% endif %}
+        </div>
+      {% endfor %}
+    </div>
+  </section>
+
+  <section class="panel">
+    <div class="panel-heading">
+      <span class="panel-icon" aria-hidden="true">↗</span>
+      <div>
+        <span class="section-title">Віддалені моделі</span>
+        <span class="panel-subtitle">ключі OpenCode Go і OmniRoute · на екрані «моделі»</span>
+      </div>
+    </div>
+    <p><a class="as-button" href="/models">перейти до моделей →</a></p>
+  </section>
+{% endblock %}

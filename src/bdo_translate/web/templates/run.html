@@ -1,0 +1,142 @@
+{% extends "base.html" %}
+{% from "_macros.html" import action_error, icon %}
+{% block content %}
+  <header class="screen-title">
+    <h1>Прогін</h1>
+    <p>крок за кроком: що робить кожна роль і що вже зроблено</p>
+  </header>
+  {% if current %}
+    <section class="panel hero" id="run-session">
+      <div class="bar">
+        <span class="pill env-pill"{% if session.env == "PROD" %} style="background:var(--dn-bg);color:var(--dn-tx)"{% endif %}>{{ session.env }}</span>
+        <span class="mono">{% if batch %}{{ batch.id }} · пачка {{ batch.seq }} · {{ rows|length }} рядків{% else %}{{ current.session_id }}{% endif %}</span>
+        <span class="pill" id="statePhrase" style="background:var(--{{ state_tone }}-bg);color:var(--{{ state_tone }}-tx)">{{ state_phrase }}</span>
+        {% if controls_enabled and session.started_at %}
+          <span class="empty" style="margin-left:auto" data-since="{{ session.started_at }}">—</span>
+        {% elif session.started_at %}
+          <span class="empty" style="margin-left:auto">{{ start_time_text }}</span>
+        {% endif %}
+        {% if controls_enabled %}
+        <form method="post" action="/action/run_pause"><button id="btn-run_pause" type="submit">пауза</button></form>
+        <form method="post" action="/action/run_stop"><button id="btn-run_stop" class="btn-danger" type="submit">зупинити</button></form>
+        {% endif %}
+        <a id="startLink" class="{% if not controls_enabled %}btn-primary {% endif %}as-button" href="/start">новий прогін →</a>
+        {% if not controls_enabled and session.status != "running" %}
+        <form method="post" action="/action/session_delete">
+          <input type="hidden" name="session_id" value="{{ session.id }}">
+          <input type="hidden" name="redirect_to" value="/run">
+          <button id="btn-run_session_delete" class="btn-danger" type="submit">видалити сесію</button>
+        </form>
+        {% endif %}
+      </div>
+      {% set step_icons = {"done": "check", "dry": "check", "now": "dot", "skipped": "dot", "failed": "fail", "pending": "dot"} %}
+      <nav class="steps" aria-label="Кроки конвеєра">
+        {% for step in steps %}
+          {% if not loop.first %}<span class="arrow">›</span>{% endif %}
+          <span class="step {{ step.state }}" title="{{ step.title }}">{{ icon(step_icons.get(step.state, "dot"), "step-status-icon") }}<span class="n">{{ step.name }}</span></span>
+        {% endfor %}
+      </nav>
+      <div class="progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="{{ step_progress|int }}">
+        <div class="progress-bar{% if step_progress >= 100 %} done{% endif %}" style="width:{{ step_progress }}%"></div>
+      </div>
+      <p class="empty run-meta">{{ goal_label }} · канал запису: {{ channel_label }}{% if goal.dry_run %} · тестовий прогін, без запису{% endif %}</p>
+      <p class="empty run-meta">{{ run_state_text }} · пачок {{ batches_done }} з {{ session.batches_planned }}{% if batch and batch.reason %} · {{ batch.reason }}{% endif %}{% if viewing_other %} | <a class="work-link" href="/run">до поточного прогону</a>{% endif %}</p>
+      {% if stop_reason_raw and not outcome %}<div class="empty" id="run-failure" style="color:var(--dn-tx)" title="{{ stop_reason_raw }}">{{ stop_reason_text }}</div>{% endif %}
+      {% if resolve_rejections %}<p id="run-resolve-rejections">resolve відхилено API: {{ resolve_rejections }}</p>{% endif %}
+    </section>
+    {% if outcome %}
+    <section class="panel" id="run-outcome">
+      <h2>{{ outcome.title }}</h2>
+      {% for line in outcome.lines %}<p class="empty">{{ line }}</p>{% endfor %}
+      <div class="bar">
+        <a class="btn-primary as-button" href="/start">новий прогін →</a>
+        <a class="as-button" href="/sessions">сесії</a>
+      </div>
+    </section>
+    {% else %}
+    <section class="panel" id="run-role-cards">
+      <div class="bar"><h2>ролі й виклики моделі</h2><span class="empty">{{ call_count }} викликів у пачці</span></div>
+      <div id="run-calls">
+      {% for card in role_cards %}
+        {% set call = card.call %}
+        <div class="msg role-card {{ card.card_class }}" id="{{ card.id }}"{% if call.live %} data-open="1" data-live="1"{% endif %}>
+          <div class="mh">
+            <span class="role-icon" aria-hidden="true">{{ icon(card.icon) }}</span>
+            <span style="font-weight:500">{{ card.name }}</span>
+            <span class="chip role-model" title="{{ call.model }}">{{ call.model }}</span>
+            <span class="meta">{{ call.rows }} {{ card.count_label }} · {% if call.error_note %}{{ call.error_note }}{% else %}{{ call.in_tokens }}→{{ call.out_tokens }} ток.{% endif %}{% if call.payload_text is not none %} · {{ call.payload_text }} payload{% endif %}{% if call.seconds is not none %} · {{ call.seconds }} с{% endif %}</span>
+            <span class="chip role-state {{ call.state_class }}" style="margin-left:auto"{% if call.state_title %} title="{{ call.state_title }}"{% endif %}>{{ icon(call.state_icon) }} {{ call.state }}</span>
+            <span class="meta" style="margin-left:8px">{{ call.ended_at }}</span>
+            <span class="thinking-indicator {{ 'has-thinking' if call.has_thinking else 'no-thinking' }}"{% if call.live %} id="live-{{ card.role }}-think-icon"{% endif %} title="{{ 'модель міркувала' if call.has_thinking else 'без роздумів' }}" aria-label="{{ 'модель міркувала' if call.has_thinking else 'без роздумів' }}">{{ icon("thinking") }}</span>
+          </div>
+          <div class="bar">
+            <button type="button" class="openCall" aria-expanded="{{ 'true' if call.live else 'false' }}">{{ 'згорнути роботу' if call.live else 'розгорнути роботу' }}</button>
+            {% if call.id %}<a class="work-link" href="/call?id={{ call.id }}">на весь екран ↗</a>{% endif %}
+          </div>
+          <div class="callWork"{% if not call.live %} hidden{% endif %}>
+            <div class="call-work-grid">
+              <section class="call-work-item">
+                <h3>Запит · {% if not call.request_tokens_exact %}≈ {% endif %}<span{% if call.live %} id="live-{{ card.role }}-request-tokens"{% endif %}>{{ call.request_tokens }}</span> ток.</h3><pre class="log work"{% if call.live %} id="live-{{ card.role }}-request"{% endif %}>{{ call.request }}</pre>
+              </section>
+              <section class="call-work-item answer-work">
+                <details class="call-thinking" open><summary>Роздуми · чернетка моделі · ≈ <span{% if call.live %} id="live-{{ card.role }}-thinking-tokens"{% endif %}>{{ call.thinking_tokens }}</span> ток.</summary><pre class="log work"{% if call.live %} id="live-{{ card.role }}-thinking"{% endif %}>{{ call.thinking if call.live else call.thinking | readable_json }}</pre></details>
+                <h3>Відповідь · ≈ <span{% if call.live %} id="live-{{ card.role }}-content-tokens"{% endif %}>{{ call.content_tokens }}</span> ток.</h3><pre class="log work"{% if call.live %} id="live-{{ card.role }}-content"{% endif %}>{{ call.content if call.live else call.content | readable_json }}</pre>
+              </section>
+            </div>
+          </div>
+        </div>
+      {% else %}
+        <div class="empty">{% if session and session.status == "running" %}ролі ще не викликались: пачка готує рядки, памʼять і глосарій{% else %}ролі не викликались: прогін зупинився до першої пачки{% endif %}</div>
+      {% endfor %}
+      </div>
+      {% if judge_degenerate %}<p class="chip bdo-badge--warning" id="run-judge-degenerate">суддя вироджений</p>{% endif %}
+    </section>
+    <section class="panel" id="run-verdict-panel">
+      <details class="verdict-box">
+        <summary class="verdict-summary"><span class="verdict-caret">{{ icon("chevron") }}</span><span class="verdict-title">вердикти</span>
+          <span class="verdict-counts">усі <b>{{ verdict_counts.all }}</b> · пройшло <b style="color:var(--ok-tx)">{{ verdict_counts.pass }}</b> · на перегляд <b style="color:var(--wr-tx)">{{ verdict_counts.review }}</b> · відхилено <b{% if verdict_counts.reject %} style="color:var(--dn-tx)"{% endif %}>{{ verdict_counts.reject }}</b></span>
+        </summary>
+        <div class="bar verdict-filter">
+          <button type="button" class="chip" data-f="all" aria-pressed="true">усі {{ verdict_counts.all }}</button>
+          <button type="button" class="chip" data-f="pass" aria-pressed="false">пройшло {{ verdict_counts.pass }}</button>
+          <button type="button" class="chip" data-f="review" aria-pressed="false">на перегляд {{ verdict_counts.review }}</button>
+          {% if verdict_counts.reject %}<button type="button" class="chip" data-f="reject" aria-pressed="false">відхилено {{ verdict_counts.reject }}</button>{% endif %}
+          <input type="search" class="search verdict-search" placeholder="пошук: слово з перекладу…">
+        </div>
+        <div id="verdicts">
+          {% for row in verdict_rows %}
+          <div class="vrow" data-v="{{ row.kind }}">
+            <span class="pill v-{{ row.kind }}">{{ row.pill }}</span>
+            <div style="flex:1;min-width:0">
+              <div class="empty" style="font-size:11px">оригінал</div>
+              <div class="mono" style="color:var(--tm)" title="{{ row.source_full }}">{{ row.source }}</div>
+              <div class="empty" style="font-size:11px;margin-top:4px">переклад</div>
+              <div class="mono" title="{{ row.final_full }}">{{ row.final }}</div>
+              {% if row.issue %}<div class="vissue">{{ row.issue }}</div>{% endif %}
+              <div class="empty" style="font-size:11px;margin-top:4px">{{ row.route }}</div>
+              {% if row.origin %}<div class="empty" style="font-size:11px;margin-top:2px">до прогону:</div>
+              {% for line in row.origin %}<div class="empty" style="font-size:11px">{{ line }}</div>{% endfor %}{% endif %}
+              {% if row.identity_hash %}<div style="margin-top:4px"><a class="work-link" href="/history?hash={{ row.identity_hash|urlencode }}&amp;from=run{% if batch %}&amp;batch={{ batch.id|urlencode }}{% endif %}">історія</a></div>{% endif %}
+            </div>
+          </div>
+          {% else %}<p class="empty">Рядків поки немає.</p>{% endfor %}
+        </div>
+      </details>
+    </section>
+    <div class="cards" aria-label="Підсумки пачки">
+      <div class="card"><div class="l">у шар</div><div class="v"{% if route_counts.write > 0 %} style="color:var(--ok-tx)"{% endif %}>{% if batch %}{{ route_counts.write }}{% else %}—{% endif %}</div></div>
+      <div class="card"><div class="l">до людини</div><div class="v">{% if batch %}{{ route_counts.human }}{% else %}—{% endif %}</div></div>
+      <div class="card"><div class="l">карантин</div><div class="v">{% if batch %}{{ route_counts.quarantine }}{% else %}—{% endif %}</div></div>
+      <div class="card"><div class="l">викликів моделі</div><div class="v">{{ call_count }}</div></div>
+    </div>
+    <details class="panel journal-panel" id="run-states">
+      <summary class="journal-summary"><span class="journal-caret">{{ icon("chevron") }}</span><span class="journal-title">журнал кроків</span><span class="empty">стани пачки й причини</span></summary>
+      {% if journal_lines %}<pre class="log journal-log">{{ journal_lines | join("\n") }}</pre>{% endif %}
+    </details>
+    {% endif %}
+    {{ action_error("run_pause", results.get("run_pause")) }}
+    {{ action_error("run_stop", results.get("run_stop")) }}
+  {% else %}
+    <section class="panel" id="run-empty"><p>Активного прогону немає.</p><a class="btn-primary as-button" href="/start">почати прогін →</a></section>
+  {% endif %}
+{% endblock %}

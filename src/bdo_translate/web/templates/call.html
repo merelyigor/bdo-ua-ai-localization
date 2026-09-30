@@ -1,0 +1,93 @@
+{% extends "base.html" %}
+{% from "_macros.html" import action_error %}
+{% block content %}
+  {% set call = call_record %}
+  <header class="screen-title">
+    <h1>{{ role_label }}</h1>
+    <p id="call-subtitle">{{ call_state_text }}</p>
+  </header>
+  <section class="panel">
+    <div class="bar call-actions">
+      <span class="mono" id="call-id">{{ call.id }}</span>
+      <span class="chip" id="call-model">{{ call.provider }}/{{ call.model }}</span>
+      <span class="chip" id="call-state">{{ call_status|human }}</span>
+      <button id="call-wrap-toggle" type="button" aria-pressed="true">переносити рядки</button>
+      <button id="call-fullscreen" type="button">на весь екран</button>
+      <a class="work-link" href="/run">← до прогону</a>
+    </div>
+  </section>
+  <section class="panel" id="call-panel">
+    <div class="call-work-grid">
+      <section class="call-work-item" id="request-panel">
+        <h2>Запит · {% if not request_tokens_exact %}≈ {% endif %}{{ request_tokens }} ток.</h2>
+        <pre class="log work mono" id="request-user">{{ request_user_pretty }}</pre>
+      </section>
+      <section class="call-work-item answer-work">
+        <h2>Відповідь · ≈ {{ answer_tokens }} ток.</h2>
+        <details class="call-thinking" id="call-thinking" open>
+          <summary>▾ Роздуми чернетка моделі · ≈ {{ thinking_tokens }} ток.</summary>
+          <pre class="log work mono" id="call-thinking-text">{{ (call.thinking or "—") | readable_json }}</pre>
+        </details>
+        <div id="call-content"><pre class="log work mono" id="call-content-text">{{ (call.content or "—") | readable_json }}</pre></div>
+      </section>
+    </div>
+  </section>
+
+  <details class="panel" id="request-details">
+    <summary>Параметри запиту й схема</summary>
+    <section id="request-params-panel"><h2>Параметри</h2><pre id="request-params">{{ request_params }}</pre></section>
+    <section><h2>System</h2><pre id="request-system">{{ request_system }}</pre></section>
+    <section><h2>Schema</h2><pre id="request-schema">{{ request_schema }}</pre></section>
+  </details>
+
+  <details class="panel" id="parsed-panel">
+    <summary>Розібраний JSON</summary><pre id="call-parsed">{{ parsed_pretty }}</pre>
+  </details>
+
+  {% set replay = results.get("call_replay") %}
+  <details class="panel" id="replay-panel">
+    <summary>Повтор виклику</summary>
+    <form method="post" action="/action/call_replay">
+      <input type="hidden" name="call_id" value="{{ root_id }}">
+      <label for="replay-provider">Провайдер</label>
+      <select id="replay-provider" name="provider"><option value="">як є</option>{% for name in providers %}<option value="{{ name }}">{{ name }}</option>{% endfor %}</select>
+      <label for="replay-model">Модель</label><input id="replay-model" name="model" type="text" value="">
+      <label for="replay-think">Think</label>
+      <select id="replay-think" name="think"><option value="">як є</option><option value="true">true</option><option value="false">false</option></select>
+      <button id="btn-call_replay" type="submit" class="btn-primary">Повторити</button>
+    </form>
+    {{ action_error("call_replay", replay) }}
+    <p id="replay-last">{% if last_replay and last_replay.call_id %}останній повтор · {{ (last_replay.failure or ("успішно" if last_replay.ok else "помилка"))|human }} · {{ last_replay.attempts }} спроб{% else %}останній повтор · ще не запускався{% endif %}</p>
+  </details>
+
+  <details class="panel" id="replays-panel">
+    <summary>Історія повторів</summary>
+    {% for item in replays %}<p id="replay-{{ loop.index }}">{{ ("success" if item.state == "ok" else item.state)|human }} · {{ item.error or item.model }} · {{ item.id }}</p>{% else %}<p>Повторів ще немає.</p>{% endfor %}
+  </details>
+  <a class="work-link" id="back-calls" href="/calls">← до викликів</a>
+  <script>
+    (function () {
+      const wrap = document.getElementById("call-wrap-toggle");
+      const fullscreen = document.getElementById("call-fullscreen");
+      const work = ["request-user", "call-thinking-text", "call-content-text"];
+      wrap.addEventListener("click", function () {
+        const wrapped = wrap.getAttribute("aria-pressed") !== "true";
+        wrap.setAttribute("aria-pressed", String(wrapped));
+        wrap.textContent = wrapped ? "переносити рядки" : "не переносити";
+        for (const id of work) {
+          const node = document.getElementById(id);
+          if (node) { node.style.whiteSpace = wrapped ? "pre-wrap" : "pre"; }
+        }
+      });
+      fullscreen.addEventListener("click", function () {
+        if (document.fullscreenElement) { void document.exitFullscreen(); }
+        else if (document.documentElement.requestFullscreen) {
+          void document.documentElement.requestFullscreen();
+        }
+      });
+      document.addEventListener("fullscreenchange", function () {
+        fullscreen.textContent = document.fullscreenElement ? "вийти з повного екрана" : "на весь екран";
+      });
+    })();
+  </script>
+{% endblock %}

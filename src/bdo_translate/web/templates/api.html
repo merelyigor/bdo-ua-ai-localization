@@ -1,0 +1,166 @@
+{% extends "base.html" %}
+{% from "_macros.html" import action_button, action_error %}
+
+{% block content %}
+  <header class="screen-title">
+    <h1>API</h1>
+    <p class="hint">що бачить ключ і що віддає Agent API</p>
+  </header>
+
+  {% set me_result = results.get("api_me") %}
+  <section class="panel" id="me-panel">
+    <h2>Ключ і доступ</h2>
+    <p class="panel-subtitle">профіль, дозволи й ліміти активного ключа</p>
+    {% call action_button("api_me", actions, "button btn-primary") %}{% endcall %}
+    {{ action_error("api_me", me_result) }}
+    {% if me_result and me_result.ok %}
+      <div class="bdo-table-wrap"><table class="bdo-table" id="me-table">
+        <tbody>
+          <tr><th scope="row">Користувач</th><td id="me-user">{{ me_result.user }}</td></tr>
+          <tr><th scope="row">Ключ</th><td id="me-key">{{ me_result.key_prefix }} · {{ me_result.key_name }}</td></tr>
+          <tr><th scope="row">Ліміт запису</th><td id="me-max-items">{{ me_result.batch.get("max_items", "—") }}</td></tr>
+          <tr><th scope="row">Ліміт сторінки</th><td id="me-max-page">{{ me_result.batch.get("max_rows_per_page", "—") }}</td></tr>
+          <tr><th scope="row">Залишок на день</th><td id="me-remaining">{{ me_result.limits.get("rows_remaining_today", "—") }}</td></tr>
+          <tr><th scope="row">Можливості</th><td id="me-abilities">{{ me_result.abilities | join(", ") }}</td></tr>
+          <tr><th scope="row">Канали</th><td id="me-channels">
+            {% for channel in me_result.channels %}
+              <span class="chip" id="me-channel-{{ loop.index }}">{{ channel.layer | human }}/{{ channel.mode | human }} · {{ channel.allowed | human }}</span>
+            {% else %}—{% endfor %}
+          </td></tr>
+        </tbody>
+      </table></div>
+    {% else %}
+      <p>Натисни «Оновити /me», щоб прочитати доступ і ліміти.</p>
+    {% endif %}
+  </section>
+
+  {% set rows_result = results.get("api_rows") %}
+  <section class="panel" id="rows-panel">
+    <h2>Вибірка рядків</h2>
+    <p class="panel-subtitle">читання невеликої вибірки для діагностики структури DEV</p>
+    {% call action_button("api_rows", actions, "button btn-primary") %}
+      <label for="rows-mode">Режим</label>
+      <select id="rows-mode" name="mode">
+        {% for name, label in modes.items() %}
+          <option value="{{ name }}"{% if rows_result and rows_result.ok and rows_result.mode == name or (not rows_result or not rows_result.ok) and name == "patch" %} selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+      <span class="bar api-rows-bar">
+        <label for="rows-limit">Рядків</label>
+        <input id="rows-limit" name="limit" type="number" min="1" max="{{ max_limit }}" value="{{ rows_result.limit if rows_result and rows_result.ok else default_limit }}">
+      </span>
+      <span class="empty api-rows-fields">Поля: {{ fields }}</span>
+    {% endcall %}
+    {{ action_error("api_rows", rows_result) }}
+    {% if rows_result and rows_result.ok %}
+      <p id="rows-count">режим {{ rows_result.mode | human }} · рядків {{ rows_result.rows | length }} · ще є сторінка · {{ rows_result.has_more | human }}</p>
+      <div class="bdo-table-wrap">
+        <table class="bdo-table" id="rows-table">
+          <thead><tr><th>Hash</th><th>Джерело</th><th>Тип</th><th>Домен</th><th>Keep</th><th>Терміни</th></tr></thead>
+          <tbody>
+            {% for row in rows_result.summary %}
+              <tr id="row-{{ loop.index }}">
+                <td class="mono">{{ row.hash }}</td><td>{{ row.source_text }}</td><td>{{ row.semantic_type }}</td>
+                <td>{{ row.domain }}</td><td>{{ row.keep_count }}</td><td>{{ row.terms_count }}</td>
+              </tr>
+            {% else %}<tr><td colspan="6">Рядків не знайдено.</td></tr>{% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% endif %}
+  </section>
+
+  {% set context_result = results.get("api_context") %}
+  <section class="panel" id="context-panel">
+    <h2>Контекст рядків</h2>
+    <p class="panel-subtitle">повʼязані приклади для останньої вибірки</p>
+    {% call action_button("api_context", actions, "button btn-primary") %}{% endcall %}
+    {{ action_error("api_context", context_result) }}
+    {% if context_result and context_result.ok %}
+      <p id="context-count">знайдено {{ context_result.found }} із {{ context_result.requested }}</p>
+      <div class="bdo-table-wrap">
+        <table class="bdo-table" id="context-table">
+          <thead><tr><th>Hash</th><th>Повʼязані рядки</th><th>Терміни</th><th>Приклад</th></tr></thead>
+          <tbody>{% for row in context_result.summary %}
+            <tr id="context-{{ loop.index }}"><td class="mono">{{ row.hash }}</td><td>{{ row.related_count }}</td><td>{{ row.terms_count }}</td><td>{{ row.example }}</td></tr>
+          {% else %}<tr><td colspan="4">Контекстів не знайдено.</td></tr>{% endfor %}</tbody>
+        </table>
+      </div>
+    {% endif %}
+  </section>
+
+  {% set memory_result = results.get("api_memory") %}
+  <section class="panel" id="memory-panel">
+    <h2>Памʼять перекладів</h2>
+    <p class="panel-subtitle">попередні відповідники для рядків із останньої вибірки</p>
+    <div class="panel-actions">
+      {% call action_button("api_memory", actions, "button btn-primary") %}{% endcall %}
+      {% call action_button("api_failed_batch_probe", actions, "button btn-quiet") %}{% endcall %}
+    </div>
+    {{ action_error("api_memory", memory_result) }}
+    {% set failed_probe = results.get("api_failed_batch_probe") %}
+    {{ action_error("api_failed_batch_probe", failed_probe) }}
+    {% if failed_probe and failed_probe.ok %}
+      <p id="failed-memory-probe">Пачка {{ failed_probe.source_batch }} · запитано hash: {{ failed_probe.hashes_requested }} · прийнято елементів памʼяті: {{ failed_probe.memory_found }}</p>
+    {% endif %}
+    {% if memory_result and memory_result.ok and memory_result.summary is defined %}
+      <p id="memory-count">знайдено {{ memory_result.found }} із {{ memory_result.requested }}</p>
+      <div class="bdo-table-wrap">
+        <table class="bdo-table" id="memory-table">
+          <thead><tr><th>Hash</th><th>Варіантів</th><th>Текст</th><th>Шар</th><th>Свіжість</th></tr></thead>
+          <tbody>{% for row in memory_result.summary %}
+            <tr id="memory-{{ loop.index }}"><td class="mono">{{ row.hash }}</td><td>{{ row.variants_count }}</td><td>{{ row.text }}</td><td>{{ row.layer | human }}</td><td>{{ row.freshness | human }}</td></tr>
+          {% else %}<tr><td colspan="5">Варіантів не знайдено.</td></tr>{% endfor %}</tbody>
+        </table>
+      </div>
+    {% endif %}
+  </section>
+
+  {% set validate_result = results.get("api_validate") %}
+  <section class="panel" id="validate-panel">
+    <h2>Перевірка без запису</h2>
+    <p class="panel-subtitle">перевірка перед записом у вибраний канал</p>
+    {% call action_button("api_validate", actions, "button btn-primary") %}{% endcall %}
+    {{ action_error("api_validate", validate_result) }}
+    {% if validate_result and validate_result.ok %}
+      <p id="validate-channel">канал {{ validate_result.layer | human }}/{{ validate_result.mode | human }} · автопідтвердження · {{ validate_result.auto_approve | human }}</p>
+      <div class="bdo-table-wrap">
+        <table class="bdo-table" id="validate-table">
+          <thead><tr><th>Hash</th><th>Статус</th><th>Код</th><th>Повідомлення</th><th>Попередження</th></tr></thead>
+          <tbody>{% for row in validate_result.results %}
+            <tr id="validate-{{ loop.index }}"><td class="mono">{{ row.identity_hash[:12] }}</td><td>{{ row.status | human }}</td><td>{{ row.code | human if row.code else "—" }}</td><td>{{ row.message or "—" }}</td><td>{% for code in row.warning_codes %}{{ code | human }}{% if not loop.last %}, {% endif %}{% else %}—{% endfor %}</td></tr>
+          {% else %}<tr><td colspan="5">Результатів немає.</td></tr>{% endfor %}</tbody>
+        </table>
+      </div>
+    {% endif %}
+  </section>
+
+  {% set resolve_result = results.get("api_glossary_resolve") %}
+  <section class="panel" id="glossary-resolve-panel">
+    <h2>Пошук терміна</h2>
+    <p class="panel-subtitle">перевірка відповіді каталогу для терміна з пачки</p>
+    {% call action_button("api_glossary_resolve", actions, "button btn-primary") %}{% endcall %}
+    {{ action_error("api_glossary_resolve", resolve_result) }}
+    {% if resolve_result and resolve_result.ok %}
+      <p id="resolve-source">Пачка {{ resolve_result.source_batch }} · термін {{ resolve_result.canonical_source }}</p>
+      {% if resolve_result.initial_status %}<p>Перша відповідь: {{ resolve_result.initial_status | human }}</p>{% endif %}
+      <p>Тіло запиту: <code id="resolve-request-body">{{ resolve_result.request_body | tojson }}</code></p>
+      {% if resolve_result.response_code %}
+        <p id="resolve-error">Відмова API: {{ resolve_result.response_code | human }} · {{ resolve_result.response_message }}</p>
+      {% else %}
+        <p id="resolve-result">Відповідь пошуку: {{ resolve_result.status | human }}{% if resolve_result.response_message %} · {{ resolve_result.response_message }}{% endif %}</p>
+      {% endif %}
+    {% endif %}
+  </section>
+
+  {% set probe_result = results.get("api_error_probe") %}
+  <section class="panel" id="probe-panel">
+    <h2>Перевірка помилки API</h2>
+    <p class="panel-subtitle">навмисно неправильний запит, щоб побачити формат відмови</p>
+    {% call action_button("api_error_probe", actions, "button btn-danger") %}{% endcall %}
+    {{ action_error("api_error_probe", probe_result) }}
+    {% if probe_result and probe_result.probe_unexpected_success %}
+      <p>API прийняв невідому групу полів.</p>
+    {% endif %}
+  </section>
+{% endblock %}

@@ -1,0 +1,195 @@
+{% extends "base.html" %}
+{% from "_macros.html" import action_error %}
+{% block content %}
+  <header class="screen-title start-title">
+    <h1>Почати прогін</h1>
+    <span class="hint">обери режим, патч і розмір · тестовий прогін нічого не записує</span>
+  </header>
+  <section class="panel start-panel">
+    {{ action_error("me", me_error) }}
+    {{ action_error("patches", patches_error) }}
+    {{ action_error("run_start", results.get("run_start")) }}
+    {{ action_error("start_env_set", results.get("start_env_set")) }}
+    {% if not api_key_is_set %}
+      <div class="empty" id="start-setup-needed">Щоб перекладати, вставте ключ BDO API для {{ env }} на екрані «<a class="work-link" href="/setup">підключення</a>».</div>
+    {% endif %}
+
+    <div class="start-top-grid">
+      <section class="card start-field">
+        <span class="start-label">КУДИ ПИШЕМО</span>
+        <div class="bar">
+          {% if env == "DEV" %}
+            <span class="pill" id="start-env">DEV</span>
+          {% else %}
+            <form method="post" action="/action/start_env_set">
+              <input type="hidden" name="env" value="DEV">
+              <button id="btn-env-DEV" class="as-button" type="submit"{% if running %} disabled{% endif %}>DEV</button>
+            </form>
+          {% endif %}
+          {% if env == "PROD" %}
+            <span class="pill" id="start-env" style="background:var(--dn-bg);color:var(--dn-tx)">PROD</span>
+          {% elif running %}
+            <a class="as-button" id="btn-env-PROD" aria-disabled="true">PROD</a>
+          {% else %}
+            <a class="as-button" id="btn-env-PROD" href="/start?env=PROD">PROD</a>
+          {% endif %}
+        </div>
+        <span class="start-field-note">адреса API: {{ env_hosts[env] }}</span>
+        {% if running %}<strong id="start-running">прогін уже йде · старт заблокований</strong>{% endif %}
+      </section>
+
+      <section class="card start-field">
+        <span class="start-label">МОДЕЛЬ</span>
+        <div class="start-model-controls">
+          <strong class="mono">{{ header.model }}</strong>
+          <a class="as-button" href="/models">змінити на екрані моделей →</a>
+        </div>
+        <span class="start-field-note">одна модель для всіх ролей</span>
+        {% if limits_warning %}<p id="start-limits-warn" class="alert">{{ limits_warning }}</p>{% endif %}
+      </section>
+
+      <section class="card start-field">
+        <span class="start-label">РОЗДУМИ (THINKING)</span>
+        <div class="start-model-controls">
+          <strong title="{{ header.think_title }}">{{ header.think }}</strong>
+          <a class="as-button" href="/models#models-roles-title">налаштувати за ролями →</a>
+        </div>
+        <span class="start-field-note">бажання ролі; що модель не вміє — не передається</span>
+      </section>
+    </div>
+
+    {% if env_confirm %}
+      <div class="panel" id="start-env-confirm">
+        <p>Перемкнути на PROD? Прогони й екрани підуть на {{ env_hosts.PROD }}. Запис у PROD незворотний.</p>
+        <form method="post" action="/action/start_env_set">
+          <input type="hidden" name="env" value="PROD">
+          <button id="btn-env-confirm" class="btn-danger" type="submit">так, перемкнути на PROD</button>
+          <a class="as-button" href="/start">скасувати</a>
+        </form>
+      </div>
+    {% endif %}
+
+    <form method="post" action="/action/run_start" id="start-form">
+      <input id="start-mode" type="hidden" name="mode" value="{{ default_mode }}">
+      <input id="start-patch" type="hidden" name="patch" value="active">
+      <h2 class="start-section-title">режим</h2>
+      <div class="start-mode-grid" id="start-modes">
+        {% for name, mode in modes.items() %}
+          {% set info = mode_targets[name] %}
+          <label class="card start-mode-card{% if name == default_mode %} is-selected{% endif %}" data-source="{{ mode.source }}" data-scope="{{ info.scope }}" data-author-choice="{{ 'true' if info.author_choice else 'false' }}">
+            <input type="radio" name="mode-choice" value="{{ name }}"{% if name == default_mode %} checked{% endif %}>
+            <strong>{{ info.name }}</strong>
+            <span>{{ info.description }}</span>
+            <span class="start-mode-target">→ {{ info.target }}</span>
+          </label>
+        {% endfor %}
+      </div>
+      <p class="start-queue-note" id="start-queue-note" hidden data-queue-total="{{ queue_total if queue_total is not none else '' }}">режим бере чергу до людини від найстаріших{% if queue_total is not none %} · чекають {{ queue_total }}{% endif %}</p>
+
+      <div id="start-scope">
+      <h2 class="start-section-title"><label for="start-category">категорія</label></h2>
+      {% if categories %}
+        <select id="start-category" name="category">
+          <option value="" data-label="усі">усі</option>
+          <optgroup label="домен">
+            {% for category in categories if category.field == "domain" %}<option value="{{ category.value }}" data-label="{{ category.name }}" data-group="домен">{{ category.name }}</option>{% endfor %}
+          </optgroup>
+          <optgroup label="тип">
+            {% for category in categories if category.field == "semantic_type" %}<option value="{{ category.value }}" data-label="{{ category.name }}" data-group="тип">{{ category.name }}</option>{% endfor %}
+          </optgroup>
+        </select>
+      {% else %}
+        <span id="start-category">усі</span>
+      {% endif %}
+
+      <h2 class="start-section-title">патч</h2>
+      <div class="bdo-table-wrap">
+        <table class="bdo-table start-patches" id="start-patches">
+          <thead><tr><th>ПАТЧ</th><th>№ У ГРІ</th><th>ОПУБЛІКОВАНО</th><th>РЯДКІВ</th><th id="start-missing-head">БЕЗ ШІ-ШАРУ</th></tr></thead>
+          <tbody>
+            {% for patch in patches %}
+              <tr class="start-patch-row{% if patch.is_active %} is-selected{% endif %}" data-patch="{{ 'active' if patch.is_active else patch.snapshot_id }}" data-snapshot="{{ patch.snapshot_id if patch.snapshot_id is not none else '' }}" data-active="{{ 'true' if patch.is_active else 'false' }}" aria-selected="{{ 'true' if patch.is_active else 'false' }}">
+                <td>{% if patch.is_active %}активний · {{ patch.snapshot_id }} <span class="chip">зараз у грі</span>{% else %}{{ patch.snapshot_id }}{% endif %}</td>
+                <td>{{ patch.patch_number if patch.patch_number is not none else '—' }}</td>
+                <td>{{ patch.published_at or '—' }}</td>
+                <td>{{ patch.rows_total_label }}</td>
+                <td class="start-missing{% if patch.missing_machine and patch.missing_machine > 0 %} start-missing-positive{% endif %}" data-base="{{ patch.missing_machine if patch.missing_machine is not none else '' }}"><span class="start-missing-value">{{ patch.missing_machine_label }}</span>{% if patch.waiting %} <span class="start-missing-waiting" title="рядки з відкритою пропозицією чекають рішення в «черзі до людини»; прогін їх не бере">+{{ patch.waiting_label }} у черзі</span>{% endif %}</td>
+              </tr>
+            {% else %}
+              <tr id="start-patches-loading"><td colspan="5">{% if patches_error %}перелік патчів недоступний{% elif not api_key_is_set %}перелік патчів зʼявиться після ключа BDO API{% else %}<span class="start-spinner" aria-hidden="true"></span>беру перелік патчів з API · перший раз близько 10 с, далі з кешу{% endif %}</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        </div>
+      </div>
+
+      <div id="start-corpus" hidden>
+        <h2 class="start-section-title">категорія · весь корпус</h2>
+        <div class="start-author-choice" id="start-author-choice" hidden>
+          <span class="start-label">АВТОР ШІ-ШАРУ</span>
+          <label><input type="radio" name="machine_author" value="bosia" checked disabled> імпорт bosia</label>
+          <label><input type="radio" name="machine_author" value="" disabled> усі ще не покращені</label>
+          <label class="start-author-version"><input type="radio" name="machine_author" value="" id="start-author-version" data-version-choice="true" disabled> перекладені цією програмою до версії
+            <input type="text" name="machine_client_version_lt" id="start-client-version" value="{{ default_client_version }}" pattern="\d+\.\d+\.\d+" inputmode="numeric" size="6" disabled>
+          </label>
+        </div>
+        <div class="bdo-table-wrap">
+          <table class="bdo-table start-corpus" id="start-corpus-table">
+            <thead><tr><th>КАТЕГОРІЯ</th><th>РЯДКІВ</th></tr></thead>
+            <tbody id="start-corpus-rows">
+              <tr id="start-corpus-status"><td colspan="2">беру категорії корпусу з API · перший раз близько 10 с, далі з кешу</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="start-parameters">
+        <label for="start-batches">пачок</label>
+        <input id="start-batches" name="batches" type="number" min="1" value="{{ default_batches }}" required{% if running %} disabled{% endif %}>
+        <label for="start-rows-slider">рядків у пачці</label>
+        <input id="start-rows-slider" type="range" min="{{ min_rows }}" max="{{ max_items }}" value="{{ default_rows }}"{% if running %} disabled{% endif %}>
+        <input id="start-rows" name="rows_per_batch" type="number" min="{{ min_rows }}" max="{{ max_items }}" value="{{ default_rows }}" required{% if running %} disabled{% endif %}>
+        <span class="start-all-label" id="start-all-label">перекласти все</span>
+        <label class="models-role-toggle"><input id="start-all" type="checkbox" role="switch" aria-labelledby="start-all-label"{% if running %} disabled{% endif %}><span class="models-role-switch" aria-hidden="true"></span></label>
+      </div>
+      <p class="start-summary" id="start-summary"></p>
+
+      <div class="start-bottom-grid">
+        <section>
+          <h2 class="start-section-title">що зараз станеться</h2>
+          <ol class="start-preview" id="start-preview">
+            <li>Виберу пачку з активного патча · {{ default_rows }} рядків · режим «патч».</li>
+            <li>Проганяю {{ default_batches }} пачку через увесь конвеєр: терміни → переклад → перевірка якості → ремонт дефектів → суддя → запис у ШІ-шар.</li>
+            <li>«Почати прогін» — {{ mode_targets[default_mode].target }}; «тестовий прогін» нічого не записує.</li>
+          </ol>
+          <div id="start-preflight">
+            {% for check in preflight %}
+              {% if check.ok %}
+                <p><span class="chip bdo-badge--success">модель є в джерелі: {{ check.provider }} / {{ check.model }}</span></p>
+              {% elif check.reason == "missing_model" %}
+                <p><span class="chip bdo-badge--danger">моделі {{ check.model }} немає в {{ check.provider }} · прогін зупиниться до першої пачки</span></p>
+              {% else %}
+                <p><span class="chip bdo-badge--danger">{{ "preflight_failed"|human }} · {{ check.provider }} · {{ check.reason|human }}</span></p>
+              {% endif %}
+            {% endfor %}
+          </div>
+        </section>
+        <section class="start-confirm-panel" id="start-confirm">
+          <h2>КУДИ ПІДЕ ЗАПИС</h2>
+          {% if env == "DEV" %}
+            <p>Запис піде в DEV · тестовий сайт.</p>
+          {% else %}
+            <p>Запис піде в PROD · робочий сайт. Змінити · картка «Куди пишемо» вище.</p>
+          {% endif %}
+        </section>
+      </div>
+
+      <div class="start-actions">
+        <button id="btn-run_start" class="btn-primary" type="submit"{% if running or not api_key_is_set %} disabled{% endif %}>почати прогін</button>
+        <button id="btn-run_start_dry" type="submit"{% if running %} disabled{% endif %}>тестовий прогін · без запису</button>
+        <span class="start-field-note">усі кроки ті самі, але на сервер не йде нічого</span>
+      </div>
+      <input id="start-dry" type="hidden" name="dry_run" value="true">
+    </form>
+  </section>
+{% endblock %}

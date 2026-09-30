@@ -1,0 +1,69 @@
+<!doctype html>
+{% from "_macros.html" import icon %}
+<html lang="uk">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="referrer" content="same-origin">
+    <link rel="icon" href="/favicon.ico" sizes="16x16 32x32">
+  <link rel="stylesheet" href="/static/app.css?v=p19-model-card-3&models=lock-1&p21=active-card-3&header=3&order=1&prompt=2&active=1&p43=key-buttons-1&p44=static-badges-1&p45=limits-4&p46=compact-start-1&p47=limit-tab-edge-1&p51=corpus-1&p52=client-version-1&p53=start-modes-1">
+    <title>{{ title }} · BDO UA Translate</title>
+  </head>
+  <body>
+    {% set diag_keys = nav_diag | map(attribute='key') | list %}
+    <nav class="nav" id="nav">
+      <a class="brand" href="/">
+        <span class="brand-mark" aria-hidden="true">{{ icon('brand') }}</span>
+        <span class="brand-copy"><strong>BDO · AI Localization</strong><small>Українська локалізація. Разом.</small></span>
+      </a>
+      <div class="nav-links">
+        {% for item in nav_work %}
+          <a id="nav-{{ item.key }}" href="/{{ item.key }}"{% if item.key == screen_key %} aria-current="page"{% endif %}>{{ item.label }}{% if item.key == 'review' %}<span id="nav-review-count">{% if review_count is not none %}{{ review_count }}{% endif %}</span>{% endif %}</a>
+        {% endfor %}
+        <details id="nav-diag"{% if screen_key in diag_keys %} class="is-active"{% endif %}>
+          <summary{% if screen_key in diag_keys %} aria-current="page"{% endif %}>діагностика</summary>
+          <div class="nav-diag-menu">
+            {% for item in nav_diag %}
+              <a id="nav-{{ item.key }}" href="/{{ item.key }}"{% if item.key == screen_key %} aria-current="page"{% endif %}>{{ item.label }}</a>
+            {% endfor %}
+          </div>
+        </details>
+      </div>
+      <div class="nav-side">
+        <div class="nav-side-row">
+          <span class="nav-header-status">
+            <span class="dot poll" id="nav-live-dot" aria-hidden="true"></span>
+            <span id="nav-live">оновлюється при відкритті</span>
+            <span aria-hidden="true">·</span>
+            <span id="nav-work">{{ 'працює' if header.live else 'простій' }}</span>
+          </span>
+          <span class="pill" id="nav-env">{{ env }}</span>
+          <span class="mono" id="nav-version">v{{ version }}</span>
+        </div>
+        <div class="nav-side-row nav-model">
+          <span class="chip model-choice-chip" title="{{ header.model }}">{{ header.model }}</span>
+          <span class="nav-param">temp {{ '%.3g'|format(header.temp) }}</span>
+          <span class="nav-param">ctx {{ header.ctx }}</span>
+          <span class="nav-param" title="{{ header.think_title }}">роздуми {{ header.think }}</span>
+        </div>
+      </div>
+    </nav>
+    <main class="wrap" id="app">
+      {% block content %}{% endblock %}
+    </main>
+    <aside id="limits-drawer" class="limits-drawer">
+      <button id="limits-tab" class="limits-tab" type="button" aria-controls="limits-drawer-body" aria-expanded="false" title="Ліміти підписки">
+        <span class="limits-tab-caption">ліміти</span>
+        <span class="limits-tab-row"><span class="limits-tab-label">міс</span><strong class="limits-tab-peak">—</strong></span>
+        <span class="limits-tab-row"><span class="limits-tab-label">тиж</span><strong class="limits-tab-peak">—</strong></span>
+        <span class="limits-tab-row"><span class="limits-tab-label">5г</span><strong class="limits-tab-peak">—</strong></span>
+      </button>
+      <div id="limits-drawer-body" class="limits-drawer-body">
+        <div class="limits-drawer-head"><strong>Ліміти підписки</strong><button type="button" data-limits-hide>сховати</button></div>
+        <div id="limits-drawer-widget"></div>
+      </div>
+    </aside>
+    <script src="/static/vendor/idiomorph-0.8.0.min.js"></script>
+    <script src="/static/app.js?v=p13-models-3.3a&live=2.5b&start=3.4&review=4.7&limits=5.3&nav=1&sessions-delete=5&p19=models-2&p21=role-effort-2&scope=3&typing=5&order=1&collapse=1&tokens=1&brain=1&prompt=1&sources=1&p45=limits-3&reqtokens=1&p51=corpus-2&p52=client-version-1"></script>
+  </body>
+</html>

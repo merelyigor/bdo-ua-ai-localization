@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% from "_macros.html" import action_button, action_error %}
+
+{% block content %}
+  <header class="screen-title">
+    <h1>Стан</h1>
+    <p class="hint">середовище, версія і стан сторінки</p>
+  </header>
+  <section class="panel">
+    <h2>Стан середовища</h2>
+    <p class="panel-subtitle">поточна конфігурація процесу без значення ключа</p>
+    <div class="bdo-table-wrap">
+      <table class="bdo-table" id="status-table">
+        <tbody>
+          <tr><th scope="row">Середовище</th><td><span class="pill" id="st-env">{{ env }}</span></td></tr>
+          <tr><th scope="row">Хост API</th><td class="mono" id="st-host">{{ api_host }}</td></tr>
+          <tr><th scope="row">Ключ API</th><td><span class="chip" id="st-key">{{ "задано" if key_set else "відсутній" }}</span></td></tr>
+          <tr><th scope="row">Активна модель</th><td class="mono" id="st-active-model">{{ active_model }}</td></tr>
+          <tr><th scope="row">Порт сторінки</th><td class="mono" id="st-port">{{ port }}</td></tr>
+          <tr><th scope="row">Версія</th><td class="mono" id="st-version">{{ version }}</td></tr>
+          <tr><th scope="row">Час сервера</th><td class="mono" id="st-time">{{ server_time }}</td></tr>
+          <tr><th scope="row">Значок BDO.app</th><td id="st-app">{% if app_built %}зібраний · {{ app_built_at }}{% else %}не зібраний · зібрати: <code>uv run bdo app build</code>{% endif %}</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+  {% set r = results.get("redact_check") %}
+  <section class="panel" id="redact-panel">
+    <h2>Редагування секретів у журналі</h2>
+    <p class="panel-subtitle">перевірка, що журнал не показує чутливі значення</p>
+    {% call action_button("redact_check", actions, "button btn-primary") %}{% endcall %}
+    {{ action_error("redact_check", r) }}
+    {% if r and r.ok is defined %}
+      <p id="redact-verdict">{{ "редагування: OK" if r.ok else "редагування: ЗБІЙ" }}</p>
+      <pre class="log" id="redact-log">{{ r.lines | join("\n") }}</pre>
+    {% endif %}
+  </section>
+  <section class="panel" id="status-diagnostics">
+    <h2>Діагностика</h2>
+    <p class="panel-subtitle">деталі API, викликів, якості, черги та статистики</p>
+    <div class="button-row">
+      <a class="button as-button" href="/api">API · що бачить ключ</a>
+      <a class="button as-button" href="/calls">Виклики · журнал моделі</a>
+      <a class="button as-button" href="/quality">Якість · механічні перевірки</a>
+      <a class="button as-button" href="/queue">Карантин і запис</a>
+      <a class="button as-button" href="/stats">Статистика · час ролей</a>
+      <a class="button as-button" href="/compare">Порівняти моделі</a>
+    </div>
+  </section>
+{% endblock %}

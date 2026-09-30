@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block content %}
+  <header class="screen-title">
+    <h1>Виклики</h1>
+    <p class="hint">кожен виклик моделі: роль, модель, стан, час</p>
+  </header>
+  <section class="panel">
+    <h2>Журнал викликів</h2>
+    <p class="panel-subtitle">робочі виклики видно завжди; перевірочні приховані, доки їх не відкриють</p>
+    <p id="calls-count">{{ work_count }} робочих · {{ diagnostic_count }} перевірочних</p>
+    {% if diagnostic_count %}
+      <a class="button as-button" id="calls-show-diag" href="{{ '/calls' if show_diagnostic else '/calls?diag=1' }}">{{ 'сховати' if show_diagnostic else 'показати' }} перевірочні виклики ({{ diagnostic_count }})</a>
+    {% endif %}
+    {% if calls %}
+      <div class="bdo-table-wrap">
+        <table class="bdo-table" id="calls-table">
+          <thead><tr><th>Час</th><th>Пачка</th><th>Роль</th><th>Модель</th><th>Стан</th><th class="calls-error-cell">Помилка</th><th>Тривалість</th><th>Токени</th><th>Деталі</th></tr></thead>
+          <tbody>{% for call in calls %}
+            <tr id="call-{{ loop.index }}">
+              <td class="time-cell">{{ call.started }}</td>
+              <td class="mono calls-context"{% if call.session_id %} title="{{ call.session_id }}"{% endif %}>{% if call.session_id %}{{ call.batch_id }}{% else %}перевірочний{% endif %}</td>
+              <td>{{ call.call.role | human }}</td><td>{{ call.call.model }}</td><td id="call-{{ loop.index }}-state">{{ ("success" if call.call.state == "ok" else call.call.state) | human }}</td>
+              <td class="calls-error-cell">{% if call.call.error %}{{ call.call.error.partition(":")[0] | human }}{% if ":" in call.call.error %}:{{ call.call.error.partition(":")[2] }}{% endif %}{% else %}—{% endif %}</td><td class="calls-num">{{ "%.1f"|format(call.call.ms / 1000) }} с</td><td class="calls-num">{{ call.call.in_tokens | thousands }} / {{ call.call.out_tokens | thousands }}</td>
+              <td><a class="button as-button" id="call-{{ loop.index }}-link" href="/call?id={{ call.call.id }}">Відкрити</a></td>
+            </tr>
+          {% endfor %}</tbody>
+        </table>
+      </div>
+    {% else %}<p id="calls-empty">Викликів поки немає.</p>{% endif %}
+  </section>
+{% endblock %}

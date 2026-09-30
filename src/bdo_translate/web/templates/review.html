@@ -1,0 +1,91 @@
+{% extends "base.html" %}
+{% from "_macros.html" import action_error %}
+{% block content %}
+  <header class="screen-title">
+    <h1>Черга до людини</h1>
+    <p class="hint">рядки, які конвеєр не взяв на себе · рішення за тобою</p>
+  </header>
+  {{ action_error("review_approve", results.get("review_approve")) }}
+  {{ action_error("review_reject", results.get("review_reject")) }}
+  {% if error %}
+    <section class="panel" id="review-error">
+      <p><strong>{{ error.code }}</strong></p><p>{{ error.message }}</p>
+      <p class="hint">що робити: {{ error.hint }}</p>
+    </section>
+  {% endif %}
+  <section class="panel review-intro">
+    <p>Схвалення пише в API рівно те, що в полі. Виправлений тут текст іде як рішення людини, тому надалі він сильніший за машинну назву глосарія.</p>
+    <div class="bar review-controls">
+      <span class="pill" id="review-env">{{ env }}</span>
+      <strong id="review-total">чекають {% if review_remaining_unknown %}≥{% endif %}{{ review_total }}</strong>
+      {% if review_order == 'new' %}<span id="review-shown">показано {{ review_shown }} найсвіжіших, поданих цим конвеєром · з причиною потрапляння</span>{% else %}<span id="review-shown">показано {{ review_shown }} із {{ review_total }} · ще {% if review_remaining_unknown %}невідомо{% else %}{{ review_remaining }}{% endif %} не показано, вирішені зникають зі списку</span>{% endif %}
+      <span class="review-order" id="review-order">
+        <a class="as-button{% if review_order == 'old' %} is-active{% endif %}" id="review-order-old" href="/review?limit={{ review_limit }}"{% if review_order == 'old' %} aria-current="page"{% endif %}>від найстаріших</a>
+        <a class="as-button{% if review_order == 'new' %} is-active{% endif %}" id="review-order-new" href="/review?limit={{ review_limit }}&amp;order=new"{% if review_order == 'new' %} aria-current="page"{% endif %}>нові від конвеєра</a>
+      </span>
+      <label for="review-limit">показувати</label>
+      <select id="review-limit" name="limit">
+        {% for option in [20, 50, 100] %}<option value="{{ option }}"{% if option == review_limit %} selected{% endif %}>{{ option }}</option>{% endfor %}
+      </select>
+      <input class="search" id="review-search" type="search" placeholder="пошук у показаних…" aria-label="Пошук у показаних пропозиціях">
+      <button class="btn-quiet" id="review-refresh" type="button">оновити</button>
+    </div>
+    <p class="load" id="review-loading" role="status">беру чергу з API…</p>
+  </section>
+  {% if proposals %}
+    <form id="review-bulk-approve" method="post" action="/action/review_approve" class="review-bulk-form">
+      <input type="hidden" name="limit" value="{{ review_limit }}"><input type="hidden" name="order" value="{{ review_order }}">
+      <input type="hidden" name="items" value="[]">
+      <button class="btn-primary" type="submit" data-review-bulk>схвалити вибрані</button>
+    </form>
+    <form id="review-bulk-reject" method="post" action="/action/review_reject" class="review-bulk-form">
+      <input type="hidden" name="limit" value="{{ review_limit }}"><input type="hidden" name="order" value="{{ review_order }}">
+      <input type="hidden" name="items" value="[]">
+      <label>Причина для всіх <input type="text" name="reason" required></label>
+      <button class="btn-danger" type="submit" data-review-bulk>відхилити вибрані</button>
+    </form>
+    <section class="review-list" id="review-list">
+      {% for proposal in proposals %}
+        <article class="panel review-item" id="review-item-{{ loop.index }}" data-review-search="{{ (proposal.source_text ~ ' ' ~ proposal.text ~ ' ' ~ proposal.id)|lower }}">
+          <div class="review-item-heading">
+            <label class="review-check"><input type="checkbox" data-review-select value="{{ proposal.id }}" aria-label="Вибрати пропозицію {{ proposal.id }}"></label>
+            <span class="mono review-id">#{{ proposal.id }}</span>
+            {% if proposal.identity_hash %}<button class="btn-quiet mono review-hash" type="button" data-copy-hash="{{ proposal.identity_hash }}" title="{{ proposal.identity_hash }}" aria-label="Копіювати повний hash {{ proposal.identity_hash[:12] }}">{{ proposal.identity_hash[:12] }}</button><a class="work-link" href="/history?hash={{ proposal.identity_hash|urlencode }}&amp;from=review">історія</a>{% endif %}
+          </div>
+          <div class="review-source{% if proposal.source_lines > 6 %} review-source-long{% endif %}">
+            {% if proposal.source_lines > 6 %}<div class="review-source-text">{% for part in proposal.source_preview_parts %}{% if part.markup %}<span class="chip review-markup">{{ part.text }}</span>{% else %}{{ part.text }}{% endif %}{% endfor %}</div><details><summary>показати все</summary><div class="review-source-text">{% for part in proposal.source_parts %}{% if part.markup %}<span class="chip review-markup">{{ part.text }}</span>{% else %}{{ part.text }}{% endif %}{% endfor %}</div></details>
+            {% else %}<div class="review-source-text">{% for part in proposal.source_parts %}{% if part.markup %}<span class="chip review-markup">{{ part.text }}</span>{% else %}{{ part.text }}{% endif %}{% endfor %}</div>{% endif %}
+          </div>
+          <div class="review-reason" id="review-reason-{{ loop.index }}">
+            {% if proposal.reason_label %}<span class="review-reason-label">чому тут: {{ proposal.reason_label }}</span>{% if proposal.reason_detail %}<span class="review-reason-detail">{{ proposal.reason_detail }}</span>{% endif %}<span class="review-reason-meta">{{ proposal.reason_mode }} · {{ proposal.reason_at }}</span>
+            {% else %}<span class="review-reason-meta">причина не записана (пропозиція старіша за P34 або подана не цим конвеєром)</span>{% endif %}
+            {% if proposal.meta %}<span class="review-reason-meta">{{ proposal.meta }}</span>{% endif %}
+          </div>
+          <form method="post" action="/action/review_approve" class="review-approve-form">
+            <input type="hidden" name="id" value="{{ proposal.id }}">
+            <input type="hidden" name="limit" value="{{ review_limit }}"><input type="hidden" name="order" value="{{ review_order }}">
+            <label class="review-text-label" for="review-text-{{ loop.index }}">Переклад</label>
+            <textarea class="grow review-text" id="review-text-{{ loop.index }}" name="text" rows="1" data-review-text>{{ proposal.text }}</textarea>
+            {% if proposal.source_parts|selectattr("markup")|list %}
+              <div class="review-markup-hints" aria-label="Токени, які мають бути в перекладі">
+                <span class="review-markup-label">Мають бути в перекладі:</span>
+                {% for part in proposal.source_parts %}{% if part.markup %}<span class="chip review-markup" data-review-token="{{ part.text }}">{{ part.text }} <span class="review-token-state"></span></span>{% endif %}{% endfor %}
+              </div>
+            {% endif %}
+            <div class="review-actions">
+              <button class="btn-primary" type="submit">схвалити</button>
+            </div>
+          </form>
+          <form method="post" action="/action/review_reject" class="review-reject-form">
+            <input type="hidden" name="id" value="{{ proposal.id }}">
+            <input type="hidden" name="limit" value="{{ review_limit }}"><input type="hidden" name="order" value="{{ review_order }}">
+            <label>Причина відхилення <input type="text" name="reason" required></label>
+            <button class="btn-danger" type="submit">відхилити</button>
+          </form>
+        </article>
+      {% endfor %}
+    </section>
+  {% else %}
+    <section class="panel" id="review-empty"><p>Черга порожня · конвеєр усе взяв на себе.</p></section>
+  {% endif %}
+{% endblock %}

@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "default_provider": "go",
+  "default_model": "space-bunny-free",
+  "num_ctx": 131072,
+  "timeout_seconds": 1500,
+  "providers": {
+    "ollama": { "transport": "ollama", "endpoint_env": "OLLAMA_ENDPOINT", "remote": false },
+    "omlx": { "transport": "openai", "endpoint_env": "OMLX_ENDPOINT", "api_key_env": "OMLX_API_KEY", "remote": false },
+    "llamaswap": { "transport": "openai", "endpoint_env": "LLAMASWAP_ENDPOINT", "remote": false },
+    "openai_compat": { "transport": "openai", "endpoint_env": "OPENAI_COMPAT_ENDPOINT", "api_key_env": "OPENAI_COMPAT_API_KEY", "remote": true },
+    "go": { "transport": "openai", "endpoint": "https:\/\/opencode.ai\/zen\/go\/v1", "api_key_env": "OPENCODE_API_KEY", "remote": true, "session_header": "x-opencode-session", "user_agent": "bdo-ua-translate/{version}", "usage_path": "/usage", "reasoning_off": { "*": "none", "space-bunny-free": "", "longcat-2.5-preview-free": "" }, "models_filter": { "include": ["free", "preview", "^mimo-", "^qwen"], "exclude": ["cod(e|er|ing)", "contributor", "vision", "^test"] } }
+  },
+  "roles": {
+    "translation-terminology": { "prompt": "roles/translation-terminology.md", "schema": "roles/schema/translation-terminology.json", "temperature": 1.0, "think": true },
+    "translation-worker":      { "prompt": "roles/translation-worker.md",      "schema": "roles/schema/response.json",                "temperature": 1.0, "think": true },
+    "translation-qa":          { "prompt": "roles/translation-qa.md",          "schema": "roles/schema/qa.json",                      "temperature": 1.0, "think": true },
+    "translation-repair":      { "prompt": "roles/translation-repair.md",      "schema": "roles/schema/response.json",                "temperature": 1.0, "think": true },
+    "translation-names":       { "prompt": "roles/translation-names.md",       "schema": "roles/schema/response.json",                "temperature": 1.0, "think": true },
+    "translation-judge":       { "prompt": "roles/translation-judge.md",       "schema": "roles/schema/translation-judge.json",       "temperature": 1.0, "think": true },
+    "translation-smoke":       { "prompt": "roles/translation-smoke.md",       "schema": "roles/schema/translation-smoke.json",       "temperature": 1.0, "think": true }
+  }
+}

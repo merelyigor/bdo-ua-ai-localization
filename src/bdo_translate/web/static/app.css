@@ -1,0 +1,1508 @@
+:root{
+  --s0:#07111b; --s1:#0d1823; --s2:#142230; --s3:#1b2b39;
+  --tp:#f2f5f8; --ts:#a6b2bd; --tm:#71808d;
+  --bd:rgba(165,188,207,.18); --bda:#6aa8df;
+  --acc-bg:#123f6d; --acc-tx:#d9ecff;
+  --gold:#d7aa57; --gold-soft:#f0cc7a; --gold-bg:rgba(215,170,87,.14);
+  --ok-bg:rgba(74,183,107,.16); --ok-tx:#72d98f;
+  --wr-bg:rgba(215,164,72,.16); --wr-tx:#f3c86f;
+  --dn-bg:rgba(215,74,74,.16); --dn-tx:#ff9f9f;
+  --lk-off:rgba(255,120,120,.45); --lk-on:#ff4d4d;
+  --body-glow:rgba(34,79,113,.26); --panel-fill:linear-gradient(145deg,rgba(20,34,48,.94),rgba(11,22,34,.96));
+  --surface-alpha:rgba(255,255,255,.025); --surface-hover:rgba(255,255,255,.045);
+  --line-soft:rgba(165,188,207,.12); --gold-border:rgba(215,170,87,.5);
+  --summary-bg:rgba(27,91,145,.16); --on-gold:#17212b;
+  --control-bg:rgba(255,255,255,.02); --table-head-bg:rgba(255,255,255,.025);
+  --focus-ring:rgba(106,168,223,.12);
+  --call-code-shadow:inset 0 1px 0 rgba(255,255,255,.025),0 8px 20px rgba(0,0,0,.12);
+  --runtime-ollama:#5ba4e5; --runtime-omlx:#a77cff;
+  --shadow:0 16px 40px rgba(0,0,0,.18);
+  --panel-radius:13px; --control-radius:8px;
+  --mono:"Courier New",Menlo,Consolas,ui-monospace,SFMono-Regular,monospace;
+  --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+}
+
+/* BDO DESIGN SYSTEM · semantic CSS primitives for the existing vanilla UI.
+   The project intentionally stays on HTML/CSS/JS: these names provide the
+   same composable Button/Card/Table/Badge/Alert/Select vocabulary without a
+   framework migration or a second source of behavior. Existing selectors are
+   compatibility aliases; event wiring and payloads remain untouched. */
+:root{
+  /* Semantic aliases keep both light and dark themes on the same contract. */
+  --ds-background:var(--s0); --ds-foreground:var(--tp);
+  --ds-card:var(--s1); --ds-card-foreground:var(--tp);
+  --ds-popover:var(--s1); --ds-popover-foreground:var(--tp);
+  --ds-primary:var(--acc-bg); --ds-primary-foreground:var(--acc-tx);
+  --ds-secondary:var(--s2); --ds-secondary-foreground:var(--tp);
+  --ds-muted:var(--s3); --ds-muted-foreground:var(--ts);
+  --ds-accent:var(--gold-bg); --ds-accent-foreground:var(--gold-soft);
+  --ds-destructive:var(--dn-bg); --ds-destructive-foreground:var(--dn-tx);
+  --ds-success:var(--ok-bg); --ds-success-foreground:var(--ok-tx);
+  --ds-warning:var(--wr-bg); --ds-warning-foreground:var(--wr-tx);
+  --ds-border:var(--bd); --ds-input:var(--bd); --ds-ring:var(--bda);
+  --ds-space-1:4px; --ds-space-2:8px; --ds-space-3:12px;
+  --ds-space-4:16px; --ds-space-5:20px; --ds-space-6:24px;
+  --ds-radius-sm:8px; --ds-radius-md:10px; --ds-radius-lg:14px; --ds-radius-pill:999px;
+  --ds-text-xs:11px; --ds-text-sm:12px; --ds-text-md:13px; --ds-text-lg:13px;
+  /* Ширина контенту · ОДНЕ джерело на всі сторінки. Раніше число жило в трьох
+     місцях (.wrap 1180, .models-screen 1180, .start-wrap 1240), і сторінки
+     розʼїхались. `body` має по 28px відступу, тож на екрані 1280 контент і так
+     обмежений 1224px · стеля 1240 не дає горизонтального скролу й водночас
+     використовує ширші екрани. `wide` · навмисний виняток для повного виклику. */
+  --ds-container:1240px; --ds-container-wide:1600px;
+  --ds-shadow:var(--shadow);
+}
+
+/* Button · explicit variants and compatibility aliases for current markup. */
+.bdo-button,button,a.as-button{
+  display:inline-flex;align-items:center;justify-content:center;gap:var(--ds-space-2);
+  min-height:32px;font-family:inherit;font-size:var(--ds-text-md);line-height:1.25;
+  padding:var(--ds-space-2) var(--ds-space-3);border:1px solid var(--ds-border);
+  border-radius:var(--ds-radius-sm);background:var(--ds-secondary);color:var(--ds-foreground);
+  cursor:pointer;transition:background-color .15s ease,border-color .15s ease,color .15s ease,box-shadow .15s ease,transform .15s ease
+}
+.bdo-button:hover,button:hover,a.as-button:hover{background:var(--surface-hover);border-color:var(--ds-ring)}
+.bdo-button:active,button:active,a.as-button:active{transform:translateY(1px)}
+.bdo-button:focus-visible,button:focus-visible,a.as-button:focus-visible,
+.bdo-select:focus-visible,select:focus-visible,input:focus-visible,textarea:focus-visible{
+  outline:2px solid var(--ds-ring);outline-offset:2px
+}
+.bdo-button:disabled,button:disabled,.bdo-button[aria-disabled="true"],a.as-button[aria-disabled="true"]{
+  opacity:.45;cursor:not-allowed;transform:none
+}
+.bdo-button--primary,.btn-primary{background:var(--ds-primary);color:var(--ds-primary-foreground);border-color:var(--ds-ring)}
+.bdo-button--primary:hover,.btn-primary:hover{background:var(--ds-primary);box-shadow:0 0 0 3px var(--focus-ring)}
+.bdo-button--secondary{background:var(--ds-secondary);color:var(--ds-secondary-foreground)}
+.bdo-button--ghost,.btn-quiet{background:transparent;color:var(--ds-muted-foreground)}
+.bdo-button--ghost:hover,.btn-quiet:hover{background:var(--ds-accent);color:var(--ds-accent-foreground);border-color:var(--gold)}
+.bdo-button--danger,.btn-danger{background:transparent;color:var(--ds-destructive-foreground);border-color:var(--ds-destructive-foreground)}
+.bdo-button--danger:hover,.btn-danger:hover{background:var(--ds-destructive);color:var(--ds-destructive-foreground)}
+.bdo-button--sm{min-height:28px;padding:var(--ds-space-1) var(--ds-space-2);font-size:var(--ds-text-sm)}
+.bdo-button--lg{min-height:40px;padding:var(--ds-space-2) var(--ds-space-4);font-size:var(--ds-text-lg)}
+.bdo-button--icon{width:32px;padding:var(--ds-space-2)}
+.bdo-button--icon.bdo-button--sm{width:28px}
+
+/* Card · composition hooks are ready for later page-by-page adoption. */
+.bdo-card,.panel{background:var(--ds-card);color:var(--ds-card-foreground);border:1px solid var(--ds-border);border-radius:var(--ds-radius-lg);box-shadow:var(--ds-shadow)}
+.bdo-card{padding:var(--ds-space-5)}
+.bdo-card__header{display:flex;align-items:flex-start;justify-content:space-between;gap:var(--ds-space-3);margin-bottom:var(--ds-space-4)}
+.bdo-card__title{font-size:var(--ds-text-lg);font-weight:600;line-height:1.35}
+.bdo-card__description{font-size:var(--ds-text-sm);color:var(--ds-muted-foreground);margin-top:var(--ds-space-1)}
+#compare-form fieldset{min-width:0;margin:12px 0;padding:10px 12px;border:1px solid var(--bd);border-radius:var(--control-radius);background:var(--control-bg);color:var(--ts)}
+#compare-form legend{padding:0 5px;color:var(--ts);font-size:12px}
+#compare-table a{color:var(--bda);text-decoration-color:var(--bda)}
+#compare-table a:hover{color:var(--gold-soft);text-decoration-color:var(--gold)}
+.bdo-card__content{min-width:0}
+.bdo-card__footer{display:flex;align-items:center;gap:var(--ds-space-2);margin-top:var(--ds-space-4)}
+.bdo-card--interactive{transition:border-color .15s ease,box-shadow .15s ease}
+.bdo-card--interactive:hover,.bdo-card--interactive:focus-within{border-color:var(--ds-ring);box-shadow:0 0 0 3px var(--focus-ring),var(--ds-shadow)}
+
+/* Table · responsive wrapper and explicit selected state. */
+.bdo-table-wrap{width:100%;overflow-x:auto;border:1px solid var(--ds-border);border-radius:var(--ds-radius-md);background:var(--surface-alpha)}
+.bdo-table{width:100%;border-collapse:collapse;font-size:var(--ds-text-md)}
+.bdo-table th,.bdo-table td{padding:var(--ds-space-3);text-align:left;border-top:1px solid var(--line-soft);vertical-align:middle}
+.bdo-table thead th{border-top:0;background:var(--table-head-bg);color:var(--ds-muted-foreground);font-size:var(--ds-text-xs);font-weight:500;letter-spacing:.04em;text-transform:uppercase}
+.bdo-table tbody tr:hover{background:var(--surface-hover)}
+.bdo-table tbody tr[aria-selected="true"],.bdo-table tbody tr.is-selected{background:var(--ds-accent);box-shadow:inset 3px 0 var(--gold)}
+.bdo-table--compact th,.bdo-table--compact td{padding:var(--ds-space-2)}
+
+/* Badge · status text remains present; colour is only supporting information. */
+.bdo-badge,.pill,.chip{display:inline-flex;align-items:center;justify-content:center;gap:var(--ds-space-1);min-height:24px;padding:var(--ds-space-1) var(--ds-space-2);border:1px solid var(--ds-border);border-radius:var(--ds-radius-pill);background:transparent;color:var(--ds-muted-foreground);font-size:var(--ds-text-xs);line-height:1.2}
+.bdo-badge--primary{background:var(--ds-primary);color:var(--ds-primary-foreground);border-color:var(--ds-ring)}
+.bdo-badge--success{background:var(--ds-success);color:var(--ds-success-foreground);border-color:var(--ds-success-foreground)}
+.bdo-badge--warning{background:var(--ds-warning);color:var(--ds-warning-foreground);border-color:var(--ds-warning-foreground)}
+.bdo-badge--danger{background:var(--ds-destructive);color:var(--ds-destructive-foreground);border-color:var(--ds-destructive-foreground)}
+.bdo-badge--muted{background:var(--ds-muted);color:var(--ds-muted-foreground)}
+.bdo-badge[data-state="selected"],.chip[aria-pressed="true"]{background:var(--ds-primary);color:var(--ds-primary-foreground);border-color:var(--ds-ring)}
+
+/* Alert · feedback has a semantic tone and remains readable without colour. */
+.bdo-alert,.msg,.info-note{display:flex;align-items:flex-start;gap:var(--ds-space-2);padding:var(--ds-space-3);border:1px solid var(--ds-border);border-radius:var(--ds-radius-md);background:var(--ds-muted);color:var(--ds-muted-foreground);font-size:var(--ds-text-sm)}
+.bdo-alert--info{background:var(--ds-primary);color:var(--ds-primary-foreground);border-color:var(--ds-ring)}
+.bdo-alert--success{background:var(--ds-success);color:var(--ds-success-foreground);border-color:var(--ds-success-foreground)}
+.bdo-alert--warning{background:var(--ds-warning);color:var(--ds-warning-foreground);border-color:var(--ds-warning-foreground)}
+.bdo-alert--danger{background:var(--ds-destructive);color:var(--ds-destructive-foreground);border-color:var(--ds-destructive-foreground)}
+.bdo-alert__title{font-weight:600;color:inherit}
+.bdo-alert__description{margin-top:var(--ds-space-1);color:inherit;opacity:.9}
+
+/* Select · native control preserves keyboard and browser semantics. */
+.bdo-select,select{min-height:32px;width:100%;font:inherit;font-size:var(--ds-text-md);padding:var(--ds-space-2) var(--ds-space-3);border:1px solid var(--ds-input);border-radius:var(--ds-radius-sm);background:var(--ds-secondary);color:var(--ds-foreground)}
+.bdo-select:hover,select:hover{border-color:var(--ds-ring)}
+.bdo-select:disabled,select:disabled{opacity:.55;cursor:not-allowed}
+
+/* Layout rhythm · shared hooks for future page migrations. */
+.bdo-stack{display:flex;flex-direction:column;gap:var(--ds-space-4)}
+.bdo-stack--tight{gap:var(--ds-space-2)}
+.bdo-stack--loose{gap:var(--ds-space-6)}
+.bdo-row{display:flex;align-items:center;gap:var(--ds-space-3);flex-wrap:wrap}
+.bdo-divider{height:1px;background:var(--line-soft);border:0;margin:var(--ds-space-4) 0}
+
+@media (prefers-reduced-motion:reduce){
+  .bdo-button,.bdo-card--interactive{transition:none}
+  .bdo-button:active,button:active,a.as-button:active{transform:none}
+}
+@media (prefers-color-scheme:light){
+  :root{
+    --s0:#f4f7fa; --s1:#ffffff; --s2:#f8fafc; --s3:#edf2f6;
+    --tp:#17212b; --ts:#526270; --tm:#7a8996;
+    --bd:rgba(32,55,73,.16); --bda:#2b76b4;
+    --acc-bg:#dceeff; --acc-tx:#154d7d;
+    --gold:#a87518; --gold-soft:#8c5e0c; --gold-bg:rgba(168,117,24,.12);
+    --ok-bg:#e5f5e9; --ok-tx:#277341;
+    --wr-bg:#fff2d8; --wr-tx:#946100;
+    --dn-bg:#ffe7e7; --dn-tx:#a32d2d;
+    --lk-off:rgba(163,45,45,.42); --lk-on:#d31f1f;
+    --body-glow:rgba(92,143,187,.14); --panel-fill:linear-gradient(145deg,rgba(255,255,255,.98),rgba(244,248,251,.98));
+    --surface-alpha:rgba(23,33,43,.025); --surface-hover:rgba(23,33,43,.045);
+    --line-soft:rgba(32,55,73,.12); --gold-border:rgba(168,117,24,.5);
+    --summary-bg:rgba(43,118,180,.1); --on-gold:#ffffff;
+    --control-bg:rgba(23,33,43,.025); --table-head-bg:rgba(23,33,43,.025);
+    --focus-ring:rgba(43,118,180,.14);
+    --runtime-ollama:#2b76b4; --runtime-omlx:#7655c7;
+    --shadow:0 12px 28px rgba(29,55,75,.12);
+  }
+}
+@media (prefers-color-scheme:dark){
+  :root{
+    --s0:#07111b; --s1:#0d1823; --s2:#142230; --s3:#1b2b39;
+    --tp:#f2f5f8; --ts:#a6b2bd; --tm:#71808d;
+    --bd:rgba(165,188,207,.18); --bda:#6aa8df;
+    --acc-bg:#123f6d; --acc-tx:#d9ecff;
+    --gold:#d7aa57; --gold-soft:#f0cc7a; --gold-bg:rgba(215,170,87,.14);
+    --ok-bg:rgba(74,183,107,.16); --ok-tx:#72d98f;
+    --wr-bg:rgba(215,164,72,.16); --wr-tx:#f3c86f;
+    --dn-bg:rgba(215,74,74,.16); --dn-tx:#ff9f9f;
+    --lk-off:rgba(255,120,120,.45); --lk-on:#ff4d4d;
+    --body-glow:rgba(34,79,113,.26); --panel-fill:linear-gradient(145deg,rgba(20,34,48,.94),rgba(11,22,34,.96));
+    --surface-alpha:rgba(255,255,255,.025); --surface-hover:rgba(255,255,255,.045);
+    --line-soft:rgba(165,188,207,.12); --gold-border:rgba(215,170,87,.5);
+    --summary-bg:rgba(27,91,145,.16); --on-gold:#17212b;
+    --control-bg:rgba(255,255,255,.02); --table-head-bg:rgba(255,255,255,.025);
+    --focus-ring:rgba(106,168,223,.12);
+    --runtime-ollama:#5ba4e5; --runtime-omlx:#a77cff;
+    --shadow:0 16px 40px rgba(0,0,0,.18);
+  }
+}
+*{box-sizing:border-box}
+body{margin:0;padding:22px 28px 36px;background:radial-gradient(circle at 50% -20%,var(--body-glow),transparent 42%),var(--s0);color:var(--tp);font-family:var(--sans),sans-serif;font-size:13px;line-height:1.6}
+.wrap{max-width:var(--ds-container);margin:0 auto}
+h1{font-size:26px;font-weight:600;letter-spacing:-.02em;margin:0 0 4px}
+.sub{font-size:13px;color:var(--tp);opacity:.82;margin:0 0 16px}
+.panel{background:var(--panel-fill);border:1px solid var(--bd);border-radius:var(--panel-radius);padding:18px;margin-bottom:14px;box-shadow:var(--shadow)}
+.panel h2{margin:0 0 4px}
+.panel-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:8px 0}
+.panel-actions form{margin:0}
+.stats-session-form{display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:center;gap:8px}
+.stats-session-form select{min-width:0}
+.bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px}
+.pill{font-size:12px;padding:3px 9px;border-radius:6px}
+.mono{font-family:var(--mono),monospace;font-size:12px;line-height:1.55}
+h2{font-size:13px}
+button{font-family:inherit;font-size:13px;padding:6px 11px;border-radius:var(--control-radius);border:1px solid var(--bd);background:var(--control-bg);color:var(--tp);cursor:pointer;transition:background-color .15s ease,border-color .15s ease,transform .15s ease}
+button:hover{background:var(--s2)}
+/* СТРІЧКА КРОКІВ · хлібним слідом, як у прототипі 01.
+   Коробки з підписом «зроблено» під кожним кроком з'їдали чверть екрана й
+   повторювали одне слово шість разів. Стан тепер каже КОЛІР, а місце
+   звільнилось під те, заради чого сторінку й відкривають · роботу ролей. */
+.steps{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:14px;font-size:12px;color:var(--tm)}
+.step{display:inline-flex;align-items:center;gap:5px;padding:4px 7px;border:1px solid transparent;border-radius:var(--control-radius);transition:color .15s ease,background-color .15s ease,border-color .15s ease}
+.step-status-icon{width:14px;height:14px;color:currentColor;stroke-width:2}
+.step .n{font-weight:400}
+.step .s{display:none}
+.step .arrow{color:var(--tm);opacity:.55}
+.step.done{color:var(--ok-tx);background:var(--ok-bg);border-color:var(--ok-tx)}
+.step.now{color:var(--acc-tx);font-weight:500;background:var(--acc-bg);border-color:var(--bda)}
+.step.now .step-status-icon{animation:step-spin 1.2s linear infinite}
+/* Тестовий запис · попереджувальний токен, той самий, що й у мітки «тестова»
+   в переліку сесій: одна подія має один колір на всіх екранах. */
+.step.dry{color:var(--wr-tx);background:var(--wr-bg);border-color:var(--wr-tx)}
+.step.skipped{color:var(--ts);opacity:.7}
+.step.skipped .n{text-decoration:line-through}
+.step.pending{color:var(--tm)}
+@keyframes step-spin{to{transform:rotate(360deg)}}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin-bottom:4px}
+.card{background:var(--s2);border-radius:8px;padding:10px}
+.card .l{font-size:12px;color:var(--ts)}
+.card .v{font-size:22px;font-weight:500}
+.msg{border:.5px solid var(--bd);border-radius:12px;background:var(--s2);padding:10px 13px;margin-bottom:8px}
+.msg.active{border-color:var(--bda)}
+.role-card{border-width:1px}
+/* Межа пачки у викликах сесії (D262): без неї 40 карток читались як одна пачка. */
+.calls-batch{display:flex;align-items:baseline;gap:10px;margin:14px 2px 6px;padding-top:10px;border-top:1px solid var(--line-soft);font-size:12px}
+.calls-batch:first-child{margin-top:0;padding-top:0;border-top:0}
+.calls-batch-id{font-weight:500;color:var(--tp)}
+.role-card.is-active{border-color:var(--bda)}
+.role-card.is-ok{border-color:var(--ok-tx)}
+.role-card.is-review{border-color:var(--wr-tx)}
+.role-card.is-failed{border-color:var(--dn-tx)}
+.role-transition{align-items:center;border-color:var(--bda);background:var(--surface-alpha)}
+.role-transition>.role-icon{flex:0 0 auto;color:var(--acc-tx)}
+.transition-copy{min-width:0;flex:1}
+.transition-title{color:var(--acc-tx);font-size:13px;font-weight:500}
+.transition-target{margin-top:2px;color:var(--ts);font-size:12px}
+.role-transition .load{padding:5px 0 0}
+.role-state{display:inline-flex;align-items:center;gap:4px;cursor:default;white-space:nowrap;flex-shrink:0}
+.role-state.running{background:var(--acc-bg);color:var(--acc-tx);border-color:var(--bda)}
+.role-state.ok{background:var(--ok-bg);color:var(--ok-tx);border-color:var(--ok-tx)}
+.role-state.review{background:var(--wr-bg);color:var(--wr-tx);border-color:var(--wr-tx)}
+.role-state.failed{background:var(--dn-bg);color:var(--dn-tx);border-color:var(--dn-tx)}
+.verdict-icon{font-size:13px;font-weight:500}
+.thinking-indicator{display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;color:var(--ts);opacity:.62;transition:color .2s ease,opacity .2s ease,filter .2s ease}
+.thinking-indicator .icon{width:16px;height:16px}
+.thinking-indicator.has-thinking{color:var(--wr-tx);opacity:1;filter:drop-shadow(0 0 5px var(--wr-tx))}
+.thinking-indicator.no-thinking{color:var(--tm)}
+.role-model{max-width:min(38vw,420px);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:var(--mono),monospace;font-size:var(--ds-text-xs);color:var(--ts);background:var(--surface-alpha);border-color:var(--line-soft)}
+.work-link{color:var(--acc-tx);text-decoration:underline;text-decoration-color:var(--bda)}
+.mh{display:flex;align-items:center;gap:8px;font-size:13px}
+.mh .meta{font-size:12px;color:var(--tm)}
+.box{background:var(--s1);border-radius:8px;padding:8px 10px;margin-top:8px;white-space:pre-wrap;word-break:break-word;max-height:220px;overflow:auto}
+.caret{display:inline-block;width:7px;height:14px;background:var(--bda);vertical-align:-2px;animation:b 1s steps(2) infinite}
+@keyframes b{50%{opacity:0}}
+pre.log{margin:0;background:var(--s2);border-radius:8px;padding:10px 12px;max-height:420px;overflow:auto;font-family:var(--mono),monospace;font-size:12px;line-height:1.5;white-space:pre-wrap;word-break:break-word}
+.journal-panel{padding:12px 14px}
+.journal-summary{display:flex;align-items:center;gap:10px;min-width:0;cursor:pointer;list-style:none}
+.journal-summary::-webkit-details-marker{display:none}
+.journal-caret{flex:0 0 auto;display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;border:1px solid var(--bd);border-radius:50%;color:var(--ts);background:var(--s1);transition:transform .12s,border-color .12s,color .12s}
+.journal-caret .icon{width:16px;height:16px}
+.journal-panel[open]>.journal-summary .journal-caret{transform:rotate(90deg)}
+.journal-summary:hover .journal-caret{border-color:var(--bda);color:var(--acc-tx)}
+.journal-title{font-size:13px;font-weight:500}
+.journal-summary .empty{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.journal-toolbar{display:flex;justify-content:flex-end;margin:8px 0}
+.journal-log{max-height:min(420px,55vh)}
+.empty{font-size:13px;color:var(--ts)}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th{text-align:left;font-weight:400;color:var(--ts);font-size:12px;padding:4px 8px}
+td{padding:4px 8px;border-top:.5px solid var(--bd)}
+.time-cell{white-space:normal;overflow-wrap:anywhere;color:var(--ts);font-variant-numeric:tabular-nums}
+td.num,th.num{text-align:right;font-family:var(--mono),monospace}
+/* Каталог моделей · назви можуть бути довгими, а три дії мають лишатися
+   повʼязаною групою. Окремий layout-контейнер не змінює жодної дії чи payload,
+   лише прибирає випадковий перенос кнопок і зберігає таблицю читабельною. */
+.model-table-wrap{overflow-x:auto;margin:0 -4px;padding:0 4px}
+.model-table{width:100%;min-width:0;table-layout:fixed}
+.model-table th,.model-table td{vertical-align:middle}
+.model-table th:nth-child(1),.model-table td:nth-child(1){width:10%}
+.model-table th:nth-child(2),.model-table td:nth-child(2){width:34%}
+.model-table th:nth-child(3),.model-table td:nth-child(3){width:12%}
+.model-table th:nth-child(4),.model-table td:nth-child(4){width:15%}
+.model-table th:nth-child(5),.model-table td:nth-child(5){width:14%}
+.model-table th:nth-child(6),.model-table td:nth-child(6){width:15%}
+.model-table th{padding:7px 10px;white-space:nowrap}
+.model-table td{padding:5px 8px;border-top:.5px solid var(--bd)}
+.model-table tbody tr{transition:background-color .12s ease}
+.model-table tbody tr:hover{background:var(--s2)}
+.global-selection{display:grid;grid-template-columns:minmax(150px,auto) minmax(0,1fr) auto;align-items:center;gap:10px;padding:10px 12px;border:.5px solid var(--bd);border-radius:10px;background:var(--s2)}
+.global-selection.is-active{border-color:var(--bda);background:var(--acc-bg);color:var(--acc-tx)}
+.global-selection-label{display:flex;align-items:baseline;gap:8px;min-width:0}
+.global-selection-title{font-weight:500;white-space:nowrap}
+.global-selection-hint{font-size:12px;color:var(--ts);white-space:nowrap}
+.global-selection.is-active .global-selection-hint{color:var(--acc-tx);opacity:.85}
+.global-selection-model{min-width:0;overflow-wrap:anywhere}
+.global-selection-clear{justify-self:end;white-space:nowrap}
+.global-selection.is-active .global-selection-clear{background:var(--s2);color:var(--acc-tx);border-color:var(--bda)}
+.model-row.is-global-selected{background:var(--acc-bg);box-shadow:inset 3px 0 var(--bda)}
+.model-row.is-global-selected:hover{background:var(--acc-bg)}
+.model-selected-badge{display:inline-block;margin-left:8px;padding:2px 6px;border-radius:999px;background:var(--s2);color:var(--acc-tx);font-family:var(--sans),sans-serif;font-size:11px;font-weight:500;vertical-align:2px;white-space:nowrap}
+.model-runtime,.model-size,.model-loaded{white-space:nowrap}
+.model-name{overflow:hidden;overflow-wrap:normal;text-overflow:ellipsis;white-space:nowrap;word-break:normal}
+.model-state{font-size:12px;overflow-wrap:anywhere}
+.model-status{display:inline-flex;align-items:center;gap:6px;white-space:nowrap;font-weight:500}
+.model-status::before{content:"";width:8px;height:8px;border-radius:50%;background:currentColor;flex:none}
+.model-status-available{color:var(--ok-tx)}
+.model-status-unavailable{color:var(--dn-tx)}
+.model-status-loading{color:var(--wr-tx)}
+.model-status-loading-detail{color:var(--wr-tx)}
+.model-status-detail{margin-top:3px;color:var(--dn-tx);font-size:11px;overflow-wrap:anywhere}
+.model-load-state{flex:1;min-width:0;white-space:normal}
+.model-load-state.is-loading{color:var(--wr-tx)}
+.load-inline{display:inline-flex;align-items:center;gap:7px}
+.spin-inline{width:11px;height:11px;border-width:1.5px}
+button.is-loading,.model-actions button.is-loading{color:var(--wr-tx);border-color:var(--gold-border);background:var(--gold-bg)}
+.models-loading-state{padding:8px 0}
+.models-preloader{display:none;align-items:center;gap:12px;min-height:72px;font-size:13px;color:var(--tp)}
+.models-preloader .panel-subtitle{display:block}
+.models-refreshing .models-preloader{display:flex}
+.models-refreshing #app > :not(.screen-title):not(.models-preloader){display:none}
+.catalog-summary-loading{grid-column:1 / -1;display:flex;align-items:center;gap:9px;min-height:56px;padding:0 12px;border:1px dashed var(--bd);border-radius:10px;color:var(--ts);font-size:12px}
+.model-row.is-loading{background:var(--wr-bg);box-shadow:inset 3px 0 var(--wr-tx)}
+.model-row.is-loading:hover{background:var(--wr-bg)}
+.model-actions{display:flex;align-items:center;gap:6px;min-width:0;white-space:nowrap}
+.model-actions form{display:inline-flex;min-width:0;margin:0}
+.model-actions button{min-width:0;min-height:30px;padding:5px 8px;white-space:nowrap;line-height:1.25}
+.model-actions .model-lock{height:30px;padding:4px 7px;justify-content:center;gap:4px;font-size:11px}
+.model-action-primary{background:var(--acc-bg);color:var(--acc-tx);border-color:var(--bda);font-weight:500}
+.model-action-primary:hover{filter:brightness(1.04)}
+/* ЗАМОК · блідо-червоний, поки відкритий, і яскраво-червоний, коли тримає.
+   Колір несе стан: замкнену модель видно з іншого кінця таблиці. */
+/* Іконка замка БІЛЬША за решту: вона несе стан, а не прикрашає кнопку, і
+   власник цілиться саме в неї (замала іконка · 2026-09-23). */
+.model-lock .icon{width:20px;height:20px;stroke-width:2.1}
+.model-lock{color:var(--lk-off);border-color:var(--lk-off)}
+.model-lock:hover{color:var(--lk-on);border-color:var(--lk-on)}
+.model-lock.is-locked{color:var(--lk-on);border-color:var(--lk-on);font-weight:600}
+.model-row.is-locked .model-name,.model-row.is-locked .model-size{opacity:.6}
+.model-status-locked{color:var(--lk-on)}
+.section-bar{margin-bottom:8px}
+.section-title{font-size:13px;font-weight:500}
+.section-note{font-size:12px;color:var(--ts);margin:-2px 0 8px}
+.head{display:flex;flex-direction:column;gap:8px;margin-bottom:12px}
+.head .row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.head .lbl{font-size:11.5px;color:var(--tm);text-transform:uppercase;letter-spacing:.04em;min-width:96px}
+.dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--tm)}
+/* Крапки стану · ТОКЕНАМИ, а не літералами. Тут стояли hex зі СВІТЛОЇ
+   палітри, тому в темній темі індикатор лишався темно-зеленим на темному тлі ·
+   тобто «оновлюється наживо» було майже не видно саме в тій темі, у якій
+   власник працює. Знайдено перевіркою §15.1, а не оком. */
+.dot.live{background:var(--ok-tx)}
+.dot.poll{background:var(--wr-tx)}
+.dot.dead{background:var(--dn-tx)}
+
+/* --- навігація між екранами ------------------------------------------------
+   Екрани окремі (рішення власника 2026-09-05: «краще окремі екрани, а не по
+   вкладкам»), тому це справжні посилання, а не показ/приховування секцій.
+   Поточний екран підсвічений, решта · спокійні. */
+.nav{position:sticky;top:0;z-index:20;display:grid;width:min(1240px,calc(100% - 32px));grid-template-columns:260px minmax(0,1fr) minmax(0,330px);gap:14px;align-items:center;margin:0 auto 28px;padding:10px 14px;border:1px solid var(--nav-border);border-radius:var(--panel-radius);background:var(--nav-fill);box-shadow:var(--nav-shadow);backdrop-filter:blur(10px)}
+.brand{display:inline-flex;align-items:center;gap:9px;margin-right:12px;color:var(--tp);text-decoration:none;min-width:220px}
+.brand-mark{display:grid;place-items:center;width:31px;height:31px;border:1px solid var(--gold);border-radius:9px;color:var(--gold-soft);font-size:23px;line-height:1;transform:rotate(45deg)}
+.brand-mark::first-letter{transform:rotate(-45deg)}
+.brand-copy{display:flex;flex-direction:column;line-height:1.15}
+.brand-copy strong{font-size:13px;letter-spacing:.01em}
+.brand-copy small{font-size:11px;color:var(--tm);margin-top:4px}
+.icon{display:inline-block;width:1em;height:1em;flex:none;vertical-align:-.16em;stroke:currentColor}
+.brand-mark .icon{width:22px;height:22px;vertical-align:0}
+.panel-icon .icon{width:16px;height:16px;vertical-align:0}
+.role-icon{display:inline-flex;align-items:center;justify-content:center;width:17px;height:17px;margin-right:5px;color:var(--gold-soft);vertical-align:-.2em}
+.role-icon .icon{width:16px;height:16px;vertical-align:0}
+.model-loaded-icon{width:15px;height:15px;margin-right:5px;vertical-align:-.18em}
+.nav-links{display:flex;min-width:0;grid-column:2;gap:4px;flex-wrap:nowrap;align-items:center;justify-content:flex-start;overflow:visible}
+.nav a{font-size:13px;padding:6px 10px;border-radius:9px;border:.5px solid transparent;
+  color:var(--ts);text-decoration:none}
+.nav a:hover{background:var(--s1)}
+.nav a[aria-current="page"]{background:var(--acc-bg);color:var(--acc-tx);border-color:var(--bda);font-weight:500}
+.nav .sp{margin-left:auto;display:flex;align-items:center;gap:6px;font-size:12px;color:var(--tm)}
+.nav .sp .nav-model-status{font-size:11px;white-space:nowrap}
+/* Чинні параметри моделі · довідка, а не керування, тому найтихіший рівень
+   тексту зі шкали (11) і колір другорядного. Ключ виділено вагою, бо ока
+   шукає саме його; значення читається поруч.
+
+   ВИСОТА ХЕДЕРА НЕ РОСТЕ. Перша редакція мала `flex-wrap:wrap`, і блок не
+   вліз у рядок · перенісся вниз, зробивши шапку вдвічі вищою (власник
+   2026-09-17: «просив праворуч, а не збільшити висоту»). Тому перенос
+   заборонено, а сам блок СТИСКАЄТЬСЯ: `min-width:0` разом із прихованим
+   надлишком дає йому здаватися першим, не штовхаючи сусідів на новий рядок.
+   Повні значення лишаються в підказці, тому нічого не губиться. */
+/* `flex:1 1 0` · блок стартує з нульової ширини й БЕРЕ те, що лишилось. Саме це
+   прибирає перенос: виміряно, що діти хедера просять 1285 пікселів при ширині
+   1240, і з `flex:0 1 auto` браузер волів перенести цілий блок, а не стиснути
+   його. Нульова основа знімає вибір · переносити нема чого. */
+/* ДВА РЯДКИ · рішення власника 2026-09-17. В один рядок блок був удвічі ширшим
+   і його зрізало, щойно індикатор мінявся на довший жовтий «оновлюється раз на
+   секунду». Сітка з двома рядками й колонковим потоком удвічі вужча, а висота
+   двох рядків по 11px менша за висоту назви, тому шапка не росте. */
+/* ПРАВИЙ СТОВПЧИК ШАПКИ · стан звʼязку над параметрами моделі. Один блок
+   замість двох сусідів: переносити нема чого, і права кромка тримається сама.
+   Висота шапки від цього не росте · рядок стану й рядок параметрів разом
+   нижчі за дворядкову назву зліва. */
+.nav-side{margin-left:auto;display:grid;gap:2px;justify-items:end;align-content:center;min-width:0}
+.nav-side .sp{margin-left:0}
+/* Параметри займають два короткі рядки, а не випадково переносяться одним
+   довгим потоком. Так правий блок лишається компактним і легко сканується. */
+.nav-model{display:flex;flex-wrap:wrap;gap:1px 7px;font-size:11px;line-height:1.35;
+  color:var(--tm);align-items:center;justify-content:flex-end;min-width:0;white-space:nowrap}
+.nav-param{flex:0 0 auto}
+.nav-model-status{display:inline-flex;align-items:center;gap:4px;flex:0 0 auto;font-weight:500}
+.nav-model-status-dot{width:7px;height:7px;border-radius:50%;background:currentColor;flex:none}
+.nav-model-status-working{color:var(--acc-tx)}
+.nav-model-status-loading{color:var(--wr-tx)}
+.nav-model-status-loaded{color:var(--ok-tx)}
+.nav-model-status-unloaded,.nav-model-status-unknown{color:var(--tm)}
+
+/* Шапка має три стабільні зони: бренд, навігація і службова інформація.
+   Раніше flex переносив `nav-side` під посилання, коли до нього додавались
+   параметри моделі. Сітка стискає середню зону, але не збільшує висоту шапки. */
+.nav .brand{min-width:0;margin-right:0}
+.nav-links a{white-space:nowrap}
+.nav-side{width:100%;max-width:330px;min-width:0;overflow:hidden;padding-left:12px;border-left:1px solid var(--line-soft)}
+.nav-model{max-width:100%;overflow:hidden}
+
+.nav-param b{font-weight:500;color:var(--ts)}
+/* Зірочка = значення ставить НАБІР, а не модель. Без неї хедер не відрізнявся
+   від виводу рантайму, і звірка з `ollama show` виглядала як розбіжність. */
+.nav-param-mark{font-style:normal;color:var(--acc-tx);margin-left:1px}
+.nav .badge{margin-left:6px;font-size:11px;opacity:.85}
+
+/* Заголовок екрана: назва зліва, підказка поруч · щоб було видно, де ти. */
+.screen-title{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;margin:0 0 18px}
+.screen-title h1{margin:0}
+.screen-title .hint{font-size:13px;color:var(--ts)}
+
+.row{display:flex;gap:10px;padding:9px 0;border-top:.5px solid var(--bd)}
+.chip{font-size:12px;padding:3px 10px;border-radius:999px;border:.5px solid var(--bd);background:transparent;
+  color:var(--ts);cursor:pointer}
+.chip[aria-pressed="true"]{background:var(--acc-bg);color:var(--acc-tx);border-color:var(--bda)}
+.mode{border:.5px solid var(--bd);border-radius:10px;background:var(--s2);padding:9px 11px;cursor:pointer;
+  min-width:190px;text-align:left}
+.mode[aria-pressed="true"]{border-color:var(--bda);background:var(--acc-bg)}
+.mode .n{font-size:13px;font-weight:500;display:block}
+.mode[aria-pressed="true"] .n{color:var(--acc-tx)}
+.mode .d{font-size:12px;color:var(--ts);display:block}
+.mode[aria-pressed="true"] .d{color:var(--acc-tx)}
+select,input[type=number],input[type=text],input[type=search]{font-family:inherit;font-size:13px;padding:5px 8px;border-radius:8px;
+  border:.5px solid var(--bd);background:var(--s2);color:var(--tp)}
+input[type=checkbox]{font:inherit}
+
+/* Екран одного виклику · читати роботу моделі, а не підглядати в щілину.
+   Власник попросив розгортати вікно на весь екран і відкривати окремою
+   вкладкою (2026-09-06), тому тут ширша колонка й високі вікна. */
+.wrap.wide{max-width:var(--ds-container-wide)}
+.box.big{max-height:60vh}
+pre.log.big{max-height:70vh;font-size:13px}
+.call-screen .box.big,.call-screen pre.log.big,.call-screen #callThinkBox{max-height:none;overflow:visible}
+.call-screen .call-work-grid pre.log.big{
+  background:var(--s0);
+  border:1px solid var(--line-soft);
+  box-shadow:var(--call-code-shadow)
+}
+.call-work-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;align-items:start}
+.call-work-grid>.panel{min-width:0}
+.call-screen .live-call-grid{margin-top:6px}
+.call-screen .live-call-grid .live-section-title{margin:0 0 6px;color:var(--ts);font-size:12px}
+.call-screen .call-thinking{margin:0 0 10px;border:1px solid var(--line-soft);border-radius:8px;background:var(--surface-alpha)}
+.call-screen .call-thinking>summary{padding:8px 10px;color:var(--wr-tx);cursor:pointer;font-size:12px;font-weight:600;list-style-position:inside}
+.call-screen .call-thinking[open]>summary{border-bottom:1px solid var(--line-soft)}
+.call-screen .call-thinking>.box,.call-screen .call-thinking>pre.log{margin:8px}
+.call-screen .call-thinking>.empty{padding:8px 10px}
+:fullscreen .wrap.wide{max-width:none;padding:0 24px}
+:fullscreen pre.log.big{max-height:80vh}
+@media (max-width:900px){
+  .call-work-grid{grid-template-columns:1fr}
+}
+
+@media (max-width:560px){
+  .stats-session-form{grid-template-columns:1fr}
+}
+
+/* Рядок вердикту · джерело, переклад і думка QA поруч (прототип 01).
+   Тонка лінія замість картки: рядків десятки, і рамка на кожному
+   перетворила б перелік на смугастий шум. */
+.v-pass{background:var(--ok-bg);color:var(--ok-tx);height:fit-content}
+.v-review{background:var(--wr-bg);color:var(--wr-tx);height:fit-content}
+.v-reject,.v-none{background:var(--dn-bg);color:var(--dn-tx);height:fit-content}
+.vrow{display:flex;gap:10px;padding:9px 0;border-top:.5px solid var(--bd)}
+.vrow:first-child{border-top:0}
+/* Думка QA буває на кілька екранів · і тоді вона топить сам перелік рядків.
+   У макеті зауваження одноряд+кове, у житті модель пише есе (заміряно
+   2026-09-06: 900 слів на одному рядку). Тому підрізаємо трьома рядками, а
+   повний текст лишається за кліком · ховати його не можна, це вирок. */
+.vissue{font-size:12px;color:var(--wr-tx);margin-top:3px;cursor:pointer;
+  display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+.vissue.open{display:block;-webkit-line-clamp:none}
+.vissue::after{content:" ▾";color:var(--tm)}
+.vissue.open::after{content:" ▴";color:var(--tm)}
+
+/* Кнопка-фільтр · та сама форма, що в макеті: натиснута підсвічена акцентом. */
+.chip{font-size:12px;padding:3px 10px;border-radius:999px;border:.5px solid var(--bd);
+  background:transparent;color:var(--ts);cursor:pointer;font-family:inherit}
+.chip:hover{background:var(--s2)}
+.chip[aria-pressed="true"]{background:var(--acc-bg);color:var(--acc-tx);border-color:var(--bda)}
+
+/* Таблиця вибору · рядок є кнопкою (прототип 04: патчі вибирають, дивлячись
+   на число «без ШІ-шару», а не наосліп у випадайці). */
+.tbl.pick tbody tr{cursor:pointer}
+.tbl.pick tbody tr:hover{background:var(--s2)}
+.tbl.pick tbody tr.on{background:var(--acc-bg)}
+.tbl.pick tbody tr.on td{color:var(--acc-tx)}
+
+/* Сесія як картка, що розгортається на своєму місці (макет 02).
+   Окремий блок деталей унизу губив звʼязок «яку сесію я дивлюсь». */
+.session-entry{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:start;gap:8px;margin-bottom:8px}
+.sess{min-width:0;border:.5px solid var(--bd);border-radius:12px;background:var(--s2);padding:10px 12px;margin:0}
+.sess.on{border-color:var(--bda)}
+.sess .sh{display:flex;align-items:center;gap:10px;flex-wrap:wrap;cursor:pointer;font-size:13px}
+.sess .tog{padding:0 8px;font-size:20px;line-height:1.1;min-width:34px;color:var(--ts)}
+.sess.on .tog{color:var(--acc-tx)}
+.sess .sb{margin-top:10px}
+.session-actions{padding-top:9px}
+.session-delete-feedback:empty{display:none}
+.session-delete-feedback .panel{margin:8px 0 0;max-width:220px}
+.session-delete-result-notice{margin:0 0 8px}
+.sess table{margin-top:0}
+/* Історія пачок читається зверху вниз від найновішої до найдавнішої.
+   Переворот лишається суто візуальним: порядок даних, DOM і таблична
+   семантика не змінюються. */
+.sess table tbody{transform:scaleY(-1)}
+.sess table tbody tr{transform:scaleY(-1)}
+@media(max-width:760px){
+  .session-entry{grid-template-columns:minmax(0,1fr)}
+  .session-actions{padding:0 12px 8px}
+}
+.v-open{background:var(--acc-bg);color:var(--acc-tx)}
+.v-closed{background:var(--s1);color:var(--ts)}
+.session-batches{width:100%;min-width:1180px;table-layout:fixed}
+.session-batches th,.session-batches td{padding:8px 10px;vertical-align:middle}
+.session-batches th.num,.session-batches td.num{text-align:center}
+.session-batches th:nth-child(8),.session-batches td:nth-child(8){text-align:center}
+.session-batches th:nth-child(9),.session-batches td:nth-child(9){text-align:left}
+.session-batches th:nth-child(10),.session-batches td:nth-child(10){text-align:left}
+.session-batches td:first-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.session-batches .batch-state{white-space:normal;overflow:hidden;line-height:1.3}
+.session-batches .batch-state-text{display:block;max-width:100%;overflow-wrap:anywhere}
+.session-batches th:nth-child(1),.session-batches td:nth-child(1){width:21%}
+.session-batches th:nth-child(2),.session-batches td:nth-child(2){width:10%}
+.session-batches th:nth-child(3),.session-batches td:nth-child(3){width:9%}
+.session-batches th:nth-child(4),.session-batches td:nth-child(4){width:5%}
+.session-batches th:nth-child(5),.session-batches td:nth-child(5){width:5%}
+.session-batches th:nth-child(6),.session-batches td:nth-child(6){width:7%}
+.session-batches th:nth-child(7),.session-batches td:nth-child(7){width:7%}
+.session-batches th:nth-child(8),.session-batches td:nth-child(8){width:8%}
+.session-batches th:nth-child(9),.session-batches td:nth-child(9){width:16%;padding-right:16px}
+.session-batches th:nth-child(10),.session-batches td:nth-child(10){width:12%;padding-left:16px}
+.session-batches .batch-model-cell{min-width:0;max-width:none;overflow:visible}
+.batch-mode-test{color:var(--wr-tx);border-color:var(--wr-tx)}
+.batch-mode-prod{color:var(--ok-tx);border-color:var(--ok-tx)}
+.batch-model{display:block;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;line-height:1.3}
+.batch-models{position:relative;min-width:0;max-width:100%;overflow:visible}
+.batch-models summary{display:flex;align-items:center;gap:8px;cursor:pointer;list-style:none;max-width:100%;overflow:hidden;white-space:nowrap}
+.batch-models summary.batch-model-summary{justify-content:flex-start;padding:3px 7px;border-color:var(--bda);background:var(--acc-bg);color:var(--acc-tx)}
+.batch-models summary::-webkit-details-marker{display:none}
+.batch-models summary::before{content:'▸';color:var(--acc-tx)}
+.batch-models[open] summary::before{content:'▾'}
+.batch-model-count{font-weight:500;color:var(--acc-tx);white-space:nowrap}
+.batch-models summary .empty{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--acc-tx);opacity:.86}
+.batch-model-list{position:absolute;right:0;top:calc(100% + 6px);z-index:5;width:clamp(280px,28vw,420px);max-width:calc(100vw - 32px);margin:0;padding:8px 10px;border:1px solid var(--bda);border-radius:var(--control-radius);background:var(--s2);box-shadow:var(--shadow)}
+.batch-model-row{display:grid;grid-template-columns:minmax(80px,1fr) minmax(0,1.5fr);gap:10px;padding:5px 0;border-top:1px solid var(--line-soft);font-size:12px;line-height:1.3}
+.batch-model-role-models{display:flex;flex-direction:column;gap:2px;min-width:0}
+.batch-model-role-model{display:block;min-width:0;overflow-wrap:anywhere;line-height:1.3}
+
+@media (max-width:640px){
+  .batch-model-list{position:static;width:auto;max-width:none;margin-top:8px;border:0;border-top:1px solid var(--line-soft);border-radius:0;box-shadow:none}
+}
+
+/* P09 · черга до людини: одне редаговане рішення на картку. */
+.review-intro>p:first-child{margin-top:0;color:var(--ts);line-height:1.5}
+.review-controls{align-items:center;flex-wrap:wrap;gap:9px}
+.review-controls #review-shown{color:var(--tm);font-size:12px}
+.nav-links #nav-review-count{margin-left:4px;color:var(--gold-soft);font-size:11px}
+.review-controls .search{flex:1 1 220px}
+.review-bulk-form{display:none;align-items:end;gap:9px;flex-wrap:wrap;margin:12px 0}
+.review-bulk-form.is-visible{display:flex}
+.review-bulk-form label,.review-reject-form label{display:flex;align-items:center;gap:8px;color:var(--ts);font-size:12px}
+.review-bulk-form input[type="text"],.review-bulk-form input[type="password"],.review-reject-form input[type="text"]{min-width:210px}
+.review-list{display:grid;gap:12px}
+.review-item{min-width:0;padding:16px}
+.review-item-heading{display:flex;align-items:center;gap:9px;margin-bottom:12px}
+.review-check{display:inline-flex;align-items:center}
+.review-id{color:var(--tm);font-size:12px}
+.review-hash{min-height:0;padding:2px 6px;border-color:transparent;color:var(--tm);font-size:11px;line-height:1.4;letter-spacing:.02em}
+.review-source{margin:0 0 13px;padding:10px 12px;border-left:2px solid var(--bd);background:var(--surface-alpha);color:var(--ts);font-family:var(--mono);font-size:12px;line-height:1.55;white-space:pre-wrap;overflow-wrap:anywhere}
+.review-source-text{max-height:none}
+.review-source details>summary{margin-bottom:7px;color:var(--gold-soft);font-family:var(--sans);font-size:12px;cursor:pointer}
+.review-markup{margin:2px 3px;border-color:var(--gold-border);background:var(--gold-bg);color:var(--gold-soft);font-family:var(--mono);white-space:normal}
+.review-approve-form{display:grid;gap:7px}
+.review-text-label{color:var(--tm);font-size:12px}
+.review-text{min-height:34px;resize:vertical}
+.review-markup-hints{display:flex;gap:4px;flex-wrap:wrap;min-height:2px}
+.review-markup-label{align-self:center;color:var(--tm);font-size:11px}
+.review-markup-hints .review-markup.is-present{border-color:var(--ok-tx);background:var(--ok-bg);color:var(--ok-tx)}
+.review-markup-hints .review-markup.is-missing{border-color:var(--dn-tx);background:var(--dn-bg);color:var(--dn-tx)}
+.review-token-state{font-family:var(--sans);font-size:11px;font-weight:600}
+.review-actions{display:flex;justify-content:flex-end}
+.review-reject-form{display:flex;align-items:end;justify-content:flex-end;gap:8px;flex-wrap:wrap;margin-top:9px;padding-top:10px;border-top:1px solid var(--line-soft)}
+.review-reject-form label{flex:1 1 280px}
+.review-reject-form input[type="text"]{flex:1 1 210px}
+.review-bulk-form [data-review-bulk]:disabled{display:none}
+.review-item[hidden]{display:none}
+#review-loading[hidden]{display:none}
+@media (min-width:1200px){
+  .review-item{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));column-gap:16px;row-gap:10px}
+  .review-item-heading{grid-column:1 / -1;margin-bottom:0}
+  .review-source{grid-column:1;grid-row:2;align-self:start;margin:0}
+  .review-approve-form,.review-reject-form{grid-column:2}
+}
+@media (max-width:640px){
+  .review-controls>*{flex:1 1 auto}
+  .review-reject-form{align-items:stretch}
+  .review-reject-form label{flex-basis:100%;align-items:stretch;flex-direction:column}
+  .review-reject-form input[type="text"]{width:100%}
+}
+.batch-model-row:first-child{border-top:0}
+
+/* ПЕРЕМИКАЧ замість галочки (вимога власника 2026-09-06).
+   Системна галочка дрібна, різна в кожній ОС і не читається з відстані, а тут
+   вона вмикає речі з ціною: роздуми моделі коштують ушестеро довшу генерацію,
+   підтвердження PROD · незворотний запис. Стан має бути видно однозначно.
+
+   Сам `input` лишається справжнім і на місці · лише невидимим: інакше зникли б
+   клавіатура, `:focus` і читалка екрана. */
+.sw{position:relative;display:inline-flex;align-items:center;gap:9px;cursor:pointer;font-size:13px}
+.sw input{position:absolute;opacity:0;width:0;height:0;margin:0}
+.sw .track{flex:0 0 auto;width:38px;height:22px;border-radius:999px;background:var(--s1);
+  border:.5px solid var(--bd);transition:background .12s,border-color .12s;position:relative}
+.sw .track::after{content:"";position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:50%;
+  background:var(--tm);transition:transform .12s,background .12s}
+.sw input:checked + .track{background:var(--acc-bg);border-color:var(--bda)}
+.sw input:checked + .track::after{transform:translateX(16px);background:var(--acc-tx)}
+.sw input:focus-visible + .track{outline:2px solid var(--bda);outline-offset:2px}
+.sw.danger input:checked + .track{background:var(--dn-bg);border-color:var(--dn-tx)}
+.sw.danger input:checked + .track::after{background:var(--dn-tx)}
+.sw:hover .track{border-color:var(--bda)}
+
+/* Вибір одного з двох · сегментами, а не радіокнопками: варіанти взаємовиключні
+   й обидва мусять бути видні одночасно (діалог закриття сесії). */
+.seg{display:flex;gap:0;border:.5px solid var(--bd);border-radius:9px;overflow:hidden;flex-wrap:wrap}
+.seg label{flex:1 1 200px;padding:8px 10px;cursor:pointer;font-size:13px;background:transparent}
+.seg label + label{border-left:.5px solid var(--bd)}
+.seg input{position:absolute;opacity:0;width:0;height:0}
+.seg label:hover{background:var(--s2)}
+.seg label.on{background:var(--acc-bg);color:var(--acc-tx)}
+.seg .h{font-weight:500}
+.seg .d{display:block;font-size:12px;color:var(--ts);margin-top:2px}
+.seg label.on .d{color:var(--acc-tx);opacity:.85}
+
+/* Поле правки перекладу · РОСТЕ під текст.
+   Однорядкове поле показувало опис нагороди на 700 символів по слову за раз
+   (власник назвав це 2026-09-06). Внутрішнього скролу тут немає навмисно:
+   прокручувати всередині поля, яке саме всередині сторінки, гірше за високий
+   блок · сторінка й так прокручується одна. */
+textarea.grow{width:100%;display:block;box-sizing:border-box;resize:vertical;overflow:hidden;
+  font-family:inherit;font-size:13px;line-height:1.5;padding:6px 9px;border-radius:8px;
+  border:.5px solid var(--bd);background:var(--s2);color:var(--tp);min-height:34px}
+textarea.grow:focus{outline:none;border-color:var(--bda)}
+
+/* ПРЕЛОАДЕР · один на весь інтерфейс.
+   Кожен екран тягне дані з API, і без ознаки роботи порожній блок читається як
+   «нічого немає» або «зламалось» · власник назвав це 2026-09-06. Текст поруч
+   обовʼязковий: сам обертач каже «чекай», але не каже, ЧОГО чекати. */
+.load{display:flex;align-items:center;gap:9px;color:var(--ts);font-size:13px;padding:10px 0}
+.spin{flex:0 0 auto;width:14px;height:14px;border-radius:50%;
+  border:2px solid var(--bd);border-top-color:var(--bda);animation:spin .7s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+/* Рух вимкнено у власника системи · це вимога доступності, а не смак. */
+@media (prefers-reduced-motion:reduce){
+  .spin{animation:none;border-top-color:var(--bd)}
+}
+
+/* --- GUI-полірування 2026-09-06 (план docs/plans/active/2026-09-06_GUI_UX_POLISH.md) ---
+   Тільки ДОДАВАННЯ: жодне правило вище не змінено, тому gates `tests/web-*.sh`
+   бачать ті самі селектори. Нові класи вживаються лише в новій розмітці. */
+:root{
+  --sh:0 1px 2px rgba(0,0,0,.07),0 4px 14px rgba(0,0,0,.06);
+  --r-lg:14px; --r-md:10px;
+}
+/* Hero-картка статусу прогону: відповідь «що зараз» за 5 секунд — ціль, стан
+   і прогрес візуально відокремлені від решти панелей. */
+.hero{background:linear-gradient(180deg,var(--s2),var(--s1));border:.5px solid var(--bd);
+  border-radius:var(--r-lg);box-shadow:var(--sh)}
+.hero #statePhrase{font-weight:500}
+/* Прогрес пачки: тонка смуга, а не ще одне число. Ховається, коли чисел немає
+   (див. index.html: `batchProgressWrap`). */
+.progress{height:6px;border-radius:999px;background:var(--s1);border:.5px solid var(--bd);
+  overflow:hidden;margin:0 0 12px}
+.progress-bar{height:100%;width:0;background:var(--bda);border-radius:999px;
+  transition:width .3s ease,background-color .3s ease}
+/* Пройдені кроки скінчились · смуга міняє колір, бо синій на 100% нічим не
+   відрізнявся від синього, який ось-ось зрушить. */
+.progress-bar.done{background:var(--ok-tx)}
+/* Роздуми моделі · це чернетка, а не відповідь: приглушені й курсивом, щоб їх
+   не читали як переклад. Порожнє вікно замість них було гірше за все · роль
+   працює, а на екрані нічого (виявлено власником 2026-09-07). */
+.box.thinking{color:var(--ts);font-style:italic}
+/* РОБОТА РОЛІ · НИЖЧЕ, ніж журнал кроків. Payload і відповідь ролі це технічні
+   файли по 12 КБ, і при спільній стелі 420 px два таких блоки з'їдали пів
+   екрана сирим JSON · власник назвав це прямо (D108). Скрол лишається: текст
+   не втрачається, лише не витісняє все інше. */
+pre.log.work{max-height:200px}
+/* ВИМКНЕНА КНОПКА МУСИТЬ ВИГЛЯДАТИ ВИМКНЕНОЮ. «Зупинити» при мертвому прогоні
+   вже була `disabled`, але виглядала звичайною · власник тиснув її й нічого не
+   відбувалось: «кнопка зупинити не працює і процесу немає, просто висить». */
+button:disabled{opacity:.45;cursor:not-allowed}
+/* Первинна дія видно здалеку: зупинка прогону — не звичайна кнопка. */
+.btn-primary{background:var(--acc-bg);color:var(--acc-tx);border-color:var(--bda);font-weight:500}
+.btn-primary:hover{filter:brightness(1.04)}
+.btn-danger{color:var(--dn-tx);border-color:var(--dn-tx)}
+/* ПОСИЛАННЯ, ЯКЕ Є ДІЄЮ, виглядає кнопкою · але лишається посиланням, щоб
+   Cmd+клік і далі відкривав нову вкладку. Другого вигляду кнопок тут НЕ
+   зʼявляється: властивості ті самі, що в базового `button`. */
+a.as-button{display:inline-block;font-family:inherit;font-size:13px;padding:4px 10px;
+  border-radius:8px;border:.5px solid var(--bd);background:transparent;color:var(--tp);
+  text-decoration:none;cursor:pointer}
+a.as-button:hover{background:var(--s2)}
+.hero #startLink{display:inline-flex;align-items:center;min-height:32px;padding:6px 12px;line-height:1.25;white-space:nowrap}
+/* Пошук у переліках: той самий вигляд поля, що й решта вводу. */
+.search{min-width:200px;flex:1 1 220px}
+/* СЕЛЕКТ У РЯДКУ ДІЙ · РОЗМІРОМ ПО ЗМІСТУ.
+   Базове `select{width:100%}` потрібне формам, де вибір стоїть окремим полем.
+   Але в `.bar` воно робить із вибору на три варіанти смугу на всю сторінку
+   (заміряно 2026-09-18 на черзі до людини: 1202 px із 1240) і заодно
+   відриває підпис «показувати» в кінець попереднього рядка · власник бачить
+   слово, яке ні до чого не належить. */
+.bar select{width:auto;flex:0 0 auto}
+/* Рядки, по яких можна пробігти очима: hover тримає звʼязок «де я». */
+.vrow{border-radius:8px;padding-left:8px;padding-right:8px}
+.vrow:hover{background:var(--s2)}
+.sess{transition:border-color .12s}
+.sess:hover{border-color:var(--tm)}
+/* Клавіатура: фокус видно завжди, а не лише мишею. */
+a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{
+  outline:2px solid var(--bda);outline-offset:2px}
+/* Вузький екран: шапка й таблиці не рвуться вбік, а складаються вниз. */
+@media (max-width:640px){
+  body{padding:14px}
+  .bar{gap:8px}
+  .search{min-width:0;flex:1 1 100%}
+  .global-selection{grid-template-columns:1fr;gap:6px}
+  .global-selection-clear{justify-self:start}
+  table{display:block;overflow-x:auto}
+  .screen-title .hint{flex-basis:100%}
+}
+
+/* BDO GUI system · shared hierarchy for every screen. The reference design
+   uses one calm shell, one accent, and grouped actions; these primitives keep
+   the same reading rhythm on run, queue, sessions, start, call, and models. */
+.panel-heading{display:flex;align-items:center;gap:11px;min-width:0;margin-bottom:14px}
+.panel-heading > div{display:flex;flex-direction:column;min-width:0}
+.panel-icon{display:grid;place-items:center;flex:none;width:29px;height:29px;border:1px solid var(--gold);border-radius:8px;color:var(--gold-soft);font-size:16px}
+.panel-subtitle{font-size:11px;color:var(--tm);margin-top:2px}
+.muted-in-title{font-weight:400;color:var(--ts)}
+.btn-quiet{margin-left:auto;color:var(--ts);background:transparent}
+.btn-quiet:hover{color:var(--tp);border-color:var(--gold)}
+.models-overview{display:grid;grid-template-columns:minmax(0,1fr);gap:14px;margin-bottom:14px}
+.models-overview .panel{margin-bottom:0}
+.model-active-panel .global-selection{grid-template-columns:minmax(0,1fr) auto;align-items:start;gap:6px 16px;padding:12px;background:var(--surface-alpha);border-color:var(--gold-border)}
+.model-active-panel .panel-heading{margin-bottom:10px}
+.model-active-panel .model-active-main{display:grid;gap:6px;min-width:0}
+.model-active-panel .model-active-id{display:flex;flex-wrap:wrap;align-items:baseline;gap:2px 10px;min-width:0}
+.model-active-panel .model-active-side{display:grid;gap:6px;justify-items:end;min-width:0}
+.model-active-panel .model-active-actions{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}
+.model-active-panel .model-active-actions .btn-quiet{margin-left:0}
+.model-active-panel .global-selection.is-active{background:var(--gold-bg);border-color:var(--gold);color:var(--tp)}
+.model-active-panel .global-selection-label{align-items:center;gap:8px;flex:0 0 auto}
+.model-active-panel .global-selection-title{font-size:13px;color:var(--tp)}
+.model-active-panel .global-selection-hint{color:var(--ts)}
+.model-active-panel .global-selection-model{flex:1 1 auto;min-width:0;font-size:13px;color:var(--tp);overflow-wrap:anywhere}
+.model-active-panel .model-active-check{display:block;color:var(--ts);font-size:12px;line-height:1.4}
+.model-active-meta{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+/* Статусні бейджі активної моделі · інформаційні, не кнопки: звичайний курсор,
+   hover не змінює вигляд (фон лишається як у спокої). */
+.model-active-meta .chip{cursor:default}
+.model-active-meta .chip:hover{background:transparent}
+.model-active-check{display:grid;gap:2px;color:var(--ts);font-size:12px;line-height:1.4}
+.model-check-result{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:8px 10px;border:1px solid var(--bd);border-radius:var(--control-radius);font-size:12px}
+.model-check-result.is-ok{border-color:var(--ok-tx);background:var(--ok-bg);color:var(--ok-tx)}
+.model-check-result.is-failed{border-color:var(--dn-tx);background:var(--dn-bg);color:var(--dn-tx)}
+.model-active-panel .global-selection-clear{justify-self:stretch;color:var(--gold-soft);border-color:var(--gold-border);background:transparent}
+.model-active-panel .global-selection-clear:hover{background:var(--gold-bg)}
+.model-active-panel #models_choice_reset{justify-self:start;margin-left:0}
+.catalog-summary-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.catalog-stat{display:grid;grid-template-columns:auto 1fr;align-items:end;column-gap:8px;row-gap:1px;min-width:0;padding:14px 12px;border:1px solid var(--bd);border-radius:10px;background:var(--surface-alpha)}
+.catalog-stat strong{grid-column:1;font-size:28px;line-height:1.05;letter-spacing:-.03em}
+.catalog-stat-name{grid-column:2;align-self:center;color:var(--ts);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.catalog-stat-unit{grid-column:2;color:var(--tm);font-size:11px}
+.catalog-stat-total{border-color:var(--bda);background:var(--summary-bg)}
+.catalog-runtime-dot{grid-column:1;grid-row:1 / span 2;align-self:center;width:9px;height:9px;border-radius:50%;background:var(--gold)}
+.catalog-runtime-dot.omlx{background:var(--runtime-omlx)}
+.catalog-runtime-dot.ollama{background:var(--runtime-ollama)}
+.thinking-panel .panel-heading{margin-bottom:12px}
+.thinking-layout{display:grid;grid-template-columns:minmax(0,1fr) minmax(240px,.55fr);gap:16px;align-items:center}
+.thinking-controls{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding-top:2px}
+.thinking-controls label:not(.sw){display:flex;align-items:center;gap:8px;color:var(--ts);font-size:12px}
+.thinking-controls .thinking-limit{gap:10px}
+.thinking-controls select{min-width:210px}
+.info-note{display:flex;align-items:center;gap:9px;padding:12px;border:1px solid var(--bd);border-radius:9px;color:var(--ts);font-size:11px;line-height:1.35}
+.info-note-icon{display:grid;place-items:center;flex:none;width:19px;height:19px;border:1px solid var(--gold);border-radius:50%;color:var(--gold-soft);font-weight:600}
+.thinking-note{margin-top:10px}
+.model-table-wrap{border:1px solid var(--bd);border-radius:10px;background:var(--surface-alpha);padding:0;overflow-x:auto}
+.model-table{font-size:12px}
+.model-table th{background:var(--table-head-bg);color:var(--ts);font-size:11px;text-transform:uppercase;letter-spacing:.04em;padding:7px 8px}
+.model-table td{padding:4px 8px;border-top:1px solid var(--line-soft)}
+.model-table tbody tr:hover{background:var(--surface-hover)}
+.model-row.is-global-selected{background:var(--gold-bg);box-shadow:inset 4px 0 var(--gold),inset 0 0 0 1px var(--gold-border)}
+.model-row.is-global-selected:hover{background:var(--gold-bg)}
+.model-selected-badge{background:var(--gold);color:var(--on-gold);font-weight:600}
+.model-actions button{min-height:32px;padding:5px 8px;font-size:12px}
+.model-action-primary{background:var(--gold);color:var(--on-gold);border-color:var(--gold);font-weight:600}
+.model-action-primary:hover{filter:brightness(1.05)}
+.model-action-primary:disabled{color:var(--on-gold)}
+.model-actions .model-action-primary:not(:disabled):hover{background:var(--gold-soft);color:var(--on-gold);border-color:var(--gold-soft)}
+.model-actions .model-action-primary:disabled:hover{background:var(--gold);color:var(--on-gold);border-color:var(--gold)}
+.model-selected-badge{padding:4px 9px;font-weight:700}
+.models-role-toggle{position:relative;display:inline-flex;align-items:center;cursor:pointer}
+.models-role-toggle input{position:absolute;width:1px;height:1px;margin:-1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
+.models-role-switch{position:relative;display:inline-block;width:44px;height:24px;box-sizing:border-box;border:1px solid var(--bd);border-radius:var(--ds-radius-pill);background:var(--s2);transition:background-color .15s ease,border-color .15s ease,box-shadow .15s ease}
+.models-role-switch::after{position:absolute;top:3px;left:3px;width:16px;height:16px;border-radius:50%;background:var(--tm);content:"";transition:transform .15s ease,background-color .15s ease}
+.models-role-toggle input:checked+.models-role-switch{border-color:var(--bda);background:var(--acc-bg)}
+.models-role-toggle input:checked+.models-role-switch::after{transform:translateX(20px);background:var(--acc-tx)}
+.models-role-toggle input:focus-visible+.models-role-switch{outline:2px solid var(--bda);outline-offset:2px}
+.models-role-toggle:hover .models-role-switch{border-color:var(--bda)}
+.models-role-toggle input:disabled+.models-role-switch{cursor:wait;opacity:.65}
+.models-role-table th:nth-child(2),.models-role-table td:nth-child(2){text-align:center}
+.models-role-feedback{margin:0 12px 12px}
+.models-role-feedback.is-error{border-color:var(--dn-tx);background:var(--dn-bg);color:var(--dn-tx)}
+.nav a[aria-current="page"]{background:var(--gold-bg);color:var(--gold-soft);border-color:var(--gold)}
+.pill{border:1px solid var(--bd);background:var(--s3)}
+.btn-primary{background:var(--acc-bg);color:var(--acc-tx);border-color:var(--bda)}
+.btn-primary:hover{box-shadow:0 0 0 3px var(--focus-ring)}
+
+@media (max-width:900px){
+  body{padding:18px}
+  .models-overview{grid-template-columns:1fr}
+  .thinking-layout{grid-template-columns:1fr}
+  .model-active-panel .global-selection{grid-template-columns:1fr}
+  .model-active-panel .model-active-side{justify-items:start}
+  .model-active-panel .model-active-actions{justify-content:flex-start}
+}
+@media (max-width:640px){
+  body{padding:12px}
+  .panel{padding:14px;border-radius:11px}
+  .catalog-summary-grid{grid-template-columns:1fr 1fr}
+  .model-active-panel .global-selection-model{white-space:normal}
+}
+
+/* ROLE CALLS · actions belong to the right edge of each submodel card, while
+   the expanded transcript gets a quiet inset surface. This keeps the status
+   header scannable and makes the technical payload feel like a detail view,
+   without changing the existing buttons, links, IDs, or loading behavior. */
+.role-card:not(.is-active){
+  display:grid;
+  grid-template-columns:minmax(0,1fr) auto;
+  align-items:center;
+  column-gap:16px
+}
+.role-card:not(.is-active) > .mh{grid-column:1;grid-row:1;min-width:0}
+.role-card:not(.is-active) > .bar{
+  grid-column:2;
+  grid-row:1;
+  justify-content:flex-end;
+  align-items:center;
+  gap:10px;
+  margin:0!important
+}
+.role-card > .bar .openCall{margin-left:auto}
+.role-card > .bar a{white-space:nowrap}
+.role-card .callWork{
+  grid-column:1/-1;
+  grid-row:2;
+  margin-top:12px;
+  padding:14px;
+  border:1px solid var(--line-soft);
+  border-radius:10px;
+  background:var(--surface-alpha)
+}
+.role-card .callWork > .empty{
+  display:block;
+  margin:0 0 6px!important;
+  color:var(--ts);
+  font-size:12px;
+  line-height:1.45
+}
+.role-card .callWork > pre.log.work{
+  margin-bottom:14px;
+  max-height:260px;
+  border:1px solid var(--line-soft);
+  background:var(--s1);
+  font-size:12px;
+  line-height:1.55
+}
+.role-card .callWork > pre.log.work:last-child{margin-bottom:0}
+.role-card.is-active{
+  display:grid;
+  grid-template-columns:minmax(0,1fr) auto;
+  align-items:center;
+  column-gap:16px
+}
+.role-card.is-active > .mh{grid-column:1/-1;grid-row:1;min-width:0}
+.role-card.is-active .active-work{grid-column:1/-1;grid-row:2;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-top:10px;min-width:0}
+.role-card.is-active .live-work-grid{align-items:start}
+.role-card.is-active .live-work-section{min-width:0}
+.role-card.is-active .live-section-title{margin:0 0 6px!important;color:var(--ts);font-size:12px}
+.role-card.is-active .live-request{grid-column:1;grid-row:1 / span 2}
+.role-card.is-active .live-answer{grid-column:2;grid-row:1 / span 2;min-width:0}
+.role-card.is-active .live-request #reqbox{max-height:70vh;overflow:auto}
+.role-card.is-active .live-answer-title{margin:0 0 6px!important}
+.role-card.is-active .active-work>#reqbox,
+.role-card.is-active .active-work>#thinkwrap,
+.role-card.is-active .active-work>#streambox{min-width:0}
+.role-card.is-active .active-work>#reqbox{grid-column:1/-1;width:auto;margin-top:0}
+.role-card.is-active .active-work>#thinkwrap{grid-column:1;min-width:0}
+.role-card.is-active .active-work>#streambox{grid-column:2;min-width:0}
+.role-card.is-active .active-work>#thinkwrap .empty{margin-top:0!important}
+.role-card.is-active .active-work>#thinkwrap .box,
+.role-card.is-active .active-work>#streambox{width:100%;box-sizing:border-box}
+.role-card .call-work-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;min-width:0}
+.role-card .call-work-item{min-width:0}
+.role-card .call-work-item .empty{display:block;min-height:2.9em;margin:0 0 6px!important;color:var(--ts);font-size:12px;line-height:1.45}
+.role-card .call-work-item pre.log.work{margin-bottom:0;max-height:260px;border:1px solid var(--line-soft);background:var(--s1);font-size:12px;line-height:1.55}
+.role-card .call-thinking{margin:0 0 10px;border:1px solid var(--line-soft);border-radius:8px;background:var(--surface-alpha)}
+.role-card .call-thinking>summary{padding:8px 10px;color:var(--wr-tx);cursor:pointer;font-size:12px;font-weight:600;list-style-position:inside}
+.role-card .call-thinking>summary .meta{font-weight:400}
+.token-count{color:var(--gold-soft);font-weight:500;white-space:nowrap}
+.role-card .call-thinking[open]>summary{border-bottom:1px solid var(--line-soft)}
+.role-card .call-thinking>.box,
+.role-card .call-thinking>pre.log.work{margin:8px}
+.role-card .answer-work>.answer-title{min-height:2.9em}
+.role-card .answer-work .call-thinking{margin-bottom:10px}
+.role-card .thinking-unavailable,.role-card .answer-unavailable{min-height:0!important;padding:8px 10px}
+@media (max-width:640px){
+  .role-card:not(.is-active){display:block}
+  .role-card:not(.is-active) > .bar{
+    justify-content:flex-end;
+    flex-wrap:wrap;
+    margin-top:8px!important;
+    padding-top:8px;
+    border-top:1px solid var(--line-soft)
+  }
+  .role-card:not(.is-active) > .bar .openCall{margin-left:auto}
+  .role-card .callWork{padding:10px}
+  .role-card.is-active .active-work{grid-template-columns:1fr}
+  .role-card.is-active .live-request,.role-card.is-active .live-answer{grid-column:1;grid-row:auto}
+  .role-card.is-active .active-work>#reqbox,
+  .role-card.is-active .active-work>#thinkwrap,
+  .role-card.is-active .active-work>#streambox{grid-column:1}
+  .role-card .call-work-grid{grid-template-columns:1fr}
+  /* ШАПКА КАРТКИ РОЛІ МУСИТЬ ПЕРЕНОСИТИСЬ. `.mh` є flex із `nowrap`, і на
+     390px усе не влазило в один рядок: час виклику обрізався межею картки, а
+     значок роздумів висів ПОЗА нею, тягнучи сторінку вбік на 28px (побачено
+     2026-09-18). Ширину тут нічого не тримає · рядок просто переходить. */
+  .role-card > .mh{flex-wrap:wrap;row-gap:4px}
+  /* Інлайновий `margin-left:auto` на чипі ставить JS · при переносі він
+     розпихає рядок так, що чип, час і значок падають кожен на власну лінію.
+     На вузькому екрані праву кромку тримати нічого · пакуємо вліво. */
+  .role-card > .mh > .chip{margin-left:0!important}
+}
+
+/* START SCREEN · reference 04 / 2026-09-15.
+   The page keeps its existing command controls and state ids, but presents the
+   setup as a three-column decision surface: destination, model, and thinking.
+   This is intentionally scoped to `.start-page` so the other screens keep
+   their current layout while they migrate one by one. */
+/* СТОРІНКА СТАРТУ НЕ МАЄ ПРАВА ЗДУВАТИ МАЛЮНОК.
+   Тут стояв `background:` СКОРОЧЕННЯМ · а воно скидає `background-image`
+   цілком. Малюнок (`--page-art`) додали пізніше, нижче в цьому файлі, на
+   `body`; але клас сильніший за тег незалежно від порядку, тому саме на
+   `/start` фон зникав, а на решті екранів лишався. Знайдено власником
+   2026-09-18. Тепер перелічуємо шари ЯВНО: свічення старту зверху, поверх
+   затемнення й самого малюнка. */
+.start-page{background-image:radial-gradient(circle at 78% 0%,var(--body-glow),transparent 34%),var(--page-art-overlay),var(--page-art)}
+.start-title{margin:16px 0 10px}
+.start-title h1{font-size:26px;letter-spacing:-.03em}
+.start-title .hint{font-size:13px;color:var(--ts)}
+.start-panel{padding:13px 16px 15px;background:var(--panel-fill)}
+.start-setup-grid{display:grid;grid-template-columns:minmax(180px,.72fr) minmax(380px,1.55fr) minmax(260px,1fr);gap:8px;margin:-2px 0 12px;border-bottom:0}
+.start-field{display:flex;flex-direction:column;gap:6px;min-width:0;padding:7px 12px 8px;border:1px solid var(--line-soft);border-radius:var(--panel-radius);background:var(--surface-alpha);box-shadow:var(--shadow)}
+.start-field:first-child,.start-field:last-child{padding-left:12px;padding-right:12px}
+.start-field + .start-field{border-left:1px solid var(--line-soft)}
+.start-field .lbl{font-size:11px;color:var(--tm);font-weight:600;text-transform:uppercase;letter-spacing:.08em}
+.start-env-value,.start-model-controls,.start-thinking-value{display:flex;align-items:center;gap:8px;min-width:0;flex-wrap:wrap}
+.start-env-value .pill{font-size:13px;min-height:30px;padding:5px 12px;border-radius:8px;font-weight:700;letter-spacing:.04em;box-shadow:0 0 0 1px var(--dn-bg)}
+.start-env-field .start-field-note,.start-thinking-field .start-field-note{margin-top:auto}
+.start-field-note{font-size:11px;color:var(--tm);line-height:1.2}
+.start-model-controls{align-items:stretch}
+.start-model-controls select{flex:1 1 260px;min-width:0}
+.start-model-controls .as-button{min-height:30px;padding:4px 8px;font-size:12px;line-height:1.2;white-space:nowrap}
+.start-model-field #modelNote{font-size:11px;line-height:1.35}
+.start-thinking-value #think{flex:1 1 150px;min-width:0}
+.start-thinking-value .as-button{min-height:30px;padding:4px 8px;font-size:12px;line-height:1.2;white-space:nowrap}
+.start-thinking-value{align-items:flex-start;justify-content:space-between}
+.start-thinking-value #think{font-size:12px;line-height:1.25}
+.start-section{min-width:0}
+.start-section-heading{display:flex;align-items:center;margin:0 0 10px}
+.start-section-heading .lbl{font-size:13px;color:var(--tp);font-weight:600;text-transform:none;letter-spacing:.01em}
+.start-mode-section{padding-bottom:18px;border-bottom:1px solid var(--line-soft)}
+.start-mode-section #modes{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin:0;align-items:stretch}
+.start-mode-section .mode{min-height:76px;text-align:left;padding:12px 14px;border-radius:9px}
+.start-mode-section .mode .n{font-size:13px;margin-bottom:4px}
+.start-mode-section .mode .d{font-size:11px;line-height:1.35}
+.start-patch-section{padding-top:18px}
+.start-patch-section .tbl{margin-top:0;background:var(--surface-alpha);border:1px solid var(--line-soft);border-radius:9px;overflow:hidden}
+.start-patch-section .tbl th{padding:9px 12px;background:var(--table-head-bg);font-size:11px;text-transform:uppercase;letter-spacing:.04em}
+.start-patch-section .tbl td{padding:10px 12px}
+.start-patch-section .tbl.pick tbody tr.on{box-shadow:inset 3px 0 var(--bda)}
+.start-patch-filters{display:flex;align-items:center;gap:9px;flex-wrap:wrap;margin-top:12px}
+.start-patch-filters select{width:auto;min-width:170px}
+.start-patch-filters #batches{width:78px!important}
+.start-rows-control{display:flex;align-items:center;gap:9px;min-width:220px}
+.start-rows-control #rows{width:220px;min-width:150px;flex:1 1 auto;padding:0;background:transparent;accent-color:var(--gold);appearance:none}
+.start-rows-control #rows::-webkit-slider-runnable-track{height:6px;border:1px solid var(--bd);border-radius:999px;background:var(--s3)}
+.start-rows-control #rows::-webkit-slider-thumb{width:18px;height:18px;margin-top:-7px;border:2px solid var(--gold);border-radius:50%;background:var(--s1);box-shadow:0 0 0 3px var(--gold-bg);appearance:none}
+.start-rows-control #rows::-moz-range-track{height:6px;border:1px solid var(--bd);border-radius:999px;background:var(--s3)}
+.start-rows-control #rows::-moz-range-progress{height:6px;border-radius:999px;background:var(--gold)}
+.start-rows-control #rows::-moz-range-thumb{width:14px;height:14px;border:2px solid var(--gold);border-radius:50%;background:var(--s1);box-shadow:0 0 0 3px var(--gold-bg)}
+.start-rows-control #rows:focus-visible{outline:2px solid var(--acc-bg);outline-offset:4px}
+.start-rows-control output{display:inline-flex;align-items:center;justify-content:center;min-width:42px;min-height:30px;padding:4px 8px;border:1px solid var(--bd);border-radius:8px;background:var(--s2);color:var(--tp);font-size:13px;font-variant-numeric:tabular-nums}
+/* Перемикач повного прогону живе в тому самому рядку, що й поле числа, тому
+   ширина «78px» для `input` цього блоку не має розтягувати схований чекбокс:
+   він лежить під написом і перехоплював би клік по ньому. */
+.start-patch-filters .sw input{width:0!important}
+.start-scope-all{margin-left:6px}
+.start-patch-hint{margin-top:8px;font-size:11px;line-height:1.4}
+.start-run-grid{display:grid;grid-template-columns:minmax(0,1.6fr) minmax(260px,.75fr);gap:18px;align-items:start;margin-top:22px}
+.start-preview-section,.start-confirm{min-width:0}
+.start-preview-section .box{margin-top:0;min-height:88px;padding:10px 14px 10px 18px;border:1px solid var(--bd);background:var(--s2);box-shadow:var(--shadow)}
+/* План людською мовою · нумерований список, а не моношрифт: цифра показує
+   ПОРЯДОК кроків, якого в суцільному тексті не видно. */
+.plan-steps{margin:0;padding:0 0 0 20px;list-style:decimal;white-space:normal}
+.plan-steps li{font-size:13px;line-height:1.45;color:var(--tp);padding:7px 10px 7px 2px;border-bottom:1px solid var(--line-soft)}
+.plan-steps li:last-child{border-bottom:0}
+.plan-steps li::marker{color:var(--tm);font-size:12px}
+.plan-steps li.empty{list-style:none;margin-left:-20px}
+/* Команди · для розбору, тому згорнуті й підписані явно. */
+.plan-commands{margin-top:8px}
+.plan-commands>summary{font-size:12px;color:var(--tm);cursor:pointer}
+.plan-commands>summary:hover{color:var(--ts)}
+.plan-commands .mono{margin-top:6px;padding:8px 10px;border-radius:8px;background:var(--s2);font-size:12px;line-height:1.5;white-space:pre-wrap;word-break:break-word}
+.start-confirm{display:grid;grid-template-columns:auto minmax(0,1fr);align-content:start;align-items:center;gap:12px;margin:0;padding:16px 18px 17px;border:1px solid var(--gold-border);border-left:3px solid var(--gold-border);border-radius:var(--panel-radius);background:linear-gradient(145deg,var(--gold-bg),var(--s2));box-shadow:var(--shadow);color:var(--tp);font-size:13px;line-height:1.5}
+.start-confirm::before{content:"підтвердження запису";grid-column:1 / -1;margin-bottom:2px;color:var(--dn-tx);font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase}
+.start-confirm>span:last-child{min-width:0;text-wrap:balance}
+.start-confirm b{font-weight:600;color:var(--dn-tx)}
+.start-actions{gap:9px;margin:18px 0 0;padding-top:16px;border-top:1px solid var(--line-soft)}
+.start-actions #startBtn{min-height:40px;padding:9px 18px;background:var(--gold);color:var(--on-gold);border-color:var(--gold);font-weight:600}
+.start-actions #startBtn:hover{filter:brightness(1.05);box-shadow:0 0 0 3px var(--gold-bg)}
+.start-actions #dryBtn{min-height:40px;padding:9px 16px}
+.start-action-note{font-size:11px;line-height:1.35}
+.start-log-toggle{margin-left:auto}
+.start-log{max-height:240px;margin-top:10px}
+@media (max-width:900px){
+  .start-setup-grid{grid-template-columns:1fr 1fr}
+  .start-thinking-field{grid-column:1 / -1;border-left:0;border-top:1px solid var(--line-soft);padding:16px 0 0}
+  .start-field:nth-child(2){padding-right:0}
+  .start-mode-section #modes{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+@media (max-width:640px){
+  .start-title{margin-top:14px}
+  .start-title h1{font-size:24px}
+  .start-panel{padding:14px}
+  .start-setup-grid{display:flex;flex-direction:column}
+  .start-field,.start-field:first-child,.start-field:last-child{padding:0 0 14px}
+  .start-field + .start-field{border-left:0;border-top:1px solid var(--line-soft);padding-top:14px}
+  .start-mode-section #modes{grid-template-columns:1fr}
+  /* ТАБЛИЦЯ СКРОЛИТЬСЯ САМА, А НЕ ТЯГНЕ СТОРІНКУ. `min-width` стояв на тому
+     самому боксі, що й `overflow-x:auto` · у такій парі скролу немає взагалі:
+     бокс просто стає 620px, і вбік їде вся сторінка. Побачено 2026-09-18 при
+     390px · колонка «без ШІ-шару» зникала за краєм, а підписи під таблицею
+     («категорія», «у патчі 9 лишилось…») обрізались із ЛІВОГО краю. Тому
+     широким лишається ВМІСТ, а бокс тримається в межах екрана. */
+  .start-patch-section .tbl{display:block;overflow-x:auto;max-width:100%}
+  .start-patch-section .tbl > *{min-width:620px}
+  .start-run-grid{grid-template-columns:1fr}
+  .start-confirm{margin-top:0}
+  .start-action-note{flex-basis:100%}
+  .start-log-toggle{margin-left:0}
+}
+
+/* GLOBAL BACKDROP + HEADER · reference 2026-09-16.
+   The artwork is a low-contrast ambient layer; the header uses the same
+   surface language as the page instead of a detached solid bar. New values
+   are tokens so every screen shares one readable, responsive treatment. */
+:root{
+  --page-art:url('/static/bdo-background.webp');
+  --page-art-overlay:linear-gradient(180deg,rgba(7,17,27,.30),rgba(7,17,27,.82) 62%,var(--s0) 100%);
+  --nav-fill:rgba(7,17,27,.58);
+  --nav-border:rgba(165,188,207,.14);
+  --nav-shadow:0 12px 32px rgba(0,0,0,.20)
+}
+@media (prefers-color-scheme:light){
+  :root{
+    --page-art-overlay:linear-gradient(180deg,rgba(244,247,250,.76),rgba(244,247,250,.94) 62%,var(--s0) 100%);
+    --nav-fill:rgba(255,255,255,.72);
+    --nav-border:rgba(32,55,73,.12);
+    --nav-shadow:0 10px 28px rgba(29,55,75,.10)
+  }
+}
+body{
+  background-color:var(--s0);
+  background-image:var(--page-art-overlay),var(--page-art);
+  background-position:center top;
+  background-size:cover;
+  background-attachment:fixed
+}
+/* Рядок контексту ЗВИСАЄ під липкою шапкою, а не росте в ній (D263): шапка
+   стоїть у потоці сторінки, і +51 px при прокрутці зсували весь вміст ·
+   браузер підправляв прокрутку, а склеєний знімок накладав картки одна на одну. */
+.nav-run-context{display:none;position:absolute;top:calc(100% - 1px);left:-1px;right:-1px;min-width:0;align-items:center;gap:12px;padding:8px 14px;border:1px solid var(--nav-border);border-top-color:var(--line-soft);border-radius:0 0 var(--panel-radius) var(--panel-radius);background:linear-gradient(var(--nav-fill),var(--nav-fill)),var(--s0);box-shadow:var(--nav-shadow)}
+.nav.run-context-visible{border-bottom-left-radius:0;border-bottom-right-radius:0}
+.nav.run-context-visible .nav-run-context{display:flex}
+.nav-run-summary{display:flex;align-items:center;gap:8px;min-width:0;flex:0 0 auto}
+.nav-run-summary .pill{flex:none}
+.nav-run-steps{display:flex;align-items:center;gap:3px;min-width:0;flex:1 1 auto;overflow:hidden;white-space:nowrap}
+.nav-run-steps .step{padding:2px 5px;gap:3px;border-radius:999px;font-size:11px;line-height:1.2;white-space:nowrap}
+.nav-run-steps .step-status-icon{width:11px;height:11px}
+.nav-run-steps .step .n{font-weight:500}
+.nav-run-steps .arrow{color:var(--tm);opacity:.65}
+.nav-run-actions{display:flex;align-items:center;justify-content:flex-end;gap:6px;flex:none}
+.nav-run-actions button,.nav-run-actions a.as-button{min-height:28px;padding:4px 8px;font-size:11px;white-space:nowrap}
+.nav-run-actions a.as-button{display:inline-flex}
+@media (max-width:1300px){
+  .nav{grid-template-columns:220px minmax(0,1fr) minmax(0,300px)}
+}
+@media (max-width:900px){
+  .nav-run-context{flex-wrap:wrap;gap:7px}
+  .nav-run-summary{flex:0 0 auto}
+  .nav-run-steps{order:2;flex-basis:55%}
+  .nav-run-actions{order:3;margin-left:auto}
+}
+@media (max-width:1100px){
+  .nav{grid-template-columns:minmax(0,1fr) minmax(250px,330px)}
+  .nav .brand{grid-column:1;grid-row:1}
+  .nav-side{grid-column:2;grid-row:1}
+  .nav-links{grid-column:1 / -1;grid-row:2;flex-wrap:wrap}
+}
+@media (max-width:640px){
+  .nav{grid-template-columns:1fr;gap:8px;margin-bottom:20px;padding:10px 12px}
+  .nav .brand,.nav-links,.nav-side{grid-column:1;grid-row:auto;max-width:none}
+  .nav-links{width:100%;padding-bottom:3px}
+  .nav-links a{padding:6px 10px;font-size:12px}
+  .nav-side{justify-items:start;align-items:flex-start;padding-left:0;border-left:0}
+  .nav-model{justify-content:flex-start;max-width:100%}
+  .nav-run-context{align-items:flex-start}
+  .nav-run-steps{flex-basis:100%;overflow-x:auto;padding-bottom:2px}
+  .nav-run-actions{width:100%;justify-content:flex-start}
+}
+
+/* MODEL CATALOG · eight columns need an explicit width budget. The older
+   six-column budget made the new levels/actions columns collapse to zero,
+   which forced their text into a vertical strip and overlapped the buttons. */
+.model-table{width:100%;min-width:0;table-layout:fixed}
+.model-table th:nth-child(1),.model-table td:nth-child(1){width:10%}
+.model-table th:nth-child(2),.model-table td:nth-child(2){width:34%}
+.model-table th:nth-child(3),.model-table td:nth-child(3){width:12%}
+.model-table th:nth-child(4),.model-table td:nth-child(4){width:15%}
+.model-table th:nth-child(5),.model-table td:nth-child(5){width:14%}
+.model-table th:nth-child(6),.model-table td:nth-child(6){width:15%}
+.model-table td.model-actions-cell{min-width:0}
+
+/* MODEL ACTIONS · four controls share one cell: probe and global selection
+   stay on the first row, while load/unload remain a vertical pair. */
+.model-table td:nth-child(3) .model-status{white-space:normal}
+.model-table .model-status{display:flex;min-width:0;white-space:normal;overflow-wrap:anywhere;line-height:1.25}
+
+/* MODEL ACTION HOVER · keep one stable hit area for the button and its icon.
+   Filter-based hover on the gold control can create a composited edge under
+   the pointer; explicit colors keep the cursor and layout stable. */
+.model-actions button{position:relative;display:inline-flex;align-items:center;justify-content:center;gap:6px;cursor:pointer;line-height:1;transition:background-color .15s ease,border-color .15s ease,color .15s ease,box-shadow .15s ease}
+.model-actions button:nth-child(1) .icon{margin-right:0}
+.model-actions button .icon,.model-actions button span{pointer-events:none}
+.model-actions button:hover{transform:none;filter:none}
+.model-actions button:disabled{cursor:not-allowed}
+
+/* ВЕРДИКТИ ЗГОРТАЮТЬСЯ · вимога власника 2026-09-18. Розгорнутий список із
+   пʼятдесяти рядків розтягував екран прогону на сім тисяч пікселів, і журнал
+   кроків опинявся далеко внизу. Згорнутий блок показує головні числа з
+   підписами, а список · за одним кліком. Стан тримає сам `<details>`, тому
+   перемальовка знімка раз на секунду його не скидає. */
+.verdict-summary{display:flex;align-items:center;gap:12px;cursor:pointer;list-style:none;
+  padding:2px 0;font-size:13px;color:var(--tp)}
+.verdict-summary::-webkit-details-marker{display:none}
+/* СТРІЛКА Є ЕЛЕМЕНТОМ КЕРУВАННЯ, А НЕ ЗНАЧКОМ У ТЕКСТІ. Перша редакція малювала
+   «▸» в 11 пікселів · власник його просто не побачив і сказав про це прямо
+   (2026-09-18). Тепер це іконка набору у власній круглій площадці 26×26: у неї
+   видно куди тиснути, і вона підсвічується разом із рядком. */
+.verdict-caret{flex:0 0 auto;display:inline-flex;align-items:center;justify-content:center;
+  width:26px;height:26px;border:1px solid var(--bd);border-radius:50%;color:var(--ts);
+  background:var(--s1);transition:transform .12s,border-color .12s,color .12s}
+.verdict-caret .icon{width:16px;height:16px}
+.verdict-box[open]>.verdict-summary .verdict-caret{transform:rotate(90deg)}
+.verdict-summary:hover .verdict-caret{border-color:var(--bda);color:var(--acc-tx)}
+.verdict-box[open]>.verdict-summary{margin-bottom:10px}
+.verdict-title{font-weight:500}
+.verdict-counts{color:var(--ts);font-size:12px}
+.verdict-counts b{font-weight:500;color:var(--tp)}
+.verdict-summary:hover .verdict-title{color:var(--acc-tx)}
+
+/* Пояснення під картками підсумку · чому на тестовому прогоні там риски. */
+.cards-note{grid-column:1/-1;margin-top:-4px;font-size:11px}
+.provider-key-row{display:grid;grid-template-columns:minmax(150px,200px) 80px minmax(160px,1fr) 46px auto 86px;align-items:center;gap:8px;padding:6px 0;border-top:1px solid var(--line-soft);font-size:12px}
+.provider-key-row:first-child{border-top:0}
+.provider-key-row.is-off .provider-key-label,.provider-key-row.is-off .provider-key-input{opacity:.55}
+.provider-key-actions{display:flex;justify-content:flex-start;padding:8px 0 4px;border-top:1px solid var(--line-soft)}
+.provider-key-label{color:var(--tp)}
+.provider-key-hint{display:block;color:var(--ts);font-size:11px;margin-top:2px}
+.provider-key-state{color:var(--ts);font-size:11px}
+.provider-key-state.is-set{color:var(--ok-tx)}
+.provider-key-input{font-size:12px;padding:5px 8px;border-radius:8px;border:.5px solid var(--bd);background:var(--s2);color:var(--tp);min-width:0}
+
+/* ЛІМІТИ ПІДПИСКИ · один віджет (`limitsWidget` у app.js) у двох місцях:
+   панель на сторінці моделей і висувний банер біля правого краю на решті
+   екранів. Вигляд рядків спільний, тому правка тут діє в обох. */
+.limits-provider+.limits-provider{margin-top:14px}
+.limits-provider-name{font-size:12px;color:var(--ts);margin-bottom:6px}
+.limits-key{padding:10px 12px;border:1px solid var(--line-soft);border-radius:var(--control-radius);background:var(--surface-alpha)}
+.limits-key+.limits-key{margin-top:8px}
+.limits-key.is-off{opacity:.55}
+.limits-key.is-active{border-color:var(--gold-border)}
+.limits-active{font-size:11px;margin-left:6px}
+.limits-key-name{font-size:13px;color:var(--tp);margin-bottom:6px}
+.limits-key-name .mono{font-size:11px;color:var(--tm)}
+.limits-reason{font-size:12px;color:var(--wr-tx);margin-bottom:4px}
+/* Рядок вікна · два поверхи: назва, скидання й відсоток, під ними смужка на
+   всю ширину. У чотири колонки шухляда 380px переносила час скидання. */
+.limits-row{display:grid;grid-template-columns:auto minmax(0,1fr) auto;grid-template-areas:'win reset pct' 'bar bar bar';align-items:baseline;column-gap:10px;row-gap:4px;padding:4px 0;font-size:12px}
+.limits-window{grid-area:win;color:var(--ts)}
+.limits-bar{grid-area:bar;position:relative;height:6px;border-radius:999px;background:var(--line-soft);overflow:hidden}
+.limits-bar i{position:absolute;inset:0 auto 0 0;border-radius:999px;background:var(--tm)}
+.limits-bar i.is-ok{background:var(--ok-tx)}
+.limits-bar i.is-warn{background:var(--wr-tx)}
+.limits-bar i.is-danger{background:var(--dn-tx)}
+.limits-pct{grid-area:pct;text-align:right;color:var(--tp);font-weight:500}
+.limits-reset{grid-area:reset;text-align:right;color:var(--tm);font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.limits-meta,.limits-empty{font-size:11px;color:var(--tm);margin-top:10px}
+.limits-empty{font-size:12px;margin-top:0}
+
+.limits-drawer{position:fixed;right:0;top:50%;transform:translateY(-50%);z-index:40;display:flex;align-items:center}
+.limits-drawer[hidden]{display:none}
+/* P45 · згорнутий бейдж тримає три періоди (місяць, тиждень, 5 годин)
+   стовпчиком: висота не більша за попередній один максимум, ширина додана
+   за потреби, без обрізання значень. */
+.limits-tab{display:flex;flex-direction:column;gap:2px;padding:10px 8px;
+  border:1px solid var(--bd);border-right:0;border-radius:var(--control-radius) 0 0 var(--control-radius);
+  background:var(--s2);color:var(--ts);font-size:11px;line-height:1.45;cursor:pointer;text-align:left;min-height:0}
+.limits-tab:hover{color:var(--tp);border-color:var(--gold)}
+.limits-tab-caption{color:var(--tm);letter-spacing:.03em}
+.limits-tab-row{display:flex;align-items:baseline;justify-content:space-between;gap:6px;white-space:nowrap}
+.limits-tab-label{color:var(--ts)}
+.limits-tab-peak{font-weight:600;color:var(--tp);font-variant-numeric:tabular-nums}
+.limits-tab.is-ok .limits-tab-peak{color:var(--ok-tx)}
+.limits-tab.is-warn .limits-tab-peak{color:var(--wr-tx)}
+.limits-tab.is-danger .limits-tab-peak{color:var(--dn-tx)}
+.limits-drawer-body{display:none;width:min(380px,calc(100vw - 48px));max-height:80vh;overflow:auto;padding:14px;
+  background:var(--panel-fill);border:1px solid var(--bd);border-right:0;border-radius:var(--panel-radius) 0 0 var(--panel-radius);box-shadow:var(--shadow)}
+.limits-drawer.is-open .limits-drawer-body{display:block}
+/* Відкрита шухляда · язичок ховається: він стояв би збоку посеред сторінки
+   й накривав її вміст, а закриває шухляду кнопка «сховати». */
+.limits-drawer.is-open .limits-tab{display:none}
+.limits-drawer-head{display:flex;align-items:center;gap:8px;margin-bottom:10px;font-size:13px}
+/* P45 · Step 1.2 · фіксована вкладка лімітів (≈70 px) на вузьких екранах
+   заходить на праву межу .wrap: ширину вкладки перекриває лише body
+   padding-right (28 px), тобто ≈42 px. Доки контейнер 1240 px не має
+   природного проміжку (viewport < 1380 px), тримаємо резерв праворуч. */
+@media (max-width:1379px){
+  .wrap{padding-right:44px}
+}
+
+/* P09 · діагностична навігація й службові рядки шапки. */
+.nav-header-status,.nav-meta{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--tm)}
+.nav-meta{justify-content:flex-end}
+#nav-diag{position:relative;flex:none}
+#nav-diag>summary{list-style:none;cursor:pointer;font-size:13px;padding:6px 10px;border-radius:9px;border:.5px solid transparent;color:var(--ts)}
+#nav-diag>summary::-webkit-details-marker{display:none}
+#nav-diag>summary:hover{background:var(--s1)}
+#nav-diag.is-active>summary{background:var(--gold-bg);color:var(--gold-soft);border-color:var(--gold)}
+.nav-diag-menu{position:absolute;top:calc(100% + 4px);right:0;z-index:30;display:grid;min-width:190px;padding:5px;border:1px solid var(--bd);border-radius:9px;background:var(--s0);box-shadow:var(--shadow)}
+.nav-diag-menu a{white-space:nowrap}
+.model-choice-chip{max-width:190px;overflow-wrap:anywhere}
+
+/* P09 · картки запуску й таблиця патчів. */
+.start-title .hint{font-size:13px;color:var(--ts)}
+.start-panel{padding:16px}
+.start-top-grid{display:grid;grid-template-columns:minmax(180px,1fr) minmax(300px,2fr) minmax(220px,1.25fr);gap:8px;margin-bottom:9px}
+.start-field{display:flex;flex-direction:column;gap:5px;min-width:0;border:1px solid var(--bd);background:var(--s2)}
+.start-label{font-size:11px;font-weight:600;letter-spacing:.06em;color:var(--tm)}
+.start-env-value,.start-model-controls{display:flex;align-items:center;gap:8px;flex-wrap:wrap;min-width:0}
+.start-model-controls form{display:inline-flex;gap:6px;align-items:center}
+.start-model-controls select{min-width:180px;max-width:100%}
+.start-field-note,.start-summary{font-size:11px;color:var(--ts)}
+.start-section-title{margin:14px 0 8px;font-size:13px;text-transform:none}
+.start-mode-grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:8px;margin-bottom:14px}
+.start-mode-card{display:grid;grid-template-columns:auto 1fr;align-items:center;gap:5px 8px;min-height:68px;border:1px solid var(--bd);cursor:pointer}
+.start-mode-card input{grid-row:1 / span 3;accent-color:var(--bda)}
+.start-mode-card span{font-size:11px;color:var(--ts)}
+.start-mode-card .start-mode-target{color:var(--tp)}
+.start-mode-card.is-selected{background:var(--acc-bg);border-color:var(--bda);color:var(--acc-tx)}
+.start-patches{min-width:760px}
+.start-patch-row{cursor:pointer}
+#start-patches tbody tr.is-selected{background:var(--acc-bg);box-shadow:inset 3px 0 var(--bda)}
+.start-missing-positive{color:var(--ok-tx)}
+.start-corpus{min-width:340px}
+.start-corpus-row{cursor:pointer}
+.start-corpus-group td{background:var(--s2);color:var(--ts);font-size:11px;text-transform:uppercase;letter-spacing:.04em}
+.start-author-choice{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:8px 0;font-size:12px}
+.start-author-choice label{display:inline-flex;align-items:center;gap:5px}
+.start-author-version input[type="text"]{width:72px;padding:2px 6px;border:1px solid var(--bd);border-radius:6px;background:var(--s2);color:var(--tp);font-size:12px}
+.start-author-version input[type="text"]:disabled{opacity:.5}
+.start-spinner{display:inline-block;width:12px;height:12px;margin-right:8px;border:2px solid var(--bd);border-top-color:var(--bda);border-radius:50%;animation:step-spin 1s linear infinite;vertical-align:-2px}
+.start-parameters{display:flex;align-items:center;gap:8px;margin-top:12px;font-size:12px}
+.start-parameters input[type="number"]{width:74px}
+.start-parameters input[type="range"]{flex:1;max-width:240px;accent-color:var(--gold)}
+.start-summary{margin:8px 0 12px}
+.start-bottom-grid{display:grid;grid-template-columns:minmax(0,2fr) minmax(260px,1fr);gap:16px;align-items:start}
+.start-preview{margin:0;padding:8px 12px 8px 30px;border:1px solid var(--bd);border-radius:8px;background:var(--surface-alpha);font-size:12px}
+.start-preview li{padding:6px 0;border-bottom:1px solid var(--line-soft)}
+.start-preview li:last-child{border:0}
+.start-confirm-panel{padding:12px;border:1px solid var(--gold-border);border-radius:10px;background:var(--gold-bg);font-size:12px}
+.start-confirm-panel h2{margin:0 0 8px;font-size:11px;color:var(--gold-soft)}
+.start-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:16px;padding-top:12px;border-top:1px solid var(--line-soft)}
+@media(max-width:850px){
+  .start-top-grid{grid-template-columns:1fr}
+  .start-mode-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .start-bottom-grid{grid-template-columns:1fr}
+}
+@media(max-width:540px){
+  .start-mode-grid{grid-template-columns:1fr}
+  .start-parameters{flex-wrap:wrap}
+  .start-parameters input[type="range"]{order:5;flex-basis:100%;max-width:none}
+}
+
+/* P09: підсумки сесії мають ті самі кольори станів, що й еталон. */
+.session-totals .count-layer{color:var(--ok-tx)}
+.session-quarantine.is-empty{color:var(--ok-tx)}
+.session-stop-reason{flex:1 1 100%;color:var(--dn-tx);font-size:12px;overflow-wrap:anywhere}
+.calls-error-cell{width:1%;max-width:220px;white-space:normal;overflow-wrap:anywhere}
+.calls-context{font-size:12px;overflow-wrap:anywhere}
+.deferred-groups{display:grid;gap:8px}
+.deferred-group{border:1px solid var(--ds-border);border-radius:var(--ds-radius-md);background:var(--surface-alpha);overflow:hidden}
+.deferred-group summary{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:9px 12px;cursor:pointer;list-style:none}
+.deferred-group summary::-webkit-details-marker{display:none}
+.deferred-group summary::before{content:"▸";color:var(--ds-muted-foreground)}
+.deferred-group[open] summary::before{content:"▾"}
+.deferred-group summary strong{margin-left:auto;color:var(--ds-muted-foreground);font-weight:500}
+.deferred-group .bdo-table-wrap{border:0;border-top:1px solid var(--ds-border);border-radius:0}
+.session-quarantine:not(.is-empty):not(.is-unknown),.session-totals .count-quarantine.has-items{color:var(--dn-tx)}
+
+/* P13 · адреси та ключі джерел на екрані моделей. */
+.sources-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin:14px 0}
+.source-card{min-width:0}
+.source-status-line{margin:0 0 12px;padding:7px 9px;border-radius:var(--control-radius);background:var(--s2);color:var(--ts);font-size:12px}
+.source-slots{display:grid;gap:8px}
+.source-slot{display:grid;grid-template-columns:minmax(110px,1fr) auto auto;align-items:center;gap:8px;padding:8px;border:1px solid var(--bd);border-radius:var(--control-radius);background:var(--surface-alpha)}
+.source-slot-state{display:grid;gap:3px;font-size:12px}
+.source-slot-state span,.source-field-label{color:var(--ts);font-size:11px}
+.source-active-form,.source-active-form label{display:flex;align-items:center;gap:5px;color:var(--ts);font-size:11px;white-space:nowrap}
+.source-active-form input{accent-color:var(--gold)}
+.source-reveal{position:relative}
+/* P43 · disclosure у картках джерел читається як кнопка: та сама висота,
+   рамка, фон і hover/focus, що й у дій форми; відкритий стан підсвічено. */
+.source-reveal>summary{display:inline-flex;align-items:center;justify-content:center;gap:6px;min-height:28px;margin:0;padding:4px 10px;font:inherit;font-size:11px;line-height:1.2;border:1px solid var(--ds-border);border-radius:var(--control-radius);background:var(--ds-secondary);color:var(--ds-secondary-foreground);cursor:pointer;list-style:none;transition:background-color .15s ease,border-color .15s ease,color .15s ease,box-shadow .15s ease}
+.source-reveal>summary::-webkit-details-marker{display:none}
+.source-reveal>summary:hover{background:var(--surface-hover);border-color:var(--gold);color:var(--tp)}
+.source-reveal>summary:focus-visible{outline:2px solid var(--bda);outline-offset:2px}
+.source-reveal[open]>summary{background:var(--acc-bg);border-color:var(--bda);color:var(--acc-tx)}
+.source-reveal-form{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:end;gap:8px;min-width:0;margin-top:8px}
+.source-reveal-form .source-field-label{grid-column:1/-1;color:var(--ts);font-size:11px}
+.source-reveal-form input[type="password"],.source-reveal-form input[type="url"]{grid-column:1;min-width:0;max-width:100%;font:inherit;font-size:12px;padding:6px 9px;border:1px solid var(--bd);border-radius:var(--control-radius);background:var(--s2);color:var(--tp);caret-color:var(--gold);color-scheme:dark}
+.source-reveal-form input:focus{outline:2px solid var(--bda);outline-offset:2px}
+/* P43 · дії форми одним компактним рядком: зберегти · primary, скасувати · secondary. */
+.source-reveal-actions{grid-column:2;display:flex;align-items:center;justify-content:flex-end;gap:6px;min-width:0}
+.source-reveal-actions button,.source-reveal-actions .as-button{display:inline-flex;align-items:center;justify-content:center;min-height:28px;padding:4px 10px;font-size:11px;line-height:1.2;white-space:nowrap}
+.source-reveal-actions .as-button{border:1px solid var(--bd);background:transparent;color:var(--ts);text-decoration:none}
+.source-reveal-actions .as-button:hover{background:var(--surface-hover);border-color:var(--gold);color:var(--tp)}
+.source-reveal-form button,.source-reveal-form .as-button,.source-inline-form button,.source-clear-form button{font-size:11px}
+.source-inline-form{display:inline-flex;align-items:center;min-width:0;margin:0}
+.source-saved-line{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid var(--line-soft);font-size:12px;color:var(--ts)}
+.source-saved-line:last-child{border-bottom:0}
+.source-saved-line .mono{color:var(--tp);overflow-wrap:anywhere}
+.source-saved-line>.source-reveal{justify-self:end}
+.source-saved-line>.source-reveal[open]{grid-column:1/-1;justify-self:stretch;display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:8px}
+.source-saved-line>.source-reveal[open]>summary{grid-column:1/-1;justify-self:end}
+.source-saved-line>.source-reveal[open]>.source-reveal-form{grid-column:1/-1;width:100%;grid-template-columns:minmax(0,1fr) auto;margin-top:0}
+.model-actions{flex-wrap:wrap;row-gap:4px;white-space:normal}
+.model-actions form,.model-actions button{flex:0 0 auto}
+.model-actions button{min-width:max-content}
+@media(max-width:760px){
+  .model-table th:nth-child(1),.model-table td:nth-child(1){width:11%}
+  .model-table th:nth-child(2),.model-table td:nth-child(2){width:25%}
+  .model-table th:nth-child(3),.model-table td:nth-child(3){width:14%}
+  .model-table th:nth-child(4),.model-table td:nth-child(4){width:14%}
+  .model-table th:nth-child(5),.model-table td:nth-child(5){width:11%}
+  .model-table th:nth-child(6),.model-table td:nth-child(6){width:25%}
+  .model-row.is-global-selected .model-name{overflow:visible;overflow-wrap:anywhere;text-overflow:clip;white-space:normal}
+  .model-row.is-global-selected .model-selected-badge{display:inline-block;margin:4px 0 0;max-width:100%;white-space:normal;vertical-align:baseline}
+}
+.local-source-status-row{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin:8px 0 12px;padding:7px 9px;border-radius:var(--control-radius);background:var(--s2);color:var(--ts);font-size:12px}
+.source-save-status{padding:8px 10px;border:1px solid var(--ok-tx);border-radius:var(--control-radius);background:var(--ok-bg);color:var(--ok-tx);font-size:12px}
+@media(max-width:1120px){.sources-grid{grid-template-columns:1fr}}
+@media(max-width:560px){.source-slot{grid-template-columns:1fr auto}.source-reveal-form{grid-template-columns:1fr}.source-reveal-actions{grid-column:1;justify-self:start}}
+/* P43 · компенсація висоти: reveal став кнопкою 28px у списку слотів
+   OpenCode Go; тут зменшено проміжок, щоб картка не виросла. */
+.source-card-opencode .source-slots{gap:6px}
+.role-next-list{display:grid;gap:5px;margin-top:12px}
+.role-next-row{display:grid;grid-template-columns:110px minmax(0,1fr) auto;align-items:center;gap:8px;font-size:12px}
+.role-next-row>.mono{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--ts)}
+
+/* P22 · /run */
+.step.failed{color:var(--dn-tx);background:var(--dn-bg);border-color:var(--dn-tx)}
+.steps>.arrow{color:var(--tm);opacity:.55}
+/* Картка живого виклику: шапка на всю ширину, кнопки другим рядком, робота третьим. */
+.role-card.is-active > .bar{grid-column:1/-1;grid-row:2;justify-content:flex-end;margin:0!important}
+.role-card.is-active > .callWork{grid-row:3}
+/* `.vrow` має `display:flex`, що перекриває типове `[hidden]`; фільтр вердиктів ховає рядки атрибутом. */
+.vrow[hidden]{display:none}
+/* Назва моделі не обрізається; переноситься сама meta, а не чип моделі. */
+.role-card .mh .role-model{flex:0 0 auto;max-width:none;white-space:nowrap}
+.role-card .mh .meta{min-width:0}
+/* 641–1100 px: кнопки картки ролі другим рядком, шапка картки переноситься. */
+@media (max-width:1100px){
+  .role-card:not(.is-active){grid-template-columns:minmax(0,1fr)}
+  .role-card:not(.is-active) > .bar{grid-column:1;grid-row:2;justify-content:flex-end;margin-top:8px!important}
+  .role-card .mh{flex-wrap:wrap;row-gap:6px}
+}
+
+/* P23 · діагностика */
+/* /calls: колонка помилки читається рядками, а не ріжеться по літері. */
+.calls-error-cell{width:auto;min-width:220px;max-width:360px;white-space:normal;overflow-wrap:break-word;word-break:normal}
+/* /api: «Рядків» і поле в одному рядку, перелік полів — звичайним рядком під ним. */
+#rows-panel .api-rows-bar{margin:0}
+#rows-panel .api-rows-bar input{width:90px}
+#rows-panel .api-rows-fields{display:block;font-size:12px;margin-top:4px}
+/* /queue: порожній розділ — компактний рядок із лічильником. */
+.panel > h2 > .empty{margin-left:8px;font-weight:400}
+#queue-clean{margin-bottom:12px}
+.calls-num{white-space:nowrap}
+/* P27 · підключення */
+.source-inline-form input[type="password"],.source-inline-form input[type="url"]{min-width:0;width:260px;max-width:100%;font:inherit;font-size:12px;padding:7px 9px;border:1px solid var(--bd);border-radius:var(--control-radius);background:var(--s2);color:var(--tp);caret-color:var(--gold);color-scheme:dark}
+/* P21 · прихований підпис для читачів екрана */
+.visually-hidden{position:absolute;width:1px;height:1px;margin:-1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
+
+/* P32 · компактний хедер */
+.nav{padding:6px 12px;margin-bottom:18px;gap:12px;grid-template-columns:auto minmax(0,1fr) auto}
+.brand-mark{width:26px;height:26px}
+.brand-mark .icon{width:18px;height:18px}
+.brand-copy small{margin-top:2px}
+.nav-links a{padding:5px 9px}
+.nav-side{gap:3px;width:auto;max-width:400px}
+.nav-side-row{display:flex;align-items:center;justify-content:flex-end;gap:6px;min-width:0;white-space:nowrap;font-size:11px;color:var(--tm)}
+.nav-model{flex-wrap:nowrap}
+.nav-model .nav-param+.nav-param::before{content:"·";margin-right:6px;color:var(--tm)}
+.nav-side .chip,.nav-side .pill{font-size:11px;padding:1px 8px;line-height:1.4}
+.model-choice-chip{min-width:0;max-width:220px;overflow:hidden;text-overflow:ellipsis}
+@media (max-width:1260px){
+  .nav{grid-template-columns:minmax(0,1fr) auto}
+  .nav .brand{grid-column:1;grid-row:1}
+  .nav-side{grid-column:2;grid-row:1}
+  .nav-links{grid-column:1 / -1;grid-row:2;flex-wrap:wrap}
+}
+@media (max-width:640px){
+  .nav{grid-template-columns:1fr;gap:8px;padding:8px 12px}
+  .nav .brand,.nav-links,.nav-side{grid-column:1;grid-row:auto}
+  .nav-side{max-width:none;justify-items:start;margin-left:0;padding-left:0;border-left:0}
+  .nav-side-row{justify-content:flex-start;flex-wrap:wrap}
+}
+.start-missing-waiting{margin-left:6px;font-size:11px;color:var(--tm)}
+
+/* P34 · причина черги */
+.review-reason{display:flex;flex-wrap:wrap;gap:4px 8px;align-items:baseline;margin:6px 0;font-size:12px}
+.review-reason-label{color:var(--wr-tx)}
+.review-reason-detail{color:var(--tp)}
+.review-reason-meta{color:var(--tm);font-size:11px}
+
+/* P34 · режим черги */
+.start-queue-note{margin:0 0 12px;padding:8px 10px;font-size:12px;line-height:1.4;color:var(--wr-tx);background:var(--wr-bg);border:1px solid var(--bd);border-radius:var(--control-radius)}
+
+/* P35 · живий друк */
+pre.log .caret{margin-left:1px}
+/* P34 · порядок черги: від найстаріших або нові від конвеєра */
+.review-order{display:inline-flex;gap:6px}
+.review-order a.is-active{background:var(--surface-hover);border-color:var(--ds-ring)}
+
+/* P38 · вікно промпту ролі */
+.prompt-dialog{width:min(960px,calc(100vw - 32px));max-height:85vh;overflow:auto;padding:16px 18px;border:1px solid var(--bd);border-radius:var(--panel-radius);background:var(--panel-fill);color:var(--tp);box-shadow:var(--shadow);font-size:13px}
+.prompt-dialog::backdrop{background:var(--s0);opacity:.72}
+.prompt-dialog-title{margin:0 0 6px;font-size:13px}
+.prompt-dialog-meta{margin:0 0 4px;font-size:12px;color:var(--ts)}
+.prompt-dialog-section{margin:12px 0 6px;font-size:12px;color:var(--ts)}
+.prompt-dialog-note{margin:12px 0;font-size:12px;color:var(--tm)}
+.prompt-dialog-note a{color:var(--bda)}
+.prompt-dialog form{margin:0;text-align:right}
+.models-role-prompt-cell{text-align:right;white-space:nowrap;width:1%}
+
+/* P39 · знак активної моделі */
+.model-active-marker{display:inline-flex;align-items:center;gap:6px;min-height:32px;padding:5px 8px;border-radius:var(--control-radius);background:var(--gold);color:var(--on-gold);border:1px solid var(--gold);font-weight:600;font-size:13px;white-space:nowrap;cursor:default}
+.model-active-marker svg{width:20px;height:20px}

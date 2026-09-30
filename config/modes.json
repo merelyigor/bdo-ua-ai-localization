@@ -1,0 +1,22 @@
+{
+  "version": 1,
+  "defaults": {
+    "rows_per_batch": 50,
+    "min_rows_per_batch": 5,
+    "max_parallel_batches": 1,
+    "heal_max_attempts": 3,
+    "fields": "core,classification,layers,tokens,constraints,glossary"
+  },
+  "modes": {
+    "patch":     { "label": "патч · нові рядки в ШІ-шар",          "query": { "patch": "active", "missing": "machine", "exclude_proposed": "1" }, "channel": "machine",  "payload_current": false },
+    "refresh":   { "label": "актуалізація ШІ · машинний шар, де змінився англійський оригінал", "query": { "patch": "active", "state": "stale" },   "channel": "machine",  "payload_current": true },
+    "improve":   { "label": "покращення ШІ · весь ШІ-шар, який ще не покращувала ця програма", "query": { "machine_client_name_not": "bdo-ua-translate-python" }, "scope": "corpus", "author_choice": true, "channel": "machine", "payload_current": true },
+    "manual":    { "label": "ручний · чистий рядок у manual",         "query": { "missing": "manual", "exclude_proposed": "1" }, "scope": "corpus", "channel": "manual",   "payload_current": false },
+    "proposals": { "label": "пропозиції · повторно прогнати чергу до людини", "query": {}, "source": "proposals", "channel": "machine", "payload_current": true }
+  },
+  "channels": {
+    "machine":  { "layer": "machine", "mode": "direct",   "auto_approve": true },
+    "manual":   { "layer": "manual",  "mode": "proposal", "auto_approve": true },
+    "proposal": { "layer": "manual",  "mode": "proposal", "auto_approve": false }
+  }
+}

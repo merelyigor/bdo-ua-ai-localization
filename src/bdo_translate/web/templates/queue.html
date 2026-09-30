@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+{% from "_macros.html" import action_error %}
+{% block content %}
+  <header class="screen-title"><h1>Карантин і запис</h1><p class="hint">відкладені, карантин і записані рядки</p></header>
+  {% set all_empty = not key_checks and not deferred_groups and not quarantines and not moderation and not writes %}
+  {% if all_empty %}<div class="empty" id="queue-clean">усе чисто: немає відкладених, карантину, модерації й записів</div>{% endif %}
+  <section class="panel" id="write-key-check">
+    {% if key_checks %}
+      <h2>Повторний запис без дублів · {{ key_checks|length }} пачок</h2>
+      <p class="panel-subtitle">ключ запису з бази збігається з ключем, зібраним заново з даних пачки</p>
+      {% for check in key_checks %}
+        <p>
+          {% if check.matches %}
+            <span class="chip bdo-badge--success">ключ повтору збігається · {{ check.batch_id }}</span>
+          {% else %}
+            <span class="chip bdo-badge--danger">ключ повтору НЕ збігається · {{ check.batch_id }}</span>
+          {% endif %}
+          {% for pair in check.key_pairs %}
+            <span class="mono">{{ pair.stored }} / {{ pair.calculated }}</span>
+          {% endfor %}
+        </p>
+      {% endfor %}
+    {% else %}
+      <h2>Повторний запис без дублів · 0 <span class="empty">— немає</span></h2>
+    {% endif %}
+  </section>
+  <section class="panel" id="queue-deferred">
+    {% if deferred_groups %}
+      <h2>Відкладені · {{ deferred_count }}</h2>
+      <p class="panel-subtitle">рядки, які конвеєр залишив для повторного запуску; однакова пачка й причина зібрані разом</p>
+      <div class="deferred-groups" id="deferred-groups">
+        {% for group in deferred_groups %}
+          <details class="deferred-group" id="deferred-group-{{ loop.index }}">
+            <summary><span class="mono">{{ group.batch_id }}</span><span>{{ group.reason | human }}</span><strong>{{ group.count }} рядків</strong></summary>
+            <div class="bdo-table-wrap"><table class="bdo-table"><thead><tr><th>Рядок</th></tr></thead><tbody>
+              {% for item in group.rows %}<tr id="deferred-{{ loop.index }}-{{ item.identity_hash[:12] }}"><td class="mono">{{ item.identity_hash[:12] }}</td></tr>{% endfor %}
+            </tbody></table></div>
+          </details>
+        {% endfor %}
+      </div>
+    {% else %}
+      <h2>Відкладені · 0 <span class="empty">— немає</span></h2>
+    {% endif %}
+  </section>
+  <section class="panel" id="queue-quarantine">
+    {% if quarantines %}
+      <h2>Карантин · {{ quarantines|length }}</h2>
+      <p class="panel-subtitle">ізольовані рядки; архівування зберігає історію</p>
+      <div class="bdo-table-wrap"><table class="bdo-table"><thead><tr><th>Рядок</th><th>Пачка</th><th>Причина</th><th>Дані</th></tr></thead><tbody>
+        {% for item in quarantines %}<tr id="quarantine-{{ loop.index }}"><td class="mono">{{ item.identity_hash[:12] }}</td><td class="mono">{{ item.batch_id }}</td><td>{{ item.reason | human }}</td><td><code>{{ item.payload_json }}</code></td></tr>{% endfor %}
+      </tbody></table></div>
+      <form method="post" action="/action/quarantine_clear"><button id="btn-quarantine_clear" class="button btn-primary" type="submit">Архівувати карантин</button></form>
+    {% else %}
+      <h2>Карантин · 0 <span class="empty">— немає</span></h2>
+    {% endif %}
+    {{ action_error("quarantine_clear", results.get("quarantine_clear")) }}
+  </section>
+  <section class="panel" id="queue-moderation">
+    {% if moderation %}
+      <h2>Локальна модерація · {{ moderation|length }}</h2>
+      <p class="panel-subtitle">рядки з локальних сесій; це окремий список від пропозицій Agent API</p>
+      <p><a class="button as-button" href="/review">Відкрити пропозиції API · {% if api_review_total is not none %}{{ api_review_total }}{% elif api_review_error %}недоступні{% else %}кількість невідома{% endif %} →</a>{% if api_review_error %} <span class="mono">{{ api_review_error }}</span>{% endif %}</p>
+      <div class="bdo-table-wrap"><table class="bdo-table"><thead><tr><th>Сесія / пачка</th><th>Рядок</th><th>Оригінал</th><th>Переклад</th><th>Причина</th></tr></thead><tbody>
+        {% for item in moderation %}<tr id="moderation-{{ loop.index }}"><td class="mono">{{ item.session_id }} / {{ item.batch_id }}</td><td class="mono">{{ item.row.identity_hash[:12] }}</td><td>{{ item.row.source_text }}</td><td>{{ item.row.final_text or item.row.candidate_text or "—" }}</td><td>{{ item.row.route | human }} · {{ item.row.route_reason | human if item.row.route_reason else "—" }}</td></tr>{% endfor %}
+      </tbody></table></div>
+    {% else %}
+      <h2>Локальна модерація · 0 <span class="empty">— немає</span></h2>
+    {% endif %}
+  </section>
+  <section class="panel" id="queue-writes">
+    {% if writes %}
+      <h2>Останні записи · {{ writes|length }}</h2>
+      <p class="panel-subtitle">результати запису, які вже збережені локально</p>
+      <div class="bdo-table-wrap"><table class="bdo-table"><thead><tr><th>Пачка</th><th>Рядок</th><th>Канал</th><th>Результат</th><th>Idempotency-Key</th></tr></thead><tbody>
+        {% for item in writes %}<tr id="write-{{ loop.index }}"><td class="mono">{{ item.batch_id }}</td><td class="mono">{{ item.identity_hash[:12] }}</td><td>{{ item.channel | human }}</td><td>{{ ("success" if item.result == "ok" else item.result) | human }}</td><td class="mono">{{ item.idempotency_key }}</td></tr>{% endfor %}
+      </tbody></table></div>
+    {% else %}
+      <h2>Останні записи · 0 <span class="empty">— немає</span></h2>
+    {% endif %}
+  </section>
+{% endblock %}

@@ -1,0 +1,40 @@
+{
+  "type": "object",
+  "properties": {
+    "items": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "identity_hash": {
+            "type": "string"
+          },
+          "destination": {
+            "type": "string",
+            "enum": [
+              "ai_layer",
+              "moderation"
+            ]
+          },
+          "confidence": {
+            "type": "integer"
+          },
+          "reason": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "identity_hash",
+          "destination",
+          "confidence",
+          "reason"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  "required": [
+    "items"
+  ],
+  "additionalProperties": false
+}

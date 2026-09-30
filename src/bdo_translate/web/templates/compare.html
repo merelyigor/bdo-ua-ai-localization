@@ -1,0 +1,95 @@
+{% extends "base.html" %}
+{% from "_macros.html" import action_error %}
+{% block content %}
+  <header class="screen-title">
+    <h1>Порівняти моделі</h1>
+    <p class="hint">одна збережена пачка · послідовні повтори · без запису в API</p>
+  </header>
+
+  <section class="panel">
+    <form id="compare-form" method="post" action="/action/compare_run">
+      {{ action_error("compare_run", results.get("compare_run")) }}
+      <label for="compare-batch">пачка</label>
+      <select id="compare-batch" name="batch_id">
+        {% for batch in batch_options %}
+          <option value="{{ batch.id }}"{% if batch.id == selected_batch_id %} selected{% endif %}>{{ batch.id }} · {{ batch.date }} · {{ batch.rows }} рядків</option>
+        {% else %}
+          <option value="">немає пачок з успішним викликом перекладача</option>
+        {% endfor %}
+      </select>
+
+      <fieldset>
+        <legend>моделі · не більше 3</legend>
+        {% for model in model_options %}
+          {% set value = model.provider ~ "::" ~ model.model %}
+          <label for="compare-model-{{ loop.index }}">
+            <input id="compare-model-{{ loop.index }}" name="model" type="checkbox" value="{{ value }}"{% if model in selected_models %} checked{% endif %}>
+            {{ model.provider }} / {{ model.model }}
+          </label>
+        {% else %}<p class="empty">немає моделі за замовчуванням</p>{% endfor %}
+      </fieldset>
+
+      <fieldset>
+        <legend>ролі</legend>
+        {% for role in role_options %}
+          <label for="compare-role-{{ role.name }}">
+            <input id="compare-role-{{ role.name }}" name="role" type="checkbox" value="{{ role.name }}"{% if role.name in selected_roles %} checked{% endif %}>
+            {{ role.label }}
+          </label>
+        {% endfor %}
+      </fieldset>
+
+      <input type="hidden" name="selected_models" id="compare-selected-models" value="[]">
+      <input type="hidden" name="selected_roles" id="compare-selected-roles" value="[]">
+      <button id="btn-compare_run" class="btn-primary" type="submit"{% if not batch_options %} disabled{% endif %}>порівняти</button>
+      <p class="empty">кожна пара роль × модель · окремий виклик моделі; у API нічого не пишеться</p>
+    </form>
+  </section>
+
+  <section class="panel" id="compare-table">
+    <h2>Результати</h2>
+    {% if has_batch and table_rows %}
+      <div class="bdo-table-wrap">
+        <table class="bdo-table">
+          <thead>
+            <tr><th>МОДЕЛЬ</th>{% for role in table_roles %}<th>{{ role.label }}</th>{% endfor %}</tr>
+          </thead>
+          <tbody>
+            {% for row in table_rows %}
+              <tr>
+                <th scope="row">{% if row.original %}<span class="chip">оригінал</span>{% else %}{{ row.label }}{% endif %}</th>
+                {% for role in table_roles %}
+                  {% set cell = row.cells.get(role.name) %}
+                  <td>
+                    {% if cell %}
+                      <a href="/call?id={{ cell.call_id }}">{{ ("success" if cell.state == "ok" else cell.state)|human }}</a>
+                      · {{ cell.ms }} мс · {{ cell.out_tokens }} ток.
+                      · {{ cell.thinking_kb }} КБ
+                      {% if role.name == "translation-worker" %}
+                        <br>рядків повернуто {{ cell.rows_returned }} із {{ cell.rows_total }}
+                        · <span class="chip{% if cell.best %} ok bdo-badge--success{% endif %}">механічні дефекти {{ cell.defects }}</span>
+                      {% endif %}
+                    {% else %}<span class="empty">ще немає виклику</span>{% endif %}
+                  </td>
+                {% endfor %}
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% elif has_batch %}
+      <p class="empty">для вибраних ролей немає успішного оригінального виклику</p>
+    {% else %}
+      <p class="empty">ще немає пачок з успішним викликом перекладача</p>
+    {% endif %}
+  </section>
+
+  <script>
+    document.getElementById("compare-form").addEventListener("submit", function () {
+      const models = Array.from(this.querySelectorAll('input[name="model"]:checked'), (item) => item.value);
+      const roles = Array.from(this.querySelectorAll('input[name="role"]:checked'), (item) => item.value);
+      document.getElementById("compare-selected-models").value = JSON.stringify(models);
+      document.getElementById("compare-selected-roles").value = JSON.stringify(roles);
+    });
+  </script>
+{% endblock %}

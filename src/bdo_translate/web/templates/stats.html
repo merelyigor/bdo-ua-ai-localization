@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+{% from "_macros.html" import action_error %}
+{% block content %}
+  <header class="screen-title"><h1>Статистика</h1><p class="hint">час ролей, ремонт і рішення судді</p></header>
+  <section class="panel">
+    <h2>Сесія</h2>
+    <p class="panel-subtitle">обери прогін для метрик якості й часу</p>
+    <form class="stats-session-form" method="get" action="/stats">
+      <label for="stats-session">Сесія</label>
+      <select id="stats-session" name="session_id">
+        {% if not sessions %}<option value="" selected>Немає даних</option>{% endif %}
+        {% for session in sessions %}<option value="{{ session.id }}"{% if session.id == selected_session_id %} selected{% endif %}>{{ session.id }} · {{ session.status | human }} · {{ session.mode | human }}</option>{% endfor %}
+      </select>
+      <button type="submit" class="button btn-primary">Показати</button>
+    </form>
+  </section>
+
+  <section class="panel" id="stats-roles">
+    <h2>Виклики за ролями</h2>
+    <p class="panel-subtitle">кількість, причини відмов, час і токени</p>
+    {% if roles %}
+      <div class="bdo-table-wrap"><table class="bdo-table">
+        <thead><tr><th>Роль</th><th>Виклики</th><th>Успішні</th><th>Відмови за причинами</th><th>Медіана / p90 · с</th><th>Середні вхідні / вихідні токени</th><th>Відновлення JSON</th><th>Повтор відповіді</th></tr></thead>
+        <tbody>{% for role in roles %}
+          <tr id="stats-role-{{ role.role }}">
+            <td>{{ role.role | human }}</td><td>{{ role.calls | thousands }}</td><td>{{ role.ok | thousands }}</td>
+            <td>{% for reason, count in role.failure_reasons.items() %}{{ reason | human }} · {{ count | thousands }}{% if not loop.last %}, {% endif %}{% else %}—{% endfor %}</td>
+            <td>{{ "%.1f"|format(role.median_ms / 1000) }} / {{ "%.1f"|format(role.p90_ms / 1000) }}</td>
+            <td>{{ role.avg_in_tokens | thousands }} / {{ role.avg_out_tokens | thousands }}</td>
+            <td>{{ "%.1f%%"|format(role.json_salvaged * 100) }}</td>
+            <td>{{ "%.1f%%"|format(role.answer_loop_detected * 100) }}</td>
+          </tr>
+        {% endfor %}</tbody>
+      </table></div>
+    {% else %}<p>Викликів для статистики немає.</p>{% endif %}
+  </section>
+
+  <section class="panel" id="stats-session-table">
+    <h2>Якість і маршрути сесії</h2>
+    <p class="panel-subtitle">частка ремонту, відхилення й час на рядок</p>
+    {% if session_data %}
+      <p>Рядків: {{ session_data.rows | thousands }} · з ремонтом: {{ "%.1f%%"|format(session_data.repair_share * 100) }} · раундів ремонту в середньому: {{ "%.2f"|format(session_data.avg_repair_rounds) }}</p>
+      <p>Відхилено контролем якості: {{ "%.1f%%"|format(session_data.qa_reject_share * 100) }} · скасовано суддею: {{ session_data.qa_reject_canceled_by_judge | thousands }} ({{ "%.1f%%"|format(session_data.qa_reject_canceled_share * 100) }} від відхилених)</p>
+      <p>Час на рядок: {{ "%.1f"|format(session_data.seconds_per_row) }} с · маршрути: {% for route, count in session_data.routes.items() %}{{ route | human }} · {{ count | thousands }}{% if not loop.last %}, {% endif %}{% else %}—{% endfor %}</p>
+      <p>Час пачки: {{ "%.1f"|format(session_data.batch_elapsed_ms / 1000) }} с · виклики моделі: {{ "%.1f"|format(session_data.model_call_ms / 1000) }} с · простій моделі: {{ "%.1f%%"|format(session_data.model_idle_share * 100) }}</p>
+    {% else %}<p>Немає даних для сесії.</p>{% endif %}
+  </section>
+
+  <section class="panel" id="stats-parity">
+    <h2>Порівняння з попередником · секунд на рядок</h2>
+    <p class="panel-subtitle">наш час на рядок зіставлений із виміряним часом попередника</p>
+    {% if parity %}<div class="bdo-table-wrap"><table class="bdo-table">
+      <thead><tr><th>Роль</th><th>Попередник</th><th>Цей проєкт</th><th>Розбіжність</th></tr></thead>
+      <tbody>{% for item in parity %}<tr{% if item.gap %} id="stats-parity-gap-{{ item.role }}"{% endif %}>
+        <td>{{ item.role | human }}</td><td>{{ "%.1f"|format(item.predecessor_seconds) }} с</td><td>{{ "%.1f"|format(item.current_seconds) }} с</td><td>{% if item.gap %}<span class="chip chip-warn">{{ "повільніше" if item.slower else "швидше" }} на {{ item.delta_percent }}%</span>{% else %}до 20%{% endif %}</td>
+      </tr>{% endfor %}</tbody>
+    </table></div>{% else %}<p>Немає даних для порівняння з попередником.</p>{% endif %}
+  </section>
+
+  <section class="panel" id="stats-ab-panel">
+    <h2>Порівняння режимів роздумів</h2>
+    <p class="panel-subtitle">додатковий повтор викликів із протилежним режимом роздумів; запускається лише кнопкою</p>
+    <form method="post" action="/action/stats_ab_think">
+      <input type="hidden" name="session_id" value="{{ selected_session_id }}">
+      <label for="stats-ab-role">Роль</label>
+      <select id="stats-ab-role" name="role">{% for role in role_names %}<option value="{{ role }}"{% if role == "translation-worker" %} selected{% endif %}>{{ role | human }}</option>{% endfor %}</select>
+      <label for="stats-ab-n">Кількість викликів</label><input id="stats-ab-n" name="n" type="number" value="5" min="1">
+      <button id="btn-stats_ab_think" type="submit" class="button btn-primary">Порівняти режими роздумів</button>
+    </form>
+    {{ action_error("stats_ab_think", ab_result) }}
+    {% if ab_result.rows %}<div class="bdo-table-wrap"><table class="bdo-table" id="stats-ab">
+      <thead><tr><th>ID оригіналу</th><th>ID повтору</th><th>Оригінал · мс / стан</th><th>Повтор · мс / стан</th><th>Збіг структури JSON</th></tr></thead>
+      <tbody>{% for item in ab_result.rows %}<tr id="stats-ab-{{ loop.index }}"><td>{{ item.original_id }}</td><td>{{ item.replay_id }}</td><td>{{ item.original_ms }} / {{ item.original_state | human }}</td><td>{{ item.replay_ms }} / {{ item.replay_state | human }}</td><td>{{ item.parsed_match | human }}</td></tr>{% endfor %}</tbody>
+    </table></div>{% else %}<p id="stats-ab">Порівняння ще не запускали.</p>{% endif %}
+  </section>
+{% endblock %}

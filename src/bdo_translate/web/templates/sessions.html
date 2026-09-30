@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+{% from "_macros.html" import action_error %}
+{% block content %}
+  <header class="screen-title">
+    <h1>Сесії роботи</h1>
+    <p class="hint">кожен прогін · окрема сесія · кількість пачок указана в рядку · дані лишаються в .bdo · <span id="sessions-db-size">база · {{ sessions_db_size }} МБ</span></p>
+  </header>
+  {% set delete_result = results.get("session_delete") %}
+  <div id="session-delete-feedback" aria-live="polite" aria-atomic="true">
+    {% if delete_result and delete_result.message %}<section class="panel"><p id="session-delete-result">{{ delete_result.message }}</p></section>{% endif %}
+    {{ action_error("session_delete", delete_result) }}
+  </div>
+  <section class="panel sessions-list" id="sessions-table">
+    {% if session_views %}
+      {% for view in session_views %}
+        {% set session = view.session %}
+        {% set session_index = loop.index %}
+        <div class="session-entry">
+          <details class="sess{% if loop.first %} on{% endif %}" id="session-{{ session.id }}"{% if loop.first %} open{% endif %}>
+            <summary class="sh">
+              <span class="mono session-id">{{ session.id }}</span>
+              <span class="pill session-status{% if session.status == 'failed' %} bdo-badge--danger{% endif %}">{{ session.status|human }}</span>
+              <span class="session-summary-meta">{{ view.opened }} · патч {{ view.patch }} · {{ view.batch_count }} · {{ view.rows_total if view.rows_total is not none else "—" }} рядків</span>
+              <span class="session-quarantine{% if view.quarantine == 0 %} is-empty{% elif view.quarantine is none %} is-unknown{% endif %}">карантин {{ view.quarantine if view.quarantine is not none else "—" }}</span>
+              {% if session.status == 'failed' and session.stop_reason %}<span class="session-stop-reason">Причина: {{ session.stop_reason }}</span>{% endif %}
+            </summary>
+            <span id="session-{{ loop.index }}" class="legacy-session-id" hidden></span>
+            <div class="sb">
+            {% if view.batches %}
+              <div class="bdo-table-wrap session-table-wrap">
+                <table class="bdo-table session-batches">
+                  <thead><tr><th>пачка</th><th>початок</th><th>завершення</th><th class="num">рядків</th><th class="num">у шар</th><th class="num">до людини</th><th class="num">карантин</th><th>режим</th><th>стан</th><th>модель</th></tr></thead>
+                  <tbody>
+                    {% for item in view.batches %}
+                      <tr id="session-{{ session_index }}-batch-{{ loop.index }}">
+                        <td class="mono"><a class="work-link" href="/run?batch={{ item.batch.id }}">{{ item.batch.id }}</a></td>
+                        <td class="time-cell">{{ item.started }}</td>
+                        <td class="time-cell">{{ item.finished }}</td>
+                        <td class="num">{{ item.counts.rows if item.counts.rows is not none else "—" }}</td>
+                        <td class="num count-layer">{{ item.counts.layer if item.counts.layer is not none else "—" }}</td>
+                        <td class="num">{{ item.counts.human if item.counts.human is not none else "—" }}</td>
+                        <td class="num count-quarantine{% if item.counts.quarantine is not none and item.counts.quarantine > 0 %} has-items{% endif %}">{{ item.counts.quarantine if item.counts.quarantine is not none else "—" }}</td>
+                        <td><span class="pill{% if session.dry_run %} batch-mode-test{% else %} batch-mode-prod{% endif %}" title="{{ 'тестовий прогін · без запису' if session.dry_run else 'прогін із записом' }}">{{ session.env }}</span></td>
+                        <td><span class="chip" title="{{ item.batch.state }}">{{ item.batch.state|human }}</span></td>
+                        <td class="batch-model-cell"><span class="batch-model mono" title="{{ item.models|join(' · ') }}">{{ item.models|join(' · ') if item.models else "—" }}</span></td>
+                      </tr>
+                    {% endfor %}
+                  </tbody>
+                </table>
+              </div>
+            {% else %}
+              <p class="empty">У цій сесії пачок ще не було.</p>
+            {% endif %}
+            <div class="cards session-totals">
+              <div class="card"><div class="l">рядків</div><div class="v">{{ view.totals.rows if view.totals.rows is not none else "—" }}</div></div>
+              <div class="card"><div class="l">у шар</div><div class="v count-layer">{{ view.totals.layer if view.totals.layer is not none else "—" }}</div></div>
+              <div class="card"><div class="l">до людини</div><div class="v">{{ view.totals.human if view.totals.human is not none else "—" }}</div></div>
+              <div class="card"><div class="l">карантин</div><div class="v count-quarantine{% if view.totals.quarantine is not none and view.totals.quarantine > 0 %} has-items{% endif %}">{{ view.totals.quarantine if view.totals.quarantine is not none else "—" }}</div></div>
+            </div>
+            </div>
+          </details>
+          {% if session.id != running_session_id %}
+            <div class="session-actions">
+              <form method="post" action="/action/session_delete" class="session-delete-form">
+                <input type="hidden" name="session_id" value="{{ session.id }}">
+                <button id="btn-session_delete-{{ session.id }}" type="submit" class="btn-danger">видалити сесію</button>
+              </form>
+              <div class="session-delete-feedback" data-session-delete-feedback aria-live="polite" aria-atomic="true"></div>
+            </div>
+          {% endif %}
+        </div>
+      {% endfor %}
+    {% else %}
+      <p id="sessions-empty" class="empty">Сесій ще немає.</p>
+    {% endif %}
+  </section>
+{% endblock %}

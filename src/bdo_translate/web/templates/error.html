@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+
+{% block content %}
+  <section class="panel" id="error-panel">
+    <h1 class="screen-title">Не вдалося показати екран</h1>
+    <p><strong id="error-code">{{ error.code }}</strong></p>
+    <p id="error-message">{{ error.message }}</p>
+    <p class="hint" id="error-hint">що робити: {{ error.hint }}</p>
+  </section>
+{% endblock %}

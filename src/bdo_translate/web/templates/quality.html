@@ -1,0 +1,154 @@
+{% extends "base.html" %}
+{% from "_macros.html" import action_button, action_error %}
+
+{% block content %}
+  <header class="screen-title">
+    <h1>Якість</h1>
+    <p class="hint">механічні перевірки на живих рядках DEV</p>
+  </header>
+
+  {% set rows_result = quality_rows_result %}
+  {% set candidate_result = results.get("quality_find") %}
+  <section class="panel" id="quality-rows-panel">
+    <h2>Рядки</h2>
+    <p class="panel-subtitle">вибірка й умови, на яких видно механічні перевірки</p>
+    <div class="panel-actions">
+      {% call action_button("quality_rows", actions, "button btn-primary") %}{% endcall %}
+      {% call action_button("quality_find", actions, "button btn-quiet") %}{% endcall %}
+    </div>
+    {{ action_error("quality_rows", rows_result) }}
+    {{ action_error("quality_find", candidate_result) }}
+    {% if candidate_result and candidate_result.ok %}
+      <p id="q-find-summary">Переглянуто рядків DEV: {{ candidate_result.scanned_rows }}. Позначка DEMO означає синтетичний рядок.</p>
+    {% endif %}
+    {% if rows_result and rows_result.ok %}
+      <div class="bdo-table-wrap">
+        <table class="bdo-table" id="qrows-table">
+          <thead><tr><th>№</th><th>Джерело</th><th>Keep</th><th>Терміни</th><th>Для перевірки</th></tr></thead>
+          <tbody>
+            {% for row in rows_result.rows %}
+              {% set tokens = row.get("tokens", {}) %}
+              {% set glossary = row.get("glossary", {}) %}
+              <tr id="qrow-{{ loop.index }}">
+                <td>{{ loop.index }}</td>
+                <td>{{ row.get("source_text", "") }}</td>
+                <td>{{ tokens.get("must_preserve", []) | length }}</td>
+                <td>{{ glossary.get("terms", []) | length }}</td>
+                <td>
+                  {% set label = rows_result.get("candidate_labels", []) %}
+                  {% if label and loop.index0 < label | length %}{{ label[loop.index0] }}{% else %}—{% endif %}
+                </td>
+              </tr>
+            {% else %}<tr><td colspan="5">DEV не повернув рядків.</td></tr>{% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% endif %}
+  </section>
+
+  {% if rows_result and rows_result.ok and rows_result.rows %}
+    <section class="panel" id="quality-check-panel">
+      <h2>Перевірити текст</h2>
+      <p class="panel-subtitle">запусти перевірки вручну на одному рядку</p>
+      {% call action_button("quality_check", actions, "button btn-primary") %}
+        <label for="q-row">Рядок</label>
+        <select id="q-row" name="row">
+          {% for row in rows_result.rows %}<option value="{{ loop.index }}">{{ loop.index }} · {{ row.get("source_text", "") }}</option>{% endfor %}
+        </select>
+        <label for="q-text">Текст</label>
+        <textarea id="q-text" name="text" rows="4" placeholder="Встав український переклад"></textarea>
+      {% endcall %}
+      {{ action_error("quality_check", results.get("quality_check")) }}
+    </section>
+
+    {% set break_codes = [
+      ("homoglyph", "гомогліф"), ("russianism", "русизм"),
+      ("foreign_script", "чужа писемність"), ("glossary_case", "регістр глосарія"),
+      ("newlines", "перенос"), ("segments", "сегмент"), ("token", "keep-токен"),
+      ("hallucinated_token", "вигаданий токен"), ("length", "довжина")
+    ] %}
+    <section class="panel" id="quality-break-panel">
+      <h2>Зламаний текст для кожної перевірки</h2>
+      <p class="panel-subtitle">кожна кнопка створює приклад дефекту для обраного рядка</p>
+      <label for="q-break-row">Рядок</label>
+      <select id="q-break-row" name="row" form="quality-break-homoglyph">
+        {% for row in rows_result.rows %}<option value="{{ loop.index }}">{{ loop.index }} · {{ row.get("source_text", "") }}</option>{% endfor %}
+      </select>
+      <div class="button-row">
+        {% for code, label in break_codes %}
+          <form id="quality-break-{{ code }}" method="post" action="/action/quality_break">
+            <input type="hidden" name="code" value="{{ code }}">
+            <input type="hidden" name="row" value="1" class="q-break-row-value">
+            <button id="btn-quality-break-{{ code }}" type="submit" class="button btn-secondary">Зламати: {{ label }}</button>
+          </form>
+        {% endfor %}
+      </div>
+      <script>
+        document.getElementById("q-break-row").addEventListener("change", function () {
+          document.querySelectorAll(".q-break-row-value").forEach(function (input) {
+            input.value = document.getElementById("q-break-row").value;
+          });
+        });
+      </script>
+      {{ action_error("quality_break", results.get("quality_break")) }}
+    </section>
+  {% endif %}
+
+  {% set check_result = results.get("quality_check") %}
+  {% set break_result = results.get("quality_break") %}
+  {% set shown = check_result if check_result and (not break_result or check_result.get("at", "") >= break_result.get("at", "")) else break_result %}
+  {% if shown %}
+    <section class="panel" id="quality-result-panel">
+      <h2>Результат</h2>
+      <p class="panel-subtitle">дефекти знайдені на початковому тексті, autofix показаний окремо</p>
+      {% if shown.skip %}
+        <p id="q-break-skip">цей рядок не має {{ shown.skip | human }}, візьми інший</p>
+      {% else %}
+        <p>Після autofix:</p>
+        <pre id="q-fixed">{{ shown.fixed }}</pre>
+        {% if shown.defects %}
+          <ul id="q-defects">
+            {% for defect in shown.defects %}<li id="q-defect-{{ loop.index }}"><code>{{ defect.code | human }}: {{ defect.message }}</code></li>{% endfor %}
+          </ul>
+        {% else %}<p id="q-clean">дефектів немає</p>{% endif %}
+      {% endif %}
+    </section>
+  {% endif %}
+
+  <section class="panel" id="quality-payload-panel">
+    <h2>Дані для перекладача</h2>
+    <p class="panel-subtitle">структура запиту для перекладача без запуску моделі</p>
+    {% call action_button("quality_payload", actions, "button btn-primary") %}{% endcall %}
+    {{ action_error("quality_payload", results.get("quality_payload")) }}
+    {% set payload_result = results.get("quality_payload") %}
+    {% if payload_result and payload_result.ok %}
+      <p id="q-payload-hashes">Хешів рядків у payload: {{ payload_result.payload_hashes }}</p>
+      <pre id="q-payload">{{ payload_result.payload }}</pre>
+    {% endif %}
+  </section>
+
+  <section class="panel" id="quality-morph">
+    <h2>Морфологія проти правила основ</h2>
+    <p class="panel-subtitle" id="quality-morph-count">перевірено {{ morphology.checked }} пар · розбіжностей {{ morphology.differences|length }}</p>
+    {% if morphology.differences %}
+      <div class="bdo-table-wrap">
+        <table class="bdo-table">
+          <thead><tr><th>термін</th><th>відповідник</th><th>уривок тексту</th><th>правило основ</th><th>морфологія</th></tr></thead>
+          <tbody>
+            {% for item in morphology.differences %}
+              <tr>
+                <td>{{ item.term }}</td>
+                <td>{{ item.expected }}</td>
+                <td>{{ item.excerpt }}</td>
+                <td>{{ 'так' if item.rule_match else 'ні' }}</td>
+                <td>{{ 'так' if item.morph_match else 'ні' }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <p id="quality-morph-empty">розбіжностей 0</p>
+    {% endif %}
+  </section>
+{% endblock %}

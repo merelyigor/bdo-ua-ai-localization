@@ -1,0 +1,350 @@
+{% extends "base.html" %}
+{% from "_macros.html" import action_button, action_error, icon %}
+
+{% block content %}
+  {% set probe = results.get("models_probe") %}
+  <header class="screen-title">
+    <h1>Моделі</h1>
+    <p class="hint">каталог джерел, чинний вибір і роздуми</p>
+  </header>
+  {{ action_error("models_choose", results.get("models_choose")) }}
+  {{ action_error("models_lock", results.get("models_lock")) }}
+  {{ action_error("models_unlock", results.get("models_unlock")) }}
+  {{ action_error("models_check", results.get("models_check")) }}
+  {{ action_error("models_env_write", results.get("models_env_write")) }}
+  {{ action_error("models_env_clear", results.get("models_env_clear")) }}
+  {% for action_name in ["models_env_write", "models_env_clear"] %}
+    {% set action_result = results.get(action_name) %}
+    {% if action_result and action_result.message and not action_result.error %}
+      <p class="source-save-status" role="status">{{ action_result.message }}</p>
+    {% endif %}
+  {% endfor %}
+
+  <div class="models-overview">
+    <section class="panel model-active-panel">
+      <div class="panel-heading">
+        <span class="panel-icon" aria-hidden="true">{{ icon("thinking") }}</span>
+        <div>
+          <span class="section-title">активна модель</span>
+          <span class="panel-subtitle">одна модель для всіх ролей · з наступного виклику</span>
+        </div>
+      </div>
+      <div class="global-selection is-active">
+        <div class="model-active-main">
+          <div class="model-active-id">
+            <div class="global-selection-label">
+              <span class="global-selection-title">{{ selected_provider }}</span>
+              {% if not has_choice %}<span class="global-selection-hint">за замовчуванням з roles.json</span>{% endif %}
+            </div>
+            <div class="global-selection-model mono">{{ selected_model }}</div>
+          </div>
+          <div class="model-active-meta">
+            <span class="chip">{{ "віддалена" if active_model.remote else "локальна" }}</span>
+            {% if active_model.free %}<span class="chip">безкоштовна</span>{% endif %}
+            <span class="chip">{{ "замкнена" if active_model.locked else "доступна" }}</span>
+          </div>
+        </div>
+        <div class="model-active-side">
+          <div class="model-active-check">
+            {% if model_check_result %}
+              <span>перевірено: {{ active_model.checked_at }}</span>
+            {% else %}
+              <span>перевірено: {{ active_model.checked_at }} · {{ active_model.last_check }}</span>
+            {% endif %}
+          </div>
+          {% if model_check_result %}
+            <div class="model-check-result {{ 'is-ok' if model_check_result.ok else 'is-failed' }}" role="status">
+              <strong>{{ model_check_result.message }}</strong>
+              {% if model_check_result.ok %}
+                {% if model_check_result.efforts is none %}
+                  <span>рівні не перевірені</span>
+                {% elif not model_check_result.efforts %}
+                  <span>режими роздумів не підтримуються</span>
+                {% elif model_check_result.efforts|length == 1 %}
+                  <span>лише один режим: {{ model_check_result.efforts[0] }}</span>
+                {% else %}
+                  <span>рівні: {{ model_check_result.efforts|join(', ') }}</span>
+                {% endif %}
+                {% if model_check_result.calls is not none %}<span>викликів: {{ model_check_result.calls }}</span>{% endif %}
+              {% endif %}
+            </div>
+          {% endif %}
+          <div class="model-active-actions">
+            <form method="post" action="/action/models_check">
+              <button type="submit" class="btn-quiet">перевірити модель</button>
+            </form>
+            <form method="post" action="/action/models_check">
+              <input type="hidden" name="reprobe" value="1">
+              <button type="submit" class="btn-quiet">перевірити рівні заново</button>
+            </form>
+            {% if has_choice %}
+              <form method="post" action="/action/models_choice_reset">
+                <button id="models_choice_reset" type="submit" class="btn-quiet">до типової моделі</button>
+              </form>
+            {% endif %}
+          </div>
+        </div>
+      </div>
+      {{ action_error("models_choice_reset", results.get("models_choice_reset")) }}
+    </section>
+
+  </div>
+
+  <section class="sources-grid" aria-label="Налаштування віддалених джерел моделей">
+    <article class="panel source-card source-card-opencode">
+      <div class="panel-heading">
+        <span class="panel-icon" aria-hidden="true">↗</span>
+        <div>
+          <span class="section-title">OpenCode Go</span>
+          <span class="panel-subtitle">ключі слотів · активний слот один</span>
+        </div>
+      </div>
+      <div class="source-slots">
+        {% for slot in opencode_slots %}
+          <div class="source-slot">
+            <div class="source-slot-state">
+              <strong>Слот {{ slot.number }} · задано</strong>
+              {% if slot.active %}<span>активний</span>{% endif %}
+            </div>
+            {% if not slot.active %}
+              <form method="post" action="/action/models_env_write" class="source-inline-form">
+                <input type="hidden" name="name" value="OPENCODE_API_KEY_ACTIVE">
+                <input type="hidden" name="value" value="{{ slot.number }}">
+                <button type="submit" class="btn-quiet">зробити активним</button>
+              </form>
+            {% endif %}
+            {% if slot.configured %}
+              <form method="post" action="/action/models_env_clear" class="source-clear-form">
+                <input type="hidden" name="name" value="{{ slot.name }}">
+                <button type="submit" class="btn-quiet">Прибрати</button>
+              </form>
+            {% endif %}
+          </div>
+        {% endfor %}
+        {% if next_opencode_slot_name %}
+          <details class="source-reveal">
+            <summary>додати ключ</summary>
+            <form method="post" action="/action/models_env_write" class="source-reveal-form">
+              <input type="hidden" name="name" value="{{ next_opencode_slot_name }}">
+              <label class="source-field-label" for="opencode-new-key">Ключ OpenCode</label>
+              <input id="opencode-new-key" type="password" name="value" autocomplete="off" spellcheck="false" required>
+              <div class="source-reveal-actions">
+                <button type="submit" class="btn-primary">зберегти</button>
+                <a class="as-button" href="/models">скасувати</a>
+              </div>
+            </form>
+          </details>
+        {% endif %}
+      </div>
+    </article>
+
+    <article class="panel source-card">
+      <div class="panel-heading"><span class="panel-icon" aria-hidden="true">◉</span><div><span class="section-title">OpenAI-сумісне</span><span class="panel-subtitle">адреса й ключ</span></div></div>
+      <div class="source-saved-line">
+        <span>Адреса · <span class="mono">{{ openai_compat_endpoint }}</span></span>
+        <details class="source-reveal">
+          <summary>змінити</summary>
+          <form method="post" action="/action/models_env_write" class="source-reveal-form">
+            <input type="hidden" name="name" value="OPENAI_COMPAT_ENDPOINT">
+            <label class="source-field-label" for="openai-compat-endpoint">Адреса</label>
+            <input id="openai-compat-endpoint" type="url" name="value" value="{{ openai_compat_endpoint }}" required>
+            <div class="source-reveal-actions">
+              <button type="submit" class="btn-primary">зберегти</button>
+              <a class="as-button" href="/models">скасувати</a>
+            </div>
+          </form>
+        </details>
+      </div>
+      <div class="source-saved-line">
+        <span>Ключ · {{ "задано" if openai_compat_key_set else "порожньо" }}</span>
+        {% if openai_compat_key_set %}
+          <form method="post" action="/action/models_env_clear" class="source-inline-form">
+            <input type="hidden" name="name" value="OPENAI_COMPAT_API_KEY">
+            <button type="submit" class="btn-quiet">прибрати</button>
+          </form>
+          <details class="source-reveal">
+            <summary>змінити</summary>
+            <form method="post" action="/action/models_env_write" class="source-reveal-form">
+              <input type="hidden" name="name" value="OPENAI_COMPAT_API_KEY">
+              <label class="source-field-label" for="openai-compat-key">Новий ключ</label>
+              <input id="openai-compat-key" type="password" name="value" autocomplete="off" spellcheck="false" required>
+              <div class="source-reveal-actions">
+                <button type="submit" class="btn-primary">зберегти</button>
+                <a class="as-button" href="/models">скасувати</a>
+              </div>
+            </form>
+          </details>
+        {% else %}
+          <details class="source-reveal">
+            <summary>додати ключ</summary>
+            <form method="post" action="/action/models_env_write" class="source-reveal-form">
+              <input type="hidden" name="name" value="OPENAI_COMPAT_API_KEY">
+              <label class="source-field-label" for="openai-compat-key">Ключ</label>
+              <input id="openai-compat-key" type="password" name="value" autocomplete="off" spellcheck="false" required>
+              <div class="source-reveal-actions">
+                <button type="submit" class="btn-primary">зберегти</button>
+                <a class="as-button" href="/models">скасувати</a>
+              </div>
+            </form>
+          </details>
+        {% endif %}
+      </div>
+    </article>
+  </section>
+
+  <section id="models-catalog" class="panel" data-complete="{{ 'true' if catalog_complete else 'false' }}" data-providers="{{ providers|map(attribute='name')|join(',') }}">
+    <div class="bar section-bar">
+      <span class="section-title">каталог моделей</span>
+      {% if has_probe %}<span class="empty model-load-state">{{ catalog_meta }}</span>{% endif %}
+      <span class="visually-hidden" id="source-status-go"></span>
+      <span class="visually-hidden" id="source-status-openai_compat"></span>
+      <form method="post" action="/action/models_probe" class="model-catalog-refresh-form">
+        <button type="submit" class="btn-quiet">оновити каталог</button>
+      </form>
+    </div>
+    <p id="model-action-feedback" class="source-save-status" role="status" aria-live="polite" tabindex="-1" hidden></p>
+    <div class="local-source-status-row" aria-label="Локальні джерела">
+      {% for status in local_source_status %}<span data-local-status="{{ status.provider }}" data-local-label="{{ status.label }}">{{ status.message }}</span>{% endfor %}
+    </div>
+    <p class="empty model-catalog-preloader" role="status" aria-live="polite"{% if has_probe %} hidden{% endif %}>Знімаю каталоги джерел…</p>
+    {% if catalog_models %}
+      <div class="model-table-wrap">
+        <table class="bdo-table model-table">
+          <thead><tr><th>ДЖЕРЕЛО</th><th>МОДЕЛЬ</th><th>СТАН</th><th>РОЗДУМИ</th><th>РІВНІ</th><th>ДІЇ</th></tr></thead>
+          <tbody>
+            {% for model in catalog_models %}
+              <tr class="model-row{% if model.global %} is-global-selected{% endif %}{% if model.locked %} is-locked{% endif %}">
+                <td class="model-runtime">{{ model.provider }}</td>
+                <td class="model-name mono">{{ model.model }}</td>
+                <td><span class="model-status {% if model.locked %}model-status-locked{% else %}model-status-available{% endif %}">{{ model.status }}</span></td>
+                <td><span class="chip" title="{{ model.thinking_hint }}">{{ model.thinking }}</span></td>
+                <td>{{ model.levels }}</td>
+                <td class="model-actions-cell">
+                  <div class="model-actions">
+                    {% if model.global %}
+                      <span class="model-active-marker" role="status" title="ця модель іде в прогін · щоб змінити, обери іншу">{{ icon("check") }}<span>іде в прогін</span></span>
+                    {% else %}
+                      <form method="post" action="/action/models_choose" class="model-action-form">
+                        <input type="hidden" name="provider" value="{{ model.provider }}">
+                        <input type="hidden" name="model" value="{{ model.model }}">
+                        <button type="submit" class="model-action-primary"{% if model.locked %} disabled title="спершу зніміть замок"{% endif %}>обрати</button>
+                      </form>
+                    {% endif %}
+                    {% if not model.global %}
+                      {% if model.locked %}
+                        <form method="post" action="/action/models_unlock" class="model-action-form">
+                          <input type="hidden" name="provider" value="{{ model.provider }}">
+                          <input type="hidden" name="model" value="{{ model.model }}">
+                          <button type="submit" class="btn-quiet model-lock is-locked" title="замкнена · зняти замок" aria-label="замкнена · зняти замок" aria-pressed="true">{{ icon("lock") }}<span>замкнена</span></button>
+                        </form>
+                      {% else %}
+                        <form method="post" action="/action/models_lock" class="model-action-form">
+                          <input type="hidden" name="provider" value="{{ model.provider }}">
+                          <input type="hidden" name="model" value="{{ model.model }}">
+                          <button type="submit" class="btn-quiet model-lock" title="замкнути · модель не братиметься для прогону" aria-label="замкнути · модель не братиметься для прогону" aria-pressed="false">{{ icon("unlock") }}<span>замкнути</span></button>
+                        </form>
+                      {% endif %}
+                    {% endif %}
+                  </div>
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% elif not has_probe %}
+      <p class="empty">каталог ще не знятий</p>
+    {% else %}
+      <p class="empty">у каталозі немає моделей</p>
+    {% endif %}
+    <p><a class="as-button" href="/compare">порівняти моделі →</a></p>
+  </section>
+
+  <section class="panel models-role-panel" aria-labelledby="models-roles-title">
+    <div class="panel-heading">
+      <span class="panel-icon" aria-hidden="true">◉</span>
+      <div>
+        <span id="models-roles-title" class="section-title">Роздуми за ролями</span>
+        <span class="panel-subtitle">бажання ролі й можливості активної моделі · {{ role_preferences|length }} {{ role_preferences|length|pluralize('роль', 'ролі', 'ролей') }} · {{ selected_provider }} / {{ selected_model }}</span>
+      </div>
+    </div>
+    <p id="models-role-feedback" class="source-save-status models-role-feedback" role="status" aria-live="polite" hidden></p>
+    <div class="bdo-table-wrap">
+      <table class="bdo-table models-role-table">
+        <thead><tr><th>Роль</th><th>Думати</th><th>Рівень</th><th>Можливості активної моделі</th><th class="models-role-prompt-cell">Промпт</th></tr></thead>
+        <tbody>
+          {% for role in role_preferences %}
+            {% set role_form_id = "models-role-form-" ~ loop.index %}
+            <tr>
+              <td>{{ role.label }}</td>
+              <td>
+                <form id="{{ role_form_id }}" method="post" action="/action/models_role_think" class="models-role-form">
+                  <input type="hidden" name="role" value="{{ role.name }}">
+                  <input type="hidden" name="effort" value="{{ role.effort }}">
+                  {% if role.think_fixed %}
+                    <input type="hidden" name="think" value="{{ 'on' if role.think else '' }}">
+                    <label class="models-role-toggle"><input type="checkbox" role="switch" aria-label="Роздуми · {{ role.label }}" data-saved="{{ 'true' if role.think else 'false' }}" value="on" disabled aria-disabled="true"{% if role.think_fixed == "on" %} checked{% endif %}><span class="models-role-switch" aria-hidden="true"></span></label>
+                    <span class="hint">{{ role.think_hint }}</span>
+                  {% else %}
+                    <label class="models-role-toggle"><input type="checkbox" role="switch" aria-label="Роздуми · {{ role.label }}" data-saved="{{ 'true' if role.think else 'false' }}" name="think" value="on"{% if role.think %} checked{% endif %}><span class="models-role-switch" aria-hidden="true"></span></label>
+                  {% endif %}
+                </form>
+              </td>
+              <td class="models-role-effort-cell">
+                <label class="visually-hidden" for="models-effort-{{ loop.index }}">Рівень роздумів · {{ role.label }}</label>
+                {% if role.effort_selectable %}
+                  <select id="models-effort-{{ loop.index }}" name="effort_choice" form="{{ role_form_id }}" data-saved="{{ role.effort_value }}">
+                    {% for option in role.effort_options %}
+                      <option value="{{ option.value }}"{% if option.selected %} selected{% endif %}>{{ option.label }}</option>
+                    {% endfor %}
+                  </select>
+                  {% if role.effort_note %}<span class="hint">{{ role.effort_note }}</span>{% endif %}
+                {% else %}
+                  <select id="models-effort-{{ loop.index }}" name="effort_choice" form="{{ role_form_id }}" disabled aria-disabled="true">
+                    <option value="" selected>{{ role.effort_note }}</option>
+                  </select>
+                {% endif %}
+              </td>
+              <td><span class="models-role-capability">{{ role.capability }}</span></td>
+              <td class="models-role-prompt-cell"><button type="button" class="bdo-button bdo-button--ghost bdo-button--sm" data-prompt-open="models-prompt-{{ loop.index }}">промпт</button></td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% for role in role_preferences %}
+        <dialog id="models-prompt-{{ loop.index }}" class="prompt-dialog" aria-labelledby="models-prompt-title-{{ loop.index }}">
+          <h2 id="models-prompt-title-{{ loop.index }}" class="prompt-dialog-title">Промпт ролі · {{ role.label }}</h2>
+          <p class="prompt-dialog-meta">код ролі · <span class="mono">{{ role.name }}</span></p>
+          <p class="prompt-dialog-meta">файли · <span class="mono">{{ role.prompt_file }}</span> · <span class="mono">{{ role.schema_file }}</span></p>
+          <h3 class="prompt-dialog-section">Системний промпт</h3>
+          <pre class="log">{{ role.prompt_text }}</pre>
+          <h3 class="prompt-dialog-section">Схема відповіді</h3>
+          <pre class="log">{{ role.schema_text }}</pre>
+          <p class="prompt-dialog-note">до моделі також іде payload пачки (рядки гри JSON) · точний запит виклику на екрані виклику{% if role.last_call_id %} · <a href="/call?id={{ role.last_call_id }}">останній виклик ролі ↗</a>{% endif %}</p>
+          <form method="dialog"><button type="submit" class="btn-quiet">закрити</button></form>
+        </dialog>
+      {% endfor %}
+    </div>
+  </section>
+
+  <details class="panel model-details">
+    <summary>технічні відомості джерел</summary>
+    <div class="bar">
+      {% call action_button("models_probe", actions) %}{% endcall %}
+      <span class="empty">перевіряє каталог усіх джерел</span>
+      {{ action_error("models_probe", probe) }}
+    </div>
+    <div class="bdo-table-wrap">
+      <table class="bdo-table" id="providers-table">
+        <thead><tr><th>Провайдер</th><th>Транспорт</th><th>Endpoint env</th><th>Віддалений</th><th>Дозволений</th><th>Доступність</th><th>Помилка</th></tr></thead>
+        <tbody>{% for provider in providers %}
+          <tr id="provider-{{ provider.name }}">
+            <td>{{ provider.name }}</td><td>{{ provider.transport|human }}</td><td>{{ provider.endpoint_env }}</td>
+            <td>{{ provider.remote|human }}</td><td>{{ provider.allowed|human }}</td>
+            <td id="provider-{{ provider.name }}-reach">{{ provider.reach|human }}</td><td>{{ provider.error }}</td>
+          </tr>
+        {% else %}<tr><td colspan="7">Провайдерів немає.</td></tr>{% endfor %}</tbody>
+      </table>
+    </div>
+  </details>
+{% endblock %}
