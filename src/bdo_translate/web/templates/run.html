@@ -10,6 +10,7 @@
       <div class="bar">
         <span class="pill env-pill"{% if session.env == "PROD" %} style="background:var(--dn-bg);color:var(--dn-tx)"{% endif %}>{{ session.env }}</span>
         <span class="mono">{% if batch %}{{ batch.id }} · пачка {{ batch.seq }} · {{ rows|length }} рядків{% else %}{{ current.session_id }}{% endif %}</span>
+        {% if batch %}<a class="work-link" href="/history?batch={{ batch.id }}">історія рядків →</a>{% endif %}
         <span class="pill" id="statePhrase" style="background:var(--{{ state_tone }}-bg);color:var(--{{ state_tone }}-tx)">{{ state_phrase }}</span>
         {% if controls_enabled and session.started_at %}
           <span class="empty" style="margin-left:auto" data-since="{{ session.started_at }}">—</span>

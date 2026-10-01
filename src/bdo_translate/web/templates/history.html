@@ -14,8 +14,33 @@
       <a class="work-link" href="{{ back_href }}">{{ back_label }}</a>
     </div>
   </section>
-  {% if not identity_hash %}
+  {% if not identity_hash and not batch_id %}
     <p class="empty">введи hash рядка або відкрий історію з черги чи прогону</p>
+  {% endif %}
+  {% if batch_id %}
+    <section class="panel">
+      <h2>рядки пачки {{ batch_id }}</h2>
+      {% if batch_rows %}
+        <div class="bdo-table-wrap">
+          <table class="bdo-table">
+            <thead><tr><th>вердикт</th><th>оригінал</th><th>переклад</th><th>куди</th><th>історія</th></tr></thead>
+            <tbody>
+              {% for row in batch_rows %}
+                <tr>
+                  <td><span class="pill">{{ row.pill }}</span></td>
+                  <td>{{ row.source }}</td>
+                  <td>{{ row.final }}</td>
+                  <td>{{ row.route }}</td>
+                  <td><a class="work-link" href="/history?hash={{ row.identity_hash }}&from=batch&batch={{ batch_id }}">історія</a></td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% else %}
+        <p class="empty">у пачці немає рядків</p>
+      {% endif %}
+    </section>
   {% endif %}
   <div class="call-work-grid">
     {% for layer in layers %}

@@ -8,6 +8,7 @@ from urllib.parse import quote
 from bdo_translate.api.endpoints import row_history
 from bdo_translate.errors import StateError
 from bdo_translate.web.registry import Query, Screen, WebState
+from bdo_translate.web.screens.run import _verdict_rows
 from bdo_translate.web.screens.sessions import format_local_datetime
 
 _LAYERS = (("machine", "ШІ-шар"), ("manual", "ручний шар"))
@@ -128,6 +129,8 @@ def _back(query: Query) -> tuple[str, str]:
     if query.get("from", "") == "review":
         return "/review", "← до черги"
     batch = query.get("batch", "")
+    if query.get("from", "") == "batch" and batch and re.fullmatch(r"[A-Za-z0-9_-]+", batch):
+        return f"/history?batch={quote(batch)}", "← до рядків пачки"
     if batch and re.fullmatch(r"[A-Za-z0-9_-]+", batch):
         return f"/run?batch={quote(batch)}", "← до прогону"
     return "/run", "← до прогону"
@@ -137,6 +140,23 @@ async def build(state: WebState, query: Query) -> dict[str, Any]:
     """Читає історію рядка й готує дві колонки версій."""
     identity_hash = query.get("hash", "")
     back_href, back_label = _back(query)
+    batch_id = query.get("batch", "")
+    if not identity_hash and batch_id:
+        if not re.fullmatch(r"[A-Za-z0-9_-]+", batch_id):
+            raise StateError("id пачки має бути з літер, цифр, _ і -", reason="invalid_batch")
+        repo = state.services.repo()
+        verdicts_by_hash: dict[str, list[Any]] = {}
+        for verdict in repo.verdicts_of(batch_id):
+            verdicts_by_hash.setdefault(verdict.identity_hash, []).append(verdict)
+        return {
+            "identity_hash": "",
+            "short_hash": "",
+            "batch_id": batch_id,
+            "batch_rows": _verdict_rows(repo.batch_rows(batch_id), verdicts_by_hash),
+            "back_href": f"/run?batch={quote(batch_id)}",
+            "back_label": "← до прогону",
+            "layers": [],
+        }
     if not identity_hash:
         return {
             "identity_hash": "",

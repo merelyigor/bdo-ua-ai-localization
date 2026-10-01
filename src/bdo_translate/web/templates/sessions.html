@@ -33,7 +33,7 @@
                   <tbody>
                     {% for item in view.batches %}
                       <tr id="session-{{ session_index }}-batch-{{ loop.index }}">
-                        <td class="mono"><a class="work-link" href="/run?batch={{ item.batch.id }}">{{ item.batch.id }}</a></td>
+                        <td class="mono"><a class="work-link" href="/run?batch={{ item.batch.id }}">{{ item.batch.id }}</a> <a class="work-link" href="/history?batch={{ item.batch.id }}">історія рядків</a></td>
                         <td class="time-cell">{{ item.started }}</td>
                         <td class="time-cell">{{ item.finished }}</td>
                         <td class="num">{{ item.counts.rows if item.counts.rows is not none else "—" }}</td>
