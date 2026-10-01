@@ -1,8 +1,8 @@
 # BDO UA Translate · ШІ-переклад Black Desert Online українською
 
-<!-- Банер: docs/assets/banner.png (ширина 935). Розкоментуй рядок нижче, коли файл буде в репозиторії.
-<img src="docs/assets/banner.png" alt="BDO UA Translate · браузерний інтерфейс і конвеєр перекладу" width="935">
--->
+<p align="center">
+  <img src="docs/assets/banner.webp" alt="BDO UA AI Localization · конвеєр перекладу для BDO UA Translate: запуск, підготовка пачки, ролі, механічні перевірки, сесія, моделі, результат" width="935">
+</p>
 
 Локальна програма, яка перекладає тексти **Black Desert Online** українською
 для спільноти [BDO UA Translate](https://bdo-ua.com.ua). Вона бере рядки гри
