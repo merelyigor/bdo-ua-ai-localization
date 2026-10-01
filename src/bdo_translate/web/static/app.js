@@ -1287,10 +1287,12 @@ async function refreshPage(immediate = false) {
           // Поки друкарка активно тримає живий `pre`, морф не має повертати його
           // до серверного тексту й запускати друк спочатку.
           if (protectLiveNode(node)) return false;
+          // Відкрите модальне вікно «промпт» морф не чіпає, інакше воно закривається.
+          if (node instanceof HTMLDialogElement && node.open) return false;
           return true;
         },
         beforeAttributeUpdated(attributeName, node) {
-          if (attributeName === "open" && node.tagName === "DETAILS" && node.hasAttribute("open")) {
+          if (attributeName === "open" && (node.tagName === "DETAILS" || node.tagName === "DIALOG") && node.hasAttribute("open")) {
             return false;
           }
           return true;
