@@ -5,16 +5,23 @@
     <p class="mono" title="{{ identity_hash }}">{{ short_hash }}</p>
   </header>
   <section class="panel">
+    <form method="get" action="/history" class="history-search">
+      <input name="hash" value="{{ identity_hash }}" class="mono" placeholder="identity_hash · 64 символи" required>
+      <button type="submit" class="btn-quiet">відкрити</button>
+    </form>
     <div class="bar">
       <span class="mono">{{ identity_hash }}</span>
       <a class="work-link" href="{{ back_href }}">{{ back_label }}</a>
     </div>
   </section>
+  {% if not identity_hash %}
+    <p class="empty">введи hash рядка або відкрий історію з черги чи прогону</p>
+  {% endif %}
   <div class="call-work-grid">
     {% for layer in layers %}
       <section class="panel">
         <h2>{{ layer.title }}</h2>
-        {% if layer.truncated %}<p class="empty">показано останні 50</p>{% endif %}
+        {% if layer.truncated %}<p class="empty">показано 50 останніх версій</p>{% endif %}
         {% for version in layer.versions %}
           <article>
             <div class="bar">
@@ -22,6 +29,9 @@
               {% if version.is_current %}<span class="chip">поточна</span>{% endif %}
             </div>
             <pre class="log work mono">{{ version.text }}</pre>
+            {% if version.diff is not none %}
+              <details class="history-diff"><summary>що змінилось{% if not version.changed %} · без змін тексту{% endif %}</summary><p class="history-diff-text mono">{% for seg in version.diff %}{% if seg.op == "ins" %}<ins class="history-ins">{{ seg.text }}</ins>{% elif seg.op == "del" %}<del class="history-del">{{ seg.text }}</del>{% else %}{{ seg.text }}{% endif %}{% endfor %}</p></details>
+            {% endif %}
             {% if version.meta %}<p class="empty">{{ version.meta }}</p>{% endif %}
             {% if version.source_changed %}<p class="empty">оригінал змінився</p>{% endif %}
           </article>

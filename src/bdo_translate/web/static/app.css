@@ -1506,3 +1506,10 @@ pre.log .caret{margin-left:1px}
 /* P39 · знак активної моделі */
 .model-active-marker{display:inline-flex;align-items:center;gap:6px;min-height:32px;padding:5px 8px;border-radius:var(--control-radius);background:var(--gold);color:var(--on-gold);border:1px solid var(--gold);font-weight:600;font-size:13px;white-space:nowrap;cursor:default}
 .model-active-marker svg{width:20px;height:20px}
+
+/* P57 · історія рядка */
+.history-ins { background: var(--ok-bg); color: var(--ok-tx); text-decoration: none; }
+.history-del { background: var(--dn-bg); color: var(--dn-tx); }
+.history-diff-text { white-space: pre-wrap; font-size: 12px; }
+.history-search { display: flex; gap: 8px; align-items: center; }
+.history-search input { flex: 1; width: 100%; }

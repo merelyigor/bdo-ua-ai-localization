@@ -1,5 +1,6 @@
 """Показує історію версій шарів одного рядка."""
 
+import difflib
 import re
 from typing import Any
 from urllib.parse import quote
@@ -58,6 +59,46 @@ def _version(item: Any) -> dict[str, Any]:
     }
 
 
+def _diff(old: str, new: str) -> list[dict[str, str]]:
+    """Порівнює два тексти за словами; пробіли й розділові знаки зберігаються."""
+    old_tokens = re.findall(r"\s+|\w+|[^\w\s]", old)
+    new_tokens = re.findall(r"\s+|\w+|[^\w\s]", new)
+    segments: list[dict[str, str]] = []
+    matcher = difflib.SequenceMatcher(None, old_tokens, new_tokens, autojunk=False)
+    # Серія змін, розділена лише пробілами, зливається в один del і один ins.
+    del_buf = ""
+    ins_buf = ""
+    space_buf = ""
+    in_run = False
+
+    def flush() -> None:
+        nonlocal del_buf, ins_buf, space_buf, in_run
+        if del_buf:
+            segments.append({"op": "del", "text": del_buf})
+        if ins_buf:
+            segments.append({"op": "ins", "text": ins_buf})
+        if space_buf:
+            segments.append({"op": "eq", "text": space_buf})
+        del_buf = ins_buf = space_buf = ""
+        in_run = False
+
+    for tag, i1, i2, j1, j2 in matcher.get_opcodes():
+        if tag == "equal":
+            text = "".join(old_tokens[i1:i2])
+            if in_run and text.isspace():
+                space_buf += text
+                continue
+            flush()
+            segments.append({"op": "eq", "text": text})
+            continue
+        in_run = True
+        del_buf += space_buf + "".join(old_tokens[i1:i2])
+        ins_buf += space_buf + "".join(new_tokens[j1:j2])
+        space_buf = ""
+    flush()
+    return segments
+
+
 def _column(
     layers: dict[str, Any],
     name: str,
@@ -67,6 +108,14 @@ def _column(
     """Готує колонку одного шару з версіями від найновіших."""
     raw = layers.get(name)
     versions = [_version(item) for item in raw] if isinstance(raw, list) else []
+    for index, version in enumerate(versions):
+        if index + 1 < len(versions):
+            segments = _diff(versions[index + 1]["text"], version["text"])
+            version["diff"] = segments
+            version["changed"] = any(item["op"] != "eq" for item in segments)
+        else:
+            version["diff"] = None
+            version["changed"] = False
     return {
         "title": title,
         "versions": versions,
@@ -87,8 +136,15 @@ def _back(query: Query) -> tuple[str, str]:
 async def build(state: WebState, query: Query) -> dict[str, Any]:
     """Читає історію рядка й готує дві колонки версій."""
     identity_hash = query.get("hash", "")
+    back_href, back_label = _back(query)
     if not identity_hash:
-        raise StateError("немає hash рядка", reason="history_not_found")
+        return {
+            "identity_hash": "",
+            "short_hash": "",
+            "back_href": back_href,
+            "back_label": back_label,
+            "layers": [],
+        }
     if not re.fullmatch(r"[0-9a-f]{64}", identity_hash):
         raise StateError("hash рядка має бути 64 шістнадцяткові символи", reason="invalid_hash")
     data = await row_history(state.services.api(), identity_hash)
@@ -96,7 +152,6 @@ async def build(state: WebState, query: Query) -> dict[str, Any]:
     layer_map: dict[str, Any] = layers if isinstance(layers, dict) else {}
     truncated = data.get("truncated")
     truncated_map: dict[str, Any] = truncated if isinstance(truncated, dict) else {}
-    back_href, back_label = _back(query)
     return {
         "identity_hash": identity_hash,
         "short_hash": identity_hash[:12],
