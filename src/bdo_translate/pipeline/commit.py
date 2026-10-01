@@ -270,8 +270,10 @@ def _queue_reason_detail(ctx: BatchContext, row: Row) -> str | None:
     return "; ".join(fragments)[:400]
 
 
-def _save_queue_reason(ctx: BatchContext, row: Row, defect_note: str | None) -> None:
-    """Зберігає локальну причину, чому рядок потрапив у чергу до людини."""
+def _queue_reason_parts(
+    ctx: BatchContext, row: Row, defect_note: str | None
+) -> tuple[str, str | None]:
+    """Обчислює код причини черги й людський опис для рядка."""
     record = ctx.records[row.identity_hash]
     reason = record.route_reason
     detail: str | None = None
@@ -282,6 +284,23 @@ def _save_queue_reason(ctx: BatchContext, row: Row, defect_note: str | None) -> 
         reason = "moderation"
     if detail is None:
         detail = _queue_reason_detail(ctx, row)
+    return reason, detail
+
+
+def _proposal_note(ctx: BatchContext, row: Row, defect_note: str | None) -> str | None:
+    """Формує пояснення автора пропозиції (≤ 500 символів) або None без опису."""
+    reason, detail = _queue_reason_parts(ctx, row, defect_note)
+    if not detail:
+        return None
+    note = f"{reason} · {detail}"
+    if len(note) > 500:
+        note = note[:497] + "…"
+    return note
+
+
+def _save_queue_reason(ctx: BatchContext, row: Row, defect_note: str | None) -> None:
+    """Зберігає локальну причину, чому рядок потрапив у чергу до людини."""
+    reason, detail = _queue_reason_parts(ctx, row, defect_note)
     ctx.services.repo().save_queue_reason(
         QueueReason(
             env=ctx.session.env,
@@ -318,6 +337,11 @@ async def step_commit(ctx: BatchContext) -> None:
         target = "proposal" if record.route == "proposal" or defects else ctx.mode.channel
         item = {"identity_hash": row.identity_hash, "source_hash": row.source_hash, "text": text}
         groups.setdefault(target, []).append((row, item))
+
+    for row, item in groups.get("proposal", []):
+        note = _proposal_note(ctx, row, defect_notes.get(row.identity_hash))
+        if note is not None:
+            item["note"] = note
 
     try:
         profile = await me(ctx.services.api())

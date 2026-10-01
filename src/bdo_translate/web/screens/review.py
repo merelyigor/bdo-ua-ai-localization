@@ -78,6 +78,8 @@ def _proposal(item: dict[str, Any], reason: Any = None) -> dict[str, Any]:
         reason_detail = reason.detail
         reason_at = format_local_datetime(reason.created_at)
         reason_mode = label(reason.mode)
+    note = item.get("note")
+    author_note = note if isinstance(note, str) and note.strip() else None
     return {
         "id": _identifier(item.get("id")),
         "identity_hash": _text(item.get("identity_hash")),
@@ -90,6 +92,7 @@ def _proposal(item: dict[str, Any], reason: Any = None) -> dict[str, Any]:
         "reason_detail": reason_detail,
         "reason_at": reason_at,
         "reason_mode": reason_mode,
+        "author_note": author_note,
         "meta": _proposal_meta(item),
     }
 

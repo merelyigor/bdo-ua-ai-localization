@@ -85,5 +85,6 @@ class ItemResult(ApiModel):
     code: str | None = None
     message: str | None = None
     retryable: bool = False
+    note_saved: bool = False
     warning_codes: list[str] = []
     details: dict[str, Any] = {}

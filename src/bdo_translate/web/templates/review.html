@@ -59,6 +59,7 @@
           <div class="review-reason" id="review-reason-{{ loop.index }}">
             {% if proposal.reason_label %}<span class="review-reason-label">чому тут: {{ proposal.reason_label }}</span>{% if proposal.reason_detail %}<span class="review-reason-detail">{{ proposal.reason_detail }}</span>{% endif %}<span class="review-reason-meta">{{ proposal.reason_mode }} · {{ proposal.reason_at }}</span>
             {% else %}<span class="review-reason-meta">причина не записана (пропозиція старіша за P34 або подана не цим конвеєром)</span>{% endif %}
+            {% if proposal.author_note %}<span class="review-reason-detail">Пояснення автора: {{ proposal.author_note }}</span>{% endif %}
             {% if proposal.meta %}<span class="review-reason-meta">{{ proposal.meta }}</span>{% endif %}
           </div>
           <form method="post" action="/action/review_approve" class="review-approve-form">
