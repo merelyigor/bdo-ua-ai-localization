@@ -24,5 +24,4 @@
 
 | ID | План | Статус | Створено | Закрито |
 |---|---|---|---|---|
-| P56 | [P56-local-models-acceptance.md](P56-local-models-acceptance.md) · приймання локальних моделей (Ollama, oMLX, llama-swap): llama-swap у переліках, аудит шляху, dry-run власника на DEV | in-progress | 2026-10-01 | — |
 | P57 | [P57-row-history-changes.md](P57-row-history-changes.md) · історія рядків: що змінилось між версіями, пошук за хешем, історія рядків пачки | approved | 2026-10-01 | — |
