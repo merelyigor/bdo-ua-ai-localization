@@ -253,13 +253,24 @@ def _stop_session_for_quota(ctx: BatchContext, reason: str) -> None:
     )
 
 
+_SOURCE_LABELS = {
+    "judge": "суддя",
+    "qa": "QA",
+    "mechanical": "механічна перевірка",
+    "api_validate": "перевірка сайту",
+    "api_write": "запис на сайт",
+}
+
+
 def _queue_reason_detail(ctx: BatchContext, row: Row) -> str | None:
     """Збирає людський текст причини з вироків рядка в цій пачці."""
     fragments: list[str] = []
     for verdict in ctx.services.repo().verdicts_for(ctx.batch.id, row.identity_hash):
         if verdict.status == "PASS":
             continue
-        part = f"{verdict.source}: {verdict.code or verdict.status}"
+        part = _SOURCE_LABELS.get(verdict.source, verdict.source)
+        if verdict.code:
+            part += f" {verdict.code}"
         if verdict.issue:
             part += f" · {verdict.issue}"
         fragments.append(part)
@@ -292,7 +303,7 @@ def _proposal_note(ctx: BatchContext, row: Row, defect_note: str | None) -> str 
     reason, detail = _queue_reason_parts(ctx, row, defect_note)
     if not detail:
         return None
-    note = f"{reason} · {detail}"
+    note = f"механічна перевірка · {detail}" if reason == "mechanical_defect" else detail
     if len(note) > 500:
         note = note[:497] + "…"
     return note
