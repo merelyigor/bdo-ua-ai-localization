@@ -3,7 +3,7 @@
 
 {% block content %}
   {% set run_locked = header.live %}
-  {% set run_lock_tip = "Іде прогін · зміни моделі, роздумів і джерел вимкнено до його завершення" %}
+  {% set run_lock_tip = "Іде прогін · зміни моделі й джерел вимкнено до його завершення; роздуми ролей можна міняти" %}
   {% set probe = results.get("models_probe") %}
   <header class="screen-title">
     <h1>Моделі</h1>
@@ -289,18 +289,18 @@
                     <label class="models-role-toggle"><input type="checkbox" role="switch" aria-label="Роздуми · {{ role.label }}" data-saved="{{ 'true' if role.think else 'false' }}" value="on" disabled aria-disabled="true"{% if role.think_fixed == "on" %} checked{% endif %}><span class="models-role-switch" aria-hidden="true"></span></label>
                     <span class="hint">{{ role.think_hint }}</span>
                   {% else %}
-                    {% if run_locked %}<span class="run-lock" data-tip="{{ run_lock_tip }}">{% endif %}<label class="models-role-toggle"><input type="checkbox" role="switch" aria-label="Роздуми · {{ role.label }}" data-saved="{{ 'true' if role.think else 'false' }}" name="think" value="on"{% if run_locked %} disabled aria-disabled="true"{% endif %}{% if role.think %} checked{% endif %}><span class="models-role-switch" aria-hidden="true"></span></label>{% if run_locked %}</span>{% endif %}
+                    <label class="models-role-toggle"><input type="checkbox" role="switch" aria-label="Роздуми · {{ role.label }}" data-saved="{{ 'true' if role.think else 'false' }}" name="think" value="on"{% if role.think %} checked{% endif %}><span class="models-role-switch" aria-hidden="true"></span></label>
                   {% endif %}
                 </form>
               </td>
               <td class="models-role-effort-cell">
                 <label class="visually-hidden" for="models-effort-{{ loop.index }}">Рівень роздумів · {{ role.label }}</label>
                 {% if role.effort_selectable %}
-                  {% if run_locked %}<span class="run-lock" data-tip="{{ run_lock_tip }}">{% endif %}<select id="models-effort-{{ loop.index }}" name="effort_choice" form="{{ role_form_id }}" data-saved="{{ role.effort_value }}"{% if run_locked %} disabled aria-disabled="true"{% endif %}>
+                  <select id="models-effort-{{ loop.index }}" name="effort_choice" form="{{ role_form_id }}" data-saved="{{ role.effort_value }}">
                     {% for option in role.effort_options %}
                       <option value="{{ option.value }}"{% if option.selected %} selected{% endif %}>{{ option.label }}</option>
                     {% endfor %}
-                  </select>{% if run_locked %}</span>{% endif %}
+                  </select>
                   {% if role.effort_note %}<span class="hint">{{ role.effort_note }}</span>{% endif %}
                 {% else %}
                   <select id="models-effort-{{ loop.index }}" name="effort_choice" form="{{ role_form_id }}" disabled aria-disabled="true">

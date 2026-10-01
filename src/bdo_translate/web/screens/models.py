@@ -659,7 +659,6 @@ async def models_unlock(state: WebState, form: dict[str, str]) -> ActionResult:
 
 async def models_think(state: WebState, form: dict[str, str]) -> ActionResult:
     """Зберігає бажання однієї ролі або сумісний перемикач усіх ролей."""
-    _ensure_idle(state)
     values: dict[str, bool | None] = {"on": True, "off": False, "config": None}
     think = form.get("think", "")
     if think not in values:
@@ -687,7 +686,6 @@ async def models_think(state: WebState, form: dict[str, str]) -> ActionResult:
 
 async def models_role_think(state: WebState, form: dict[str, str]) -> ActionResult:
     """Зберігає бажання й рівень роздумів однієї ролі."""
-    _ensure_idle(state)
     role = form.get("role", "")
     roles = state.services.roles()
     if role not in roles.roles:
