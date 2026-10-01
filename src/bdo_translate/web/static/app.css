@@ -1513,3 +1513,9 @@ pre.log .caret{margin-left:1px}
 .history-diff-text { white-space: pre-wrap; font-size: 12px; }
 .history-search { display: flex; gap: 8px; align-items: center; }
 .history-search input { flex: 1; width: 100%; }
+
+/* дефект 84 · дії під час прогону */
+.run-lock{position:relative;display:inline-flex;cursor:not-allowed}
+.run-lock > *{opacity:.45;filter:grayscale(1);pointer-events:none}
+.run-lock:hover::after, .run-lock:focus-within::after{content:attr(data-tip);position:absolute;bottom:calc(100% + 6px);left:50%;transform:translateX(-50%);z-index:20;width:max-content;max-width:260px;padding:6px 8px;border-radius:var(--control-radius);border:1px solid var(--bd);background:var(--s1);color:var(--tp);font-size:11px;line-height:1.35;white-space:normal;box-shadow:var(--shadow);pointer-events:none}
+.run-lock-note{color:var(--wr-tx)}

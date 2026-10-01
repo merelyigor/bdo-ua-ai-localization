@@ -7,7 +7,7 @@ from typing import Any
 from zoneinfo import ZoneInfo
 
 from bdo_translate import clock, env_store
-from bdo_translate.errors import BdoError, ConfigError
+from bdo_translate.errors import BdoError, ConfigError, StateError
 from bdo_translate.model.caller import CallOutcome, Override, call_role
 from bdo_translate.model.roles import (
     REASONING_EFFORTS,
@@ -501,8 +501,16 @@ async def build(state: WebState, query: Query) -> dict[str, Any]:
     }
 
 
+def _ensure_idle(state: WebState) -> None:
+    """Відмовляє у зміні моделі, роздумів чи джерел, поки йде прогін."""
+    current = state.runner.current()
+    if current is not None and current["status"] == "running":
+        raise StateError("Іде прогін · дочекайтеся його завершення", reason="session_running")
+
+
 async def models_choose(state: WebState, form: dict[str, str]) -> ActionResult:
     """Перевіряє провайдера й зберігає вибір моделі власника."""
+    _ensure_idle(state)
     provider = form.get("provider", "")
     model = form.get("model", "")
     roles = state.services.roles()
@@ -529,6 +537,7 @@ async def models_choose(state: WebState, form: dict[str, str]) -> ActionResult:
 
 async def models_choice_reset(state: WebState, form: dict[str, str]) -> ActionResult:
     """Скидає модель і провайдера, лишаючи налаштування роздумів."""
+    _ensure_idle(state)
     state.services.repo().reset_model_choice()
     target = "/start" if form.get("return_to") == "/start" else "/models"
     return {"message": "вибір моделі скинуто", "redirect": target}
@@ -618,6 +627,7 @@ async def _check_model(
 
 async def models_check(state: WebState, form: dict[str, str]) -> ActionResult:
     """Перевіряє канал і визначає доступні рівні активної моделі."""
+    _ensure_idle(state)
     repo = state.services.repo()
     roles = state.services.roles()
     provider, model = active_model(repo, roles)
@@ -628,6 +638,7 @@ async def models_check(state: WebState, form: dict[str, str]) -> ActionResult:
 
 async def models_lock(state: WebState, form: dict[str, str]) -> ActionResult:
     """Замикає модель, крім поточного активного вибору."""
+    _ensure_idle(state)
     provider = form.get("provider", "")
     model = form.get("model", "")
     roles = state.services.roles()
@@ -641,12 +652,14 @@ async def models_lock(state: WebState, form: dict[str, str]) -> ActionResult:
 
 async def models_unlock(state: WebState, form: dict[str, str]) -> ActionResult:
     """Знімає замок із заданої моделі."""
+    _ensure_idle(state)
     state.services.repo().unlock(form.get("provider", ""), form.get("model", ""))
     return {"message": "замок моделі знято"}
 
 
 async def models_think(state: WebState, form: dict[str, str]) -> ActionResult:
     """Зберігає бажання однієї ролі або сумісний перемикач усіх ролей."""
+    _ensure_idle(state)
     values: dict[str, bool | None] = {"on": True, "off": False, "config": None}
     think = form.get("think", "")
     if think not in values:
@@ -674,6 +687,7 @@ async def models_think(state: WebState, form: dict[str, str]) -> ActionResult:
 
 async def models_role_think(state: WebState, form: dict[str, str]) -> ActionResult:
     """Зберігає бажання й рівень роздумів однієї ролі."""
+    _ensure_idle(state)
     role = form.get("role", "")
     roles = state.services.roles()
     if role not in roles.roles:
@@ -789,6 +803,7 @@ async def models_probe(state: WebState, form: dict[str, str]) -> ActionResult:
 
 async def models_env_write(state: WebState, form: dict[str, str]) -> ActionResult:
     """Зберігає дозволене налаштування джерела без відлуння значення."""
+    _ensure_idle(state)
     env_store.write(form.get("name", ""), form.get("value", ""))
     await state.services.reload_settings()
     state.results.pop("models_env_clear", None)
@@ -798,6 +813,7 @@ async def models_env_write(state: WebState, form: dict[str, str]) -> ActionResul
 
 async def models_env_clear(state: WebState, form: dict[str, str]) -> ActionResult:
     """Прибирає дозволене налаштування джерела."""
+    _ensure_idle(state)
     env_store.clear(form.get("name", ""))
     await state.services.reload_settings()
     state.results.pop("models_env_write", None)

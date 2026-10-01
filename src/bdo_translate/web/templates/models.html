@@ -2,11 +2,14 @@
 {% from "_macros.html" import action_button, action_error, icon %}
 
 {% block content %}
+  {% set run_locked = header.live %}
+  {% set run_lock_tip = "Іде прогін · зміни моделі, роздумів і джерел вимкнено до його завершення" %}
   {% set probe = results.get("models_probe") %}
   <header class="screen-title">
     <h1>Моделі</h1>
     <p class="hint">каталог джерел, чинний вибір і роздуми</p>
   </header>
+  {% if run_locked %}<p class="hint run-lock-note">{{ run_lock_tip }}</p>{% endif %}
   {{ action_error("models_choose", results.get("models_choose")) }}
   {{ action_error("models_lock", results.get("models_lock")) }}
   {{ action_error("models_unlock", results.get("models_unlock")) }}
@@ -71,15 +74,15 @@
           {% endif %}
           <div class="model-active-actions">
             <form method="post" action="/action/models_check">
-              <button type="submit" class="btn-quiet">перевірити модель</button>
+              {% if run_locked %}<span class="run-lock" data-tip="{{ run_lock_tip }}">{% endif %}<button type="submit" class="btn-quiet"{% if run_locked %} disabled aria-disabled="true"{% endif %}>перевірити модель</button>{% if run_locked %}</span>{% endif %}
             </form>
             <form method="post" action="/action/models_check">
               <input type="hidden" name="reprobe" value="1">
-              <button type="submit" class="btn-quiet">перевірити рівні заново</button>
+              {% if run_locked %}<span class="run-lock" data-tip="{{ run_lock_tip }}">{% endif %}<button type="submit" class="btn-quiet"{% if run_locked %} disabled aria-disabled="true"{% endif %}>перевірити рівні заново</button>{% if run_locked %}</span>{% endif %}
             </form>
             {% if has_choice %}
               <form method="post" action="/action/models_choice_reset">
-                <button id="models_choice_reset" type="submit" class="btn-quiet">до типової моделі</button>
+                {% if run_locked %}<span class="run-lock" data-tip="{{ run_lock_tip }}">{% endif %}<button id="models_choice_reset" type="submit" class="btn-quiet"{% if run_locked %} disabled aria-disabled="true"{% endif %}>до типової моделі</button>{% if run_locked %}</span>{% endif %}
               </form>
             {% endif %}
           </div>
@@ -110,19 +113,19 @@
               <form method="post" action="/action/models_env_write" class="source-inline-form">
                 <input type="hidden" name="name" value="OPENCODE_API_KEY_ACTIVE">
                 <input type="hidden" name="value" value="{{ slot.number }}">
-                <button type="submit" class="btn-quiet">зробити активним</button>
+                {% if run_locked %}<span class="run-lock" data-tip="{{ run_lock_tip }}">{% endif %}<button type="submit" class="btn-quiet"{% if run_locked %} disabled aria-disabled="true"{% endif %}>зробити активним</button>{% if run_locked %}</span>{% endif %}
               </form>
             {% endif %}
             {% if slot.configured %}
               <form method="post" action="/action/models_env_clear" class="source-clear-form">
                 <input type="hidden" name="name" value="{{ slot.name }}">
-                <button type="submit" class="btn-quiet">Прибрати</button>
+                {% if run_locked %}<span class="run-lock" data-tip="{{ run_lock_tip }}">{% endif %}<button type="submit" class="btn-quiet"{% if run_locked %} disabled aria-disabled="true"{% endif %}>Прибрати</button>{% if run_locked %}</span>{% endif %}
               </form>
             {% endif %}
           </div>
         {% endfor %}
         {% if next_opencode_slot_name %}
-          <details class="source-reveal">
+          {% if run_locked %}<span class="run-lock" data-tip="{{ run_lock_tip }}"><button type="button" class="btn-quiet" disabled aria-disabled="true">додати ключ</button></span>{% else %}<details class="source-reveal">
             <summary>додати ключ</summary>
             <form method="post" action="/action/models_env_write" class="source-reveal-form">
               <input type="hidden" name="name" value="{{ next_opencode_slot_name }}">
@@ -133,7 +136,7 @@
                 <a class="as-button" href="/models">скасувати</a>
               </div>
             </form>
-          </details>
+          </details>{% endif %}
         {% endif %}
       </div>
     </article>
@@ -142,7 +145,7 @@
       <div class="panel-heading"><span class="panel-icon" aria-hidden="true">◉</span><div><span class="section-title">OpenAI-сумісне</span><span class="panel-subtitle">адреса й ключ</span></div></div>
       <div class="source-saved-line">
         <span>Адреса · <span class="mono">{{ openai_compat_endpoint }}</span></span>
-        <details class="source-reveal">
+        {% if run_locked %}<span class="run-lock" data-tip="{{ run_lock_tip }}"><button type="button" class="btn-quiet" disabled aria-disabled="true">змінити</button></span>{% else %}<details class="source-reveal">
           <summary>змінити</summary>
           <form method="post" action="/action/models_env_write" class="source-reveal-form">
             <input type="hidden" name="name" value="OPENAI_COMPAT_ENDPOINT">
@@ -153,16 +156,16 @@
               <a class="as-button" href="/models">скасувати</a>
             </div>
           </form>
-        </details>
+        </details>{% endif %}
       </div>
       <div class="source-saved-line">
         <span>Ключ · {{ "задано" if openai_compat_key_set else "порожньо" }}</span>
         {% if openai_compat_key_set %}
           <form method="post" action="/action/models_env_clear" class="source-inline-form">
             <input type="hidden" name="name" value="OPENAI_COMPAT_API_KEY">
-            <button type="submit" class="btn-quiet">прибрати</button>
+            {% if run_locked %}<span class="run-lock" data-tip="{{ run_lock_tip }}">{% endif %}<button type="submit" class="btn-quiet"{% if run_locked %} disabled aria-disabled="true"{% endif %}>прибрати</button>{% if run_locked %}</span>{% endif %}
           </form>
-          <details class="source-reveal">
+          {% if run_locked %}<span class="run-lock" data-tip="{{ run_lock_tip }}"><button type="button" class="btn-quiet" disabled aria-disabled="true">змінити</button></span>{% else %}<details class="source-reveal">
             <summary>змінити</summary>
             <form method="post" action="/action/models_env_write" class="source-reveal-form">
               <input type="hidden" name="name" value="OPENAI_COMPAT_API_KEY">
@@ -173,9 +176,9 @@
                 <a class="as-button" href="/models">скасувати</a>
               </div>
             </form>
-          </details>
+          </details>{% endif %}
         {% else %}
-          <details class="source-reveal">
+          {% if run_locked %}<span class="run-lock" data-tip="{{ run_lock_tip }}"><button type="button" class="btn-quiet" disabled aria-disabled="true">додати ключ</button></span>{% else %}<details class="source-reveal">
             <summary>додати ключ</summary>
             <form method="post" action="/action/models_env_write" class="source-reveal-form">
               <input type="hidden" name="name" value="OPENAI_COMPAT_API_KEY">
@@ -186,7 +189,7 @@
                 <a class="as-button" href="/models">скасувати</a>
               </div>
             </form>
-          </details>
+          </details>{% endif %}
         {% endif %}
       </div>
     </article>
@@ -227,7 +230,7 @@
                       <form method="post" action="/action/models_choose" class="model-action-form">
                         <input type="hidden" name="provider" value="{{ model.provider }}">
                         <input type="hidden" name="model" value="{{ model.model }}">
-                        <button type="submit" class="model-action-primary"{% if model.locked %} disabled title="спершу зніміть замок"{% endif %}>обрати</button>
+                        {% if run_locked %}<span class="run-lock" data-tip="{{ run_lock_tip }}">{% endif %}<button type="submit" class="model-action-primary"{% if model.locked %} disabled title="спершу зніміть замок"{% elif run_locked %} disabled aria-disabled="true"{% endif %}{% if model.locked and run_locked %} aria-disabled="true"{% endif %}>обрати</button>{% if run_locked %}</span>{% endif %}
                       </form>
                     {% endif %}
                     {% if not model.global %}
@@ -235,13 +238,13 @@
                         <form method="post" action="/action/models_unlock" class="model-action-form">
                           <input type="hidden" name="provider" value="{{ model.provider }}">
                           <input type="hidden" name="model" value="{{ model.model }}">
-                          <button type="submit" class="btn-quiet model-lock is-locked" title="замкнена · зняти замок" aria-label="замкнена · зняти замок" aria-pressed="true">{{ icon("lock") }}<span>замкнена</span></button>
+                          {% if run_locked %}<span class="run-lock" data-tip="{{ run_lock_tip }}">{% endif %}<button type="submit" class="btn-quiet model-lock is-locked" title="замкнена · зняти замок" aria-label="замкнена · зняти замок"{% if run_locked %} disabled aria-disabled="true"{% endif %} aria-pressed="true">{{ icon("lock") }}<span>замкнена</span></button>{% if run_locked %}</span>{% endif %}
                         </form>
                       {% else %}
                         <form method="post" action="/action/models_lock" class="model-action-form">
                           <input type="hidden" name="provider" value="{{ model.provider }}">
                           <input type="hidden" name="model" value="{{ model.model }}">
-                          <button type="submit" class="btn-quiet model-lock" title="замкнути · модель не братиметься для прогону" aria-label="замкнути · модель не братиметься для прогону" aria-pressed="false">{{ icon("unlock") }}<span>замкнути</span></button>
+                          {% if run_locked %}<span class="run-lock" data-tip="{{ run_lock_tip }}">{% endif %}<button type="submit" class="btn-quiet model-lock" title="замкнути · модель не братиметься для прогону" aria-label="замкнути · модель не братиметься для прогону"{% if run_locked %} disabled aria-disabled="true"{% endif %} aria-pressed="false">{{ icon("unlock") }}<span>замкнути</span></button>{% if run_locked %}</span>{% endif %}
                         </form>
                       {% endif %}
                     {% endif %}
@@ -286,18 +289,18 @@
                     <label class="models-role-toggle"><input type="checkbox" role="switch" aria-label="Роздуми · {{ role.label }}" data-saved="{{ 'true' if role.think else 'false' }}" value="on" disabled aria-disabled="true"{% if role.think_fixed == "on" %} checked{% endif %}><span class="models-role-switch" aria-hidden="true"></span></label>
                     <span class="hint">{{ role.think_hint }}</span>
                   {% else %}
-                    <label class="models-role-toggle"><input type="checkbox" role="switch" aria-label="Роздуми · {{ role.label }}" data-saved="{{ 'true' if role.think else 'false' }}" name="think" value="on"{% if role.think %} checked{% endif %}><span class="models-role-switch" aria-hidden="true"></span></label>
+                    {% if run_locked %}<span class="run-lock" data-tip="{{ run_lock_tip }}">{% endif %}<label class="models-role-toggle"><input type="checkbox" role="switch" aria-label="Роздуми · {{ role.label }}" data-saved="{{ 'true' if role.think else 'false' }}" name="think" value="on"{% if run_locked %} disabled aria-disabled="true"{% endif %}{% if role.think %} checked{% endif %}><span class="models-role-switch" aria-hidden="true"></span></label>{% if run_locked %}</span>{% endif %}
                   {% endif %}
                 </form>
               </td>
               <td class="models-role-effort-cell">
                 <label class="visually-hidden" for="models-effort-{{ loop.index }}">Рівень роздумів · {{ role.label }}</label>
                 {% if role.effort_selectable %}
-                  <select id="models-effort-{{ loop.index }}" name="effort_choice" form="{{ role_form_id }}" data-saved="{{ role.effort_value }}">
+                  {% if run_locked %}<span class="run-lock" data-tip="{{ run_lock_tip }}">{% endif %}<select id="models-effort-{{ loop.index }}" name="effort_choice" form="{{ role_form_id }}" data-saved="{{ role.effort_value }}"{% if run_locked %} disabled aria-disabled="true"{% endif %}>
                     {% for option in role.effort_options %}
                       <option value="{{ option.value }}"{% if option.selected %} selected{% endif %}>{{ option.label }}</option>
                     {% endfor %}
-                  </select>
+                  </select>{% if run_locked %}</span>{% endif %}
                   {% if role.effort_note %}<span class="hint">{{ role.effort_note }}</span>{% endif %}
                 {% else %}
                   <select id="models-effort-{{ loop.index }}" name="effort_choice" form="{{ role_form_id }}" disabled aria-disabled="true">
