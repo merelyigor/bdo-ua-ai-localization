@@ -17,7 +17,7 @@ DEFAULTS = {'EXECUTOR_MODE': 'opencode', 'EXECUTOR_MODEL': 'opencode-go/deepseek
             'EXECUTOR_SCOUT_TIMEOUT': '900', 'EXECUTOR_SCOUT_MCP': 'playwright,context7', 'EXECUTOR_MAX_PARALLEL_SCOUT': '2',
             'EXECUTOR_CODEX_BIN': 'codex', 'EXECUTOR_CODEX_MIN_VERSION': '0.156.1'}
 REPORT_LINES, SCOUT_REPORT_LINES, TAIL_LINES, LOG_TAIL_LINES, POLL = 30, 40, 10, 80, 0.2
-VERSION = '1.6.0'
+VERSION = '1.7.0'
 WORKER_MODES, SCOUT_MODES = ('opencode', 'native'), ('codex', 'native')
 MODE_FILE = os.path.join('.executor', 'mode.env')
 WORKER_KEYS = ('EXECUTOR_MODE', 'EXECUTOR_MODEL')
@@ -383,11 +383,47 @@ def detect_client():
     return ('opencode' if env.get('OPENCODE') or env.get('OPENCODE_PID') else 'codex' if env.get('CODEX_THREAD_ID')
             else 'claude-code' if env.get('CLAUDECODE') else 'unknown')
 CLIENT_NAMES = {'claude-code': 'Claude', 'codex': 'Codex', 'opencode': 'OpenCode'}
-def labels(cfg, client):
+AGENT_TYPES = {'worker': ('brygada-worker', 'general-purpose'), 'scout': ('brygada-scout', 'Explore')}
+def claude_agent(root, name):
+    # Frontmatter агента Claude Code: спершу проєктний .claude/agents, потім ~/.claude/agents.
+    for folder in (os.path.join(root, '.claude', 'agents'), os.path.join(os.path.expanduser('~'), '.claude', 'agents')):
+        path = os.path.join(folder, name + '.md')
+        if not os.path.isfile(path):
+            continue
+        lines = read(path, errors='replace').splitlines()
+        if not lines or lines[0].strip() != '---':
+            continue
+        meta = {}
+        for line in lines[1:]:
+            if line.strip() == '---':
+                return meta
+            key, sep, value = line.partition(':')
+            if sep and key.strip():
+                meta[key.strip()] = unquote(value.strip())
+    return None
+def env_on(name):
+    return os.environ.get(name, '').strip().lower() not in ('', '0', 'false', 'no', 'off')
+def subagent_model(agent):
+    # Порядок Claude Code: FORCE з CLAUDE_CODE_SUBAGENT_MODEL → model: агента → CLAUDE_CODE_SUBAGENT_MODEL.
+    env_model = os.environ.get('CLAUDE_CODE_SUBAGENT_MODEL', '').strip()
+    if env_model and env_on('CLAUDE_CODE_SUBAGENT_MODEL_FORCE'):
+        return env_model
+    own = (agent or {}).get('model', '').strip()
+    if own and own.lower() != 'inherit':
+        return own
+    return env_model or None
+def subagent(root, client, role):
+    """(тип агента або None, підпис) штатного субагента ролі."""
+    if client != 'claude-code':
+        return None, 'субагент %s <модель>' % CLIENT_NAMES.get(client, 'клієнта')
+    own, fallback = AGENT_TYPES[role]
+    agent = claude_agent(root, own)
+    effort = (agent or {}).get('effort', '').strip()
+    return (own if agent is not None else fallback), 'субагент Claude %s%s' % (subagent_model(agent) or '<модель>', ' ' + effort if effort else '')
+def labels(cfg, client, root):
     # Підпис фонового запуску: власник бачить у чаті, хто саме працює — рушій і модель.
-    sub = 'субагент %s <модель>' % CLIENT_NAMES.get(client, 'клієнта')
-    worker = 'OpenCode %s' % cfg['model'] if cfg['worker_mode'] == 'opencode' else sub
-    scout = 'Codex %s %s' % (cfg['scout_model'], cfg['scout_effort']) if cfg['scout_mode'] == 'codex' else sub
+    worker = 'OpenCode %s' % cfg['model'] if cfg['worker_mode'] == 'opencode' else subagent(root, client, 'worker')[1]
+    scout = 'Codex %s %s' % (cfg['scout_model'], cfg['scout_effort']) if cfg['scout_mode'] == 'codex' else subagent(root, client, 'scout')[1]
     return 'Виконавець · %s' % worker, 'Помічник · %s' % scout
 def announce(run_id, engine):
     # Перший рядок живого виводу — у stderr: stdout починається з підсумку, його читають.
@@ -450,6 +486,9 @@ def cmd_prepare(root, cfg, args):
     print('PREPARED %s' % run_id)
     print('prompt: %s' % os.path.join(run_dir, 'prompt.md'))
     print('subagent: «Прочитай файл %s і виконай його. Корінь проєкту — %s.»' % (os.path.join(run_dir, 'prompt.md'), root))
+    kind, label = subagent(root, detect_client(), 'worker')
+    if kind:
+        print('agent: %s · %s' % (kind, label))
     print('after: python3 scripts/executor/exec.py finish %s' % run_id)
     return 0
 def cmd_finish(root, cfg, args):
@@ -683,8 +722,11 @@ def cmd_mode(root, cfg, args):
         print('MODE scout codex · %s %s · %s' % (cfg['scout_model'], cfg['scout_effort'], source(SCOUT_KEYS)))
     me, client = self_model(args), detect_client()
     print('CLIENT %s · self-model %s' % (client, me or 'не назване'))
-    for role, text in zip(('worker', 'scout'), labels(cfg, client)):
+    for role, text in zip(('worker', 'scout'), labels(cfg, client, root)):
         print('LABEL %s %s' % (role, text))
+    if client == 'claude-code':
+        for role in ('worker', 'scout'):
+            print('AGENT %s %s' % (role, subagent(root, client, role)[0]))
     way = route(cfg, me)
     print('ROUTE worker → %s' % {'self': 'сама (та сама модель)', 'run': 'exec.py run', 'prepare': 'exec.py prepare/finish'}[way['worker']])
     print('ROUTE scout → %s' % {'self': 'сама (та сама модель)', 'scout': 'exec.py scout', 'native': 'штатний субагент лише для читання'}[way['scout']])

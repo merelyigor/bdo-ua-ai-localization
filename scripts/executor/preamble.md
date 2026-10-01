@@ -1,4 +1,4 @@
-<!-- executor-harness:begin head v1.6.0 -->
+<!-- executor-harness:begin head v1.7.0 -->
 # Виконавець
 
 Ти — виконавець (OpenCode або субагент головної сесії): самостійно виконуєш ОДНУ задачу головної сесії в репозиторії,
@@ -51,7 +51,7 @@
 - Автотестів немає (D-08): не створюй `tests/`, `test_*.py`, pytest, стаби.
 - Цілісність даних: `identity_hash`, `keep`, placeholders, PA markup, `{BDO_NL}`, manual revisions, moderation і glossary не змінюй; жодних стель на відповідь моделі (`num_predict`); стан — лише SQLite через `sqlmodel`.
 
-<!-- executor-harness:begin report v1.6.0 -->
+<!-- executor-harness:begin report v1.7.0 -->
 ## Звіт
 Запиши рівно один файл звіту за шляхом із завдання і повтори той самий текст
 наприкінці своєї відповіді, починаючи з рядка `STATUS:`. Формат:
