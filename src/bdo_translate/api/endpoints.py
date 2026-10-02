@@ -100,7 +100,7 @@ async def facets(api: ApiClient, query: dict[str, str]) -> list[dict[str, Any]]:
 
 
 async def machine_generations(api: ApiClient, query: dict[str, str]) -> list[dict[str, Any]] | None:
-    """Читає покоління ШІ-шару з `GET /rows/machine-generations`.
+    """Читає покоління ШІ-шару з `GET /rows/machine-generations` (`data.generations`).
 
     Повертає `None`, коли сайт ще не підтримує ендпоінт (404): фільтри поколінь
     до цього моменту слати не можна, бо невідомі параметри `GET /rows` ігноруються.
@@ -111,10 +111,12 @@ async def machine_generations(api: ApiClient, query: dict[str, str]) -> list[dic
         if error.status == 404:
             return None
         raise
-    groups = envelope.get("data")
-    if not isinstance(groups, list) or any(not isinstance(item, dict) for item in groups):
-        raise ApiError("Поле API data має бути списком обʼєктів", code="invalid_response")
-    return cast(list[dict[str, Any]], groups)
+    raw = _data(envelope).get("generations", [])
+    if not isinstance(raw, list) or any(not isinstance(item, dict) for item in raw):
+        raise ApiError(
+            "Поле API data.generations має бути списком обʼєктів", code="invalid_response"
+        )
+    return cast(list[dict[str, Any]], raw)
 
 
 async def proposals(api: ApiClient, limit: int) -> tuple[list[dict[str, Any]], int | None]:
