@@ -155,7 +155,7 @@ async def build(state: WebState, query: Query) -> dict[str, Any]:
         "start_time_text": _start_time_text(session.started_at),
         "stop_reason_raw": stop_reason_raw if isinstance(stop_reason_raw, str) else "",
         "stop_reason_text": _human_stop_reason(stop_reason_raw),
-        "goal_label": mode.label,
+        "goal_label": _goal_label(mode.label, goal),
         "channel_label": label(channel.layer),
         "goal": goal,
         "route_counts": route_counts,
@@ -262,6 +262,27 @@ def _goal(session: RunSession) -> dict[str, Any]:
     except json.JSONDecodeError:
         value = {}
     return value if isinstance(value, dict) else {}
+
+
+def _goal_label(mode_label: str, goal: dict[str, Any]) -> str:
+    """Підзаголовок прогону: називає покоління чи джерело, а не весь режим."""
+    base = mode_label.split(" · ", 1)[0]
+    generation = goal.get("generation")
+    if isinstance(generation, str) and generation:
+        if generation.startswith("run:"):
+            return f"{base} · покоління · прогін {generation[len('run:') :]}"
+        parts = generation.split("|")
+        if generation.startswith("legacy:") and len(parts) == 4:
+            date = parts[0][len("legacy:") :]
+            text = f"{base} · покоління · {parts[2]}/{parts[3]} · до прогонів · {date}"
+            return f"{text} · {parts[1]}" if parts[1] else text
+        return f"{base} · покоління"
+    if goal.get("machine_author") == "bosia":
+        return f"{base} · імпорт bosia"
+    version = goal.get("machine_client_version_lt")
+    if version:
+        return f"{base} · перекладені цією програмою до версії {version}"
+    return mode_label
 
 
 def _step_statuses(
