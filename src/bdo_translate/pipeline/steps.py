@@ -620,7 +620,9 @@ async def step_validate(ctx: BatchContext) -> None:
     }
     for row, result in zip(candidates, results, strict=True):
         record = _record(ctx, row)
-        if result.status == "repaired":
+        if result.status == "repaired" or (
+            result.status == "reaffirmed" and result.repaired_text is not None
+        ):
             if result.repaired_text is None:
                 raise ApiError(
                     "validate повернув repaired без repaired_text", code="invalid_response"

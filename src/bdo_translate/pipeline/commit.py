@@ -392,7 +392,9 @@ async def step_commit(ctx: BatchContext) -> None:
                     else:
                         _record_rejection(ctx, row, result.code, result.message)
                     continue
-                if result.status == "repaired":
+                if result.status == "repaired" or (
+                    result.status == "reaffirmed" and result.repaired_text is not None
+                ):
                     if result.repaired_text is None:
                         raise ApiError(
                             "validate повернув repaired без repaired_text",

@@ -59,6 +59,7 @@
 - **Files:** `config/modes.json`, `src/bdo_translate/modes.py`, `src/bdo_translate/api/endpoints.py`, `src/bdo_translate/pipeline/commit.py`, `src/bdo_translate/pipeline/steps.py`, `src/bdo_translate/pipeline/heal.py`, `src/bdo_translate/web/labels.py`.
 - **Verify:** gate 0; dry-run `improve` після деплою сайту показує `reaffirmed`.
 - **Notes:** 2026-10-02 · код є, gate 0. `reaffirm` передається в усі `validate`/`write` групи `machine` у `step_commit` і в `step_validate`; виклики `validate` у `heal.py`/`names.py` без прапорця (там лише перевірка ремонту, статус `unchanged` лишається успіхом). Перед записом незмінені рядки не відсікаються, тож прапорець доходить до всіх.
+- **Notes:** 2026-10-02 · сайт: `reaffirm` на DEV (2a2d079), PROD чекає власника; `meta.reaffirm` лише коли прапорець подіяв; `reaffirmed` може нести `repaired_text`, якщо `auto_repair` виправив текст до збігу з поточним. Крок 1.1b: такий `repaired_text` застосовується так само, як для `repaired` (`step_validate`, `step_commit`).
 
 ## Step 1.2 — Звірка й закриття
 
