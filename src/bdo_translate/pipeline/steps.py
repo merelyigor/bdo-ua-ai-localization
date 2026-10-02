@@ -608,10 +608,12 @@ async def step_validate(ctx: BatchContext) -> None:
         }
         for row in candidates
     ]
+    channel = ctx.services.modes().channel_of(ctx.session.mode)
     results = await validate(
         ctx.services.api(),
-        ctx.services.modes().channel_of(ctx.session.mode),
+        channel,
         items,
+        reaffirm=(ctx.mode.reaffirm and channel.layer == "machine" and channel.mode == "direct"),
     )
     ctx.validation_results = {
         row.identity_hash: result for row, result in zip(candidates, results, strict=True)
@@ -634,7 +636,7 @@ async def step_validate(ctx: BatchContext) -> None:
                 code=result.code,
                 issue=f"API: {result.code or 'rejected'} {result.message or ''}".strip(),
             )
-        elif result.status not in {"ok", "unchanged", "skipped"}:
+        elif result.status not in {"ok", "unchanged", "reaffirmed", "skipped"}:
             # skipped + code unchanged: такий самий текст у цьому шарі вже збережений.
             raise ApiError(f"Невідомий статус validate: {result.status}", code="invalid_response")
         if (

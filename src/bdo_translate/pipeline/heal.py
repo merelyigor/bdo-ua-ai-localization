@@ -151,6 +151,7 @@ async def step_heal(ctx: BatchContext) -> None:
             if result.status in {
                 "ok",
                 "unchanged",
+                "reaffirmed",
                 "skipped",
                 "repaired",
             } and not ctx.mechanical.get(row.identity_hash):

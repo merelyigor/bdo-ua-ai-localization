@@ -76,6 +76,7 @@ _LABELS: Final[dict[str | bool, str]] = {
     "blocked_identity": "заблоковано: немає ідентичності",
     "no_answer": "відповіді немає",
     "unchanged": "без змін",
+    "reaffirmed": "підтверджено моделлю",
     "repaired": "виправлено",
     "skipped": "пропущено",
     "PASS": "пройдено",

@@ -379,8 +379,9 @@ async def step_commit(ctx: BatchContext) -> None:
     for channel_name, entries in list(groups.items()):
         channel = channels[channel_name]
         items = [item for _, item in entries]
+        reaffirm = ctx.mode.reaffirm if channel_name == "machine" else False
         try:
-            checked = await validate(ctx.services.api(), channel, items)
+            checked = await validate(ctx.services.api(), channel, items, reaffirm=reaffirm)
             accepted: list[tuple[Row, dict[str, Any]]] = []
             quota_reached = False
             for (row, item), result in zip(entries, checked, strict=True):
@@ -405,7 +406,7 @@ async def step_commit(ctx: BatchContext) -> None:
                     if defects:
                         _record_mechanical_rejection(ctx, row, defects[0].code, defects[0].message)
                         continue
-                elif result.status not in {"ok", "unchanged", "skipped"}:
+                elif result.status not in {"ok", "unchanged", "reaffirmed", "skipped"}:
                     raise ApiError(
                         f"Невідомий статус validate перед записом: {result.status}",
                         code="invalid_response",
@@ -441,6 +442,7 @@ async def step_commit(ctx: BatchContext) -> None:
                 key=key,
                 provider=provider,
                 model=model,
+                reaffirm=reaffirm,
             )
             retry_keys: set[str] = set()
             repair_items: list[dict[str, Any]] = []
@@ -463,12 +465,14 @@ async def step_commit(ctx: BatchContext) -> None:
                 repair_positions.append(position)
 
             if repair_items:
-                repair_validation = await validate(ctx.services.api(), channel, repair_items)
+                repair_validation = await validate(
+                    ctx.services.api(), channel, repair_items, reaffirm=reaffirm
+                )
                 valid_repairs: list[tuple[int, Row, dict[str, Any]]] = []
                 for position, row, item, result in zip(
                     repair_positions, repair_rows, repair_items, repair_validation, strict=True
                 ):
-                    if result.status in {"ok", "unchanged", "skipped"}:
+                    if result.status in {"ok", "unchanged", "reaffirmed", "skipped"}:
                         valid_repairs.append((position, row, item))
                     elif result.status == "repaired" and result.repaired_text:
                         item["text"] = result.repaired_text
@@ -482,6 +486,7 @@ async def step_commit(ctx: BatchContext) -> None:
                         key=f"{key}-markup",
                         provider=provider,
                         model=model,
+                        reaffirm=reaffirm,
                     )
                     for (position, row, item), result in zip(valid_repairs, retried, strict=True):
                         written[position] = result
@@ -510,7 +515,7 @@ async def step_commit(ctx: BatchContext) -> None:
                         quota_reached = True
                     else:
                         _record_rejection(ctx, row, result.code, result.message)
-                elif result.status not in {"ok", "repaired", "unchanged", "skipped"}:
+                elif result.status not in {"ok", "repaired", "unchanged", "reaffirmed", "skipped"}:
                     _mark_quarantine(ctx, row, item, result.code or "invalid_write_status")
                 else:
                     if channel_name == "proposal":

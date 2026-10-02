@@ -112,7 +112,7 @@ wheels = [
 
 [[package]]
 name = "bdo-ua-translate"
-version = "1.48.11"
+version = "1.48.12"
 source = { editable = "." }
 dependencies = [
     { name = "fastapi" },

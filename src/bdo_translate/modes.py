@@ -31,6 +31,7 @@ class ModeSpec(BaseModel):
     source: Literal["rows", "proposals"] = "rows"
     scope: Literal["patch", "corpus"] = "patch"
     author_choice: bool = False
+    reaffirm: bool = False
 
 
 class ModeDefaults(BaseModel):

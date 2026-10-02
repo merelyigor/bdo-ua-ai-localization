@@ -255,20 +255,22 @@ async def validate(
     api: ApiClient,
     channel: ChannelSpec,
     items: list[dict[str, Any]],
+    *,
+    reaffirm: bool = False,
 ) -> list[ItemResult]:
     """Перевіряє рядки сервером і звіряє кількість та порядок результатів."""
-    envelope = await api.post(
-        "/translations/validate",
-        {
-            "layer": channel.layer,
-            "mode": channel.mode,
-            "auto_approve": channel.auto_approve,
-            "auto_repair": True,
-            "client_name": CLIENT_NAME,
-            "client_version": __version__,
-            "items": items,
-        },
-    )
+    body: dict[str, Any] = {
+        "layer": channel.layer,
+        "mode": channel.mode,
+        "auto_approve": channel.auto_approve,
+        "auto_repair": True,
+        "client_name": CLIENT_NAME,
+        "client_version": __version__,
+        "items": items,
+    }
+    if reaffirm:
+        body["reaffirm"] = True
+    envelope = await api.post("/translations/validate", body)
     raw_results = _data(envelope).get("results", [])
     if not isinstance(raw_results, list) or len(raw_results) != len(items):
         raise ApiError(
@@ -301,6 +303,7 @@ async def write(
     key: str,
     provider: str,
     model: str,
+    reaffirm: bool = False,
 ) -> list[ItemResult]:
     """Записує валідовані елементи з ідемпотентним ключем.
 
@@ -332,21 +335,24 @@ async def write(
     parts = [items[offset : offset + MAX_ITEMS] for offset in range(0, len(items), MAX_ITEMS)]
     for part_index, part in enumerate(parts, start=1):
         part_key = f"{key}-{part_index}" if len(parts) > 1 else key
+        body: dict[str, Any] = {
+            "layer": channel.layer,
+            "mode": channel.mode,
+            "auto_approve": channel.auto_approve,
+            "provider": provider,
+            "model": model,
+            "prompt_version": PROMPT_VERSION,
+            "auto_repair": True,
+            "strictness": "standard",
+            "client_name": CLIENT_NAME,
+            "client_version": __version__,
+            "items": part,
+        }
+        if reaffirm:
+            body["reaffirm"] = True
         envelope = await api.post(
             "/translations",
-            {
-                "layer": channel.layer,
-                "mode": channel.mode,
-                "auto_approve": channel.auto_approve,
-                "provider": provider,
-                "model": model,
-                "prompt_version": PROMPT_VERSION,
-                "auto_repair": True,
-                "strictness": "standard",
-                "client_name": CLIENT_NAME,
-                "client_version": __version__,
-                "items": part,
-            },
+            body,
             headers={"Idempotency-Key": part_key},
         )
         raw_results = _data(envelope).get("results", [])
