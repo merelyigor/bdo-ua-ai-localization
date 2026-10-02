@@ -276,6 +276,7 @@ def create_app(settings: Settings) -> FastAPI:
                 mode_name=request.query_params.get("mode", ""),
                 machine_author=request.query_params.get("machine_author", ""),
                 machine_client_version_lt=request.query_params.get("machine_client_version_lt", ""),
+                generation=request.query_params.get("generation", ""),
             )
         except StateError as exc:
             return JSONResponse(

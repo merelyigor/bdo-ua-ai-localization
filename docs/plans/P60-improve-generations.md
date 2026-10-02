@@ -59,9 +59,10 @@
 
 ## Step 1.2 — Зведення поколінь і вибір покоління на «Почати прогін»
 
-- **Status:** todo
+- **Status:** in-progress
 - **Files:** `api/endpoints.py`, `pipeline/runner.py` (`corpus_query`, `RunGoal`, `Runner.start`), `web/screens/start.py`, `web/templates/start.html`, за потреби `web/static/app.js`, `app.css`.
 - **Verify:** до деплою · вибору покоління немає, решта «Почати прогін» як була; після деплою · таблиця поколінь, вибір змінює лічильники категорій.
+- **Notes:** 2026-10-02 · код є (`machine_generations` → None на 404, `generation_key`/`generation_filter`, `RunGoal.generation`, `Runner.start` відмовляє `generations_unsupported`), gate 0. Живий сервер на PROD до деплою: у режимі improve четвертого варіанта немає, лише підказка «покоління з'являться після оновлення сайту», решта варіантів доступні, помилок консолі й трасбеків немає. Рішення виконавця: вибір покоління скидає вибір автора; групи без `client_run` і `legacy_day` пропускаються; підтримку перевіряє лише з ключем API і в режимі з вибором автора. Звірка таблиці · після деплою сайту.
 
 ## Step 1.3 — Звірка й закриття
 

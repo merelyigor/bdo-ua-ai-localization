@@ -7,14 +7,23 @@ from typing import Any
 from urllib.parse import urlsplit
 
 from bdo_translate import __version__, clock, env_store
-from bdo_translate.api.endpoints import MAX_ITEMS, facets, me, missing_total, patches, proposals
-from bdo_translate.errors import ApiError, StateError
+from bdo_translate.api.endpoints import (
+    MAX_ITEMS,
+    facets,
+    machine_generations,
+    me,
+    missing_total,
+    patches,
+    proposals,
+)
+from bdo_translate.errors import ApiError, StateError, TransportError
 from bdo_translate.model.roles import active_model
 from bdo_translate.model.usage import read_usage
 from bdo_translate.pipeline.preflight import check_models
-from bdo_translate.pipeline.runner import RunGoal, corpus_query, is_valid_version
+from bdo_translate.pipeline.runner import RunGoal, corpus_query, generation_key, is_valid_version
 from bdo_translate.web.registry import Action, ActionResult, FormData, Query, Screen, WebState
 from bdo_translate.web.screens.review import cached_review_count
+from bdo_translate.web.screens.sessions import format_local_datetime
 
 PATCH_CACHE_SECONDS = 600.0
 ME_PREFLIGHT_SECONDS = 3.0
@@ -23,7 +32,7 @@ CORPUS_CACHE_SECONDS = PATCH_CACHE_SECONDS
 _COUNT_LIMIT = 4
 _PATCH_CACHE: dict[str, tuple[float, list[dict[str, Any]], list[dict[str, str]]]] = {}
 _COUNT_CACHE: dict[tuple[str, str, str], tuple[float, int | None]] = {}
-_CORPUS_CACHE: dict[tuple[str, str, str, str], tuple[float, dict[str, Any]]] = {}
+_CORPUS_CACHE: dict[tuple[str, str, str, str, str], tuple[float, dict[str, Any]]] = {}
 _COUNT_SEMAPHORE = asyncio.Semaphore(_COUNT_LIMIT)
 
 
@@ -188,6 +197,7 @@ async def corpus_counts(
     mode_name: str,
     machine_author: str,
     machine_client_version_lt: str,
+    generation: str = "",
 ) -> dict[str, Any]:
     """Рахує рядки корпусного режиму за доменами й типами з `GET /rows/facets`."""
     if machine_author not in {"", "bosia"}:
@@ -198,11 +208,13 @@ async def corpus_counts(
     if mode is None or mode.scope != "corpus":
         raise StateError("Невідомий корпусний режим", reason="invalid_counts_query")
     env = state.services.settings.bdo_env
-    cache_key = (env, mode_name, machine_author, machine_client_version_lt)
+    cache_key = (env, mode_name, machine_author, machine_client_version_lt, generation)
     cached = _CORPUS_CACHE.get(cache_key)
     if cached is not None and time.monotonic() - cached[0] < CORPUS_CACHE_SECONDS:
         return cached[1]
-    query = corpus_query(mode, machine_author or None, machine_client_version_lt or None)
+    query = corpus_query(
+        mode, machine_author or None, machine_client_version_lt or None, generation or None
+    )
     try:
         raw_facets = await facets(state.services.api(), query)
     except ApiError as exc:
@@ -228,6 +240,42 @@ async def corpus_counts(
     result = {"total": total, "counts": counts}
     _CORPUS_CACHE[cache_key] = (time.monotonic(), result)
     return result
+
+
+def _generation_rows(groups: list[dict[str, Any]]) -> list[dict[str, str]]:
+    """Готує рядки таблиці поколінь покращення з груп `machine-generations`."""
+    rows: list[dict[str, str]] = []
+    for group in groups:
+        key = generation_key(group)
+        if key is None:
+            continue
+        provider = group.get("provider")
+        model = group.get("model")
+        model_label = "/".join(part for part in (provider, model) if isinstance(part, str) and part)
+        client_run = group.get("client_run")
+        legacy_day = group.get("legacy_day")
+        first = format_local_datetime(_text_or_none(group.get("first_revised_at")))
+        last = format_local_datetime(_text_or_none(group.get("last_revised_at")))
+        rows.append(
+            {
+                "key": key,
+                "model": model_label or "—",
+                "version": _text_or_none(group.get("client_version")) or "—",
+                "run": (
+                    client_run
+                    if isinstance(client_run, str) and client_run
+                    else f"до прогонів · {legacy_day}"
+                ),
+                "when": first if first == last else f"{first} – {last}",
+                "rows": _format_count(group.get("rows")),
+            }
+        )
+    return rows
+
+
+def _text_or_none(value: Any) -> str | None:
+    """Повертає рядок або `None` для інших типів."""
+    return value if isinstance(value, str) else None
 
 
 def _format_count(value: Any) -> str:
@@ -395,6 +443,13 @@ async def build(state: WebState, query: Query) -> dict[str, Any]:
                 _, queue_total = await proposals(state.services.api(), 1)
             except ApiError:
                 queue_total = None
+    generations: list[dict[str, str]] | None = None
+    if api_key_is_set and any(mode.author_choice for mode in ordered_modes.values()):
+        try:
+            groups = await machine_generations(state.services.api(), {})
+        except (ApiError, TransportError):
+            groups = None
+        generations = None if groups is None else _generation_rows(groups)
     env = state.services.settings.bdo_env
     version_parts = __version__.split(".")
     default_client_version = f"{version_parts[0]}.{version_parts[1]}.0"
@@ -402,6 +457,7 @@ async def build(state: WebState, query: Query) -> dict[str, Any]:
         "modes": ordered_modes,
         "mode_targets": mode_targets,
         "queue_total": queue_total,
+        "generations": generations,
         "default_mode": next(iter(modes.modes)),
         "default_rows": modes.defaults.rows_per_batch,
         "min_rows": modes.defaults.min_rows_per_batch,
@@ -460,6 +516,7 @@ async def run_start(state: WebState, form: FormData) -> ActionResult:
     machine_author = machine_author_value or None
     machine_client_version_value = form.get("machine_client_version_lt", "").strip()
     machine_client_version_lt = machine_client_version_value or None
+    generation = form.get("generation", "").strip() or None
     await state.runner.start(
         RunGoal(
             mode=mode,
@@ -471,6 +528,7 @@ async def run_start(state: WebState, form: FormData) -> ActionResult:
             category_value=category_value,
             machine_author=machine_author,
             machine_client_version_lt=machine_client_version_lt,
+            generation=generation,
         )
     )
     return {"redirect": "/run"}

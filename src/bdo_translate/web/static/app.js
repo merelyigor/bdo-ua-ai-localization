@@ -65,6 +65,12 @@ function initializeStartForm() {
   const authorRadios = Array.from(form.querySelectorAll('input[name="machine_author"]'));
   const versionChoice = document.getElementById("start-author-version");
   const versionInput = document.getElementById("start-client-version");
+  const generationChoice = document.getElementById("start-author-generation");
+  const generationBox = document.getElementById("start-generations");
+  const generationHint = document.getElementById("start-generations-hint");
+  const generationRadios = Array.from(form.querySelectorAll('input[name="generation"]'));
+  const writeBaseDisabled = writeButton.disabled;
+  const dryBaseDisabled = dryButton.disabled;
   const countsEnabled = category instanceof HTMLSelectElement;
   let patchCountsRequest = 0;
   let categoryCountsRequest = 0;
@@ -224,6 +230,12 @@ function initializeStartForm() {
     return versionChoice && versionChoice.checked && versionInput ? versionInput.value.trim() : "";
   }
 
+  function currentGeneration() {
+    if (!generationChoice || !generationChoice.checked) return "";
+    const picked = generationRadios.find(input => input.checked);
+    return picked ? picked.value : "";
+  }
+
   function setCorpusStatus(text) {
     if (!corpusRows) return;
     corpusRows.replaceChildren();
@@ -329,6 +341,8 @@ function initializeStartForm() {
     if (author) params.set("machine_author", author);
     const version = currentVersion();
     if (version) params.set("machine_client_version_lt", version);
+    const generation = currentGeneration();
+    if (generation) params.set("generation", generation);
     let payload = null;
     try {
       const response = await fetch("/start/corpus.json?" + params.toString());
@@ -369,6 +383,13 @@ function initializeStartForm() {
     if (versionInput) {
       versionInput.disabled = !authorChoiceMode || !(versionChoice && versionChoice.checked);
     }
+    const generationOn = authorChoiceMode && !!(generationChoice && generationChoice.checked);
+    if (generationBox) generationBox.hidden = !generationOn;
+    if (generationHint) generationHint.hidden = !authorChoiceMode;
+    for (const input of generationRadios) input.disabled = !generationOn;
+    const generationMissing = generationOn && currentGeneration() === "";
+    writeButton.disabled = writeBaseDisabled || generationMissing;
+    dryButton.disabled = dryBaseDisabled || generationMissing;
     const versionNote = corpusMode && currentVersion()
       ? ` · перекладені програмою до версії ${currentVersion()}`
       : "";
@@ -501,6 +522,15 @@ function initializeStartForm() {
   if (versionInput) {
     versionInput.addEventListener("change", () => {
       if (versionInput.disabled) return;
+      update();
+      if (document.querySelector('.start-mode-card.is-selected')?.dataset.scope === "corpus") {
+        loadCorpusCounts();
+      }
+    });
+  }
+  for (const input of generationRadios) {
+    input.addEventListener("change", () => {
+      if (!input.checked || input.disabled) return;
       update();
       if (document.querySelector('.start-mode-card.is-selected')?.dataset.scope === "corpus") {
         loadCorpusCounts();

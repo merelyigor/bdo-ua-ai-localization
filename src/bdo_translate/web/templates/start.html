@@ -132,7 +132,37 @@
           <label class="start-author-version"><input type="radio" name="machine_author" value="" id="start-author-version" data-version-choice="true" disabled> перекладені цією програмою до версії
             <input type="text" name="machine_client_version_lt" id="start-client-version" value="{{ default_client_version }}" pattern="\d+\.\d+\.\d+" inputmode="numeric" size="6" disabled>
           </label>
+          {% if generations is not none %}
+          <label><input type="radio" name="machine_author" value="" id="start-author-generation" data-generation-choice="true" disabled> покоління покращення</label>
+          {% endif %}
         </div>
+        {% if generations is none %}
+        <p class="hint" id="start-generations-hint" data-author-only="true">покоління з'являться після оновлення сайту</p>
+        {% else %}
+        <div id="start-generations" hidden>
+          {% if generations %}
+          <div class="bdo-table-wrap">
+            <table class="bdo-table start-generations">
+              <thead><tr><th></th><th>МОДЕЛЬ</th><th>ВЕРСІЯ ПРОГРАМИ</th><th>ПРОГІН</th><th>КОЛИ</th><th>РЯДКІВ ДОСІ</th></tr></thead>
+              <tbody>
+                {% for item in generations %}
+                <tr>
+                  <td><input type="radio" name="generation" value="{{ item.key }}" aria-label="{{ item.key }}" disabled></td>
+                  <td>{{ item.model }}</td>
+                  <td>{{ item.version }}</td>
+                  <td>{{ item.run }}</td>
+                  <td>{{ item.when }}</td>
+                  <td>{{ item.rows }}</td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+          {% else %}
+          <p class="hint">покоління ще немає</p>
+          {% endif %}
+        </div>
+        {% endif %}
         <div class="bdo-table-wrap">
           <table class="bdo-table start-corpus" id="start-corpus-table">
             <thead><tr><th>КАТЕГОРІЯ</th><th>РЯДКІВ</th></tr></thead>

@@ -99,6 +99,24 @@ async def facets(api: ApiClient, query: dict[str, str]) -> list[dict[str, Any]]:
     return cast(list[dict[str, Any]], raw_facets)
 
 
+async def machine_generations(api: ApiClient, query: dict[str, str]) -> list[dict[str, Any]] | None:
+    """Читає покоління ШІ-шару з `GET /rows/machine-generations`.
+
+    Повертає `None`, коли сайт ще не підтримує ендпоінт (404): фільтри поколінь
+    до цього моменту слати не можна, бо невідомі параметри `GET /rows` ігноруються.
+    """
+    try:
+        envelope = await api.get("/rows/machine-generations", params={**query, "limit": "50"})
+    except ApiError as error:
+        if error.status == 404:
+            return None
+        raise
+    groups = envelope.get("data")
+    if not isinstance(groups, list) or any(not isinstance(item, dict) for item in groups):
+        raise ApiError("Поле API data має бути списком обʼєктів", code="invalid_response")
+    return cast(list[dict[str, Any]], groups)
+
+
 async def proposals(api: ApiClient, limit: int) -> tuple[list[dict[str, Any]], int | None]:
     """Повертає сторінку пропозицій і загальну кількість, якщо API її надіслало."""
     envelope = await api.get("/translations/proposals", params={"per_page": str(limit)})

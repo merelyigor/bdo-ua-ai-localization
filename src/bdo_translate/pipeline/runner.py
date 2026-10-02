@@ -6,10 +6,13 @@ import re
 import time
 from collections.abc import Callable
 from dataclasses import asdict, dataclass, replace
+from datetime import date, datetime, timedelta
+from datetime import time as day_time
 from typing import Any
+from zoneinfo import ZoneInfo
 
 from bdo_translate import clock
-from bdo_translate.api.endpoints import CLIENT_NAME, MAX_ITEMS, facets
+from bdo_translate.api.endpoints import CLIENT_NAME, MAX_ITEMS, facets, machine_generations
 from bdo_translate.errors import ApiError, StateError
 from bdo_translate.model.caller import Override
 from bdo_translate.model.roles import active_model, resolve_thinking
@@ -59,10 +62,69 @@ def is_valid_version(value: str) -> bool:
     return _VERSION_RE.fullmatch(value) is not None
 
 
+_RUN_RE = re.compile(r"^[A-Za-z0-9._:-]{1,64}$")
+_DAY_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+_KYIV = ZoneInfo("Europe/Kyiv")
+
+
+def generation_key(group: dict[str, Any]) -> str | None:
+    """Будує ключ покоління з групи `machine-generations` або `None`, коли групу не назвати."""
+    client_run = group.get("client_run")
+    if isinstance(client_run, str) and client_run:
+        return f"run:{client_run}"
+    legacy_day = group.get("legacy_day")
+    if not isinstance(legacy_day, str) or not legacy_day:
+        return None
+
+    def text(name: str) -> str:
+        value = group.get(name)
+        return value if isinstance(value, str) else ""
+
+    return f"legacy:{legacy_day}|{text('client_version')}|{text('provider')}|{text('model')}"
+
+
+def generation_filter(key: str) -> dict[str, str]:
+    """Перетворює ключ покоління на параметри `GET /rows`.
+
+    Кривий ключ дає `StateError(reason="invalid_generation")`.
+    """
+    invalid = StateError("Невідоме покоління", reason="invalid_generation")
+    if key.startswith("run:"):
+        client_run = key[4:]
+        if _RUN_RE.fullmatch(client_run) is None:
+            raise invalid
+        return {"machine_client_run": client_run}
+    if not key.startswith("legacy:"):
+        raise invalid
+    parts = key[7:].split("|")
+    if len(parts) != 4 or _DAY_RE.fullmatch(parts[0]) is None:
+        raise invalid
+    day_text, version, provider, model = parts
+    try:
+        day = date.fromisoformat(day_text)
+    except ValueError:
+        raise invalid from None
+    start = datetime.combine(day, day_time.min, tzinfo=_KYIV)
+    end = datetime.combine(day + timedelta(days=1), day_time.min, tzinfo=_KYIV)
+    query = {
+        "machine_updated_after": start.isoformat(),
+        "machine_updated_before": end.isoformat(),
+    }
+    for name, value in (
+        ("machine_client_version", version),
+        ("machine_provider", provider),
+        ("machine_model", model),
+    ):
+        if value:
+            query[name] = value
+    return query
+
+
 def corpus_query(
     mode: ModeSpec,
     machine_author: str | None,
     machine_client_version_lt: str | None,
+    generation: str | None = None,
 ) -> dict[str, str]:
     """Будує запит корпусного режиму за версією програми або автором ШІ-шару.
 
@@ -71,7 +133,10 @@ def corpus_query(
     задаємо.
     """
     query = {**mode.query}
-    if machine_client_version_lt is not None:
+    if generation:
+        query.pop("machine_client_name_not", None)
+        query.update(generation_filter(generation))
+    elif machine_client_version_lt is not None:
         query.pop("machine_client_name_not", None)
         query["machine_client_name"] = CLIENT_NAME
         query["machine_client_version_lt"] = machine_client_version_lt
@@ -93,6 +158,7 @@ class RunGoal:
     category_value: str | None = None
     machine_author: str | None = None
     machine_client_version_lt: str | None = None
+    generation: str | None = None
 
 
 class LiveCalls:
@@ -219,13 +285,23 @@ class Runner:
         ):
             raise StateError("Невідома версія програми", reason="invalid_goal")
 
+        if goal.generation is not None:
+            generation_filter(goal.generation)
+            supported = await machine_generations(self.services.api(), {})
+            if supported is None:
+                raise StateError(
+                    "сервер ще не підтримує покоління", reason="generations_unsupported"
+                )
+
         modes = self.services.modes()
         mode = modes.mode(goal.mode)
         if goal.rows_per_batch > MAX_ITEMS:
             raise StateError("Розмір пачки перевищує ліміт API", reason="invalid_goal")
         if not mode.author_choice:
-            goal = replace(goal, machine_author=None, machine_client_version_lt=None)
-        elif goal.machine_client_version_lt is not None:
+            goal = replace(
+                goal, machine_author=None, machine_client_version_lt=None, generation=None
+            )
+        elif goal.generation is not None or goal.machine_client_version_lt is not None:
             goal = replace(goal, machine_author=None)
 
         started_at = clock.iso(clock.now())
@@ -301,7 +377,9 @@ class Runner:
         mode = self.services.modes().mode(goal.mode)
         if mode.source == "rows":
             if mode.scope == "corpus":
-                query = corpus_query(mode, goal.machine_author, goal.machine_client_version_lt)
+                query = corpus_query(
+                    mode, goal.machine_author, goal.machine_client_version_lt, goal.generation
+                )
             else:
                 query = {**mode.query, "patch": goal.patch}
             if goal.category_field is not None and goal.category_value is not None:
