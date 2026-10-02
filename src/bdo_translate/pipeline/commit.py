@@ -437,6 +437,9 @@ async def step_commit(ctx: BatchContext) -> None:
 
             write_items = [item for _, item in accepted]
             key = idempotency_key(settings.bdo_env, channel_name, ctx.batch.id, write_items)
+            client_run = (
+                ctx.session.id if re.fullmatch(r"[A-Za-z0-9._:-]{1,64}", ctx.session.id) else None
+            )
             written = await write(
                 ctx.services.api(),
                 channel,
@@ -445,6 +448,7 @@ async def step_commit(ctx: BatchContext) -> None:
                 provider=provider,
                 model=model,
                 reaffirm=reaffirm,
+                client_run=client_run,
             )
             retry_keys: set[str] = set()
             repair_items: list[dict[str, Any]] = []
@@ -489,6 +493,7 @@ async def step_commit(ctx: BatchContext) -> None:
                         provider=provider,
                         model=model,
                         reaffirm=reaffirm,
+                        client_run=client_run,
                     )
                     for (position, row, item), result in zip(valid_repairs, retried, strict=True):
                         written[position] = result

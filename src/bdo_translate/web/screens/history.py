@@ -41,6 +41,9 @@ def _meta(version: dict[str, Any]) -> str:
     client = _text(version.get("client_version"))
     if client:
         parts.append(f"програма {client}")
+    client_run = _text(version.get("client_run"))
+    if client_run:
+        parts.append(f"прогін {client_run}")
     created_at = _text(version.get("created_at"))
     date = format_local_datetime(created_at) if created_at else "—"
     if date != "—":

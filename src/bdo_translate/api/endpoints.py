@@ -304,6 +304,7 @@ async def write(
     provider: str,
     model: str,
     reaffirm: bool = False,
+    client_run: str | None = None,
 ) -> list[ItemResult]:
     """Записує валідовані елементи з ідемпотентним ключем.
 
@@ -348,6 +349,8 @@ async def write(
             "client_version": __version__,
             "items": part,
         }
+        if client_run is not None:
+            body["client_run"] = client_run
         if reaffirm:
             body["reaffirm"] = True
         envelope = await api.post(
