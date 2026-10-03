@@ -1,4 +1,4 @@
-<!-- executor-harness:begin doc v1.7.0 -->
+<!-- executor-harness:begin doc v1.8.1 -->
 # Бригада: двигун виконавця й помічника
 
 Двигун Бригади запускає дешевих агентів на вузьких задачах у двох ролях: помічник (лише
@@ -56,6 +56,7 @@ Codex за `CODEX_UPDATE` — розділ 12). Субагент, що змін�
 |---|---|---|
 | `EXECUTOR_MODE` | `opencode` | робітник: `opencode` або `native` (штатний субагент), розділ 12 |
 | `EXECUTOR_MODEL` | `opencode-go/deepseek-v4.1-flash` | модель робітника |
+| `EXECUTOR_VARIANT` | порожньо | рівень роздумів робітника (`opencode run --variant`, напр. `high`); порожньо — не передавати |
 | `EXECUTOR_SCOUT_MODE` | `codex` | помічник: `codex` або `native` (штатний субагент), розділ 12 |
 | `EXECUTOR_SCOUT_MODEL` | `gpt-6-luna` | модель помічника |
 | `EXECUTOR_SCOUT_EFFORT` | `high` | рівень міркувань помічника (`model_reasoning_effort`) |
@@ -83,6 +84,7 @@ allow:
 checks:
   - test -f docs/example-output.md
 model: opencode-go/deepseek-v4.1-flash   # необов'язково
+variant: high                            # необов'язково
 timeout: 900                             # необов'язково
 ---
 # Задача: <план> <крок> — <суть>
@@ -97,6 +99,10 @@ timeout: 900                             # необов'язково
 які двигун Бригади запускає сам після прогону. Усе, що змінилося поза `allow`, двигун Бригади
 позначить `OUT-OF-SCOPE`; зміни в межах `allow` іншого активного прогону — окремим
 рядком `PARALLEL`.
+
+`model` і `variant` (рівень роздумів робітника) задаються за тим самим пріоритетом, що й
+решта налаштувань: аргумент запуску `--model`/`--variant` → заголовок задачі →
+`EXECUTOR_MODEL`/`EXECUTOR_VARIANT`.
 
 Задача помічника (`scout`) — той самий заголовок, але `allow: []` (помічник нічого не
 змінює), `checks` не запускаються. `output: raw` — відповідь рівно у форматі, який
@@ -130,7 +136,8 @@ timeout: 900                             # необов'язково
   підпис дає `exec.py mode` рядками `LABEL worker …` і `LABEL scout …`, наприклад
   `Виконавець · OpenCode opencode-go/deepseek-v4.1-flash` або
   `Помічник · Codex gpt-6-luna high`. Модель задачі (`model:` у заголовку, `--model`)
-  замінює модель у підписі. Штатний субагент — напр. `Виконавець · субагент Claude sonnet medium`:
+  замінює модель у підписі, а варіант (`variant:`, `--variant`) додається до нього, коли
+  заданий. Штатний субагент — напр. `Виконавець · субагент Claude sonnet medium`:
   у Claude Code модель і рівень двигун бере з налаштувань клієнта й агента Бригади
   (розділ 12); `<модель>` лишається в підписі, лише коли модель не видно, — тоді
   підставити фактичну модель субагента. Так само для помічника. Той самий рушій
@@ -150,7 +157,7 @@ timeout: 900                             # необов'язково
 ## 7. Команди й коди виходу
 
 ```bash
-python3 scripts/executor/exec.py run <task.md> [--model M] [--timeout S] [--keep] [--detach] [--self-model M]
+python3 scripts/executor/exec.py run <task.md> [--model M] [--variant V] [--timeout S] [--keep] [--detach] [--self-model M]
 python3 scripts/executor/exec.py scout <task.md> [--timeout S] [--detach] [--self-model M]
 python3 scripts/executor/exec.py wait <run-id|last> [--max 540]
 python3 scripts/executor/exec.py show <run-id|last> [--log|--diff|--check N]
@@ -161,7 +168,7 @@ python3 scripts/executor/exec.py finish <run-id|last>
 python3 scripts/executor/exec.py --version
 ```
 
-- `mode` — друкує по рядку на роль: `MODE worker opencode · <модель> · <джерело>`
+- `mode` — друкує по рядку на роль: `MODE worker opencode · <модель> <варіант> · <джерело>`
   (або `MODE worker native · …`) і `MODE scout codex · <модель> <рівень> · <джерело>`
   (або `MODE scout native · …`), далі `CLIENT`, `LABEL`, у Claude Code `AGENT` (тип
   субагента ролі) і `ROUTE` для кожної ролі; з аргументами
@@ -175,7 +182,8 @@ python3 scripts/executor/exec.py --version
   і знімок стану, друкує `PREPARED <run-id>` і рядок для субагента; `finish` після
   субагента дає той самий підсумок, що й `run`, з міткою `native` замість моделі.
 
-- `run` — прогін; `--keep` не видаляє сесію OpenCode; `--detach` запускає прогін у
+- `run` — прогін; `--model`/`--variant` перекривають модель і рівень роздумів із задачі
+  й конфігу; `--keep` не видаляє сесію OpenCode; `--detach` запускає прогін у
   фоні й друкує один рядок `STARTED <run-id>`.
 - `wait` — тихо чекає завершення (опитування раз на 5 с); не встиг за `--max` —
   друкує `RUNNING <run-id> <секунд>s`; фоновий процес помер без підсумку —
@@ -393,6 +401,17 @@ OpenCode у власній групі процесів і після завер�
 зникне з наступним оновленням. Гейт проєкту перевіряє двигун `py_compile` і
 `--help`, не запускаючи справжні OpenCode і Codex.
 
+Щоб проєкт сам дізнався про нову версію без нагадування, двигун читає `VERSION` зі
+`assets/harness/exec.py` встановленого скіла — без імпорту, бо двигун у проєктах копія:
+знайшов новішу, друкує один рядок `UPDATE brygada <своя> → <скіла>: python3
+<скіл>/scripts/harness.py update <проєкт> --apply` — у `mode` у stdout, у `run`, `scout`
+і `prepare` у stderr поруч із `announce`, без зміни коду виходу. Теку скіла бере з
+`BRYGADA_SKILL_DIR`, якщо її задано, інакше з `~/.claude/skills/brygada` і
+`~/.codex/skills/brygada` (симлінки на скіл) — першу, де є `assets/harness/exec.py`. Жодна
+з цих перевірок не валить двигун: немає теки, не читається чи версія не розібралася —
+просто немає рядка. `BRYGADA_SKILL_DIR` потрібен і самоперевірці (`selftest.py`), щоб
+тести не залежали від домашніх симлінків.
+
 ## 12. Хто виконує: помічник, робітник і штатний субагент
 
 Типова схема:
@@ -400,7 +419,7 @@ OpenCode у власній групі процесів і після завер�
 | Роль | Виконавець | Команда |
 |---|---|---|
 | Помічник (лише читання) | Codex, `EXECUTOR_SCOUT_MODEL` з `EXECUTOR_SCOUT_EFFORT` | `exec.py scout` |
-| Робітник (код, тести, документація) | OpenCode, `EXECUTOR_MODEL` | `exec.py run` |
+| Робітник (код, тести, документація) | OpenCode, `EXECUTOR_MODEL` з `EXECUTOR_VARIANT` | `exec.py run` |
 
 Інший виконавець обирає лише власник у чаті; головна сесія сама не перемикається,
 навіть коли Codex чи OpenCode недоступний (тоді — діагноз і питання власнику).
@@ -420,7 +439,7 @@ OpenCode у власній групі процесів і після завер�
 | «надалі своїми субагентами для коду» | `exec.py mode worker native` |
 | «переключись назад», «як було» | `exec.py mode default` |
 | «помічник моделлю M» (надалі) | `exec.py mode scout codex --model M [--effort E]` |
-| «робітник моделлю M» (надалі) | `exec.py mode worker opencode --model M` |
+| «робітник моделлю M» (надалі) | `exec.py mode worker opencode --model M [--effort E]`, напр. `exec.py mode worker opencode --model opencode-go/space-bunny-free --effort high` |
 | «цю задачу моделлю M» | `run … --model M` або `EXECUTOR_SCOUT_MODEL=M exec.py scout …` |
 
 Незрозуміло, один раз чи надалі, — «один раз»: це не змінює стан. Після перемикання

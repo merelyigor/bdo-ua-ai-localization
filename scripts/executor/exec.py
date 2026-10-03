@@ -9,7 +9,7 @@
 """
 import argparse, hashlib, json, os, re, shlex, shutil, signal, subprocess, sys, time
 
-DEFAULTS = {'EXECUTOR_MODE': 'opencode', 'EXECUTOR_MODEL': 'opencode-go/deepseek-v4.1-flash',
+DEFAULTS = {'EXECUTOR_MODE': 'opencode', 'EXECUTOR_MODEL': 'opencode-go/deepseek-v4.1-flash', 'EXECUTOR_VARIANT': '',
             'EXECUTOR_TIMEOUT': '1800', 'EXECUTOR_IDLE_TIMEOUT': '600',
             'EXECUTOR_MAX_PARALLEL': '2', 'EXECUTOR_DISABLE_MCP': 'figma-desktop,serena',
             'EXECUTOR_OPENCODE_BIN': 'opencode', 'EXECUTOR_CHECK_TIMEOUT': '900',
@@ -17,10 +17,14 @@ DEFAULTS = {'EXECUTOR_MODE': 'opencode', 'EXECUTOR_MODEL': 'opencode-go/deepseek
             'EXECUTOR_SCOUT_TIMEOUT': '900', 'EXECUTOR_SCOUT_MCP': 'playwright,context7', 'EXECUTOR_MAX_PARALLEL_SCOUT': '2',
             'EXECUTOR_CODEX_BIN': 'codex', 'EXECUTOR_CODEX_MIN_VERSION': '0.156.1'}
 REPORT_LINES, SCOUT_REPORT_LINES, TAIL_LINES, LOG_TAIL_LINES, POLL = 30, 40, 10, 80, 0.2
-VERSION = '1.7.0'
+VERSION = '1.8.1'
 WORKER_MODES, SCOUT_MODES = ('opencode', 'native'), ('codex', 'native')
+# Джерело Бригади — скіл: його двигун і harness.py поручні. Тека скіла: змінна середовища,
+# інакше симлінки клієнтів у домашній теці.
+SKILL_DIRS = (os.path.join('.claude', 'skills', 'brygada'), os.path.join('.codex', 'skills', 'brygada'))
+SKILL_EXEC, SKILL_HARNESS = ('assets', 'harness', 'exec.py'), ('scripts', 'harness.py')
 MODE_FILE = os.path.join('.executor', 'mode.env')
-WORKER_KEYS = ('EXECUTOR_MODE', 'EXECUTOR_MODEL')
+WORKER_KEYS = ('EXECUTOR_MODE', 'EXECUTOR_MODEL', 'EXECUTOR_VARIANT')
 SCOUT_KEYS = ('EXECUTOR_SCOUT_MODE', 'EXECUTOR_SCOUT_MODEL', 'EXECUTOR_SCOUT_EFFORT')
 # Помилка сервера OpenAI для застарілого клієнта Codex (або моделі, ще не розкатаної на акаунт).
 CODEX_REJECTED = 'not supported when using Codex with a ChatGPT account'
@@ -81,7 +85,7 @@ def load_config(root):
     raw.update({k: v for k, v in os.environ.items() if k in raw})
     mode, scout_mode = raw['EXECUTOR_MODE'].strip().lower(), raw['EXECUTOR_SCOUT_MODE'].strip().lower()
     return {'worker_mode': mode if mode in WORKER_MODES else 'opencode', 'scout_mode': scout_mode if scout_mode in SCOUT_MODES else 'codex',
-            'model': raw['EXECUTOR_MODEL'], 'timeout': as_int(raw['EXECUTOR_TIMEOUT'], 1800),
+            'model': raw['EXECUTOR_MODEL'], 'variant': raw['EXECUTOR_VARIANT'].strip(), 'timeout': as_int(raw['EXECUTOR_TIMEOUT'], 1800),
             'scout_model': raw['EXECUTOR_SCOUT_MODEL'], 'scout_effort': raw['EXECUTOR_SCOUT_EFFORT'],
             'scout_timeout': as_int(raw['EXECUTOR_SCOUT_TIMEOUT'], 900), 'max_parallel_scout': as_int(raw['EXECUTOR_MAX_PARALLEL_SCOUT'], 2),
             'scout_mcp': [x.strip() for x in raw['EXECUTOR_SCOUT_MCP'].split(',') if x.strip()],
@@ -135,7 +139,8 @@ def parse_task(path, need_allow=True):
     except ValueError:
         die('задача: timeout не число')
     return {'title': meta['title'], 'allow': meta['allow'], 'checks': meta.get('checks', []), 'model': meta.get('model') or None,
-            'timeout': timeout, 'output': output, 'body': '\n'.join(lines[marks[1] + 1:]).strip()}
+            'variant': meta.get('variant') or None, 'timeout': timeout, 'output': output,
+            'body': '\n'.join(lines[marks[1] + 1:]).strip()}
 def build_env(disable):
     env = os.environ.copy()
     if not disable:
@@ -188,8 +193,10 @@ def watch(proc, paths, idle_timeout, deadline):
             return 'idle-timeout'
         time.sleep(POLL)
     return 'done'
-def spawn(root, run_dir, bin_argv, prompt, env, model, title, idle_timeout, deadline):
-    cmd = list(bin_argv) + ['run', '-m', model, '--format', 'json', '--title', title, '--dir', root, prompt]
+def spawn(root, run_dir, bin_argv, prompt, env, model, title, idle_timeout, deadline, variant=None):
+    # Порожній variant — команда без --variant: поведінка лишається як була.
+    cmd = list(bin_argv) + ['run', '-m', model] + (['--variant', variant] if variant else []) + \
+        ['--format', 'json', '--title', title, '--dir', root, prompt]
     return spawn_argv(root, run_dir, cmd, env, idle_timeout, deadline)
 def spawn_argv(root, run_dir, cmd, env, idle_timeout, deadline):
     events, stderr = os.path.join(run_dir, 'events.jsonl'), os.path.join(run_dir, 'stderr.log')
@@ -421,14 +428,21 @@ def subagent(root, client, role):
     effort = (agent or {}).get('effort', '').strip()
     return (own if agent is not None else fallback), 'субагент Claude %s%s' % (subagent_model(agent) or '<модель>', ' ' + effort if effort else '')
 def labels(cfg, client, root):
-    # Підпис фонового запуску: власник бачить у чаті, хто саме працює — рушій і модель.
-    worker = 'OpenCode %s' % cfg['model'] if cfg['worker_mode'] == 'opencode' else subagent(root, client, 'worker')[1]
+    # Підпис фонового запуску: власник бачить у чаті, хто саме працює — рушій, модель, варіант.
+    level = ' ' + cfg['variant'] if cfg['variant'] else ''
+    worker = 'OpenCode %s%s' % (cfg['model'], level) if cfg['worker_mode'] == 'opencode' else subagent(root, client, 'worker')[1]
     scout = 'Codex %s %s' % (cfg['scout_model'], cfg['scout_effort']) if cfg['scout_mode'] == 'codex' else subagent(root, client, 'scout')[1]
     return 'Виконавець · %s' % worker, 'Помічник · %s' % scout
 def announce(run_id, engine):
     # Перший рядок живого виводу — у stderr: stdout починається з підсумку, його читають.
     sys.stderr.write('exec.py: %s · %s\n' % (run_id, engine))
     sys.stderr.flush()
+def note_skill_update(root):
+    # Поруч із announce, у stderr: код виходу не змінюється — рядок лише нагадування.
+    line = skill_update(root)
+    if line:
+        sys.stderr.write(line + '\n')
+        sys.stderr.flush()
 def route(cfg, me):
     worker = ('self' if same_model(me, cfg['model']) else 'run') if cfg['worker_mode'] == 'opencode' else 'prepare'
     scout = ('self' if same_model(me, cfg['scout_model']) else 'scout') if cfg['scout_mode'] == 'codex' else 'native'
@@ -450,6 +464,7 @@ def run_gate(root, cfg, args, task):
 def cmd_run(root, cfg, args):
     task = parse_task(args.task)
     model = args.model or task['model'] or cfg['model']
+    variant = args.variant or task['variant'] or cfg['variant']
     timeout = args.timeout or task['timeout'] or cfg['timeout']
     # --run-id від cmd_detach: перевірки вже пройдені, місце зарезервоване.
     if not args.run_id:
@@ -464,10 +479,13 @@ def cmd_run(root, cfg, args):
     bin_argv = shlex.split(cfg['opencode_bin']) or die('EXECUTOR_OPENCODE_BIN порожній')
     before = snapshot(root)
     started = time.monotonic()
-    announce(run_id, 'OpenCode %s' % model)
-    status, rc = spawn(root, run_dir, bin_argv, prompt, build_env(cfg['disable_mcp']), model, 'exec-%s' % run_id, cfg['idle_timeout'], started + timeout)
+    engine = 'OpenCode %s%s' % (model, ' ' + variant if variant else '')
+    note_skill_update(root)
+    announce(run_id, engine)
+    status, rc = spawn(root, run_dir, bin_argv, prompt, build_env(cfg['disable_mcp']), model, 'exec-%s' % run_id,
+                       cfg['idle_timeout'], started + timeout, variant)
     chunks, tokens = events_summary(os.path.join(run_dir, 'events.jsonl'))
-    exit_code = finalize(root, cfg, run_id, task, before, model, status, rc, int(time.monotonic() - started), chunks, tokens)
+    exit_code = finalize(root, cfg, run_id, task, before, engine, status, rc, int(time.monotonic() - started), chunks, tokens)
     if not args.keep:
         drop_sessions(bin_argv, root, 'exec-%s' % run_id)
     return exit_code
@@ -475,6 +493,7 @@ def cmd_run(root, cfg, args):
 def cmd_prepare(root, cfg, args):
     # Прогін штатного субагента клієнта: той самий промпт і знімок стану, що й для OpenCode.
     task = parse_task(args.task)
+    note_skill_update(root)
     note_mode(cfg, 'native')
     run_id = make_run_id(root, task['title'])
     run_dir = os.path.join(runs_dir(root), run_id)
@@ -509,6 +528,29 @@ def cmd_finish(root, cfg, args):
 def parse_version(text):
     m = re.search(r'(\d+)\.(\d+)\.(\d+)', text or '')
     return tuple(int(x) for x in m.groups()) if m else None
+def skill_update(root):
+    """Рядок «оновити двигун», якщо в установленому скілі новіша версія; None — немає або не розібрали.
+
+    Версію скіла читаємо регуляркою з його файлу, не імпортом: двигун у проєктах — копія, а
+    імпорт другого екземпляра приніс би його модулі. Будь-яка помилка — None: двигун не падає.
+    """
+    env, own = os.environ.get('BRYGADA_SKILL_DIR', '').strip(), parse_version(VERSION)
+    home = os.path.expanduser('~')
+    folders = ([env] if env else []) + [os.path.join(home, p) for p in SKILL_DIRS]
+    try:
+        for folder in folders:
+            path = os.path.join(folder, *SKILL_EXEC)
+            if not os.path.isfile(path) or os.path.samefile(path, os.path.abspath(__file__)):
+                continue
+            m = re.search(r"^VERSION = '([^']+)'", read(path, errors='replace'), re.M)
+            skill = parse_version(m.group(1)) if m else None
+            if own and skill and skill > own:
+                return 'UPDATE brygada %s → %s: python3 %s update %s --apply' % (
+                    VERSION, m.group(1), os.path.join(folder, *SKILL_HARNESS), root)
+            return None
+    except (OSError, ValueError):
+        pass
+    return None
 def codex_version(cfg):
     try:
         out = subprocess.run(shlex.split(cfg['codex_bin']) + ['--version'], capture_output=True, text=True, timeout=30)
@@ -608,6 +650,7 @@ def cmd_scout(root, cfg, args):
     pw = os.path.join(root, '.playwright-mcp')
     pw_before, before = os.path.exists(pw), snapshot(root)
     last, started = os.path.join(run_dir, 'last.md'), time.monotonic()
+    note_skill_update(root)
     announce(run_id, 'Codex %s %s' % (model, cfg['scout_effort']))
     deadline = started + (args.timeout or task['timeout'] or cfg['scout_timeout'])
     status, rc = spawn_argv(root, run_dir, codex_argv(cfg, root, last, model, prompt), os.environ.copy(), cfg['idle_timeout'], deadline)
@@ -671,10 +714,12 @@ def mode_change(values, words, model, effort):
     pick = words[1:] if role else words
     if role is None and pick == ['opencode']:
         role = 'worker'
-    if (model or effort) and not (role and pick and pick[0] in ('opencode', 'codex')):
-        die('mode: --model/--effort лише з «worker opencode» або «scout codex»')
-    if effort and role != 'scout':
-        die('mode: --effort лише для помічника (scout codex)')
+    # effort — рівень міркувань: у помічника Codex і у робітника OpenCode (варіант моделі).
+    pair = (role == 'worker' and pick[:1] == ['opencode']) or (role == 'scout' and pick[:1] == ['codex'])
+    if model and not pair:
+        die('mode: --model лише з «worker opencode» або «scout codex»')
+    if effort and not pair:
+        die('mode: --effort — рівень міркувань: помічник (scout codex) або варіант робітника (worker opencode)')
     if not role and pick == ['default']:
         values.clear()
     elif not role and pick == ['native']:
@@ -682,7 +727,7 @@ def mode_change(values, words, model, effort):
         values.update({'EXECUTOR_MODE': 'native', 'EXECUTOR_SCOUT_MODE': 'native'})
     elif role == 'worker' and pick == ['opencode']:
         drop(*WORKER_KEYS)
-        values.update({'EXECUTOR_MODEL': model} if model else {})
+        values.update({k: v for k, v in (('EXECUTOR_MODEL', model), ('EXECUTOR_VARIANT', effort)) if v})
     elif role == 'worker' and pick == ['native']:
         drop(*WORKER_KEYS)
         values['EXECUTOR_MODE'] = 'native'
@@ -715,7 +760,8 @@ def cmd_mode(root, cfg, args):
     if cfg['worker_mode'] == 'native':
         print('MODE worker native · штатний субагент (prepare → субагент → finish) · %s' % source(WORKER_KEYS))
     else:
-        print('MODE worker opencode · %s · %s' % (cfg['model'], source(WORKER_KEYS)))
+        print('MODE worker opencode · %s%s · %s' % (cfg['model'], ' ' + cfg['variant'] if cfg['variant'] else '',
+                                                    source(WORKER_KEYS)))
     if cfg['scout_mode'] == 'native':
         print('MODE scout native · штатний субагент лише для читання · %s' % source(SCOUT_KEYS))
     else:
@@ -730,6 +776,9 @@ def cmd_mode(root, cfg, args):
     way = route(cfg, me)
     print('ROUTE worker → %s' % {'self': 'сама (та сама модель)', 'run': 'exec.py run', 'prepare': 'exec.py prepare/finish'}[way['worker']])
     print('ROUTE scout → %s' % {'self': 'сама (та сама модель)', 'scout': 'exec.py scout', 'native': 'штатний субагент лише для читання'}[way['scout']])
+    update = skill_update(root)
+    if update:
+        print(update)
     if client in ('opencode', 'codex') and not me:
         print('HINT назви свою модель: exec.py mode --self-model <id>')
     return 0
@@ -745,7 +794,8 @@ def cmd_detach(root, cfg, args):
     run_dir = os.path.join(runs_dir(root), run_id)
     os.makedirs(os.path.join(run_dir, 'checks'), exist_ok=True)
     child = [sys.executable, os.path.abspath(__file__), args.command, os.path.abspath(args.task), '--run-id', run_id]
-    for flag, value in (('--model', getattr(args, 'model', None)), ('--timeout', args.timeout)):
+    for flag, value in (('--model', getattr(args, 'model', None)), ('--variant', getattr(args, 'variant', None)),
+                        ('--timeout', args.timeout)):
         if value:
             child += [flag, str(value)]
     if getattr(args, 'keep', False):
@@ -860,6 +910,7 @@ def build_parser():
     p = sub.add_parser('run', help='запустити виконавця на задачі')
     p.add_argument('task', help='файл задачі (.md із заголовком ---)')
     p.add_argument('--model', help='модель (пріоритет над задачею й конфігом)')
+    p.add_argument('--variant', help='варіант моделі — рівень роздумів (пріоритет над задачею й конфігом)')
     p.add_argument('--timeout', type=int, help='загальний ліміт прогону, с')
     p.add_argument('--keep', action='store_true', help='не видаляти сесію OpenCode')
     p.add_argument('--detach', action='store_true', help='запустити у фоні: STARTED <run-id>')
@@ -879,7 +930,7 @@ def build_parser():
     p = sub.add_parser('mode', help='показати або змінити виконавців ролей (вибір власника)')
     p.add_argument('words', nargs='*', metavar='вибір', help='default | native | worker opencode|native | scout codex|native')
     p.add_argument('--model', help='з «worker opencode» або «scout codex»: модель надалі')
-    p.add_argument('--effort', help='зі «scout codex»: рівень міркувань надалі')
+    p.add_argument('--effort', help='зі «scout codex» або «worker opencode»: рівень міркувань надалі')
     p.add_argument('--self-model', help='модель головної сесії: показати маршрут ролей (ROUTE)')
     p = sub.add_parser('wait', help='дочекатися завершення прогону')
     p.add_argument('run_id', help='id прогону або last')
