@@ -10,6 +10,8 @@
 import argparse, hashlib, json, os, re, shlex, shutil, signal, subprocess, sys, time
 
 DEFAULTS = {'EXECUTOR_MODE': 'opencode', 'EXECUTOR_MODEL': 'opencode-go/deepseek-v4.1-flash', 'EXECUTOR_VARIANT': '',
+            'EXECUTOR_CODEX_WORKER_MODE': '', 'EXECUTOR_CODEX_WORKER_MODEL': 'gpt-6-luna',
+            'EXECUTOR_CODEX_OPENCODE_MODEL': '', 'EXECUTOR_CODEX_OPENCODE_VARIANT': '',
             'EXECUTOR_TIMEOUT': '1800', 'EXECUTOR_IDLE_TIMEOUT': '600',
             'EXECUTOR_MAX_PARALLEL': '2', 'EXECUTOR_DISABLE_MCP': 'figma-desktop,serena',
             'EXECUTOR_OPENCODE_BIN': 'opencode', 'EXECUTOR_CHECK_TIMEOUT': '900',
@@ -17,7 +19,7 @@ DEFAULTS = {'EXECUTOR_MODE': 'opencode', 'EXECUTOR_MODEL': 'opencode-go/deepseek
             'EXECUTOR_SCOUT_TIMEOUT': '900', 'EXECUTOR_SCOUT_MCP': 'playwright,context7', 'EXECUTOR_MAX_PARALLEL_SCOUT': '2',
             'EXECUTOR_CODEX_BIN': 'codex', 'EXECUTOR_CODEX_MIN_VERSION': '0.156.1'}
 REPORT_LINES, SCOUT_REPORT_LINES, TAIL_LINES, LOG_TAIL_LINES, POLL = 30, 40, 10, 80, 0.2
-VERSION = '1.8.1'
+VERSION = '1.9.3'
 WORKER_MODES, SCOUT_MODES = ('opencode', 'native'), ('codex', 'native')
 # Джерело Бригади — скіл: його двигун і harness.py поручні. Тека скіла: змінна середовища,
 # інакше симлінки клієнтів у домашній теці.
@@ -83,9 +85,18 @@ def load_config(root):
     read_env_file(os.path.join(root, '.executor', 'config.env'), raw)
     read_env_file(os.path.join(root, MODE_FILE), raw)
     raw.update({k: v for k, v in os.environ.items() if k in raw})
+    client = detect_client()
     mode, scout_mode = raw['EXECUTOR_MODE'].strip().lower(), raw['EXECUTOR_SCOUT_MODE'].strip().lower()
-    return {'worker_mode': mode if mode in WORKER_MODES else 'opencode', 'scout_mode': scout_mode if scout_mode in SCOUT_MODES else 'codex',
-            'model': raw['EXECUTOR_MODEL'], 'variant': raw['EXECUTOR_VARIANT'].strip(), 'timeout': as_int(raw['EXECUTOR_TIMEOUT'], 1800),
+    codex_mode = raw['EXECUTOR_CODEX_WORKER_MODE'].strip().lower()
+    worker_mode = ((codex_mode if codex_mode in WORKER_MODES else 'native') if client == 'codex'
+                   else mode if mode in WORKER_MODES else 'opencode')
+    worker_model, worker_variant = raw['EXECUTOR_MODEL'], raw['EXECUTOR_VARIANT'].strip()
+    if client == 'codex' and worker_mode == 'opencode':
+        worker_model = raw['EXECUTOR_CODEX_OPENCODE_MODEL'].strip() or worker_model
+        worker_variant = raw['EXECUTOR_CODEX_OPENCODE_VARIANT'].strip() or worker_variant
+    return {'worker_mode': worker_mode, 'codex_worker_model': raw['EXECUTOR_CODEX_WORKER_MODEL'].strip() or 'gpt-6-luna',
+            'client': client, 'scout_mode': scout_mode if scout_mode in SCOUT_MODES else 'codex',
+            'model': worker_model, 'variant': worker_variant, 'timeout': as_int(raw['EXECUTOR_TIMEOUT'], 1800),
             'scout_model': raw['EXECUTOR_SCOUT_MODEL'], 'scout_effort': raw['EXECUTOR_SCOUT_EFFORT'],
             'scout_timeout': as_int(raw['EXECUTOR_SCOUT_TIMEOUT'], 900), 'max_parallel_scout': as_int(raw['EXECUTOR_MAX_PARALLEL_SCOUT'], 2),
             'scout_mcp': [x.strip() for x in raw['EXECUTOR_SCOUT_MCP'].split(',') if x.strip()],
@@ -350,6 +361,11 @@ def finalize(root, cfg, run_id, task, before, label, status, rc, seconds, chunks
     report = report_lines(run_dir, chunks)
     if status == 'done' and not (report and report[0].startswith('STATUS:')):
         status = 'no-status'
+    if status == 'done' and out_of_scope:
+        status = 'out-of-scope'
+    if (status == 'done' and label == 'native' and task['allow']
+            and not any(any(glob_to_regex(g).match(p) for g in task['allow']) for p in changed)):
+        status = 'no-allowed-changes'
     summary = ['EXECUTOR %s · %s · %ds · %s' % (run_id, label, seconds, status), 'report:'] + report
     summary.append('changed (%d): %s' % (len(changed), ', '.join(changed) or '(немає)'))
     summary.append('OUT-OF-SCOPE: %s' % (', '.join(out_of_scope) or 'немає'))
@@ -430,7 +446,8 @@ def subagent(root, client, role):
 def labels(cfg, client, root):
     # Підпис фонового запуску: власник бачить у чаті, хто саме працює — рушій, модель, варіант.
     level = ' ' + cfg['variant'] if cfg['variant'] else ''
-    worker = 'OpenCode %s%s' % (cfg['model'], level) if cfg['worker_mode'] == 'opencode' else subagent(root, client, 'worker')[1]
+    worker = ('OpenCode %s%s' % (cfg['model'], level) if cfg['worker_mode'] == 'opencode' else
+              'субагент Codex %s' % cfg['codex_worker_model'] if client == 'codex' else subagent(root, client, 'worker')[1])
     scout = 'Codex %s %s' % (cfg['scout_model'], cfg['scout_effort']) if cfg['scout_mode'] == 'codex' else subagent(root, client, 'scout')[1]
     return 'Виконавець · %s' % worker, 'Помічник · %s' % scout
 def announce(run_id, engine):
@@ -705,7 +722,7 @@ def cmd_scout(root, cfg, args):
     sys.stdout.write(text)
     return exit_code
 
-def mode_change(values, words, model, effort):
+def mode_change(values, words, model, effort, client):
     # values — ключі .executor/mode.env; змінюються лише ключі названої ролі.
     def drop(*keys):
         for key in keys:
@@ -716,21 +733,39 @@ def mode_change(values, words, model, effort):
         role = 'worker'
     # effort — рівень міркувань: у помічника Codex і у робітника OpenCode (варіант моделі).
     pair = (role == 'worker' and pick[:1] == ['opencode']) or (role == 'scout' and pick[:1] == ['codex'])
-    if model and not pair:
-        die('mode: --model лише з «worker opencode» або «scout codex»')
+    codex_native_model = client == 'codex' and role == 'worker' and pick == ['native']
+    if model and not (pair or codex_native_model):
+        die('mode: --model лише з «worker opencode», Codex «worker native» або «scout codex»')
     if effort and not pair:
         die('mode: --effort — рівень міркувань: помічник (scout codex) або варіант робітника (worker opencode)')
     if not role and pick == ['default']:
         values.clear()
     elif not role and pick == ['native']:
-        drop(*(WORKER_KEYS + SCOUT_KEYS))
+        drop(*(WORKER_KEYS + SCOUT_KEYS + ('EXECUTOR_CODEX_WORKER_MODE', 'EXECUTOR_CODEX_WORKER_MODEL',
+                                          'EXECUTOR_CODEX_OPENCODE_MODEL', 'EXECUTOR_CODEX_OPENCODE_VARIANT')))
         values.update({'EXECUTOR_MODE': 'native', 'EXECUTOR_SCOUT_MODE': 'native'})
     elif role == 'worker' and pick == ['opencode']:
-        drop(*WORKER_KEYS)
-        values.update({k: v for k, v in (('EXECUTOR_MODEL', model), ('EXECUTOR_VARIANT', effort)) if v})
+        if client == 'codex':
+            values['EXECUTOR_CODEX_WORKER_MODE'] = 'opencode'
+            for key, value in (('EXECUTOR_CODEX_OPENCODE_MODEL', model),
+                               ('EXECUTOR_CODEX_OPENCODE_VARIANT', effort)):
+                if value:
+                    values[key] = value
+                else:
+                    values.pop(key, None)
+        else:
+            drop(*WORKER_KEYS)
+            values.update({k: v for k, v in (('EXECUTOR_MODEL', model), ('EXECUTOR_VARIANT', effort)) if v})
     elif role == 'worker' and pick == ['native']:
-        drop(*WORKER_KEYS)
-        values['EXECUTOR_MODE'] = 'native'
+        if client == 'codex':
+            values['EXECUTOR_CODEX_WORKER_MODE'] = 'native'
+            if model:
+                values['EXECUTOR_CODEX_WORKER_MODEL'] = model
+            else:
+                values.pop('EXECUTOR_CODEX_WORKER_MODEL', None)
+        else:
+            drop(*WORKER_KEYS)
+            values['EXECUTOR_MODE'] = 'native'
     elif role == 'scout' and pick == ['codex']:
         drop(*SCOUT_KEYS)
         values.update({k: v for k, v in (('EXECUTOR_SCOUT_MODEL', model), ('EXECUTOR_SCOUT_EFFORT', effort)) if v})
@@ -747,7 +782,7 @@ def cmd_mode(root, cfg, args):
         if sep and not key.startswith('#') and key.strip() in DEFAULTS:
             values[key.strip()] = value.strip()
     if args.words:
-        mode_change(values, args.words, args.model, args.effort)
+        mode_change(values, args.words, args.model, args.effort, detect_client())
         if values:
             os.makedirs(os.path.dirname(path), exist_ok=True)
             with open(path, 'w', encoding='utf-8') as fh:
@@ -758,10 +793,14 @@ def cmd_mode(root, cfg, args):
         cfg = load_config(root)
     source = lambda keys: MODE_FILE if any(k in values for k in keys) else 'типово'
     if cfg['worker_mode'] == 'native':
-        print('MODE worker native · штатний субагент (prepare → субагент → finish) · %s' % source(WORKER_KEYS))
+        worker_source = source(('EXECUTOR_CODEX_WORKER_MODE', 'EXECUTOR_CODEX_WORKER_MODEL')) if cfg['client'] == 'codex' else source(WORKER_KEYS)
+        print('MODE worker native · %s · %s' % (cfg['codex_worker_model'] if cfg['client'] == 'codex' else 'штатний субагент (prepare → субагент → finish)', worker_source))
     else:
+        worker_source = (source(('EXECUTOR_CODEX_WORKER_MODE', 'EXECUTOR_CODEX_OPENCODE_MODEL',
+                                 'EXECUTOR_CODEX_OPENCODE_VARIANT')) if cfg['client'] == 'codex'
+                         else source(WORKER_KEYS))
         print('MODE worker opencode · %s%s · %s' % (cfg['model'], ' ' + cfg['variant'] if cfg['variant'] else '',
-                                                    source(WORKER_KEYS)))
+                                                    worker_source))
     if cfg['scout_mode'] == 'native':
         print('MODE scout native · штатний субагент лише для читання · %s' % source(SCOUT_KEYS))
     else:
@@ -904,7 +943,7 @@ def cmd_clean(root, cfg, args):
     print('прибрано прогонів: %d' % removed)
     return 0
 def build_parser():
-    parser = argparse.ArgumentParser(prog='exec.py', description='Двигун Бригади: робітник OpenCode, помічник Codex, штатний субагент за вибором власника.')
+    parser = argparse.ArgumentParser(prog='exec.py', description='Двигун Бригади: типовий worker Codex — native gpt-6-luna; у Claude Code та OpenCode — OpenCode; scout — Codex CLI.')
     parser.add_argument('--version', action='version', version='exec.py %s' % VERSION)
     sub = parser.add_subparsers(dest='command')
     p = sub.add_parser('run', help='запустити виконавця на задачі')
