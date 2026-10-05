@@ -214,7 +214,7 @@ uv run bdo version                    # версія пакета = рядок 1
 | `config/roles.json`, `config/modes.json` | параметри ролей; режими прогону й канали запису |
 | `docs/`, `docs/plans/` | довідник, рішення, архітектура, плани й реєстри |
 | `reference/` | карта попередника, форми payload, знімки старого інтерфейсу |
-| `scripts/executor/` | Бригада: виконавці й помічники для агентів ([`docs/EXECUTOR_HARNESS.md`](docs/EXECUTOR_HARNESS.md)) |
+| `AGENTS.md` | локальні правила проєкту та bootstrap глобального skill `brygada` |
 | `BDO.app` | зібраний значок macOS, переносний |
 
 ## Повʼязані проєкти

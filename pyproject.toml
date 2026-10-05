@@ -1,6 +1,6 @@
 [project]
 name = "bdo-ua-translate"
-version = "1.50.6"
+version = "1.50.7"
 description = "Конвеєр перекладу Black Desert Online українською через BDO UA Translate Agent API: локальні моделі, ролі, механічні перевірки, запис у шар."
 readme = "README.md"
 requires-python = ">=3.13"
@@ -49,9 +49,6 @@ packages = ["src/bdo_translate"]
 line-length = 100
 target-version = "py313"
 src = ["src"]
-# харнес виконавця перенесено з іншого проєкту без змін (D-49)
-extend-exclude = ["scripts/executor/exec.py"]
-
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "B", "UP", "N", "ASYNC", "S", "RUF"]
 ignore = ["S101", "S603", "S607", "RUF001", "RUF002", "RUF003"]

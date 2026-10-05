@@ -164,10 +164,6 @@ def _check_lint(files: list[Path]) -> list[str]:
     for command in (
         ["uv", "run", "ruff", "check", "."],
         ["uv", "run", "ruff", "format", "--check", "."],
-        # харнес виконавця поза ruff і mypy (D-49): лише компіляція і CLI, без OpenCode
-        ["python3", "-m", "py_compile", "scripts/executor/exec.py"],
-        ["python3", "scripts/executor/exec.py", "--help"],
-        ["test", "-f", "scripts/executor/scout.md"],
     ):
         code, output = _run_check_command(command)
         if code != 0:
