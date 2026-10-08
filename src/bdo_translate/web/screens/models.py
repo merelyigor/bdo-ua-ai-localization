@@ -145,12 +145,12 @@ async def build(state: WebState, query: Query) -> dict[str, Any]:
                 "endpoint_env": provider_spec.endpoint_env or "налаштовано в конфігурації",
                 "remote": provider_spec.remote,
                 "allowed": allowed,
-                "reach": "ok" if listed else "failed" if raw else "—",
+                "reach": "failed" if error_value else "ok" if listed else "failed" if raw else "—",
                 "count": len(model_names) if listed else "—",
                 "hidden": hidden_count if listed else "—",
                 "raw_count": raw.get("raw_count", len(model_names)) if listed else "—",
                 "free_count": raw.get("free_count", 0) if listed else "—",
-                "error": "" if listed or not raw else label(error_code),
+                "error": label(error_code) if error_code else "",
             }
         )
         if not listed:
@@ -408,10 +408,10 @@ async def build(state: WebState, query: Query) -> dict[str, Any]:
         if _hidden_local(status):
             continue
         display_name = _PROVIDER_LABELS[name]
-        if status.get("reach") == "ok":
-            message = f"{display_name} · доступне джерело"
-        elif status.get("error"):
+        if status.get("error"):
             message = f"{display_name} · недоступна: {status['error']}"
+        elif status.get("reach") == "ok":
+            message = f"{display_name} · доступне джерело"
         else:
             message = f"{display_name} · каталог ще не знятий"
         local_source_status.append({"provider": name, "label": display_name, "message": message})
@@ -420,13 +420,13 @@ async def build(state: WebState, query: Query) -> dict[str, Any]:
     fetched_at = probe_result.get("fetched_at") if isinstance(probe_result, dict) else None
     fetched_label = _time(fetched_at if isinstance(fetched_at, str) else None)
     catalog_meta = " · ".join(
-        f"{_PROVIDER_LABELS.get(row['name'], row['name'])} · {row['count']} "
-        f"{pluralize(row['count'], 'модель', 'моделі', 'моделей')}"
-        if row["reach"] == "ok"
-        else (
-            f"{_PROVIDER_LABELS.get(row['name'], row['name'])} · недоступне джерело: {row['error']}"
-        )
+        (f"{_PROVIDER_LABELS.get(row['name'], row['name'])} · недоступне джерело: {row['error']}")
         if row["error"]
+        else (
+            f"{_PROVIDER_LABELS.get(row['name'], row['name'])} · {row['count']} "
+            f"{pluralize(row['count'], 'модель', 'моделі', 'моделей')}"
+        )
+        if row["reach"] == "ok"
         else f"{_PROVIDER_LABELS.get(row['name'], row['name'])} · ще не зняте"
         for row in sorted(
             visible_rows,
@@ -452,6 +452,7 @@ async def build(state: WebState, query: Query) -> dict[str, Any]:
         "pluralize": pluralize,
         "local_source_status": local_source_status,
         "catalog_models": catalog_models,
+        "catalog_fetched_at": fetched_at if isinstance(fetched_at, str) else "",
         "hidden_filters": hidden_filters,
         "go_free_count": next(
             (row["free_count"] for row in provider_rows if row["name"] == "go"), 0
@@ -783,7 +784,12 @@ async def probe_provider(state: WebState, name: str) -> dict[str, Any]:
             "free_count": sum(model.endswith("-free") for model in all_models),
         }
     except BdoError as exc:
-        result = {"error": exc.reason or "provider_error"}
+        previous = state.results.get("models_probe", {}).get("providers", {}).get(name)
+        result = (
+            {**previous, "error": exc.reason or "provider_error"}
+            if isinstance(previous, dict)
+            else {"error": exc.reason or "provider_error"}
+        )
 
     probe_result = state.results.setdefault("models_probe", {"providers": {}})
     providers = probe_result.setdefault("providers", {})
@@ -815,13 +821,22 @@ async def probe_provider(state: WebState, name: str) -> dict[str, Any]:
 async def models_probe(state: WebState, form: dict[str, str]) -> ActionResult:
     """Перевіряє каталоги паралельно для ручного оновлення."""
     roles: RolesConfig = state.services.roles()
+    probe_result = state.results.setdefault("models_probe", {"providers": {}})
+    previous_fetched_at = probe_result.get("fetched_at")
     gathered = await asyncio.gather(*(probe_provider(state, name) for name in roles.providers))
+    transient_errors = any(
+        result.get("error") and result.get("error") != "provider_key_missing" for result in gathered
+    )
+    if transient_errors:
+        probe_result["fetched_at"] = previous_fetched_at
+    else:
+        probe_result["fetched_at"] = clock.iso(clock.now())
     return {
         "providers": {
             result["provider"]: {key: value for key, value in result.items() if key != "provider"}
             for result in gathered
         },
-        "fetched_at": clock.iso(clock.now()),
+        "fetched_at": probe_result.get("fetched_at"),
     }
 
 

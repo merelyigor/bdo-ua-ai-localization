@@ -195,13 +195,17 @@
     </article>
   </section>
 
-  <section id="models-catalog" class="panel" data-complete="{{ 'true' if catalog_complete else 'false' }}" data-providers="{{ providers|map(attribute='name')|join(',') }}">
+  <section id="models-catalog" class="panel" data-complete="{{ 'true' if catalog_complete else 'false' }}" data-providers="{{ providers|map(attribute='name')|join(',') }}" data-fetched-at="{{ catalog_fetched_at }}">
     <div class="bar section-bar">
       <span class="section-title">каталог моделей</span>
       {% if has_probe %}<span class="empty model-load-state">{{ catalog_meta }}</span>{% endif %}
       <span class="visually-hidden" id="source-status-go"></span>
       <span class="visually-hidden" id="source-status-openai_compat"></span>
+      <form method="post" action="/action/models_probe" class="model-catalog-refresh-form">
+        <button type="submit" class="btn-quiet">оновити каталог</button>
+      </form>
     </div>
+    <p id="models-catalog-refresh-error" class="model-status-detail" role="status" aria-live="polite" hidden></p>
     <p id="model-action-feedback" class="source-save-status" role="status" aria-live="polite" tabindex="-1" hidden></p>
     <div class="local-source-status-row" aria-label="Локальні джерела">
       {% for status in local_source_status %}<span data-local-status="{{ status.provider }}" data-local-label="{{ status.label }}">{{ status.message }}</span>{% endfor %}

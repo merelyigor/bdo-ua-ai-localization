@@ -1563,51 +1563,74 @@ function initializePromptDialogs() {
 }
 
 function initializeModelsCatalog() {
+  const refreshAfterMs = 15 * 60 * 1000;
   const catalog = document.getElementById("models-catalog");
   if (!catalog) return;
   const providers = (catalog.dataset.providers || "").split(",").filter(Boolean);
   if (providers.length === 0) return;
-  const refresh = async provider => {
-    const status = document.getElementById(`source-status-${provider}`)
-      || document.querySelector(`[data-local-status="${provider}"]`);
-    if (status) status.textContent = "знімаю каталог…";
-    try {
-      const response = await fetch(`/models/catalog/${encodeURIComponent(provider)}`);
-      if (!response.ok) throw new Error("catalog_request_failed");
-      const result = await response.json();
-      if (!status) return true;
-      const errorLabel = typeof result.error === "string"
-        ? ({
-          model_unreachable: "модель недоступна",
-          provider_key_missing: "немає ключа джерела",
-          timeout: "час очікування вичерпано",
-        }[result.error] || "не вдалося зняти каталог")
-        : "";
-      const localName = status.dataset.localLabel || provider;
-      status.textContent = status.hasAttribute("data-local-status")
-        ? (errorLabel ? `${localName} · недоступна: ${errorLabel}` : `${localName} · ${result.models.length} моделей`)
-        : errorLabel || `${result.models.length} моделей`;
-      return result;
-    } catch {
-      if (status) status.textContent = "не вдалося зняти каталог · повторіть пізніше";
-      return null;
+  const fetchedAt = Date.parse(catalog.dataset.fetchedAt || "");
+  const snapshotAge = Date.now() - fetchedAt;
+  if (Number.isFinite(fetchedAt) && snapshotAge >= 0 && snapshotAge < refreshAfterMs) return;
+  const refreshError = catalog.querySelector("#models-catalog-refresh-error");
+  if (refreshError) {
+    refreshError.hidden = true;
+    refreshError.textContent = "";
+  }
+  fetch("/action/models_probe", {
+    method: "POST",
+    headers: { Accept: "application/json" },
+    body: new FormData(),
+  }).then(async response => {
+    if (!response.ok) throw new Error("catalog_request_failed");
+    return response.json();
+  }).then(result => {
+    const providerResults = result.providers && typeof result.providers === "object"
+      ? result.providers
+      : {};
+    const transientErrors = Object.values(providerResults).some(providerResult =>
+      typeof providerResult?.error === "string" && providerResult.error !== "provider_key_missing"
+    );
+    if (transientErrors) {
+      if (refreshError) {
+        refreshError.hidden = false;
+        refreshError.textContent = "Не вдалося оновити одне або кілька джерел · показано останній збережений каталог";
+      }
+      for (const [provider, providerResult] of Object.entries(providerResults)) {
+        const status = catalog.querySelector(`[data-local-status="${provider}"]`);
+        if (status && typeof providerResult?.error === "string") {
+          const label = status.dataset.localLabel || provider;
+          status.textContent = `${label} · недоступна: не вдалося оновити каталог`;
+        }
+      }
+      return;
     }
-  };
-  Promise.all(providers.map(refresh)).then(results => {
-    if (results.some(result => result?.changed)) {
+    if (Object.values(providerResults).some(providerResult => providerResult?.changed)) {
       window.location.reload();
       return;
     }
+    const freshTimestamp = result.fetched_at;
+    if (typeof freshTimestamp !== "string") return;
+    catalog.dataset.fetchedAt = freshTimestamp;
+    const checkedAt = new Date(freshTimestamp).toLocaleString("uk-UA", {
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
     const meta = catalog.querySelector(".model-load-state");
     if (meta) {
-      const checkedAt = new Date().toLocaleString("uk-UA", {
-        day: "2-digit",
-        month: "2-digit",
-        year: "numeric",
-        hour: "2-digit",
-        minute: "2-digit",
-      });
       meta.textContent = meta.textContent.replace(/знято .+$/, `знято ${checkedAt}`);
+    } else {
+      const status = document.createElement("span");
+      status.className = "empty model-load-state";
+      status.textContent = `каталог · знято ${checkedAt}`;
+      catalog.querySelector(".section-bar")?.append(status);
+    }
+  }).catch(() => {
+    if (refreshError) {
+      refreshError.hidden = false;
+      refreshError.textContent = "Не вдалося оновити каталог · показано останній збережений каталог";
     }
   });
 }
