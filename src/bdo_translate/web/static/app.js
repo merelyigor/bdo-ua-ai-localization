@@ -1564,7 +1564,7 @@ function initializePromptDialogs() {
 
 function initializeModelsCatalog() {
   const catalog = document.getElementById("models-catalog");
-  if (!catalog || catalog.dataset.complete === "true") return;
+  if (!catalog) return;
   const providers = (catalog.dataset.providers || "").split(",").filter(Boolean);
   if (providers.length === 0) return;
   const refresh = async provider => {
@@ -1587,14 +1587,28 @@ function initializeModelsCatalog() {
       status.textContent = status.hasAttribute("data-local-status")
         ? (errorLabel ? `${localName} · недоступна: ${errorLabel}` : `${localName} · ${result.models.length} моделей`)
         : errorLabel || `${result.models.length} моделей`;
-      return true;
+      return result;
     } catch {
-      if (status) status.textContent = "не вдалося зняти каталог · оновіть сторінку";
-      return false;
+      if (status) status.textContent = "не вдалося зняти каталог · повторіть пізніше";
+      return null;
     }
   };
   Promise.all(providers.map(refresh)).then(results => {
-    if (results.every(Boolean)) window.location.reload();
+    if (results.some(result => result?.changed)) {
+      window.location.reload();
+      return;
+    }
+    const meta = catalog.querySelector(".model-load-state");
+    if (meta) {
+      const checkedAt = new Date().toLocaleString("uk-UA", {
+        day: "2-digit",
+        month: "2-digit",
+        year: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+      });
+      meta.textContent = meta.textContent.replace(/знято .+$/, `знято ${checkedAt}`);
+    }
   });
 }
 

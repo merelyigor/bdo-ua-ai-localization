@@ -731,6 +731,7 @@ async def probe_provider(state: WebState, name: str) -> dict[str, Any]:
         models = [
             model for model in all_models if spec.keep_model(model) or model.endswith("-free")
         ]
+        thinking_capabilities: dict[str, dict[str, str | None]] = {}
         for model in models:
             configured = spec.reasoning_off.get(model, spec.reasoning_off.get("*"))
             if configured == "":
@@ -769,8 +770,14 @@ async def probe_provider(state: WebState, name: str) -> dict[str, Any]:
                         checked_at=previous.checked_at,
                     )
                 )
+            stored = repo.model_capability(name, model)
+            thinking_capabilities[model] = {
+                "think_mode": stored.think_mode if stored is not None else "unknown",
+                "efforts": stored.efforts if stored is not None else None,
+            }
         result = {
             "models": models,
+            "thinking_capabilities": thinking_capabilities,
             "hidden": len(all_models) - len(models),
             "raw_count": len(all_models),
             "free_count": sum(model.endswith("-free") for model in all_models),
@@ -780,10 +787,29 @@ async def probe_provider(state: WebState, name: str) -> dict[str, Any]:
 
     probe_result = state.results.setdefault("models_probe", {"providers": {}})
     providers = probe_result.setdefault("providers", {})
+    previous = providers.get(name)
+    changed = previous != result
+    previous_models = previous.get("models") if isinstance(previous, dict) else None
+    result_models = result.get("models")
+    if (
+        isinstance(previous, dict)
+        and isinstance(previous_models, list)
+        and isinstance(result_models, list)
+    ):
+        previous_without_models = {key: value for key, value in previous.items() if key != "models"}
+        result_without_models = {key: value for key, value in result.items() if key != "models"}
+        changed = previous_without_models != result_without_models or sorted(
+            str(model) for model in previous_models
+        ) != sorted(str(model) for model in result_models)
     providers[name] = result
     if all(provider in providers for provider in roles.providers):
         probe_result["fetched_at"] = clock.iso(clock.now())
-    return {"provider": name, **result}
+    return {
+        "provider": name,
+        **result,
+        "changed": changed,
+        "fetched_at": probe_result.get("fetched_at"),
+    }
 
 
 async def models_probe(state: WebState, form: dict[str, str]) -> ActionResult:
