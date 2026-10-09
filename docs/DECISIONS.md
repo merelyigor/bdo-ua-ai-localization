@@ -126,8 +126,8 @@
   частку пачок із repair, частку `REJECT` від QA, які скасував суддя, кількість
   відкладених і карантинних рядків.
 - **D-26 · Запис лише після `POST /translations/validate` тим самим каналом,
-  з `Idempotency-Key` за вмістом** (`bdo-` + перші 48 hex sha256 від JSON `{v:1, environment, channel, batch_id, items: [{identity_hash, source_hash, text_sha256}] за identity_hash}`: повтор тієї самої пачки дає той самий ключ; частини понад 50 · `-1`, `-2`; повтор після лікування розмітки · `-markup`). Тіло запису · як у `$OLD/lib/Api/WritePayload.php`
-  (read-only), `prompt_version` · `bdo-py-v1`.
+  з `Idempotency-Key` за вмістом** (`bdo-` + перші 48 hex sha256 від JSON `{v:1, environment, channel, batch_id, items: [{identity_hash, source_hash, text_sha256}] за identity_hash}`: повтор тієї самої пачки дає той самий ключ; частини понад 50 · `-1`, `-2`; повтор після лікування розмітки · `-markup`). Тіло запису · як у попередника
+  (`$OLD/lib/Api/WritePayload.php`, форма · `reference/payload-shapes.md`), `prompt_version` · `bdo-py-v1`.
 - **D-27 · PROD захищений кодом** (замінено D-53): запис у PROD вимагає `BDO_ENV=PROD` І
   непорожнього `BDO_PROD_CONFIRM_CODE` у `.env` І введення того самого коду у
   формі «Старт». Агент PROD-запис не виконує; перевіряє лише видиму відмову.
