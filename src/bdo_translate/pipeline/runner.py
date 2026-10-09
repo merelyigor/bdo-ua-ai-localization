@@ -599,6 +599,17 @@ class Runner:
         self._session_id = session_id
         self._forgotten = False
         self._batch_id = ctx.batch.id
+        resume_batch = repo.get_batch(ctx.batch.id)
+        if resume_batch is None:
+            raise StateError("Призупинену пачку не знайдено", reason="resume_batch_missing")
+        if resume_batch.state == BatchState.paused.value:
+            try:
+                previous_state = BatchState(resume_batch.reason or "")
+            except ValueError as error:
+                raise StateError(
+                    "Не вдалося визначити стан до паузи", reason="resume_step_unknown"
+                ) from error
+            transition(repo, self.bus, resume_batch.id, previous_state, "відновлення після паузи")
         self._resume_state = None
         self._publish("session_resumed", session.id, ctx.batch.id, {"seq": seq})
         self._task = asyncio.create_task(
