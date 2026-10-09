@@ -185,8 +185,8 @@ uv run bdo web start
 
 ## Для розробника
 
-Код пишуть агенти за планами; правила · [`AGENTS.md`](AGENTS.md) (канон) і
-побайтова копія `CLAUDE.md`, деталі · [`docs/RULES_REFERENCE.md`](docs/RULES_REFERENCE.md).
+Код пишуть агенти за планами; правила · [`AGENTS.md`](AGENTS.md) (єдиний
+канон; `CLAUDE.md` лише імпортує його рядком `@AGENTS.md`), деталі · [`docs/RULES_REFERENCE.md`](docs/RULES_REFERENCE.md).
 Автотестів немає: кожен крок перевіряється у справжньому браузері на живих
 даних середовища розробки (DEV). Pull request приймається після такої ж
 перевірки й зеленого `gate`.

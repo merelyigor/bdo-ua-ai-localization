@@ -117,8 +117,9 @@ def _check_docs(files: list[Path]) -> list[str]:
     problems: list[str] = []
     agents = _ROOT / "AGENTS.md"
     claude = _ROOT / "CLAUDE.md"
-    if agents.is_file() and claude.is_file() and agents.read_bytes() != claude.read_bytes():
-        problems.append("AGENTS.md і CLAUDE.md розійшлися · виправ канон AGENTS.md і скопіюй")
+    # CLAUDE.md лише імпортує канон: рівно рядок `@AGENTS.md` і перенос рядка.
+    if agents.is_file() and (not claude.is_file() or claude.read_bytes() != b"@AGENTS.md\n"):
+        problems.append("CLAUDE.md має містити лише рядок @AGENTS.md · правила пиши в AGENTS.md")
 
     for path in files:
         if path.suffix.lower() != ".md":
