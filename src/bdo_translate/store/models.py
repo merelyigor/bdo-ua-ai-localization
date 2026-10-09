@@ -21,6 +21,19 @@ class RunSession(SQLModel, table=True):
     goal_json: str
 
 
+class RunCheckpoint(SQLModel, table=True):
+    """Зберігає дані, потрібні для відновлення паузи після перезапуску."""
+
+    __tablename__ = "run_checkpoints"
+
+    session_id: str = Field(primary_key=True)
+    batch_id: str
+    seq: int
+    next_step: int
+    cursor_json: str
+    ctx_json: str | None = None
+
+
 class ModelChoice(SQLModel, table=True):
     """Зберігає вибір власника, який діє на наступні виклики ролей."""
 

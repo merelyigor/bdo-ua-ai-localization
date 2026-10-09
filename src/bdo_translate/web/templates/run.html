@@ -21,6 +21,12 @@
         <form method="post" action="/action/run_pause"><button id="btn-run_pause" type="submit">пауза</button></form>
         <form method="post" action="/action/run_stop"><button id="btn-run_stop" class="btn-danger" type="submit">зупинити</button></form>
         {% endif %}
+        {% if resume_enabled %}
+        <form method="post" action="/action/run_resume">
+          <input type="hidden" name="session_id" value="{{ session.id }}">
+          <button id="btn-run_resume" class="btn-primary" type="submit">продовжити</button>
+        </form>
+        {% endif %}
         <a id="startLink" class="{% if not controls_enabled %}btn-primary {% endif %}as-button" href="/start">новий прогін →</a>
         {% if not controls_enabled and session.status != "running" %}
         <form method="post" action="/action/session_delete">
@@ -137,6 +143,7 @@
     {% endif %}
     {{ action_error("run_pause", results.get("run_pause")) }}
     {{ action_error("run_stop", results.get("run_stop")) }}
+    {{ action_error("run_resume", results.get("run_resume")) }}
   {% else %}
     <section class="panel" id="run-empty"><p>Активного прогону немає.</p><a class="btn-primary as-button" href="/start">почати прогін →</a></section>
   {% endif %}

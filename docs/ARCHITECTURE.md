@@ -133,6 +133,7 @@ selected → memory_checked → terminology_done → worker_done → checks_done
 | Клас (`__tablename__`) | Поля (тип; `PK` · первинний ключ) |
 |---|---|
 | `RunSession` (`sessions`) | `id` str PK · `started_at` str · `finished_at` str? · `env` str · `mode` str · `rows_per_batch` int · `batches_planned` int · `dry_run` bool · `status` str (`running`,`paused`,`stopped`,`finished`,`failed`,`interrupted`) · `stop_reason` str? · `goal_json` str |
+| `RunCheckpoint` (`run_checkpoints`) | `session_id` str PK · `batch_id` str · `seq` int · `next_step` int · `cursor_json` str · `ctx_json` str? |
 | `Batch` (`batches`) | `id` str PK · `session_id` str (index) · `seq` int · `state` str · `created_at` str · `updated_at` str · `reason` str? |
 | `BatchRow` (`batch_rows`) | `batch_id` str PK · `identity_hash` str PK · `alias` str · `source_hash` str · `source_text` str · `row_json` str · `memory_text` str? · `candidate_text` str? · `final_text` str? · `route` str? · `route_reason` str? |
 | `Call` (`calls`) | `id` str PK · `batch_id` str? (index) · `role` str · `provider` str · `model` str · `think` str · `started_at` str · `ms` int · `in_tokens` int? · `out_tokens` int? · `thinking_bytes` int · `state` str (`ok`,`failed`) · `error` str? · `attempt` int · `rows` int · `json_salvaged` bool · `answer_loop_detected` bool · `request_json` str · `content` str · `thinking` str · `parsed_json` str? · `replay_of` str? |

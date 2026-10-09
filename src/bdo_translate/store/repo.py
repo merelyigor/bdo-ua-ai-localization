@@ -20,6 +20,7 @@ from bdo_translate.store.models import (
     QueueReason,
     RoleThink,
     RowAttempt,
+    RunCheckpoint,
     RunSession,
     TermCache,
     Transition,
@@ -199,6 +200,25 @@ class Repo:
         with self._session() as session:
             session.merge(run_session)
             session.commit()
+
+    def save_run_checkpoint(self, checkpoint: RunCheckpoint) -> None:
+        """Зберігає останній курсор і крок призупиненої сесії."""
+        with self._session() as session:
+            session.merge(checkpoint)
+            session.commit()
+
+    def get_run_checkpoint(self, session_id: str) -> RunCheckpoint | None:
+        """Повертає точку відновлення сесії, якщо вона збережена."""
+        with self._session() as session:
+            return session.get(RunCheckpoint, session_id)
+
+    def delete_run_checkpoint(self, session_id: str) -> None:
+        """Видаляє застарілу точку відновлення завершеної сесії."""
+        with self._session() as session:
+            checkpoint = session.get(RunCheckpoint, session_id)
+            if checkpoint is not None:
+                session.delete(checkpoint)
+                session.commit()
 
     def add_batch(self, batch: Batch) -> None:
         """Додає пачку до сховища."""

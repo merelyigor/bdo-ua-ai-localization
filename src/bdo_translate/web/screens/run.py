@@ -7,6 +7,7 @@ from zoneinfo import ZoneInfo
 
 from bdo_translate import clock
 from bdo_translate.batch.row import Row
+from bdo_translate.errors import StateError
 from bdo_translate.model.roles import active_model
 from bdo_translate.pipeline.states import BatchState
 from bdo_translate.store.models import Batch, Call, RunSession, Transition
@@ -163,6 +164,7 @@ async def build(state: WebState, query: Query) -> dict[str, Any]:
         "resolve_rejections": _resolve_rejections(batch.reason if batch is not None else None),
         "viewing_other": viewing_other,
         "controls_enabled": controls_enabled,
+        "resume_enabled": (session.status == "paused" and state.runner.can_resume(session.id)),
         "run_state_text": _run_state_text(controls_enabled, session.status),
         "batches_done": batches_done,
         "outcome": _outcome(session, batch, controls_enabled, stop_reason_raw, provider, model),
@@ -200,6 +202,7 @@ def _empty_context(state: WebState) -> dict[str, Any]:
         "resolve_rejections": 0,
         "viewing_other": False,
         "controls_enabled": False,
+        "resume_enabled": False,
         "run_state_text": "—",
         "batches_done": 0,
         "outcome": None,
@@ -216,6 +219,7 @@ def _run_state_text(controls_enabled: bool, status: str) -> str:
         "failed": "прогін завершився помилкою",
         "stopped": "прогін зупинено",
         "interrupted": "прогін перервано",
+        "paused": "прогін на паузі",
     }.get(status, "прогін не йде")
 
 
@@ -700,8 +704,18 @@ async def run_stop(state: WebState, form: FormData) -> ActionResult:
     return {"redirect": "/run"}
 
 
+async def run_resume(state: WebState, form: FormData) -> ActionResult:
+    """Продовжує задану призупинену сесію, якщо її контекст ще доступний."""
+    session_id = form.get("session_id", "").strip()
+    if not session_id:
+        raise StateError("Не вказано id сесії", reason="session_id_missing")
+    await state.runner.resume(session_id)
+    return {"redirect": "/run"}
+
+
 SCREEN = Screen(key="run", label="прогін", build=build, group="work")
 ACTIONS = (
     Action(name="run_pause", label="Пауза", screen="run", handler=run_pause),
     Action(name="run_stop", label="Стоп", screen="run", handler=run_stop),
+    Action(name="run_resume", label="Продовжити", screen="run", handler=run_resume),
 )

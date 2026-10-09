@@ -55,6 +55,7 @@ class BatchContext:
     alias: RowAlias = field(default_factory=lambda: RowAlias([]))
     contexts: dict[str, dict[str, Any]] = field(default_factory=dict)
     cursor: str | int | None = None
+    skip_hashes: set[str] = field(default_factory=set)
     records: dict[str, BatchRow] = field(default_factory=dict)
     mechanical: dict[str, list[Defect]] = field(default_factory=dict)
     qa: dict[str, RowVerdict] = field(default_factory=dict)
@@ -237,7 +238,11 @@ async def step_fetch(ctx: BatchContext) -> None:
                 row = Row(raw)
                 if not row.identity_hash:
                     raise ApiError("Рядок API не має identity_hash", code="invalid_response")
-                if row.identity_hash in seen or row.identity_hash in deferred:
+                if (
+                    row.identity_hash in seen
+                    or row.identity_hash in deferred
+                    or row.identity_hash in ctx.skip_hashes
+                ):
                     continue
                 seen.add(row.identity_hash)
                 if row.non_translatable:

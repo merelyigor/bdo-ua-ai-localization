@@ -12,9 +12,10 @@ from sqlmodel import SQLModel
 from bdo_translate.settings import Settings
 from bdo_translate.store.models import ModelCapability, RoleThink  # noqa: F401
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 UPGRADES: dict[int, tuple[str, ...]] = {
     2: ("ALTER TABLE model_capabilities ADD COLUMN efforts TEXT",),
+    3: ("ALTER TABLE run_checkpoints ADD COLUMN ctx_json TEXT",),
 }
 
 
@@ -48,6 +49,10 @@ def open_db(settings: Settings) -> Engine:
                         "PRAGMA table_info(model_capabilities)"
                     ).all()
                     if not columns or any(column[1] == "efforts" for column in columns):
+                        continue
+                if statement == "ALTER TABLE run_checkpoints ADD COLUMN ctx_json TEXT":
+                    columns = connection.exec_driver_sql("PRAGMA table_info(run_checkpoints)").all()
+                    if not columns or any(column[1] == "ctx_json" for column in columns):
                         continue
                 connection.exec_driver_sql(statement)
 

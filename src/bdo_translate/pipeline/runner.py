@@ -1,19 +1,29 @@
 """Керує послідовними dry-run сесіями конвеєра."""
 
+from __future__ import annotations
+
 import asyncio
 import json
 import re
 import time
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from dataclasses import asdict, dataclass, replace
 from datetime import date, datetime, timedelta
 from datetime import time as day_time
-from typing import Any
+from typing import Any, Literal, cast
 from zoneinfo import ZoneInfo
 
 from bdo_translate import clock
-from bdo_translate.api.endpoints import CLIENT_NAME, MAX_ITEMS, facets, machine_generations
+from bdo_translate.api.endpoints import (
+    CLIENT_NAME,
+    MAX_ITEMS,
+    facets,
+    machine_generations,
+    rows_context,
+)
+from bdo_translate.batch.row import Row
 from bdo_translate.errors import ApiError, StateError
+from bdo_translate.model.alias import RowAlias
 from bdo_translate.model.caller import Override
 from bdo_translate.model.roles import active_model, resolve_thinking
 from bdo_translate.model.transport import FailureReason, ModelCallError
@@ -36,8 +46,10 @@ from bdo_translate.pipeline.steps import (
     step_validate,
     step_worker,
 )
+from bdo_translate.quality.defects import check_translation
+from bdo_translate.quality.verdicts import RowVerdict
 from bdo_translate.services import Services
-from bdo_translate.store.models import Batch, Deferred, RunSession
+from bdo_translate.store.models import Batch, Deferred, RunCheckpoint, RunSession
 
 _ROW_FAILURES = frozenset(
     {
@@ -65,6 +77,56 @@ def is_valid_version(value: str) -> bool:
 _RUN_RE = re.compile(r"^[A-Za-z0-9._:-]{1,64}$")
 _DAY_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 _KYIV = ZoneInfo("Europe/Kyiv")
+
+_PREVIOUS_STATE_NEXT_STEP = {
+    BatchState.selected.value: 1,
+    BatchState.memory_checked.value: 2,
+    BatchState.terminology_done.value: 3,
+    BatchState.worker_done.value: 4,
+    BatchState.checks_done.value: 5,
+    BatchState.qa_done.value: 6,
+    BatchState.healing.value: 7,
+    BatchState.judge_done.value: 8,
+    BatchState.names_done.value: 9,
+    BatchState.validated.value: 10,
+}
+
+
+def _steps_for_goal(
+    goal: RunGoal,
+) -> list[tuple[str, str | None, Callable[[BatchContext], Awaitable[None]]]]:
+    """Повертає незмінний порядок кроків для параметрів сесії."""
+    steps: list[tuple[str, str | None, Callable[[BatchContext], Awaitable[None]]]] = [
+        ("fetch", None, step_fetch),
+        ("memory", None, step_memory),
+        ("terminology", "translation-terminology", step_terminology),
+        ("worker", "translation-worker", step_worker),
+        ("checks", None, step_checks),
+        ("qa", "translation-qa", step_qa),
+        ("healing", "translation-repair", step_heal),
+        ("judge", "translation-judge", step_judge),
+        ("names", "translation-names", step_names),
+        ("validate", None, step_validate),
+    ]
+    if not goal.dry_run:
+        steps.append(("commit", None, step_commit))
+    return steps
+
+
+def _mode_for_goal(services: Services, goal: RunGoal) -> ModeSpec:
+    """Відновлює точний фільтр режиму зі збереженої цілі сесії."""
+    mode = services.modes().mode(goal.mode)
+    if mode.source != "rows":
+        return mode
+    if mode.scope == "corpus":
+        query = corpus_query(
+            mode, goal.machine_author, goal.machine_client_version_lt, goal.generation
+        )
+    else:
+        query = {**mode.query, "patch": goal.patch}
+    if goal.category_field is not None and goal.category_value is not None:
+        query[goal.category_field] = goal.category_value
+    return mode.model_copy(update={"query": query})
 
 
 def generation_key(group: dict[str, Any]) -> str | None:
@@ -242,6 +304,18 @@ class Runner:
         self._cursor: str | int | None = None
         self._pause_requested = False
         self._stop_requested = False
+        self._resume_in_progress = False
+        self._resume_state: (
+            tuple[
+                RunGoal,
+                RunSession,
+                BatchContext,
+                list[tuple[str, str | None, Callable[[BatchContext], Awaitable[None]]]],
+                int,
+                int,
+            ]
+            | None
+        ) = None
         self._snapshot_ids: dict[str, int | None] = {}
         self.live_calls = LiveCalls()
 
@@ -323,9 +397,213 @@ class Runner:
         self._cursor = None
         self._pause_requested = False
         self._stop_requested = False
+        self._resume_state = None
         self._publish("session_started", session_id, None, {"mode": mode.label})
         self._task = asyncio.create_task(self._run(goal, run_session))
         return session_id
+
+    def can_resume(self, session_id: str) -> bool:
+        """Перевіряє стан у памʼяті або збережену в SQLite точку паузи."""
+        if (
+            self._resume_state is not None
+            and self._resume_state[1].id == session_id
+            and self._resume_state[1].status == "paused"
+        ):
+            return True
+        repo = self.services.repo()
+        session = repo.get_session(session_id)
+        if session is None or session.status != "paused":
+            return False
+        batches = repo.batches_of(session_id)
+        if not batches:
+            return False
+        batch = batches[-1]
+        checkpoint = repo.get_run_checkpoint(session_id)
+        if checkpoint is not None and checkpoint.batch_id == batch.id:
+            return batch.state in {
+                BatchState.paused.value,
+                BatchState.dry_run_done.value,
+                BatchState.committed.value,
+            }
+        return (
+            batch.state == BatchState.paused.value
+            and self._previous_batch_state(batch.id) in _PREVIOUS_STATE_NEXT_STEP
+        )
+
+    def _previous_batch_state(self, batch_id: str) -> str | None:
+        """Повертає стан, з якого пачка востаннє перейшла на паузу."""
+        repo = self.services.repo()
+        transitions = repo.transitions_of(batch_id)
+        for item in reversed(transitions):
+            if item.to_state == BatchState.paused.value:
+                return item.from_state
+        return None
+
+    async def resume(self, session_id: str) -> None:
+        """Відновлює ту саму сесію з памʼяті або з персистентного checkpoint."""
+        if self._resume_in_progress:
+            raise StateError("Сесія вже виконується", reason="session_running")
+        self._resume_in_progress = True
+        try:
+            await self._resume(session_id)
+        finally:
+            self._resume_in_progress = False
+
+    async def _resume(self, session_id: str) -> None:
+        """Перевіряє й запускає відновлення після резервування виклику."""
+        if self._task is not None and not self._task.done():
+            raise StateError("Сесія вже виконується", reason="session_running")
+        state = self._resume_state
+        repo = self.services.repo()
+        stored_session = repo.get_session(session_id)
+        if stored_session is None:
+            raise StateError("Сесію не знайдено", reason="session_not_found")
+        if stored_session.status != "paused":
+            raise StateError("Сесія не на паузі", reason="session_not_paused")
+        if self._session_id not in {None, session_id}:
+            raise StateError("Ця сесія не є поточною", reason="session_not_current")
+
+        if state is not None and state[1].id == session_id:
+            _goal, session, ctx, steps, next_step, seq = state
+            goal = _goal
+        else:
+            checkpoint = repo.get_run_checkpoint(session_id)
+            batches = repo.batches_of(session_id)
+            if not batches:
+                raise StateError("У сесії немає призупиненої пачки", reason="resume_batch_missing")
+            batch = batches[-1]
+            if checkpoint is not None and checkpoint.batch_id != batch.id:
+                raise StateError(
+                    "Точка відновлення не збігається з пачкою",
+                    reason="resume_checkpoint_mismatch",
+                )
+            resumable_batch = batch.state == BatchState.paused.value or (
+                checkpoint is not None
+                and batch.state in {BatchState.dry_run_done.value, BatchState.committed.value}
+            )
+            if not resumable_batch:
+                raise StateError("Остання пачка не на паузі", reason="resume_batch_not_paused")
+            try:
+                goal_data = json.loads(stored_session.goal_json)
+                if not isinstance(goal_data, dict):
+                    raise ValueError("goal is not an object")
+                goal = RunGoal(**goal_data)
+            except (TypeError, ValueError, json.JSONDecodeError) as error:
+                raise StateError("Ціль сесії пошкоджена", reason="resume_goal_invalid") from error
+            steps = _steps_for_goal(goal)
+            next_step = (
+                checkpoint.next_step
+                if checkpoint is not None
+                else _PREVIOUS_STATE_NEXT_STEP.get(self._previous_batch_state(batch.id) or "", -1)
+            )
+            if next_step < 0 or next_step > len(steps):
+                raise StateError(
+                    "Не вдалося визначити наступний крок", reason="resume_step_unknown"
+                )
+            seq = checkpoint.seq if checkpoint is not None else batch.seq
+            mode = _mode_for_goal(self.services, goal)
+            records = repo.batch_rows(batch.id)
+            try:
+                rows = [Row(json.loads(record.row_json)) for record in records]
+            except (TypeError, ValueError, json.JSONDecodeError) as error:
+                raise StateError(
+                    "Дані призупиненої пачки пошкоджені", reason="resume_batch_invalid"
+                ) from error
+            ctx = BatchContext(
+                services=self.services,
+                bus=self.bus,
+                session=stored_session,
+                batch=batch,
+                mode=mode,
+                rows=rows,
+                cursor=(json.loads(checkpoint.cursor_json) if checkpoint is not None else None),
+                records={record.identity_hash: record for record in records},
+                snapshot_id_cache=self._snapshot_ids,
+                live_callback=self._live_callback(session_id, batch.id),
+            )
+            ctx.alias = RowAlias([row.identity_hash for row in rows])
+            if rows:
+                ctx.contexts = await rows_context(
+                    self.services.api(), [row.identity_hash for row in rows]
+                )
+            for row in rows:
+                record = ctx.records[row.identity_hash]
+                if record.candidate_text is not None:
+                    ctx.mechanical[row.identity_hash] = check_translation(
+                        row, record.candidate_text
+                    )
+            for verdict in repo.verdicts_of(batch.id):
+                if verdict.source == "qa" and verdict.status in {"PASS", "REVIEW", "REJECT"}:
+                    ctx.qa[verdict.identity_hash] = RowVerdict(
+                        status=cast(Literal["PASS", "REVIEW", "REJECT"], verdict.status),
+                        severity=verdict.severity,
+                        source="qa",
+                        issue=verdict.issue,
+                    )
+                if verdict.source == "api_validate" and verdict.status == "REJECT":
+                    ctx.api_rejected.add(verdict.identity_hash)
+            if checkpoint is not None:
+                cursor = json.loads(checkpoint.cursor_json)
+                if cursor is not None and not isinstance(cursor, (str, int)):
+                    raise StateError("Курсор пачки пошкоджений", reason="resume_cursor_invalid")
+                ctx.cursor = cursor
+                if checkpoint.ctx_json is not None:
+                    try:
+                        context_data = json.loads(checkpoint.ctx_json)
+                        if not isinstance(context_data, dict):
+                            raise ValueError("context is not an object")
+                        judge_destinations = context_data.get("judge_destinations", {})
+                        proposals_data = context_data.get("proposals", {})
+                        terminology_hints = context_data.get("terminology_hints", {})
+                        if not isinstance(judge_destinations, dict) or not all(
+                            isinstance(key, str) and isinstance(value, str)
+                            for key, value in judge_destinations.items()
+                        ):
+                            raise ValueError("judge destinations are invalid")
+                        if not isinstance(proposals_data, dict) or not all(
+                            isinstance(key, str)
+                            and isinstance(value, list)
+                            and len(value) == 2
+                            and all(isinstance(part, str) for part in value)
+                            for key, value in proposals_data.items()
+                        ):
+                            raise ValueError("proposals are invalid")
+                        if not isinstance(terminology_hints, dict) or not all(
+                            isinstance(key, str)
+                            and isinstance(value, dict)
+                            and all(
+                                isinstance(term, str) and isinstance(hint, str)
+                                for term, hint in value.items()
+                            )
+                            for key, value in terminology_hints.items()
+                        ):
+                            raise ValueError("terminology hints are invalid")
+                    except (TypeError, ValueError, json.JSONDecodeError) as error:
+                        raise StateError(
+                            "Контекст призупиненої пачки пошкоджений",
+                            reason="resume_context_invalid",
+                        ) from error
+                    ctx.judge_destinations = judge_destinations
+                    ctx.proposals = {
+                        key: (value[0], value[1]) for key, value in proposals_data.items()
+                    }
+                    ctx.terminology_hints = terminology_hints
+            session = stored_session
+
+        session.status = "running"
+        session.finished_at = None
+        session.stop_reason = None
+        repo.update_session(session)
+        self._pause_requested = False
+        self._stop_requested = False
+        self._session_id = session_id
+        self._forgotten = False
+        self._batch_id = ctx.batch.id
+        self._resume_state = None
+        self._publish("session_resumed", session.id, ctx.batch.id, {"seq": seq})
+        self._task = asyncio.create_task(
+            self._run(goal, session, resume_state=(ctx, steps, next_step, seq))
+        )
 
     def pause(self) -> None:
         """Просить runner завершити поточний крок і призупинити сесію."""
@@ -372,19 +650,20 @@ class Runner:
             "stop_reason": session.stop_reason,
         }
 
-    async def _run(self, goal: RunGoal, session: RunSession) -> None:
+    async def _run(
+        self,
+        goal: RunGoal,
+        session: RunSession,
+        resume_state: tuple[
+            BatchContext,
+            list[tuple[str, str | None, Callable[[BatchContext], Awaitable[None]]]],
+            int,
+            int,
+        ]
+        | None = None,
+    ) -> None:
         repo = self.services.repo()
-        mode = self.services.modes().mode(goal.mode)
-        if mode.source == "rows":
-            if mode.scope == "corpus":
-                query = corpus_query(
-                    mode, goal.machine_author, goal.machine_client_version_lt, goal.generation
-                )
-            else:
-                query = {**mode.query, "patch": goal.patch}
-            if goal.category_field is not None and goal.category_value is not None:
-                query[goal.category_field] = goal.category_value
-            mode = mode.model_copy(update={"query": query})
+        mode = _mode_for_goal(self.services, goal)
         last_failure: tuple[str, FailureReason] | None = None
         consecutive_failures = 0
         try:
@@ -408,48 +687,51 @@ class Runner:
                         "",
                     )
                     return
-            for seq in range(1, goal.batches + 1):
+            first_seq = resume_state[3] if resume_state is not None else 1
+            for seq in range(first_seq, goal.batches + 1):
                 if self._stop_requested:
                     break
-                batch_id = clock.new_id(clock.now())
-                self._batch_id = batch_id
-                batch = Batch(
-                    id=batch_id,
-                    session_id=session.id,
-                    seq=seq,
-                    state=BatchState.selected.value,
-                    created_at=clock.iso(clock.now()),
-                    updated_at=clock.iso(clock.now()),
-                )
-                repo.add_batch(batch)
-                ctx = BatchContext(
-                    services=self.services,
-                    bus=self.bus,
-                    session=session,
-                    batch=batch,
-                    mode=mode,
-                    cursor=self._cursor,
-                    snapshot_id_cache=self._snapshot_ids,
-                    live_callback=self._live_callback(session.id, batch_id),
-                )
-                steps = [
-                    ("fetch", None, step_fetch),
-                    ("memory", None, step_memory),
-                    ("terminology", "translation-terminology", step_terminology),
-                    ("worker", "translation-worker", step_worker),
-                    ("checks", None, step_checks),
-                    ("qa", "translation-qa", step_qa),
-                    ("healing", "translation-repair", step_heal),
-                    ("judge", "translation-judge", step_judge),
-                    ("names", "translation-names", step_names),
-                    ("validate", None, step_validate),
-                ]
-                if not goal.dry_run:
-                    steps.append(("commit", None, step_commit))
+                step_start = 0
+                if resume_state is not None and seq == resume_state[3]:
+                    ctx, steps, step_start, _ = resume_state
+                    batch = ctx.batch
+                    batch_id = batch.id
+                    self._batch_id = batch_id
+                else:
+                    batch_id = clock.new_id(clock.now())
+                    self._batch_id = batch_id
+                    batch = Batch(
+                        id=batch_id,
+                        session_id=session.id,
+                        seq=seq,
+                        state=BatchState.selected.value,
+                        created_at=clock.iso(clock.now()),
+                        updated_at=clock.iso(clock.now()),
+                    )
+                    repo.add_batch(batch)
+                    ctx = BatchContext(
+                        services=self.services,
+                        bus=self.bus,
+                        session=session,
+                        batch=batch,
+                        mode=mode,
+                        cursor=self._cursor,
+                        snapshot_id_cache=self._snapshot_ids,
+                        live_callback=self._live_callback(session.id, batch_id),
+                    )
+                    ctx.skip_hashes = {
+                        row.identity_hash
+                        for prior_batch in repo.batches_of(session.id)
+                        if prior_batch.seq < seq
+                        for row in repo.batch_rows(prior_batch.id)
+                    }
+                    steps = _steps_for_goal(goal)
                 current_step = "fetch"
                 current_role: str | None = None
                 try:
-                    for step_name, role, step in steps:
+                    for step_index, (step_name, role, step) in enumerate(steps):
+                        if step_index < step_start:
+                            continue
                         current_step = step_name
                         current_role = role
                         ctx.model_override = self._role_override(role) if role is not None else None
@@ -483,6 +765,31 @@ class Runner:
                             return
                         if self._pause_requested:
                             self._pause_batch(ctx)
+                            repo.save_run_checkpoint(
+                                RunCheckpoint(
+                                    session_id=session.id,
+                                    batch_id=batch.id,
+                                    seq=seq,
+                                    next_step=step_index + 1,
+                                    cursor_json=json.dumps(ctx.cursor, ensure_ascii=False),
+                                    ctx_json=json.dumps(
+                                        {
+                                            "judge_destinations": ctx.judge_destinations,
+                                            "proposals": ctx.proposals,
+                                            "terminology_hints": ctx.terminology_hints,
+                                        },
+                                        ensure_ascii=False,
+                                    ),
+                                )
+                            )
+                            self._resume_state = (
+                                goal,
+                                session,
+                                ctx,
+                                steps,
+                                step_index + 1,
+                                seq,
+                            )
                             self._finish_session(session, "paused", "paused")
                             return
                         if self.services.repo().get_batch(batch_id) is None:
@@ -618,6 +925,8 @@ class Runner:
         session.finished_at = clock.iso(clock.now())
         session.stop_reason = reason
         self.services.repo().update_session(session)
+        if status != "paused":
+            self.services.repo().delete_run_checkpoint(session.id)
         self._publish(
             "session_finished",
             session.id,
