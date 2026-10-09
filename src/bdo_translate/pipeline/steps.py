@@ -28,7 +28,7 @@ from bdo_translate.errors import ApiError, StateError
 from bdo_translate.model.alias import RowAlias
 from bdo_translate.model.caller import CallOutcome, Override, call_role
 from bdo_translate.model.roles import read_schema_text
-from bdo_translate.model.transport import FailureReason, ModelCallError
+from bdo_translate.model.transport import ROW_FAILURES, FailureReason, ModelCallError
 from bdo_translate.modes import ModeSpec
 from bdo_translate.pipeline.events import EventBus
 from bdo_translate.pipeline.machine import transition
@@ -164,50 +164,67 @@ def _restore_errors(
             )
 
 
+_TRANSIENT_DEFER_REASONS = frozenset(item.value for item in ROW_FAILURES)
+
+
 async def _select_proposals(
     ctx: BatchContext, deferred: set[str], target: int
 ) -> list[tuple[dict[str, Any], Row]]:
-    """Бере найстаріші відкриті пропозиції, яких сесія ще не проганяла."""
+    """Бере найстаріші відкриті пропозиції, яких сесія ще не проганяла.
+
+    Другий прохід добирає рядки, відкладені лише через транспортний збій:
+    інакше забите відкладеними вікно API назавжди дає порожню вибірку.
+    """
     api = ctx.services.api()
     raw_proposals, _total = await proposals(api, _PROPOSALS_LIMIT)
     taken = ctx.services.repo().session_row_hashes(ctx.session.id)
     fields = ctx.services.modes().defaults.fields
+    retryable = {
+        item.identity_hash
+        for item in ctx.services.repo().deferred()
+        if item.reason in _TRANSIENT_DEFER_REASONS
+    }
     selected: list[tuple[dict[str, Any], Row]] = []
     seen: set[str] = set()
-    for proposal in raw_proposals:
-        identity_hash = proposal.get("identity_hash")
-        if not isinstance(identity_hash, str) or not identity_hash:
-            continue
-        if identity_hash in seen or identity_hash in deferred or identity_hash in taken:
-            continue
-        proposal_id = proposal.get("id")
-        text = proposal.get("text")
-        if not isinstance(text, str):
-            continue
-        proposal_id_text = (
-            str(proposal_id)
-            if isinstance(proposal_id, (int, str)) and not isinstance(proposal_id, bool)
-            else ""
-        )
-        if not proposal_id_text:
-            continue
-        seen.add(identity_hash)
-        raw = await row_by_hash(api, identity_hash, fields=fields)
-        row = Row(raw)
-        if not row.identity_hash:
-            raise ApiError("Рядок API не має identity_hash", code="invalid_response")
-        if row.non_translatable:
-            _add_verdict(
-                ctx,
-                row,
-                source="mechanical",
-                status="REJECT",
-                code="non_translatable",
-                issue="рядок не перекладається",
+    for allow_retry in (False, True):
+        for proposal in raw_proposals:
+            if len(selected) >= target:
+                break
+            identity_hash = proposal.get("identity_hash")
+            if not isinstance(identity_hash, str) or not identity_hash:
+                continue
+            if identity_hash in seen or identity_hash in taken:
+                continue
+            if identity_hash in deferred and not (allow_retry and identity_hash in retryable):
+                continue
+            proposal_id = proposal.get("id")
+            text = proposal.get("text")
+            if not isinstance(text, str):
+                continue
+            proposal_id_text = (
+                str(proposal_id)
+                if isinstance(proposal_id, (int, str)) and not isinstance(proposal_id, bool)
+                else ""
             )
-            continue
-        ctx.proposals[identity_hash] = (proposal_id_text, text)
-        selected.append((raw, row))
+            if not proposal_id_text:
+                continue
+            seen.add(identity_hash)
+            raw = await row_by_hash(api, identity_hash, fields=fields)
+            row = Row(raw)
+            if not row.identity_hash:
+                raise ApiError("Рядок API не має identity_hash", code="invalid_response")
+            if row.non_translatable:
+                _add_verdict(
+                    ctx,
+                    row,
+                    source="mechanical",
+                    status="REJECT",
+                    code="non_translatable",
+                    issue="рядок не перекладається",
+                )
+                continue
+            ctx.proposals[identity_hash] = (proposal_id_text, text)
+            selected.append((raw, row))
         if len(selected) >= target:
             break
     return selected

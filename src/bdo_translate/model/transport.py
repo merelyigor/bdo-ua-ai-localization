@@ -32,6 +32,19 @@ class FailureReason(StrEnum):
 
 WAITABLE = {FailureReason.RATE_LIMITED, FailureReason.UPSTREAM_UNAVAILABLE}
 LOOPS = {FailureReason.THINKING_LOOP, FailureReason.ANSWER_LOOP}
+ROW_FAILURES = frozenset(
+    {
+        FailureReason.TRUNCATED,
+        FailureReason.NOT_JSON,
+        FailureReason.SCHEMA_MISMATCH,
+        FailureReason.ANSWER_LOOP,
+        FailureReason.THINKING_LOOP,
+        FailureReason.EMPTY_CONTENT,
+        FailureReason.STREAM_INCOMPLETE,
+        FailureReason.TIMEOUT,
+        FailureReason.CONTEXT_OVERFLOW,
+    }
+)
 
 
 class ModelCallError(TransportError):

@@ -26,7 +26,7 @@ from bdo_translate.errors import ApiError, StateError
 from bdo_translate.model.alias import RowAlias
 from bdo_translate.model.caller import Override
 from bdo_translate.model.roles import active_model, resolve_thinking
-from bdo_translate.model.transport import FailureReason, ModelCallError
+from bdo_translate.model.transport import ROW_FAILURES, FailureReason, ModelCallError
 from bdo_translate.modes import ModeSpec
 from bdo_translate.pipeline.commit import step_commit
 from bdo_translate.pipeline.events import Event, EventBus
@@ -50,21 +50,6 @@ from bdo_translate.quality.defects import check_translation
 from bdo_translate.quality.verdicts import RowVerdict
 from bdo_translate.services import Services
 from bdo_translate.store.models import Batch, Deferred, RunCheckpoint, RunSession
-
-_ROW_FAILURES = frozenset(
-    {
-        FailureReason.TRUNCATED,
-        FailureReason.NOT_JSON,
-        FailureReason.SCHEMA_MISMATCH,
-        FailureReason.ANSWER_LOOP,
-        FailureReason.THINKING_LOOP,
-        FailureReason.EMPTY_CONTENT,
-        FailureReason.STREAM_INCOMPLETE,
-        FailureReason.TIMEOUT,
-        FailureReason.CONTEXT_OVERFLOW,
-    }
-)
-
 
 _VERSION_RE = re.compile(r"^\d+\.\d+\.\d+$")
 
@@ -812,7 +797,7 @@ class Runner:
                     last_failure = None
                     consecutive_failures = 0
                 except ModelCallError as error:
-                    if error.failure not in _ROW_FAILURES:
+                    if error.failure not in ROW_FAILURES:
                         self._fail_session(session, error.failure.value, batch_id)
                         self._append_resolve_rejections(ctx)
                         return
