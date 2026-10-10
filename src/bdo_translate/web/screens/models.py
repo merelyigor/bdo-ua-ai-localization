@@ -89,6 +89,7 @@ async def _smoke_call(
     *,
     think: bool | None = None,
     effort: str | None = None,
+    max_waits: int | None = None,
 ) -> CallOutcome:
     """Робить один короткий виклик smoke-ролі без рядків гри."""
     return await call_role(
@@ -101,6 +102,7 @@ async def _smoke_call(
             think=think,
             effort=effort,
             resolved_thinking=True,
+            max_waits=max_waits,
         ),
     )
 
@@ -551,6 +553,9 @@ async def _check_model(
 
     При ``reprobe=True`` збережений перелік рівнів ігнорується: рівні
     перебираються наново, як для моделі без збереженого переліку.
+    Зонди обмежені ``max_waits``: стійка відмова повертається, а не
+    чекається годинами. Режим роздумів перепроваджується щоразу
+    (поведінка шлюзу дрейфує), крім ``never``.
     """
     repo = state.services.repo()
     roles = state.services.roles()
@@ -561,7 +566,7 @@ async def _check_model(
     )
 
     calls: list[CallOutcome] = []
-    smoke = await _smoke_call(state, provider, model)
+    smoke = await _smoke_call(state, provider, model, max_waits=2)
     calls.append(smoke)
     checked_at = clock.iso(clock.now())
     accepted_efforts: list[str] = []
@@ -576,6 +581,7 @@ async def _check_model(
                 model,
                 think=True,
                 effort=effort,
+                max_waits=2,
             )
             calls.append(outcome)
             if outcome.ok:
@@ -583,8 +589,8 @@ async def _check_model(
             elif not _parameter_refusal(outcome):
                 efforts_complete = False
 
-    if smoke.ok and think_mode == "unknown":
-        disabled = await _smoke_call(state, provider, model, think=False)
+    if smoke.ok and think_mode != "never":
+        disabled = await _smoke_call(state, provider, model, think=False, max_waits=2)
         calls.append(disabled)
         if disabled.ok:
             think_mode = "toggle"

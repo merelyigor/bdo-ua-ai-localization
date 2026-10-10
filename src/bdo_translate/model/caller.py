@@ -44,6 +44,7 @@ class Override:
     think: bool | None = None
     effort: str | None = None
     resolved_thinking: bool = False
+    max_waits: int | None = None
 
 
 @dataclass(frozen=True)
@@ -108,6 +109,8 @@ def build_request_json(
         request_data["think"] = role_spec.think if selected.think is None else selected.think
         if selected.effort is not None:
             request_data["effort"] = selected.effort
+    if selected.max_waits is not None:
+        request_data["max_waits"] = selected.max_waits
     return request_data
 
 
@@ -262,6 +265,8 @@ async def _execute(
     loop_retries = 0
     transport_retries = 0
     attempts = 0
+    raw_max_waits = request_data.get("max_waits")
+    max_waits = raw_max_waits if isinstance(raw_max_waits, int) and raw_max_waits >= 0 else None
     while True:
         attempts += 1
         started = clock.now()
@@ -359,6 +364,14 @@ async def _execute(
             return CallOutcome(call_id, True, parsed, items, attempts=attempts)
         if failure.failure in WAITABLE:
             waits += 1
+            if max_waits is not None and waits > max_waits:
+                return CallOutcome(
+                    call_id,
+                    False,
+                    failure=failure.reason,
+                    message=failure.message,
+                    attempts=attempts,
+                )
             await asyncio.sleep(wait_seconds(failure, waits))
             continue
         if (
