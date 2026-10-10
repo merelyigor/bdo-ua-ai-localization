@@ -1,21 +1,19 @@
-# Бригада: звірка блоку правил і нагадування про делегування (skill brygada).
-# Агент дописує цей фрагмент у <проєкт>/.codex/config.toml за розділом
-# «Хуки проєкту» skill brygada; хук лише оновлює наявний блок.
+# >>> skill brygada: SessionStart-хук (Бригада: правила сесії зі skill); ставить і оновлює агент за references/hooks.md
 [[hooks.SessionStart]]
 
 [[hooks.SessionStart.hooks]]
 type = "command"
-command = 'f="$HOME/.codex/skills/brygada/scripts/brygada_hook.py"; if [ -f "$f" ]; then python3 "$f" --client codex; fi'
+command = 'f="$HOME/.codex/skills/brygada/scripts/brygada_hook.py"; if [ -f "$f" ]; then python3 "$f" --client codex || true; fi'
 timeout = 10
-statusMessage = "Бригада: звірка блоку правил"
+statusMessage = "Бригада: правила сесії"
+# <<< skill brygada
 
-# Формат звіту: звірка блоку правил (skill report-format).
-# Агент дописує цей фрагмент у <проєкт>/.codex/config.toml за розділом
-# «Хуки проєкту» skill report-format; хук лише оновлює наявний блок.
+# >>> skill report-format: SessionStart-хук (формат звіту зі skill); ставить і оновлює агент за references/hooks.md
 [[hooks.SessionStart]]
 
 [[hooks.SessionStart.hooks]]
 type = "command"
-command = 'f="$HOME/.codex/skills/report-format/scripts/report_format_hook.py"; if [ -f "$f" ]; then python3 "$f" --client codex; fi'
+command = 'f="$HOME/.codex/skills/report-format/scripts/report_format_hook.py"; if [ -f "$f" ]; then python3 "$f" --client codex || true; fi'
 timeout = 10
-statusMessage = "Формат звіту: звірка блоку правил"
+statusMessage = "Формат звіту: актуальний текст"
+# <<< skill report-format

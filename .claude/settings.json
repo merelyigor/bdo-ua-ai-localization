@@ -2,5 +2,19 @@
   "attribution": {
     "commit": "",
     "pr": ""
+  },
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "f=\"$HOME/.claude/skills/report-format/scripts/report_format_hook.py\"; if [ -f \"$f\" ]; then python3 \"$f\" --client claude || true; fi",
+            "timeout": 10,
+            "statusMessage": "Формат звіту: актуальний текст"
+          }
+        ]
+      }
+    ]
   }
 }
