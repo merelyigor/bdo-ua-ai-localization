@@ -17,3 +17,13 @@ command = 'f="$HOME/.codex/skills/report-format/scripts/report_format_hook.py"; 
 timeout = 10
 statusMessage = "Формат звіту: актуальний текст"
 # <<< skill report-format
+
+# >>> skill dev-standard: SessionStart-хук (активний план і крок зі skill); ставить і оновлює агент за references/hooks.md
+[[hooks.SessionStart]]
+
+[[hooks.SessionStart.hooks]]
+type = "command"
+command = 'f="$HOME/.codex/skills/dev-standard/scripts/dev_standard_hook.py"; if [ -f "$f" ]; then python3 "$f" --client codex || true; fi'
+timeout = 10
+statusMessage = "Плани: де продовжувати"
+# <<< skill dev-standard

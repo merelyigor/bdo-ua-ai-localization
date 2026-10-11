@@ -181,7 +181,7 @@ uv run bdo web start
 | Ухвалені технічні рішення | [`docs/DECISIONS.md`](docs/DECISIONS.md) |
 | Безпека й класи даних | [`docs/SECURITY.md`](docs/SECURITY.md) |
 | Уроки PHP-попередника й перехід із нього | [`docs/LESSONS_FROM_PHP.md`](docs/LESSONS_FROM_PHP.md), [`docs/MIGRATION.md`](docs/MIGRATION.md) |
-| Плани, дефекти, журнал сесій | [`docs/plans/README.md`](docs/plans/README.md), [`docs/plans/DEFECTS.md`](docs/plans/DEFECTS.md), [`docs/plans/PROGRESS.md`](docs/plans/PROGRESS.md) |
+| Плани, дефекти, журнал сесій | [`docs/plans/README.md`](docs/plans/README.md), [`docs/plans/DEFECTS.md`](docs/plans/DEFECTS.md), [`docs/PROGRESS.md`](docs/PROGRESS.md) |
 
 ## Для розробника
 

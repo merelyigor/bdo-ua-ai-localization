@@ -2,6 +2,7 @@
 
 import re
 import subprocess
+import sys
 from collections.abc import Callable
 from pathlib import Path
 
@@ -142,6 +143,19 @@ def _check_docs(files: list[Path]) -> list[str]:
             if not relative.exists() and not rooted.exists():
                 line = content.count("\n", 0, match.start()) + 1
                 problems.append(f"бите посилання: {path}:{line} → {target}")
+
+    plan_check = Path.home() / ".codex/skills/dev-standard/scripts/plan_check.py"
+    if plan_check.is_file():
+        result = subprocess.run(
+            [sys.executable, str(plan_check), "--root", str(_ROOT)],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if result.returncode != 0:
+            problems.append(
+                "plan_check: " + (result.stdout.strip().splitlines() or ["без виводу"])[-1]
+            )
     return problems
 
 
