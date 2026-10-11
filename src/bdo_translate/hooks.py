@@ -7,7 +7,7 @@ import tomllib
 from collections.abc import Callable, Iterable
 from pathlib import Path
 
-from bdo_translate.gate import personal_data_hits, run_gate
+from bdo_translate.gate import personal_data_hits, plan_check_problems, run_gate
 
 _ROOT = Path(__file__).resolve().parents[2]
 _VERSION_LINE = re.compile(r"^Версія: (\d+)\.(\d+)\.(\d+)$")
@@ -156,8 +156,14 @@ def _commit_message_check(message: str, echo: Callable[[str], None]) -> int:
 
 
 def pre_commit(echo: Callable[[str], None]) -> int:
-    """Перевіряє staged files на секрети перед комітом."""
-    return run_gate("secrets", echo, staged=True)
+    """Перевіряє staged files на секрети та плани dev-standard перед комітом."""
+    secrets_code = run_gate("secrets", echo, staged=True)
+    echo("== plan_check ==")
+    problems = plan_check_problems()
+    for problem in problems:
+        echo(problem)
+    echo(f"-- plan_check: {'FAIL' if problems else 'OK'}")
+    return 1 if secrets_code or problems else 0
 
 
 def commit_msg(path: Path, echo: Callable[[str], None]) -> int:
