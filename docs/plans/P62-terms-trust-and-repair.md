@@ -42,7 +42,7 @@
 - [ ] Відхилення від поради · запис у SQLite (нова таблиця `term_signal`: сесія, рядок, `canonical_source`, очікуване, фактичне, модель) для P63; рядок іде далі як чистий.
 - [ ] Промпти `roles/translation-worker.md`, `translation-repair.md`, `translation-judge.md` розрізняють «закон» і «пораду» простими словами; проєктуються під найслабшу дозволену модель (§8); prompt-time include заборонений.
 - [ ] Звірка на DEV: навмисно зламаний вхід (переклад без назви-закону) · екран показує дефект і ремонт; прогін із записом на DEV (стоячий дозвіл власника 2026-10-02); знімки `P62-*`; gate 0.
-- [ ] План видалено на закритті (D-59), PROGRESS.
+- [ ] План видалено на закритті (D-59).
 
 ## Scope
 
@@ -65,7 +65,7 @@
 
 - Ключові файли: див. Scope; зразки · `quality/glossary_case.py` (людські терміни), `pipeline/names.py` (`glossary_used`, крок «назви»), `pipeline/heal.py` (цикл лікування, `row.glossary_human()` у payload ремонту), `pipeline/commit.py::_proposal_note`.
 - `docs/API.md`: `details.glossary[]` у `validate` несе `blocking` і `match_kind`; `source_span`, `match_kind`, `forms` у блоці `glossary` рядка. Перевірити на DEV, які з цих полів реально приходять, і записати в `Notes` 1.1.
-- Підсумок виміру · `Progress log` закритого P61 (у `PROGRESS.md` і в історії git).
+- Підсумок виміру · `Progress log` закритого P61 (в історії git).
 
 ## Assumptions and open questions
 
@@ -76,8 +76,7 @@
 1. Перед стартом: план `approved` І пауза термінів знята власником (див. Constraints). Інакше · нічого не робити.
 2. Код пише делегований виконавець за глобальним skill `brygada`; головна сесія веде план, звіряє й комітить.
 3. Кожен крок · звірка §9.5 на DEV; нова механічна перевірка показується на навмисно зламаному вході.
-10. Прогалину вирішуй сам за порядком джерел довідника §5.5, рядок у `EXECUTOR_DECISIONS.md`.
-10а. Зупинка лише перед необоротним: PROD-запис, `.env`, секрети, push, віддалені моделі, крім `go/*-free`.
+4. Режим `autonomous` skill dev-standard: розбіжність плану з кодом у межах Scope вирішуй сам і записуй у `Notes` кроку; стоп — перед необоротною дією, дією поза Scope або з секретами.
 
 ## Phase 1 — Рівні довіри, перевірка за відмінками, ремонт замість модерації
 
@@ -228,17 +227,15 @@
 
 - **Status:** pending
 - **Depends on:** Step 1.1, Step 1.2, Step 1.3, Step 1.4, Step 1.5, Step 1.6
-- **Files:** `docs/PROGRESS.md`, `docs/plans/P62-terms-trust-and-repair.md` (видалення), `docs/plans/README.md`, `docs/plans/BACKLOG.md`
+- **Files:** `docs/plans/P62-terms-trust-and-repair.md` (видалення), `docs/plans/README.md`
 
 **Do:**
-- [ ] Рядок у `docs/PROGRESS.md`.
 - [ ] `git rm` плану, рядок реєстру геть (D-59).
-- [ ] Рядки беклогу про `pymorphy3` і `glossary/match` прибрати, якщо виконані.
 
 **Verify:**
-- [ ] `uv run bdo gate` → код 0; файла плану й рядка реєстру немає, підсумок у `docs/PROGRESS.md`.
+- [ ] `uv run bdo gate` → код 0; файла плану й рядка реєстру немає.
 
-**Done when:** план видалено тим самим комітом (D-59), підсумок у `docs/PROGRESS.md`.
+**Done when:** план видалено тим самим комітом (D-59).
 
 **If it fails:** стоп, питання власнику.
 

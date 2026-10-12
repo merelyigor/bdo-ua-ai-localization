@@ -181,7 +181,7 @@ uv run bdo web start
 | Ухвалені технічні рішення | [`docs/DECISIONS.md`](docs/DECISIONS.md) |
 | Безпека й класи даних | [`docs/SECURITY.md`](docs/SECURITY.md) |
 | Уроки PHP-попередника й перехід із нього | [`docs/LESSONS_FROM_PHP.md`](docs/LESSONS_FROM_PHP.md), [`docs/MIGRATION.md`](docs/MIGRATION.md) |
-| Плани, дефекти, журнал сесій | [`docs/plans/README.md`](docs/plans/README.md), [`docs/plans/DEFECTS.md`](docs/plans/DEFECTS.md), [`docs/PROGRESS.md`](docs/PROGRESS.md) |
+| Плани й відкладене | [`docs/plans/README.md`](docs/plans/README.md) |
 
 ## Для розробника
 
@@ -198,21 +198,12 @@ uv run bdo web restart                # перезапуск сервера бе
 uv run bdo version                    # версія пакета = рядок 1 коміту
 ```
 
-Промпт для сесії агента-розробника:
-
-```text
-Прочитай AGENTS.md, docs/PLANNING.md і docs/plans/README.md. Візьми активний
-план, прочитай його заголовок і «Instructions for the executor», почни з
-першого кроку зі статусом не done. Працюй лише за планом. Наприкінці · звіт
-за форматом AGENTS.md.
-```
-
 | Шлях | Що |
 |---|---|
 | `src/bdo_translate/` | код: конвеєр, клієнт API, моделі, перевірки, вебсторінка, `bdo` CLI |
 | `roles/`, `roles/schema/` | промпти ролей і JSON-схеми відповідей |
 | `config/roles.json`, `config/modes.json` | параметри ролей; режими прогону й канали запису |
-| `docs/`, `docs/plans/` | довідник, рішення, архітектура, плани й реєстри |
+| `docs/`, `docs/plans/` | довідник, рішення, архітектура, плани й реєстр планів |
 | `reference/` | карта попередника, форми payload, знімки старого інтерфейсу |
 | `AGENTS.md` | локальні правила проєкту та bootstrap глобального skill `brygada` |
 | `BDO.app` | зібраний значок macOS, переносний |

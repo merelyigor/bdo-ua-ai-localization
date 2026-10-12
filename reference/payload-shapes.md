@@ -12,7 +12,7 @@
 }
 ```
 
-Концептів гри (`concepts`) у v1 немає (BACKLOG). Поля елемента, які бувають додатково: `non_translatable: true` (з `constraints.non_translatable` рядка), `current`
+Концептів гри (`concepts`) у v1 немає (відкладено, `docs/plans/README.md`). Поля елемента, які бувають додатково: `non_translatable: true` (з `constraints.non_translatable` рядка), `current`
 (попередній український текст у режимі `improve`), `reference_ru`,
 `glossary` (обовʼязкові відповідники саме цього рядка), `glossary_hint`.
 

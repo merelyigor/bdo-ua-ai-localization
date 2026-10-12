@@ -17,7 +17,7 @@ PHP-попередник (далі `$OLD`) локально більше не з
 | тіло запису, retry/backoff API, коди помилок, розбір конверта | `lib/Api/WritePayload.php`, `lib/Http/Client.php`, `lib/Api/ErrorCodes.php`, `lib/Api/Response.php`, `lib/Api/TranslationWriter.php` | `api/*` (P02, P07) |
 | побудова payload ролей, поля рядка API | `lib/Cli/Command/Prepare/*.php`, `lib/Batch/Row.php` | `batch/payload.py`, `batch/row.py` (P04) |
 | дизайн-система: токени, теми, класи | `web/app.css`, екрани `web/*.html` | `web/static/app.css` (P01), шаблони екранів (P01–P09) |
-| закриті дефекти як чеклист класів помилок | `docs/plans/DEFECTS.md` і git-історія | приклади зламаного вводу для екрана «Якість» (P04, P09) |
+| закриті дефекти як чеклист класів помилок | git-історія (колишній реєстр дефектів) | приклади зламаного вводу для екрана «Якість» (P04, P09) |
 | журнал викликів для паритету (лише читання) | `state/model-calls.jsonl` | екран «Статистика», P08 |
 | вигляд екранів попередника | знімки живого UI в [`ui-old/`](ui-old/README.md) (не в `$OLD`) | екрани власника, P09 |
 
