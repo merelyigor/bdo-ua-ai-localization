@@ -34,4 +34,4 @@ super_admin.
 Запит запису · `api/endpoints.py` (`validate`, `write`); порядок кроків,
 канал прогону, `Idempotency-Key` (D-26) і повтор після лікування розмітки ·
 `pipeline/commit.py` (`step_commit`, `idempotency_key`, `markup_repair`).
-Другого шляху запису немає (§7.2 довідника).
+Другого шляху запису немає (`docs/API.md`).

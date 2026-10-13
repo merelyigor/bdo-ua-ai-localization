@@ -180,13 +180,15 @@ uv run bdo web start
 | Архітектура, життя пачки, таблиці SQLite | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) |
 | Ухвалені технічні рішення | [`docs/DECISIONS.md`](docs/DECISIONS.md) |
 | Безпека й класи даних | [`docs/SECURITY.md`](docs/SECURITY.md) |
+| Звірка в браузері | [`docs/WEB.md`](docs/WEB.md) |
+| Git, повідомлення комітів і версія | [`docs/COMMITS.md`](docs/COMMITS.md) |
 | Уроки PHP-попередника й перехід із нього | [`docs/LESSONS_FROM_PHP.md`](docs/LESSONS_FROM_PHP.md), [`docs/MIGRATION.md`](docs/MIGRATION.md) |
 | Плани й відкладене | [`docs/plans/README.md`](docs/plans/README.md) |
 
 ## Для розробника
 
-Код пишуть агенти за планами; правила · [`AGENTS.md`](AGENTS.md) (єдиний
-канон; `CLAUDE.md` лише імпортує його рядком `@AGENTS.md`), деталі · [`docs/RULES_REFERENCE.md`](docs/RULES_REFERENCE.md).
+Код пишуть агенти за планами; короткі факти проєкту · [`AGENTS.md`](AGENTS.md)
+(єдиний канон; `CLAUDE.md` лише імпортує його рядком `@AGENTS.md`), деталі · документи в [`docs/`](docs/).
 Автотестів немає: кожен крок перевіряється у справжньому браузері на живих
 даних середовища розробки (DEV). Pull request приймається після такої ж
 перевірки й зеленого `gate`.
@@ -203,9 +205,9 @@ uv run bdo version                    # версія пакета = рядок 1
 | `src/bdo_translate/` | код: конвеєр, клієнт API, моделі, перевірки, вебсторінка, `bdo` CLI |
 | `roles/`, `roles/schema/` | промпти ролей і JSON-схеми відповідей |
 | `config/roles.json`, `config/modes.json` | параметри ролей; режими прогону й канали запису |
-| `docs/`, `docs/plans/` | довідник, рішення, архітектура, плани й реєстр планів |
+| `docs/`, `docs/plans/` | API, безпека, архітектура, рішення, плани й реєстр планів |
 | `reference/` | карта попередника, форми payload, знімки старого інтерфейсу |
-| `AGENTS.md` | локальні правила проєкту та bootstrap глобального skill `brygada` |
+| `AGENTS.md` | короткі факти проєкту для агентів: гейти, git, небезпечні місця |
 | `BDO.app` | зібраний значок macOS, переносний |
 
 ## Повʼязані проєкти

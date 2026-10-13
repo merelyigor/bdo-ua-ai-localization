@@ -115,8 +115,11 @@ def _check_secrets(files: list[Path], staged: bool = False) -> list[str]:
 
 
 def plan_check_problems() -> list[str]:
-    """Запускає `plan_check` skill dev-standard; кожна знахідка · окрема проблема."""
-    plan_check = Path.home() / ".codex/skills/dev-standard/scripts/plan_check.py"
+    """Запускає `plan_check` dev-standard плагіна merely; кожна знахідка · окрема проблема."""
+    plan_check = (
+        Path.home()
+        / "GitHub/agent-skills-merelyigor/plugins/merely/skills/dev-standard/scripts/plan_check.py"
+    )
     if not plan_check.is_file():
         return []
     result = subprocess.run(
