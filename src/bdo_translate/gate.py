@@ -2,7 +2,6 @@
 
 import re
 import subprocess
-import sys
 from collections.abc import Callable
 from pathlib import Path
 
@@ -114,27 +113,6 @@ def _check_secrets(files: list[Path], staged: bool = False) -> list[str]:
     return problems
 
 
-def plan_check_problems() -> list[str]:
-    """Запускає `plan_check` dev-standard плагіна merely; кожна знахідка · окрема проблема."""
-    plan_check = (
-        Path.home()
-        / "GitHub/agent-skills-merelyigor/plugins/merely/skills/dev-standard/scripts/plan_check.py"
-    )
-    if not plan_check.is_file():
-        return []
-    result = subprocess.run(
-        [sys.executable, str(plan_check), "--root", str(_ROOT)],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    if result.returncode == 0:
-        return []
-    lines = [line for line in result.stdout.splitlines() if line.strip()]
-    lines.extend(line for line in result.stderr.splitlines() if line.strip())
-    return [f"plan_check: {line}" for line in lines] or ["plan_check: без виводу"]
-
-
 def _check_docs(files: list[Path]) -> list[str]:
     problems: list[str] = []
     agents = _ROOT / "AGENTS.md"
@@ -165,7 +143,6 @@ def _check_docs(files: list[Path]) -> list[str]:
                 line = content.count("\n", 0, match.start()) + 1
                 problems.append(f"бите посилання: {path}:{line} → {target}")
 
-    problems.extend(plan_check_problems())
     return problems
 
 

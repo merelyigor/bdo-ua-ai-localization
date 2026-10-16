@@ -14,7 +14,7 @@ Python-конвеєр перекладу Black Desert Online українськ�
 ## Команди й гейти
 
 - `uv run bdo gate` — усі статичні перевірки; профілі: `uv run bdo gate secrets|docs|lint|types`. Успіх лише з кодом 0.
-- `.githooks/pre-commit` перевіряє секрети й план; `commit-msg` — формат/версію та персональні дані; `pre-push` — нові коміти й gitleaks.
+- `.githooks/pre-commit` перевіряє секрети; плани перевіряє хук плагіна `merely` при коміті агента; `commit-msg` — формат/версію та персональні дані; `pre-push` — нові коміти й gitleaks.
 - Перевірка приймання — браузерний протокол у [`WEB.md`](docs/WEB.md); gate не замінює його.
 
 ## Git і версія
