@@ -1,78 +1,7 @@
-# P58 · Помітка автора до пропозиції: причина судді на картці модератора
+# P58 — Tasks
 
-| Field | Value |
-|---|---|
-| ID | P58 |
-| Status | in-progress |
-| Created | 2026-10-02 |
-| Last updated | 2026-10-02 |
-| Author | Claude (сесія планування) за запитом власника |
-| Source | власник 2026-10-02: «треба · це б полегшило розуміння причини відхилення пропозиції суддею». Контракт сайту · повідомлення сесії сайту 2026-10-02 (нижче). |
-| Registry entry | [README.md](README.md) |
-| Format | dev-standard 1 |
+Plan: [plan.md](plan.md).
 
-## Що вже є
-
-Рядок, який суддя чи механічні перевірки відправили в чергу, пишеться каналом
-`proposal` (`layer=manual`, `mode=proposal`, `auto_approve=false`). Причина
-зберігається лише локально: `_save_queue_reason` → `QueueReason`
-(`pipeline/commit.py`), текст з `_queue_reason_detail` (до 3 зауважень ролей,
-≤ 400 символів) або механічний дефект. `/review` показує її як «чому тут».
-На сайт причина не йде (`api/endpoints.py::write`), модератор її не бачить.
-
-## Контракт сайту (сесія сайту, 2026-10-02)
-
-- `items[].note`: `string|null`, звичайний текст. Нормалізація на сервері:
-  керівні символи геть (перенос лишається), 3+ переносів → 2, trim; порожнє → null.
-- Межа 500 символів після нормалізації; більше чи не рядок → увесь запит
-  400 `invalid_request`, `details.parameter = "items.<index>.note"`, `details.max = 500`.
-- `/translations/validate` перевіряє так само, нічого не зберігає.
-- Зберігається лише для `mode=proposal`; результат елемента має `note_saved: true`.
-  Для `mode=direct` поле мовчки ігнорується.
-- `GET /translations/proposals` і `GET /translations/decisions` повертають `note`.
-  Модератор бачить «Пояснення автора: …» на картці черги.
-- Ідемпотентність: той самий ключ і тіло · збережена відповідь; інший `note`
-  з тим самим ключем · конфлікт ідемпотентності.
-- Схема БД сайту не змінюється; PROD · лише деплой (з власником).
-
-## Goal
-
-- Кожна пропозиція з нашого конвеєра несе `note` з причиною черги, і
-  модератор на сайті бачить, чому рядок прийшов.
-- `/review` показує `note`, який повернув сайт, поруч із локальною причиною.
-
-## Definition of Done
-
-- [ ] Одна функція будує текст `note` з тих самих джерел, що `_save_queue_reason`
-  (механічний дефект або `_queue_reason_detail`), ≤ 500 символів, без хешів.
-- [ ] `note` іде в `items[]` лише для каналу `proposal` (і в `validate`, і в
-  `write`); для `machine`/`manual` не додається.
-- [ ] `ItemResult` читає `note_saved`; відповідь запису лежить у `writes` як і раніше.
-- [ ] `/review` показує «Пояснення автора: …» з `note` пропозиції (або нічого, коли `null`).
-- [ ] Звірка на DEV: запис каналом `proposal` (лише з дозволом власника в Notes
-  кроку 1.3), `/review` на DEV показує пояснення; знімки `P58-*`; `uv run bdo gate` 0.
-- [ ] План видалено на закритті (D-59).
-
-## Non-goals
-
-- Помітка для глосарних пропозицій.
-- Калібрування судді рішеннями з `GET /translations/decisions` (рядок «Відкладене» реєстру планів).
-
-## Stop conditions
-
-- Сайт ще не підтвердив `note` на DEV · план `blocked`.
-- ~~PROD відхиляє невідоме поле~~ · знято 2026-10-02: сайт підтвердив за кодом
-  PROD, що невідомий ключ у `items[]` мовчки відкидається на write і validate.
-  До деплою на PROD `note` не зберігається, `note_saved` і `note` у відповідях
-  відсутні (читати як «немає»).
-
-## Assumptions and open questions
-
-- Single package: усі кроки послідовні й правлять спільні файли (`pipeline/commit.py`, екран `/review`), паралельних пакетів немає.
-
-## Instructions for the executor
-
-- Режим `autonomous` skill dev-standard: розбіжність плану з кодом у межах Scope вирішуй сам і записуй у `Notes` кроку; стоп — перед необоротною дією, дією поза Scope або з секретами.
 
 ## Phase 1 — Помітка автора до пропозиції
 
@@ -185,7 +114,7 @@
 
 - **Status:** pending
 - **Depends on:** Step 1.3
-- **Files:** `README.md` (якщо екран `/review` описано), `docs/plans/README.md`, `docs/plans/P58-proposal-note.md` (видалення)
+- **Files:** `README.md` (якщо екран `/review` описано), `plans/README.md`, `plans/P58-proposal-note/plan.md` (видалення)
 
 **Do:**
 - [ ] README (якщо екран `/review` описано), `git rm` плану й рядок реєстру (D-59).
@@ -200,11 +129,6 @@
 **Notes:**
 - (немає)
 
-## Final verification
-
-- [ ] `uv run bdo gate` → код 0.
-- [ ] Звірка на DEV: запис каналом `proposal` (з дозволом власника в `Notes` кроку 1.3), `writes.response_json` має `note_saved: true`, `/review` на DEV показує пояснення; знімки `P58-*`.
-- [ ] `note` не додається для каналів `machine` і `manual`.
 
 ## Progress log
 

@@ -682,7 +682,7 @@ textarea.grow:focus{outline:none;border-color:var(--bda)}
   .spin{animation:none;border-top-color:var(--bd)}
 }
 
-/* --- GUI-полірування 2026-09-06 (план docs/plans/active/2026-09-06_GUI_UX_POLISH.md) ---
+/* --- GUI-полірування 2026-09-06 (план plans/active/2026-09-06_GUI_UX_POLISH.md) ---
    Тільки ДОДАВАННЯ: жодне правило вище не змінено, тому gates `tests/web-*.sh`
    бачать ті самі селектори. Нові класи вживаються лише в новій розмітці. */
 :root{

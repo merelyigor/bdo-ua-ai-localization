@@ -183,7 +183,7 @@ uv run bdo web start
 | Звірка в браузері | [`docs/WEB.md`](docs/WEB.md) |
 | Git, повідомлення комітів і версія | [`docs/COMMITS.md`](docs/COMMITS.md) |
 | Уроки PHP-попередника й перехід із нього | [`docs/LESSONS_FROM_PHP.md`](docs/LESSONS_FROM_PHP.md), [`docs/MIGRATION.md`](docs/MIGRATION.md) |
-| Плани й відкладене | [`docs/plans/README.md`](docs/plans/README.md) |
+| Плани й відкладене | [`plans/README.md`](plans/README.md) |
 
 ## Для розробника
 
@@ -205,7 +205,7 @@ uv run bdo version                    # версія пакета = рядок 1
 | `src/bdo_translate/` | код: конвеєр, клієнт API, моделі, перевірки, вебсторінка, `bdo` CLI |
 | `roles/`, `roles/schema/` | промпти ролей і JSON-схеми відповідей |
 | `config/roles.json`, `config/modes.json` | параметри ролей; режими прогону й канали запису |
-| `docs/`, `docs/plans/` | API, безпека, архітектура, рішення, плани й реєстр планів |
+| `docs/`, `plans/` | API, безпека, архітектура, рішення, плани й реєстр планів |
 | `reference/` | карта попередника, форми payload, знімки старого інтерфейсу |
 | `AGENTS.md` | короткі факти проєкту для агентів: гейти, git, небезпечні місця |
 | `BDO.app` | зібраний значок macOS, переносний |
