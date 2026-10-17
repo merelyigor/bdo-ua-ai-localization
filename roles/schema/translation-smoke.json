@@ -2,9 +2,11 @@
   "type": "object",
   "properties": {
     "ok": {
+      "type": "boolean",
       "const": true
     },
     "text": {
+      "type": "string",
       "const": "готово"
     }
   },
