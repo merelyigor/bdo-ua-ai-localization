@@ -6,6 +6,13 @@
 - Звіряй `git status --short` до роботи й перед публікацією. Незакомічені зміни поза визначеним scope не змінюй.
 - Push і створення тегів виконує лише власник. Нове переписування історії Git потребує окремого рішення власника.
 - Видалення файлів і даних `.bdo/` дозволене лише за окремим дозволом власника на цю дію. Кнопка «Архівувати карантин» є дозволеним винятком: вона позначає записи як `archived`, а не видаляє їх.
+- Локальні хуки `.githooks/pre-commit`, `.githooks/commit-msg` і `.githooks/pre-push`
+  — це шебанги, що викликають `uv run --quiet bdo hook pre-commit`,
+  `uv run --quiet bdo hook commit-msg` і `uv run --quiet bdo hook pre-push`.
+  Той самий код доступний руками: `uv run bdo hook pre-commit`,
+  `uv run bdo hook commit-msg <файл-повідомлення>`,
+  `uv run bdo hook pre-push`. `commit-msg` без шляху до файла повідомлення
+  повертає код 2.
 
 ## Формат коміту
 

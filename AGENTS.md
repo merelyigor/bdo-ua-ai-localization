@@ -9,11 +9,12 @@ Python-конвеєр перекладу Black Desert Online українськ�
 - `identity_hash` приходить із API, незмінно повертається ним же; модель його не бачить, працює з alias `id` (`r1`, …). Зберігання лише в `.bdo/bdo.sqlite` через `sqlmodel`.
 - `keep`, placeholders, PA markup, `{BDO_NL}`, ручні ревізії, рішення модерації та шари `machine`, `manual`, `proposal` зберігаються; механічний дефект не перекривається вироком моделі. Перед записом є механічні перевірки та `POST /translations/validate`.
 - Автотестів немає (D-08). Перевірка змін — у браузері на DEV; перший канал приймання — штатний браузер Codex (D-65): вкладка чату `iab` або вкладки Chrome власника через Computer Use (`cua_repl`), довідка в skill `codex-in-app-browser`; Playwright MCP — лише коли штатний канал цього не вміє, і тоді назви в чаті причину. Нову механічну перевірку показати на навмисно зламаному тексті.
-- Точність конвеєра й API: [`ARCHITECTURE.md`](docs/ARCHITECTURE.md), [`API.md`](docs/API.md), [`API_WRITE_CONTRACT.md`](docs/API_WRITE_CONTRACT.md). Межі публікації: [`SECURITY.md`](docs/SECURITY.md). Вебзвірка: [`WEB.md`](docs/WEB.md).
+- Точність конвеєра й API: [`ARCHITECTURE.md`](docs/ARCHITECTURE.md), [`API.md`](docs/API.md), [`API_WRITE_CONTRACT.md`](docs/API_WRITE_CONTRACT.md). Межі публікації: [`SECURITY.md`](docs/SECURITY.md). Вебзвірка: [`WEB.md`](docs/WEB.md). Що перевіряти на екрані: [`CHECKLIST.md`](docs/CHECKLIST.md).
 
 ## Команди й гейти
 
 - `uv run bdo gate` — усі статичні перевірки; профілі: `uv run bdo gate secrets|docs|lint|types`. Успіх лише з кодом 0.
+- Gate доводить статику, а не поведінку. Крок, що змінює поведінку (код або вебінтерфейс), приймається браузерною звіркою; її протокол — [`WEB.md`](docs/WEB.md), склад доказу кроку — [`CHECKLIST.md`](docs/CHECKLIST.md). Для зміни лише в документації або планах доказ — відповідний профіль `gate` (код 0) плюс diff.
 - `.githooks/pre-commit` перевіряє секрети; плани перевіряє хук плагіна `merely` при коміті агента; `commit-msg` — формат/версію та персональні дані; `pre-push` — нові коміти й gitleaks.
 - Перевірка приймання — браузерний протокол у [`WEB.md`](docs/WEB.md); gate не замінює його.
 
@@ -21,13 +22,14 @@ Python-конвеєр перекладу Black Desert Online українськ�
 
 - `git add` лише поіменно; заборонені `git add .`, `git add -A`, `git commit -a`, `--no-verify`. Коміт: `git commit -F <файл> -- <шляхи>`.
 - Повідомлення: `Версія: X.Y.Z`, порожній рядок, абзац українською з мітки `P0N:` або `Плани:` або `Правила:` або `Задача:`, порожній рядок, `Файли:` і перелік змінених та видалених шляхів. Повний контракт: [`COMMITS.md`](docs/COMMITS.md).
-- Версія має збігатися в `pyproject.toml`, `src/bdo_translate/__init__.py`, `uv.lock`. Без `Co-Authored-By`, `Generated with`, 🤖 (D-42); `.claude/settings.json` зберігає порожній `attribution`.
+- Версія має збігатися в `pyproject.toml`, `src/bdo_translate/__init__.py`, `uv.lock`. Після зміни `pyproject.toml` онови `uv.lock` командою `uv lock` і перевір `uv lock --check` (код 0) — CI робить `uv sync --locked`, тож розсинхронізований lock ламає збірку. Без `Co-Authored-By`, `Generated with`, 🤖 (D-42); `.claude/settings.json` зберігає порожній `attribution`.
 - Репозиторій публічний. Push, теги й переписування історії робить лише власник.
 
 ## Небезпечне
 
-- `.env` містить `BDO_ENV=DEV|PROD`; агент не перемикає середовище на PROD і не редагує `.env` вручну. Безкоштовні віддалені моделі — лише `go/*-free`.
+- `.env` містить `BDO_ENV=DEV|PROD`; агент не перемикає середовище (ні кнопкою на екрані, ні редагуванням `.env` вручну) і не редагує `.env` вручну. Запис у PROD заборонений будь-яким способом — UI, `.env`, прямий виклик API; агент перевіряє лише видиму відмову. Безкоштовні віддалені моделі — лише `go/*-free`.
+- Агент не викликає `bdo app start|open|restart|alive|build|stop` вручну; цими командами користується сам значок `BDO.app`. `BDO.app/` не змінювати без дозволу власника: збірка й підпис значка — його справа.
 - `.bdo/` містить приватні дані. Не видаляти й не редагувати вручну; правила публікації — [`SECURITY.md`](docs/SECURITY.md).
-- Сервер власника працює у фоні. Не запускати `bdo web start|stop`, `app stop` або `kill`. `uv run bdo web restart` дозволений лише коли `/health` показує застарілу версію і сервер не `busy`; після цього перевірити `/health`.
+- Сервер власника працює у фоні. Не запускати `bdo web start|stop`, `app stop` або `kill`. `uv run bdo web restart` дозволений лише коли `/health` показує застарілу версію і сервер не `busy`; після цього перевірити `/health`. Окремий сервер у пісочниці піднімають і зупиняють лише з окремими `BDO_ENV_FILE`, `DATA_DIR` і `BDO_WEB_PORT`: pid-файл `web.pid` лежить у `DATA_DIR`, тож спільний `DATA_DIR` означає спільний pid-файл, а `bdo web stop` убив би процес власника. Деталі — [`WEB.md`](docs/WEB.md).
 
 <!-- dev-standard: autonomous -->
