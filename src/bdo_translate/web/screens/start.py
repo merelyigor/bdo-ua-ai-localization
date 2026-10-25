@@ -21,6 +21,7 @@ from bdo_translate.model.roles import active_model
 from bdo_translate.model.usage import read_usage
 from bdo_translate.pipeline.preflight import check_models
 from bdo_translate.pipeline.runner import RunGoal, corpus_query, generation_key, is_valid_version
+from bdo_translate.pipeline.steps import _RETRY_DEFER_REASONS
 from bdo_translate.web.registry import Action, ActionResult, FormData, Query, Screen, WebState
 from bdo_translate.web.screens.review import cached_review_count
 from bdo_translate.web.screens.sessions import format_local_datetime
@@ -453,6 +454,11 @@ async def build(state: WebState, query: Query) -> dict[str, Any]:
     env = state.services.settings.bdo_env
     version_parts = __version__.split(".")
     default_client_version = f"{version_parts[0]}.{version_parts[1]}.0"
+    repo = state.services.repo()
+    deferred_retry_counts = {
+        name: sum(item.reason in _RETRY_DEFER_REASONS for item in repo.deferred_for_mode(env, name))
+        for name in ordered_modes
+    }
     return {
         "modes": ordered_modes,
         "mode_targets": mode_targets,
@@ -473,11 +479,13 @@ async def build(state: WebState, query: Query) -> dict[str, Any]:
         "patches_error": patches_error,
         "model_options": model_options,
         "active_model": f"{worker_provider} / {worker_model}",
+        "free_model": worker_model.endswith("-free"),
         "limits_warning": limits_warning,
         "model_choice": choice,
         "worker_think_override": worker_preference is not None,
         "worker_think": worker_think,
         "preflight": preflight_models,
+        "deferred_retry_counts": deferred_retry_counts,
         "running": running,
         "env": env,
         "env_hosts": {
@@ -517,6 +525,15 @@ async def run_start(state: WebState, form: FormData) -> ActionResult:
     machine_client_version_value = form.get("machine_client_version_lt", "").strip()
     machine_client_version_lt = machine_client_version_value or None
     generation = form.get("generation", "").strip() or None
+    include_deferred = form.get("include_deferred", "") == "true"
+    mode_spec = state.services.modes().mode(mode)
+    if include_deferred and not (
+        mode_spec.source == "rows"
+        and mode_spec.scope == "patch"
+        and patch == "active"
+        and category_field is None
+    ):
+        include_deferred = False
     await state.runner.start(
         RunGoal(
             mode=mode,
@@ -529,6 +546,7 @@ async def run_start(state: WebState, form: FormData) -> ActionResult:
             machine_author=machine_author,
             machine_client_version_lt=machine_client_version_lt,
             generation=generation,
+            include_deferred=include_deferred,
         )
     )
     return {"redirect": "/run"}

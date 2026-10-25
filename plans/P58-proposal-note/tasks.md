@@ -94,7 +94,8 @@ Plan: [plan.md](plan.md).
 
 - **Status:** pending
 - **Depends on:** Step 1.0, Step 1.1, Step 1.2b
-- **Files:** none (звірка на DEV; знімки `.bdo/playwright/P58-1.3-1..3`)
+- **Files:** none (звірка на DEV; знімки `.bdo/browser/P58-1.3-1..3.png`
+  або самі знімки в чаті, якщо штатний браузер не зберігає файл)
 
 **Do:**
 - [ ] Прогін каналом `proposal` на DEV на 1–2 рядках · ЛИШЕ з дозволом власника, записаним у `Notes` цього кроку.

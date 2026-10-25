@@ -27,6 +27,15 @@
           <button id="btn-run_resume" class="btn-primary" type="submit">продовжити</button>
         </form>
         {% endif %}
+        {% if retry_deferred_enabled %}
+        <form method="post" action="/action/run_retry_deferred">
+          <input type="hidden" name="session_id" value="{{ session.id }}">
+          <label>рядків у пачці <input type="number" name="rows_per_batch" min="{{ min_rows_per_batch }}" max="{{ max_rows_per_batch }}" value="{{ min_rows_per_batch }}"></label>
+          <button id="btn-run_retry_deferred" class="btn-primary" type="submit">повторити відкладені · {{ retry_deferred_count }}</button>
+        </form>
+        <p class="empty" id="run-retry-deferred-hint">Із черги режиму «{{ session.mode }}» у {{ session.env }}: {{ retry_deferred_count }} придатних із {{ deferred_total_count }} відкладених. Повтор охопить усі придатні рядки й поділить їх на пачки за розміром вище.{% if free_model %} Для безкоштовної моделі почніть із 5–15 рядків: велика відповідь може обірватися.{% endif %}</p>
+        {% endif %}
+        {% if retry_deferred_hint %}<p class="empty" id="run-retry-deferred-hint">{{ retry_deferred_hint }}</p>{% endif %}
         <a id="startLink" class="{% if not controls_enabled %}btn-primary {% endif %}as-button" href="/start">новий прогін →</a>
         {% if not controls_enabled and session.status != "running" %}
         <form method="post" action="/action/session_delete">
@@ -47,8 +56,23 @@
         <div class="progress-bar{% if step_progress >= 100 %} done{% endif %}" style="width:{{ step_progress }}%"></div>
       </div>
       <p class="empty run-meta">{{ goal_label }} · канал запису: {{ channel_label }}{% if goal.dry_run %} · тестовий прогін, без запису{% endif %}</p>
-      <p class="empty run-meta">{{ run_state_text }} · пачок {{ batches_done }} з {{ session.batches_planned }}{% if batch and batch.reason %} · {{ batch.reason }}{% endif %}{% if viewing_other %} | <a class="work-link" href="/run">до поточного прогону</a>{% endif %}</p>
+      <p class="empty run-meta">{{ run_state_text }} · пачка {{ batches_done }} з {{ session.batches_planned }}{% if batch and batch.reason %} · {{ batch.reason }}{% endif %}{% if viewing_other %} | <a class="work-link" href="/run">до поточного прогону</a>{% endif %}</p>
+      {% if fetch_diagnostic %}
+      <section id="run-fetch-diagnostic" aria-label="Діагностика вибірки">
+        <h2>Вибірка рядків{% if fetch_diagnostic.status == "fetching" %} · триває{% elif fetch_diagnostic.status == "failed" %} · помилка{% endif %}</h2>
+        {% if goal.retry_deferred or goal.include_deferred %}
+        <p>Звернень до API: {{ fetch_diagnostic.pages_received }}; рядків отримано {{ fetch_diagnostic.api_rows_received }}, вибрано {{ fetch_diagnostic.selected_rows }}, придатно до обробки {{ fetch_diagnostic.usable_rows }}.</p>
+        {% else %}
+        <p>API повернув {{ fetch_diagnostic.api_rows_received }} рядків у {{ fetch_diagnostic.pages_received }} сторінках; вибрано {{ fetch_diagnostic.selected_rows }}, придатно до обробки {{ fetch_diagnostic.usable_rows }}.</p>
+        {% endif %}
+        <p>Пропущено: дублікати {{ fetch_diagnostic.skipped_duplicate }}, відкладені {{ fetch_diagnostic.skipped_deferred }}, з попередніх пачок {{ fetch_diagnostic.skipped_prior_batch }}, неперекладні {{ fetch_diagnostic.non_translatable }}, порожнє джерело {{ fetch_diagnostic.empty_source }}.</p>
+        <p>{{ fetch_diagnostic_reason }}{% if fetch_diagnostic.has_more_without_cursor %} API вказав, що є наступна сторінка, але не надав курсор; читання зупинено.{% endif %}</p>
+        {% if all_rows_deferred %}<p id="run-all-deferred-hint">Це не відмова перекладу: усі знайдені рядки вже стоять у черзі повтору. Натисніть «повторити відкладені», щоб обробити їх окремо.</p>{% endif %}
+        {% if goal.include_deferred %}<p id="run-include-deferred-hint">Режим «перекласти все» бере придатні відкладені, а залишок пачки добирає з нових рядків.</p>{% endif %}
+      </section>
+      {% endif %}
       {% if stop_reason_raw and not outcome %}<div class="empty" id="run-failure" style="color:var(--dn-tx)" title="{{ stop_reason_raw }}">{{ stop_reason_text }}</div>{% endif %}
+      {% if 'truncated' in stop_reason_raw %}<p class="empty" id="run-truncated-hint">Модель обрізала відповідь: запустіть меншу пачку (5–15 рядків).</p>{% endif %}
       {% if resolve_rejections %}<p id="run-resolve-rejections">resolve відхилено API: {{ resolve_rejections }}</p>{% endif %}
     </section>
     {% if outcome %}
@@ -93,7 +117,7 @@
           </div>
         </div>
       {% else %}
-        <div class="empty">{% if session and session.status == "running" %}ролі ще не викликались: пачка готує рядки, памʼять і глосарій{% else %}ролі не викликались: прогін зупинився до першої пачки{% endif %}</div>
+        <div class="empty">{% if session and session.status == "running" %}ролі ще не викликались: пачка готує рядки, памʼять і глосарій{% elif all_rows_deferred %}усі знайдені рядки вже у відкладені; запустіть «повторити відкладені»{% elif stop_reason_raw == "вибірка порожня" %}у цій пачці ролі не викликались: нових рядків не залишилось{% else %}ролі не викликались: прогін зупинився до першої пачки{% endif %}</div>
       {% endfor %}
       </div>
       {% if judge_degenerate %}<p class="chip bdo-badge--warning" id="run-judge-degenerate">суддя вироджений</p>{% endif %}
@@ -144,6 +168,7 @@
     {{ action_error("run_pause", results.get("run_pause")) }}
     {{ action_error("run_stop", results.get("run_stop")) }}
     {{ action_error("run_resume", results.get("run_resume")) }}
+    {{ action_error("run_retry_deferred", results.get("run_retry_deferred")) }}
   {% else %}
     <section class="panel" id="run-empty"><p>Активного прогону немає.</p><a class="btn-primary as-button" href="/start">почати прогін →</a></section>
   {% endif %}

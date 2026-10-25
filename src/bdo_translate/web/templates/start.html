@@ -76,7 +76,7 @@
       <div class="start-mode-grid" id="start-modes">
         {% for name, mode in modes.items() %}
           {% set info = mode_targets[name] %}
-          <label class="card start-mode-card{% if name == default_mode %} is-selected{% endif %}" data-source="{{ mode.source }}" data-scope="{{ info.scope }}" data-author-choice="{{ 'true' if info.author_choice else 'false' }}">
+          <label class="card start-mode-card{% if name == default_mode %} is-selected{% endif %}" data-source="{{ mode.source }}" data-scope="{{ info.scope }}" data-author-choice="{{ 'true' if info.author_choice else 'false' }}" data-deferred-retry="{{ deferred_retry_counts[name] }}">
             <input type="radio" name="mode-choice" value="{{ name }}"{% if name == default_mode %} checked{% endif %}>
             <strong>{{ info.name }}</strong>
             <span>{{ info.description }}</span>
@@ -180,9 +180,12 @@
         <input id="start-rows-slider" type="range" min="{{ min_rows }}" max="{{ max_items }}" value="{{ default_rows }}"{% if running %} disabled{% endif %}>
         <input id="start-rows" name="rows_per_batch" type="number" min="{{ min_rows }}" max="{{ max_items }}" value="{{ default_rows }}" required{% if running %} disabled{% endif %}>
         <span class="start-all-label" id="start-all-label">перекласти все</span>
-        <label class="models-role-toggle"><input id="start-all" type="checkbox" role="switch" aria-labelledby="start-all-label"{% if running %} disabled{% endif %}><span class="models-role-switch" aria-hidden="true"></span></label>
+        <label class="models-role-toggle"><input id="start-all" name="include_deferred" value="true" type="checkbox" role="switch" aria-labelledby="start-all-label"{% if running %} disabled{% endif %}><span class="models-role-switch" aria-hidden="true"></span></label>
       </div>
       <p class="start-summary" id="start-summary"></p>
+      {% if free_model and not running %}
+      <p class="empty" id="start-free-batch-hint">Для безкоштовної моделі почніть із 5–15 рядків: велика відповідь може обірватися.</p>
+      {% endif %}
 
       <div class="start-bottom-grid">
         <section>

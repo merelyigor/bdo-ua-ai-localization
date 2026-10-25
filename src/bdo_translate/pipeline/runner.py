@@ -206,6 +206,8 @@ class RunGoal:
     machine_author: str | None = None
     machine_client_version_lt: str | None = None
     generation: str | None = None
+    retry_deferred: bool = False
+    include_deferred: bool = False
 
 
 class LiveCalls:

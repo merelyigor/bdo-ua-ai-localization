@@ -12,6 +12,7 @@ from bdo_translate.api.endpoints import (
     glossary_resolve,
     memory_find,
     proposals,
+    proposals_of_row,
     row_by_hash,
     rows_context,
     rows_page,
@@ -37,7 +38,15 @@ from bdo_translate.pipeline.states import BatchState
 from bdo_translate.quality.defects import Defect, autofix, check_translation
 from bdo_translate.quality.verdicts import RowVerdict
 from bdo_translate.services import Services
-from bdo_translate.store.models import Batch, BatchRow, Deferred, RunSession, TermCache, Verdict
+from bdo_translate.store.models import (
+    Batch,
+    BatchRow,
+    Deferred,
+    FetchDiagnostic,
+    RunSession,
+    TermCache,
+    Verdict,
+)
 
 _PROPOSALS_LIMIT = 100
 
@@ -165,6 +174,172 @@ def _restore_errors(
 
 
 _TRANSIENT_DEFER_REASONS = frozenset(item.value for item in ROW_FAILURES)
+# Manual retry also includes rows omitted by the worker; proposal-mode auto-retry stays unchanged.
+_RETRY_DEFER_REASONS = _TRANSIENT_DEFER_REASONS | {"missing_item"}
+
+
+def _set_deferred_reason(ctx: BatchContext, item: Deferred, reason: str) -> None:
+    """Залишає рядок у журналі deferred, але прибирає його з повторного відбору."""
+    ctx.services.repo().add_deferred(
+        Deferred(
+            identity_hash=item.identity_hash,
+            batch_id=item.batch_id,
+            reason=reason,
+            created_at=item.created_at,
+        )
+    )
+
+
+async def _select_deferred_rows(
+    ctx: BatchContext,
+    candidates: list[Deferred],
+    target: int,
+    diagnostic: FetchDiagnostic,
+) -> tuple[list[tuple[dict[str, Any], Row]], int]:
+    """Добирає придатні відкладені рядки для повтору або режиму «перекласти все»."""
+    repo = ctx.services.repo()
+    api = ctx.services.api()
+    fields = ctx.services.modes().defaults.fields
+    selected: list[tuple[dict[str, Any], Row]] = []
+    row_not_found = 0
+    for item in candidates:
+        if len(selected) >= target:
+            break
+        if item.reason not in _RETRY_DEFER_REASONS:
+            diagnostic.skipped_deferred += 1
+            diagnostic.updated_at = clock.iso(clock.now())
+            continue
+        if item.identity_hash in ctx.skip_hashes:
+            diagnostic.skipped_prior_batch += 1
+            diagnostic.updated_at = clock.iso(clock.now())
+            continue
+        diagnostic.pages_received += 1
+        try:
+            raw = await row_by_hash(api, item.identity_hash, fields=fields)
+        except ApiError as error:
+            if error.status != 404:
+                raise
+            _set_deferred_reason(ctx, item, "row_not_found")
+            row_not_found += 1
+            diagnostic.skipped_deferred += 1
+            diagnostic.updated_at = clock.iso(clock.now())
+            repo.save_fetch_diagnostic(diagnostic)
+            continue
+        diagnostic.api_rows_received += 1
+        row = Row(raw)
+        if row.identity_hash != item.identity_hash:
+            raise ApiError(
+                "Рядок API не відповідає запитаному identity_hash",
+                code="invalid_response",
+            )
+        if row.non_translatable:
+            diagnostic.non_translatable += 1
+            _set_deferred_reason(ctx, item, "non_translatable")
+            _add_verdict(
+                ctx,
+                row,
+                source="mechanical",
+                status="REJECT",
+                code="non_translatable",
+                issue="рядок не перекладається",
+            )
+            diagnostic.updated_at = clock.iso(clock.now())
+            repo.save_fetch_diagnostic(diagnostic)
+            continue
+        selected.append((raw, row))
+        diagnostic.selected_rows += 1
+        diagnostic.updated_at = clock.iso(clock.now())
+        repo.save_fetch_diagnostic(diagnostic)
+    repo.save_fetch_diagnostic(diagnostic)
+    return selected, row_not_found
+
+
+async def _select_retry_proposals(
+    ctx: BatchContext,
+    candidates: list[Deferred],
+    target: int,
+    diagnostic: FetchDiagnostic,
+) -> tuple[list[tuple[dict[str, Any], Row]], int, int]:
+    """Повторно бере пропозицію лише для відкладеного рядка й передає її моделі."""
+    repo = ctx.services.repo()
+    api = ctx.services.api()
+    fields = ctx.services.modes().defaults.fields
+    selected: list[tuple[dict[str, Any], Row]] = []
+    row_not_found = 0
+    proposal_not_found = 0
+    for item in candidates:
+        if len(selected) >= target:
+            break
+        if item.reason not in _RETRY_DEFER_REASONS:
+            diagnostic.skipped_deferred += 1
+            diagnostic.updated_at = clock.iso(clock.now())
+            repo.save_fetch_diagnostic(diagnostic)
+            continue
+        if item.identity_hash in ctx.skip_hashes:
+            diagnostic.skipped_prior_batch += 1
+            diagnostic.updated_at = clock.iso(clock.now())
+            repo.save_fetch_diagnostic(diagnostic)
+            continue
+        diagnostic.pages_received += 1
+        open_proposals = await proposals_of_row(api, item.identity_hash)
+        proposal = next(
+            (
+                value
+                for value in open_proposals
+                if value.get("identity_hash") == item.identity_hash
+                and isinstance(value.get("text"), str)
+                and isinstance(value.get("id"), (int, str))
+                and not isinstance(value.get("id"), bool)
+            ),
+            None,
+        )
+        if proposal is None:
+            _set_deferred_reason(ctx, item, "proposal_not_found")
+            proposal_not_found += 1
+            diagnostic.skipped_deferred += 1
+            diagnostic.updated_at = clock.iso(clock.now())
+            repo.save_fetch_diagnostic(diagnostic)
+            continue
+
+        diagnostic.pages_received += 1
+        try:
+            raw = await row_by_hash(api, item.identity_hash, fields=fields)
+        except ApiError as error:
+            if error.status != 404:
+                raise
+            _set_deferred_reason(ctx, item, "row_not_found")
+            row_not_found += 1
+            diagnostic.skipped_deferred += 1
+            diagnostic.updated_at = clock.iso(clock.now())
+            repo.save_fetch_diagnostic(diagnostic)
+            continue
+
+        diagnostic.api_rows_received += 1
+        row = Row(raw)
+        if row.identity_hash != item.identity_hash:
+            raise ApiError(
+                "Рядок API не відповідає запитаному identity_hash", code="invalid_response"
+            )
+        if row.non_translatable:
+            diagnostic.non_translatable += 1
+            _set_deferred_reason(ctx, item, "non_translatable")
+            _add_verdict(
+                ctx,
+                row,
+                source="mechanical",
+                status="REJECT",
+                code="non_translatable",
+                issue="рядок не перекладається",
+            )
+            diagnostic.updated_at = clock.iso(clock.now())
+            repo.save_fetch_diagnostic(diagnostic)
+            continue
+        ctx.proposals[item.identity_hash] = (str(proposal["id"]), proposal["text"])
+        diagnostic.selected_rows += 1
+        selected.append((raw, row))
+        diagnostic.updated_at = clock.iso(clock.now())
+        repo.save_fetch_diagnostic(diagnostic)
+    return selected, row_not_found, proposal_not_found
 
 
 async def _select_proposals(
@@ -238,47 +413,131 @@ async def step_fetch(ctx: BatchContext) -> None:
     cursor = ctx.cursor
     selected: list[tuple[dict[str, Any], Row]] = []
     seen: set[str] = set()
-    if ctx.mode.source == "proposals":
+    fetch_diagnostic: FetchDiagnostic | None = None
+    retry_deferred = bool(json.loads(ctx.session.goal_json).get("retry_deferred"))
+    include_deferred = bool(json.loads(ctx.session.goal_json).get("include_deferred"))
+    if retry_deferred:
+        candidates = repo.deferred_for_mode(ctx.session.env, ctx.session.mode)
+        fetch_diagnostic = FetchDiagnostic(
+            batch_id=ctx.batch.id,
+            status="fetching",
+            updated_at=clock.iso(clock.now()),
+        )
+        repo.save_fetch_diagnostic(fetch_diagnostic)
+        row_not_found = 0
+        proposal_not_found = 0
+        try:
+            if ctx.mode.source == "proposals":
+                selected, row_not_found, proposal_not_found = await _select_retry_proposals(
+                    ctx, candidates, target, fetch_diagnostic
+                )
+            else:
+                selected, row_not_found = await _select_deferred_rows(
+                    ctx, candidates, target, fetch_diagnostic
+                )
+            fetch_diagnostic.status = "complete"
+            fetch_diagnostic.reason = (
+                "retry_no_candidates" if not fetch_diagnostic.pages_received else "retry_empty"
+            )
+            retry_details = []
+            if row_not_found:
+                retry_details.append(f"row_not_found={row_not_found}")
+            if proposal_not_found:
+                retry_details.append(f"proposal_not_found={proposal_not_found}")
+            if retry_details:
+                fetch_diagnostic.reason += "; " + "; ".join(retry_details)
+            fetch_diagnostic.updated_at = clock.iso(clock.now())
+            repo.save_fetch_diagnostic(fetch_diagnostic)
+        except ApiError as error:
+            fetch_diagnostic.status = "failed"
+            fetch_diagnostic.reason = f"api_error:{error.code}"
+            fetch_diagnostic.updated_at = clock.iso(clock.now())
+            repo.save_fetch_diagnostic(fetch_diagnostic)
+            raise
+        except Exception:
+            fetch_diagnostic.status = "failed"
+            fetch_diagnostic.reason = "processing_error"
+            fetch_diagnostic.updated_at = clock.iso(clock.now())
+            repo.save_fetch_diagnostic(fetch_diagnostic)
+            raise
+    elif ctx.mode.source == "proposals":
         selected = await _select_proposals(ctx, deferred, target)
     else:
-        while len(selected) < target:
-            remaining = target - len(selected)
-            page = await rows_page(
-                ctx.services.api(),
-                ctx.mode.query,
-                limit=min(100, remaining),
-                fields=ctx.services.modes().defaults.fields,
-                cursor=cursor,
-            )
-            cursor = page.next_cursor
-            for raw in page.rows:
-                row = Row(raw)
-                if not row.identity_hash:
-                    raise ApiError("Рядок API не має identity_hash", code="invalid_response")
-                if (
-                    row.identity_hash in seen
-                    or row.identity_hash in deferred
-                    or row.identity_hash in ctx.skip_hashes
-                ):
-                    continue
-                seen.add(row.identity_hash)
-                if row.non_translatable:
-                    _add_verdict(
-                        ctx,
-                        row,
-                        source="mechanical",
-                        status="REJECT",
-                        code="non_translatable",
-                        issue="рядок не перекладається",
-                    )
-                    continue
-                selected.append((raw, row))
-                if len(selected) >= target:
+        fetch_diagnostic = FetchDiagnostic(
+            batch_id=ctx.batch.id,
+            status="fetching",
+            updated_at=clock.iso(clock.now()),
+        )
+        repo.save_fetch_diagnostic(fetch_diagnostic)
+        try:
+            if include_deferred:
+                candidates = repo.deferred_for_mode(ctx.session.env, ctx.session.mode)
+                recovered, _ = await _select_deferred_rows(
+                    ctx, candidates, target, fetch_diagnostic
+                )
+                selected.extend(recovered)
+            while len(selected) < target:
+                remaining = target - len(selected)
+                page = await rows_page(
+                    ctx.services.api(),
+                    ctx.mode.query,
+                    limit=min(100, remaining),
+                    fields=ctx.services.modes().defaults.fields,
+                    cursor=cursor,
+                )
+                cursor = page.next_cursor
+                fetch_diagnostic.pages_received += 1
+                fetch_diagnostic.api_rows_received += len(page.rows)
+                fetch_diagnostic.has_more_without_cursor |= (
+                    page.has_more and page.next_cursor is None
+                )
+                for raw in page.rows:
+                    row = Row(raw)
+                    if not row.identity_hash:
+                        raise ApiError("Рядок API не має identity_hash", code="invalid_response")
+                    if row.identity_hash in seen:
+                        fetch_diagnostic.skipped_duplicate += 1
+                        continue
+                    if row.identity_hash in deferred:
+                        fetch_diagnostic.skipped_deferred += 1
+                        continue
+                    if row.identity_hash in ctx.skip_hashes:
+                        fetch_diagnostic.skipped_prior_batch += 1
+                        continue
+                    seen.add(row.identity_hash)
+                    if row.non_translatable:
+                        fetch_diagnostic.non_translatable += 1
+                        _add_verdict(
+                            ctx,
+                            row,
+                            source="mechanical",
+                            status="REJECT",
+                            code="non_translatable",
+                            issue="рядок не перекладається",
+                        )
+                        continue
+                    selected.append((raw, row))
+                    fetch_diagnostic.selected_rows += 1
+                    if len(selected) >= target:
+                        break
+                fetch_diagnostic.updated_at = clock.iso(clock.now())
+                repo.save_fetch_diagnostic(fetch_diagnostic)
+                if len(selected) >= target or not page.has_more or page.next_cursor is None:
                     break
-            if len(selected) >= target or not page.has_more or page.next_cursor is None:
-                break
-            if not page.rows:
-                break
+                if not page.rows:
+                    break
+        except ApiError as error:
+            fetch_diagnostic.status = "failed"
+            fetch_diagnostic.reason = f"api_error:{error.code}"
+            fetch_diagnostic.updated_at = clock.iso(clock.now())
+            repo.save_fetch_diagnostic(fetch_diagnostic)
+            raise
+        except Exception:
+            fetch_diagnostic.status = "failed"
+            fetch_diagnostic.reason = "processing_error"
+            fetch_diagnostic.updated_at = clock.iso(clock.now())
+            repo.save_fetch_diagnostic(fetch_diagnostic)
+            raise
     ctx.cursor = cursor
 
     usable: list[tuple[dict[str, Any], Row]] = []
@@ -286,6 +545,8 @@ async def step_fetch(ctx: BatchContext) -> None:
         if row.source_text:
             usable.append((raw, row))
             continue
+        if fetch_diagnostic is not None:
+            fetch_diagnostic.empty_source += 1
         _add_verdict(
             ctx,
             row,
@@ -295,6 +556,34 @@ async def step_fetch(ctx: BatchContext) -> None:
             issue="джерельний текст порожній",
         )
         _defer(ctx, row, "empty_source")
+
+    if fetch_diagnostic is not None:
+        fetch_diagnostic.usable_rows = len(usable)
+        if retry_deferred:
+            reason_details = (fetch_diagnostic.reason or "").partition(";")[2]
+            if fetch_diagnostic.pages_received == 0:
+                reason = "retry_no_candidates"
+            elif fetch_diagnostic.api_rows_received == 0:
+                reason = "retry_empty"
+            elif fetch_diagnostic.selected_rows == 0:
+                reason = "all_filtered"
+            elif not usable:
+                reason = "selected_empty_source"
+            else:
+                reason = "selected_rows"
+            fetch_diagnostic.reason = f"{reason};{reason_details}" if reason_details else reason
+        else:
+            fetch_diagnostic.status = "complete"
+            if fetch_diagnostic.api_rows_received == 0:
+                fetch_diagnostic.reason = "api_empty"
+            elif fetch_diagnostic.selected_rows == 0:
+                fetch_diagnostic.reason = "all_filtered"
+            elif not usable:
+                fetch_diagnostic.reason = "selected_empty_source"
+            else:
+                fetch_diagnostic.reason = "selected_rows"
+        fetch_diagnostic.updated_at = clock.iso(clock.now())
+        repo.save_fetch_diagnostic(fetch_diagnostic)
 
     ctx.rows = [row for _, row in usable]
     hashes = [row.identity_hash for row in ctx.rows]

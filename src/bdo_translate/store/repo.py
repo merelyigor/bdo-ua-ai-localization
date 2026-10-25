@@ -13,6 +13,7 @@ from bdo_translate.store.models import (
     BatchRow,
     Call,
     Deferred,
+    FetchDiagnostic,
     ModelCapability,
     ModelChoice,
     ModelLock,
@@ -231,6 +232,17 @@ class Repo:
         with self._session() as session:
             return session.get(Batch, batch_id)
 
+    def save_fetch_diagnostic(self, diagnostic: FetchDiagnostic) -> None:
+        """Зберігає або оновлює агрегати читання рядків пачки."""
+        with self._session() as session:
+            session.merge(diagnostic)
+            session.commit()
+
+    def fetch_diagnostic(self, batch_id: str) -> FetchDiagnostic | None:
+        """Повертає збережені агрегати відбору для пачки."""
+        with self._session() as session:
+            return session.get(FetchDiagnostic, batch_id)
+
     def set_batch_state(
         self,
         batch_id: str,
@@ -372,6 +384,12 @@ class Repo:
                 ),
                 ("deferred", delete(Deferred).where(cast(Any, Deferred.batch_id).in_(batch_ids))),
                 (
+                    "fetch_diagnostics",
+                    delete(FetchDiagnostic).where(
+                        cast(Any, FetchDiagnostic.batch_id).in_(batch_ids)
+                    ),
+                ),
+                (
                     "quarantine",
                     delete(Quarantine).where(cast(Any, Quarantine.batch_id).in_(batch_ids)),
                 ),
@@ -413,10 +431,29 @@ class Repo:
         with self._session() as session:
             return list(session.exec(statement).all())
 
+    def deferred_for_mode(self, env: str, mode: str) -> list[Deferred]:
+        """Повертає відкладені рядки лише з указаного середовища й режиму."""
+        statement = (
+            select(Deferred)
+            .join(Batch, cast(Any, Deferred.batch_id) == cast(Any, Batch.id))
+            .join(RunSession, cast(Any, Batch.session_id) == cast(Any, RunSession.id))
+            .where(RunSession.env == env, RunSession.mode == mode)
+            .order_by(Deferred.created_at, Deferred.identity_hash)
+        )
+        with self._session() as session:
+            return list(session.exec(statement).all())
+
     def add_deferred(self, deferred: Deferred) -> None:
         """Додає або оновлює відкладений рядок."""
         with self._session() as session:
             session.merge(deferred)
+            session.commit()
+
+    def remove_deferred(self, identity_hash: str) -> None:
+        """Прибирає мітку відкладеного рядка після успішного запису."""
+        statement = delete(Deferred).where(cast(Any, Deferred.identity_hash) == identity_hash)
+        with self._session() as session:
+            session.exec(statement)
             session.commit()
 
     def add_write(self, write: WriteRecord) -> None:

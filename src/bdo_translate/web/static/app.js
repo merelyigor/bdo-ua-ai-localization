@@ -82,6 +82,22 @@ function initializeStartForm() {
     return document.querySelector(".start-patch-row.is-selected");
   }
 
+  function deferredRetryCount() {
+    if (selectedPatch()?.dataset.active !== "true") return 0;
+    if (category instanceof HTMLSelectElement && category.value) return 0;
+    const raw = document.querySelector(".start-mode-card.is-selected")?.dataset.deferredRetry || "0";
+    const value = Number(raw);
+    return Number.isFinite(value) && value > 0 ? value : 0;
+  }
+
+  function batchWord(count, accusative = false) {
+    const lastTwo = count % 100;
+    const last = count % 10;
+    if (last === 1 && lastTwo !== 11) return accusative ? "пачку" : "пачка";
+    if (last >= 2 && last <= 4 && (lastTwo < 12 || lastTwo > 14)) return "пачки";
+    return "пачок";
+  }
+
   function corpusModeSelected() {
     return document.querySelector(".start-mode-card.is-selected")?.dataset.scope === "corpus";
   }
@@ -413,8 +429,10 @@ function initializeStartForm() {
     }
     if (translateAll.checked) {
       const total = queueMode ? queueCap : corpusMode ? corpusSelected : missing;
+      const deferred = patchMode ? deferredRetryCount() : 0;
+      const recoverable = total === null ? deferred : Math.max(total, deferred);
       if (total !== null && Number.isFinite(total)) {
-        batches.value = String(Math.max(1, Math.ceil(total / rowCount)));
+        batches.value = String(Math.max(1, Math.ceil(recoverable / rowCount)));
       }
     }
     batches.disabled = translateAll.checked;
@@ -458,7 +476,12 @@ function initializeStartForm() {
       summary.textContent = "Доступна інформація з вибраного патча; кількість без ШІ-шару не повернута API.";
     } else {
       const categorySuffix = categoryName ? ` · ${categoryName}` : "";
-      summary.textContent = `${summaryPatch}${categorySuffix} лишилось ${missing.toLocaleString('uk-UA').replaceAll('\xa0', ' ')} рядків без ШІ-шару · це приблизно ${Math.ceil(missing / rowCount)} пачок по ${rowCount} · числа щойно з API`;
+      const deferred = deferredRetryCount();
+      const deferredNote = deferred > 0
+        ? ` · у черзі повтору ${deferred.toLocaleString("uk-UA").replaceAll("\xa0", " ")}`
+        : "";
+      const batchCount = Math.ceil(Math.max(missing, deferred) / rowCount);
+      summary.textContent = `${summaryPatch}${categorySuffix} лишилось ${missing.toLocaleString('uk-UA').replaceAll('\xa0', ' ')} рядків без ШІ-шару${deferredNote} · «перекласти все» спершу бере придатні відкладені, а залишок пачки — нові рядки · це приблизно ${batchCount} ${batchWord(batchCount)} по ${rowCount} · числа щойно з API`;
     }
     const target = modeCard?.querySelector(".start-mode-target")?.textContent.replace("→ ", "")
       || "серверний канал";
@@ -470,7 +493,7 @@ function initializeStartForm() {
         : corpusMode
           ? `Виберу пачку з усього корпусу · ${corpusSelectedLabel || "усі"}${versionNote} · ${rowCount} рядків · режим «${modeName}».`
           : `Виберу пачку з ${!patchMode || row?.dataset.active === "true" ? "активного " : ""}патча ${patchNumber} · ${rowCount} рядків · режим «${modeName}».`,
-      `Проганяю ${count} ${count === 1 ? "пачку" : "пачок"} через увесь конвеєр: терміни → переклад → перевірка якості → ремонт дефектів → суддя → ${target}.`,
+      `Проганяю ${count} ${batchWord(count, true)} через увесь конвеєр: терміни → переклад → перевірка якості → ремонт дефектів → суддя → ${target}.`,
       last,
     ];
     for (const text of lines) {

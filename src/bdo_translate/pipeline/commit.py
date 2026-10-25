@@ -525,6 +525,7 @@ async def step_commit(ctx: BatchContext) -> None:
                 elif result.status not in {"ok", "repaired", "unchanged", "reaffirmed", "skipped"}:
                     _mark_quarantine(ctx, row, item, result.code or "invalid_write_status")
                 else:
+                    repo.remove_deferred(row.identity_hash)
                     if channel_name == "proposal":
                         # Причина черги пишеться лише для справжнього запису; dry-run
                         # не додає крок commit, тому сюди не доходить.

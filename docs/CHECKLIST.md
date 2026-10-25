@@ -74,8 +74,8 @@
 | `/calls` · виклики | кількість і стан робочих та діагностичних викликів, посилання на деталі | `calls-count`, `calls-table` або `calls-empty`, `calls-show-diag`, `call-N-state`, `call-N-link` |
 | `/call?id=<id>` · деталі виклику | модель, стан, запит, жива відповідь, JSON і replay | `call-id`, `call-model`, `call-state`, `request-user`, `call-content`, `call-thinking`, `call-parsed`, `replay-panel`, `replay-last`, `btn-call_replay` |
 | `/quality` · якість | пʼять рядків, кожен навмисний дефект, skip-пояснення й payload без хешів | `qrows-table`, `q-row`, `q-text`, `q-break-row`, `q-break-skip`, `btn-quality-break-<code>`, `q-defect-N`, `q-clean`, `q-fixed`, `q-payload-hashes`, `q-payload`, `quality-morph`, `quality-morph-count` |
-| `/start` · почати прогін | DEV, патч, режим, розмір, кількість пачок, dry-run і передбачуваний запис | `start-env`, `start-mode`, `start-patch`, `start-rows`, `start-batches`, `start-summary`, `start-preview`, `start-confirm`, `start-dry`, `start-scope`, `start-corpus`, `start-corpus-rows`, `start-corpus-status`, `btn-run_start`, `btn-run_start_dry` |
-| `/run` · прогін | сесія й пачка, живі виклики, стани рядків і зрозуміла причина відмови | `run-session`, `statePhrase`, `run-role-cards`, `run-calls`, `live-<role>-thinking`, `live-<role>-content`, `live-<role>-request`, `live-<role>-think-icon`, `run-failure`, `run-states`, `run-outcome`, `run-verdict-panel`, `verdicts`, `run-empty`, `btn-run_pause`, `btn-run_resume`, `btn-run_stop` |
+| `/start` · почати прогін | DEV, патч, режим, розмір, кількість пачок, dry-run, передбачуваний запис, попередження про коротку пачку для безкоштовної моделі й обіцянка «перекласти все» разом з обробкою відкладених | `start-env`, `start-mode`, `start-patch`, `start-rows`, `start-batches`, `start-all`, `start-summary`, `start-free-batch-hint`, `start-preview`, `start-confirm`, `start-dry`, `start-scope`, `start-corpus`, `start-corpus-rows`, `start-corpus-status`, `btn-run_start`, `btn-run_start_dry` |
+| `/run` · прогін | сесія й пачка, живі виклики, стани рядків і зрозуміла причина відмови; придатні відкладені для цього середовища й режиму; агрегати вибірки; пояснення, коли всі знайдені рядки вже відкладені | `run-session`, `statePhrase`, `run-role-cards`, `run-calls`, `live-<role>-thinking`, `live-<role>-content`, `live-<role>-request`, `live-<role>-think-icon`, `run-failure`, `run-states`, `run-outcome`, `run-verdict-panel`, `verdicts`, `run-empty`, `btn-run_pause`, `btn-run_resume`, `btn-run_stop`, `btn-run_retry_deferred`, `run-retry-deferred-hint`, `run-all-deferred-hint`, `run-include-deferred-hint`, `run-fetch-diagnostic` |
 | `/sessions` · сесії роботи | статус сесії, пачки й причина завершення | `sessions-table`, `session-<id>`, `session-N-batch-N`, `sessions-empty`, `sessions-db-size` |
 | `/queue` · карантин і запис | відкладені, карантин, модерація, записи та збіг ключа повтору | `queue-deferred`, `queue-quarantine`, `queue-moderation`, `queue-writes`, `write-key-check`, `write-N`, `btn-quarantine_clear` |
 | `/stats` · статистика | ролі, час пачки, паритет та A/B replay | `stats-roles`, `stats-role-<role>`, `stats-session-table`, `stats-parity`, `stats-ab-panel`, `stats-ab`, `btn-stats_ab_think` |
@@ -91,15 +91,23 @@
 
 1. `/run` · `run-session`, `run-calls`, `run-states`, `run-verdict-panel`: усі
    пачки переглянуті до кінця, а стани рядків і переходів відповідають
-   завершенню.
-2. `/calls` · `calls-count`, `calls-table`, `call-N-state`: кожен виклик має
+   завершенню. Якщо перевіряється повтор, кнопка `btn-run_retry_deferred` має
+   показувати кількість придатних відкладених лише для активного середовища й
+   режиму джерела; підказка `run-retry-deferred-hint` пояснює цю межу. Для
+   режиму пропозицій звірте, що повтор використовує актуальний текст пропозиції.
+   Якщо API повернув 404 для рядка, перевірте причину `row_not_found` і те, що
+   цей рядок не пропонується до повтору знову.
+2. `/run` · `run-fetch-diagnostic`: агрегати збережені для вибраної пачки й
+   узгоджуються з її способом вибірки. У повторі запити йдуть за окремими
+   `identity_hash`, а не сторінками переліку.
+3. `/calls` · `calls-count`, `calls-table`, `call-N-state`: кожен виклик має
    роль, стан і видиму причину відмови; за потреби відкрити `/call?id=<id>` та
    звірити `call-id`, `call-state`, `call-parsed`.
-3. `/stats` · `stats-roles`, `stats-session-table`: час ролей і пачок пояснює
+4. `/stats` · `stats-roles`, `stats-session-table`: час ролей і пачок пояснює
    хід прогону; підозрілу кількість повторів звірити з відповідним викликом.
-4. `/queue` · `queue-writes`, `write-key-check`: для dry-run записів немає;
+5. `/queue` · `queue-writes`, `write-key-check`: для dry-run записів немає;
    перевірка ключів повтору узгоджується з `WriteRecord`.
-5. `/sessions` · `sessions-table`, `session-N-batch-N`: підсумок і
+6. `/sessions` · `sessions-table`, `session-N-batch-N`: підсумок і
    причини завершення сесії збігаються з `/run`.
 
 Автотести не додаються й не запускаються (D-08). Gate перевіряє статику;

@@ -93,6 +93,27 @@ class Batch(SQLModel, table=True):
     reason: str | None = None
 
 
+class FetchDiagnostic(SQLModel, table=True):
+    """Зберігає лише агрегати відбору рядків для однієї пачки."""
+
+    __tablename__ = "fetch_diagnostics"
+
+    batch_id: str = Field(primary_key=True)
+    pages_received: int = 0
+    api_rows_received: int = 0
+    skipped_duplicate: int = 0
+    skipped_deferred: int = 0
+    skipped_prior_batch: int = 0
+    non_translatable: int = 0
+    empty_source: int = 0
+    selected_rows: int = 0
+    usable_rows: int = 0
+    has_more_without_cursor: bool = False
+    status: str
+    reason: str | None = None
+    updated_at: str
+
+
 class BatchRow(SQLModel, table=True):
     """Зберігає рядок та його стани в межах пачки."""
 

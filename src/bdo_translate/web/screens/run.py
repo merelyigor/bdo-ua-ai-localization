@@ -6,11 +6,14 @@ from typing import Any
 from zoneinfo import ZoneInfo
 
 from bdo_translate import clock
+from bdo_translate.api.endpoints import MAX_ITEMS
 from bdo_translate.batch.row import Row
 from bdo_translate.errors import StateError
 from bdo_translate.model.roles import active_model
+from bdo_translate.pipeline.runner import RunGoal
 from bdo_translate.pipeline.states import BatchState
-from bdo_translate.store.models import Batch, Call, RunSession, Transition
+from bdo_translate.pipeline.steps import _RETRY_DEFER_REASONS
+from bdo_translate.store.models import Batch, Call, FetchDiagnostic, RunSession, Transition
 from bdo_translate.web.labels import estimate_tokens, label, pluralize, split_out_tokens
 from bdo_translate.web.registry import Action, ActionResult, FormData, Query, Screen, WebState
 from bdo_translate.web.screens.sessions import format_local_datetime
@@ -95,6 +98,7 @@ async def build(state: WebState, query: Query) -> dict[str, Any]:
         }
     batch_id = batch.id if batch is not None else None
     transitions = repo.transitions_of(batch_id) if batch_id else []
+    fetch_diagnostic = repo.fetch_diagnostic(batch_id) if batch_id else None
     calls = [
         call
         for call in reversed(repo.recent_calls(500))
@@ -124,9 +128,30 @@ async def build(state: WebState, query: Query) -> dict[str, Any]:
     mode = state.services.modes().mode(session.mode)
     channel = state.services.modes().channel_of(session.mode)
     goal = _goal(session)
+    active_env = state.services.settings.bdo_env
+    deferred_rows = repo.deferred_for_mode(session.env, session.mode)
+    retry_deferred_count = sum(item.reason in _RETRY_DEFER_REASONS for item in deferred_rows)
+    retry_deferred_enabled = _can_retry_deferred(session, retry_deferred_count > 0, active_env)
+    retry_deferred_hint = ""
+    if session.env != active_env and _retryable_session(session) and retry_deferred_count > 0:
+        retry_deferred_hint = (
+            f"Повтор недоступний: сесія належить {session.env}, "
+            f"а активне середовище — {active_env}."
+        )
+    elif retry_deferred_count == 0 and deferred_rows and _retryable_session(session):
+        retry_deferred_hint = (
+            "У цій черзі немає рядків із тимчасовими причинами або missing_item; "
+            "інші причини автоматично не повторюються."
+        )
     judge_verdicts = [verdict for verdict in verdicts if verdict.source == "judge"]
     judge_degenerate = len(judge_verdicts) >= 20 and (
         sum(verdict.status == "PASS" for verdict in judge_verdicts) / len(judge_verdicts) > 0.9
+    )
+    all_rows_deferred = bool(
+        fetch_diagnostic
+        and fetch_diagnostic.api_rows_received > 0
+        and fetch_diagnostic.selected_rows == 0
+        and fetch_diagnostic.skipped_deferred == fetch_diagnostic.api_rows_received
     )
     called_roles = {call.role for call in calls} | set(live)
     steps = _step_statuses(
@@ -140,6 +165,9 @@ async def build(state: WebState, query: Query) -> dict[str, Any]:
         "current": current,
         "session": session,
         "batch": batch,
+        "fetch_diagnostic": fetch_diagnostic,
+        "fetch_diagnostic_reason": _fetch_diagnostic_reason(fetch_diagnostic),
+        "all_rows_deferred": all_rows_deferred,
         "calls": calls,
         "rows": rows,
         "role_cards": role_cards,
@@ -165,6 +193,13 @@ async def build(state: WebState, query: Query) -> dict[str, Any]:
         "viewing_other": viewing_other,
         "controls_enabled": controls_enabled,
         "resume_enabled": (session.status == "paused" and state.runner.can_resume(session.id)),
+        "retry_deferred_enabled": retry_deferred_enabled,
+        "retry_deferred_count": retry_deferred_count,
+        "deferred_total_count": len(deferred_rows),
+        "retry_deferred_hint": retry_deferred_hint,
+        "min_rows_per_batch": state.services.modes().defaults.min_rows_per_batch,
+        "max_rows_per_batch": MAX_ITEMS,
+        "free_model": model.endswith("-free"),
         "run_state_text": _run_state_text(controls_enabled, session.status),
         "batches_done": batches_done,
         "outcome": _outcome(session, batch, controls_enabled, stop_reason_raw, provider, model),
@@ -178,6 +213,9 @@ def _empty_context(state: WebState) -> dict[str, Any]:
         "current": None,
         "session": None,
         "batch": None,
+        "fetch_diagnostic": None,
+        "fetch_diagnostic_reason": "",
+        "all_rows_deferred": False,
         "transitions": [],
         "calls": [],
         "rows": [],
@@ -203,11 +241,53 @@ def _empty_context(state: WebState) -> dict[str, Any]:
         "viewing_other": False,
         "controls_enabled": False,
         "resume_enabled": False,
+        "retry_deferred_enabled": False,
+        "retry_deferred_count": 0,
+        "deferred_total_count": 0,
+        "retry_deferred_hint": "",
+        "min_rows_per_batch": state.services.modes().defaults.min_rows_per_batch,
+        "max_rows_per_batch": MAX_ITEMS,
+        "free_model": False,
         "run_state_text": "—",
         "batches_done": 0,
         "outcome": None,
         "empty": True,
     }
+
+
+def _fetch_diagnostic_reason(diagnostic: FetchDiagnostic | None) -> str:
+    """Пояснює підсумок відбору без припущень про причину зупинки."""
+    if diagnostic is None:
+        return ""
+    if diagnostic.status == "failed":
+        if diagnostic.reason and diagnostic.reason.startswith("api_error:"):
+            code = diagnostic.reason.partition(":")[2]
+            return f"Читання завершилося помилкою API (код: {code})."
+        return "Читання завершилося помилкою під час обробки рядків."
+    if diagnostic.status != "complete":
+        return "Читання ще триває або було перерване; нижче збережений поточний підсумок."
+    reason, _, details = (diagnostic.reason or "").partition(";")
+    message = {
+        "api_empty": "API не повернув жодного рядка.",
+        "all_filtered": "Усі отримані рядки відсіяно або вони не пройшли механічну перевірку.",
+        "selected_empty_source": "Рядки пройшли фільтри, але їхнє джерело порожнє.",
+        "selected_rows": "Є рядки, придатні до подальшої обробки.",
+        "retry_no_candidates": "У цій черзі немає рядків, придатних для ручного повтору.",
+        "retry_empty": "Під час повторного читання API не повернув доступних рядків.",
+    }.get(reason, "Підсумок відбору збережено.")
+    details_text = []
+    for item in details.split(";"):
+        key, separator, raw_count = item.strip().partition("=")
+        if not separator or not raw_count.isdecimal():
+            continue
+        count = int(raw_count)
+        labels = {
+            "row_not_found": f"рядків більше немає в API: {count}",
+            "proposal_not_found": f"відкритих пропозицій уже немає: {count}",
+        }
+        if key in labels:
+            details_text.append(labels[key])
+    return " ".join([message, *details_text])
 
 
 def _run_state_text(controls_enabled: bool, status: str) -> str:
@@ -259,6 +339,18 @@ def _outcome(
     return {"title": title, "lines": lines}
 
 
+def _can_retry_deferred(session: RunSession, has_transient_deferred: bool, active_env: str) -> bool:
+    """Дозволяє повтор для невдалої сесії або завершеної порожньої вибірки."""
+    return _retryable_session(session) and has_transient_deferred and session.env == active_env
+
+
+def _retryable_session(session: RunSession) -> bool:
+    """Перевіряє, чи статус і причина сесії дозволяють ручний повтор."""
+    return session.status == "failed" or (
+        session.status == "finished" and session.stop_reason == "вибірка порожня"
+    )
+
+
 def _goal(session: RunSession) -> dict[str, Any]:
     """Читає лише фактично збережені параметри сесії."""
     try:
@@ -286,6 +378,8 @@ def _goal_label(mode_label: str, goal: dict[str, Any]) -> str:
     version = goal.get("machine_client_version_lt")
     if version:
         return f"{base} · перекладені цією програмою до версії {version}"
+    if goal.get("include_deferred"):
+        return f"{base} · усі рядки, включно з відкладеними"
     return mode_label
 
 
@@ -713,9 +807,62 @@ async def run_resume(state: WebState, form: FormData) -> ActionResult:
     return {"redirect": "/run"}
 
 
+async def run_retry_deferred(state: WebState, form: FormData) -> ActionResult:
+    """Створює нову сесію для рядків із тимчасовою причиною відкладення."""
+    session_id = form.get("session_id", "").strip()
+    if not session_id:
+        raise StateError("Не вказано id сесії", reason="session_id_missing")
+    repo = state.services.repo()
+    session = repo.get_session(session_id)
+    if session is None:
+        raise StateError("Сесію не знайдено", reason="session_not_found")
+    active_env = state.services.settings.bdo_env
+    if session.env != active_env:
+        raise StateError(
+            f"Повтор доступний лише в середовищі джерельної сесії ({session.env})",
+            reason="retry_environment_mismatch",
+        )
+    deferred = repo.deferred_for_mode(session.env, session.mode)
+    deferred_count = sum(item.reason in _RETRY_DEFER_REASONS for item in deferred)
+    if not _can_retry_deferred(session, deferred_count > 0, active_env):
+        raise StateError(
+            "Повтор доступний лише для невдалої сесії або порожньої вибірки "
+            "з придатними відкладеними рядками того самого режиму",
+            reason="session_not_retryable",
+        )
+    try:
+        rows_per_batch = int(
+            form.get("rows_per_batch", str(state.services.modes().defaults.min_rows_per_batch))
+        )
+    except ValueError as exc:
+        raise StateError("Розмір пачки має бути числом", reason="invalid_goal") from exc
+    min_rows_per_batch = state.services.modes().defaults.min_rows_per_batch
+    rows_per_batch = max(min_rows_per_batch, min(rows_per_batch, MAX_ITEMS))
+    try:
+        goal_data = json.loads(session.goal_json)
+    except json.JSONDecodeError as exc:
+        raise StateError("Параметри джерельної сесії пошкоджені", reason="invalid_goal") from exc
+    if not isinstance(goal_data, dict):
+        raise StateError("Параметри джерельної сесії пошкоджені", reason="invalid_goal")
+    goal_data.update(
+        mode=session.mode,
+        retry_deferred=True,
+        rows_per_batch=rows_per_batch,
+        batches=max(1, (deferred_count + rows_per_batch - 1) // rows_per_batch),
+    )
+    await state.runner.start(RunGoal(**goal_data))
+    return {"redirect": "/run"}
+
+
 SCREEN = Screen(key="run", label="прогін", build=build, group="work")
 ACTIONS = (
     Action(name="run_pause", label="Пауза", screen="run", handler=run_pause),
     Action(name="run_stop", label="Стоп", screen="run", handler=run_stop),
     Action(name="run_resume", label="Продовжити", screen="run", handler=run_resume),
+    Action(
+        name="run_retry_deferred",
+        label="Повторити відкладені",
+        screen="run",
+        handler=run_retry_deferred,
+    ),
 )

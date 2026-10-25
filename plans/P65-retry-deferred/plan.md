@@ -3,9 +3,9 @@
 | Field | Value |
 | --- | --- |
 | ID | P65 |
-| Status | approved |
+| Status | blocked |
 | Created | 2026-10-23 |
-| Last updated | 2026-10-23 |
+| Last updated | 2026-10-25 |
 | Author | головна сесія власника |
 | Source | власник 2026-10-23: провал PROD-сесії `20261022_232959` (`translation-worker truncated` на двох довгих пачках поспіль, 100 рядків у `deferred` без кнопки повернення) |
 | Format | dev-standard 2 |
@@ -16,38 +16,43 @@
 
 ## Goal
 
-На екрані прогону проваленої сесії є кнопка «повторити відкладені». Вона створює новий прогін лише з відкладених рядків із тимчасових причин. Успішно записаний рядок зникає з відкладених.
+На екрані невдалої сесії або порожньої вибірки є кнопка «повторити відкладені». Вона створює новий прогін із придатних відкладених рядків того самого середовища й режиму; до повтору входять тимчасові причини та `missing_item`. Для режиму пропозицій береться актуальний текст відкритої пропозиції. Успішно записаний рядок зникає з відкладених, а рядок, якого більше немає в API, отримує термінальну причину `row_not_found`. Перемикач «перекласти все» на активному патчі також добирає придатні відкладені перед новими рядками, щоб порожня перша пачка не лишала власника без перекладу.
 
 ## Definition of Done
 
-- [ ] Кнопка «повторити відкладені» видима лише на проваленій сесії з відкладеними рядками тимчасових причин; інакше її немає.
-- [ ] Новий прогін бере лише відкладені рядки тимчасових причин, найстаріші першими; нетранзитивні причини не бере ніколи.
+- [x] Кнопка «повторити відкладені» видима лише на проваленій сесії або на завершеній порожній вибірці, якщо є придатні рядки того самого режиму й активного середовища; показує кількість придатних і загальну кількість у цій черзі.
+- [x] Новий прогін бере лише рядки з `_RETRY_DEFER_REASONS` — тимчасові відмови моделі й `missing_item` — найстаріші першими; інші причини не бере. Зміна середовища блокує повтор на рівні екрана й обробника.
+- [x] Перемикач «перекласти все» для активного патча без категорії передає `include_deferred`, спершу бере придатні відкладені, залишок пачки добирає з нових рядків, а кількість пачок покриває більшу з двох черг.
 - [ ] Успішний запис рядка прибирає його з `deferred`; невдача лишає мітку з новою причиною.
-- [ ] Пункт відкладених із `plans/BACKLOG.md` («Успішно перекладений рядок лишається у відкладених») закрито цим планом і вилучено з `BACKLOG.md`.
-- [ ] `docs/OPERATIONS.md` описує кнопку й наслідок; `docs/TROUBLESHOOTING.md` у кроці 5 веде на кнопку.
-- [ ] `uv run bdo gate` дає код 0; звірка на DEV (`dry_run`) за `docs/WEB.md` пройдена зі знімками.
+- [ ] Ручний повтор у режимі пропозицій передає моделі чинний текст відкритої пропозиції; відсутній у джерелі рядок або proposal отримує термінальну причину й не утримує кнопку як повторюваний.
+- [x] `/run` зберігає агрегати `fetch_diagnostics` для звичайного читання рядків і ручного повтору; звичайний автоматичний відбір пропозицій поки не входить до цього контракту. Причина порожньої або невдалої вибірки пояснюється без розкриття текстів чи хешів рядків.
+- [x] Пункт відкладених із `plans/BACKLOG.md` («Успішно перекладений рядок лишається у відкладених») закрито цим планом і вилучено з `BACKLOG.md`.
+- [x] `docs/OPERATIONS.md`, `docs/ARCHITECTURE.md`, `docs/CHECKLIST.md`, `docs/TROUBLESHOOTING.md`, `docs/WEB.md`, `docs/DECISIONS.md` і `docs/SECURITY.md` описують кнопку, межі, діагностику, приватність знімків і актуальні можливості браузерного протоколу.
+- [x] `uv run bdo gate` дає код 0; візуальна звірка за `docs/WEB.md` пройдена на DEV для діагностики й на PROD у `dry_run` з явним дозволом власника для наявної черги: кнопка видима на проваленій і завершеній сесії з порожньою вибіркою, повтор виконується, знімки підтверджують очікуваний текст.
 - [ ] All steps are `done` or `skipped` with a note explaining the skip.
 - [ ] Final verification passed (see `Final verification`).
 
 ## Scope
 
 - `store/repo.py`: метод `remove_deferred`.
+- `store/models.py`, `store/repo.py`: модель і доступ до агрегатів `FetchDiagnostic`; вибір deferred за середовищем і режимом.
 - `pipeline/commit.py`: очищення мітки після успішного запису.
-- `pipeline/runner.py` (`RunGoal`), `pipeline/steps.py` (`step_fetch`): режим повтору відкладених.
-- `web/screens/run.py` + `web/templates/run.html`: дія й кнопка з вибором розміру пачки.
-- `docs/OPERATIONS.md`, `docs/TROUBLESHOOTING.md`, `plans/BACKLOG.md`: текст і вилучення пункту.
+- `pipeline/runner.py` (`RunGoal`), `pipeline/steps.py` (`step_fetch`): ручний повтор, режим «перекласти все» з відкладеними, актуальна proposal-версія, 404 і діагностика.
+- `web/screens/start.py`, `web/templates/start.html`, `web/static/app.js`: передавання `include_deferred`, лічильник черги повтору й розрахунок пачок.
+- `web/screens/run.py` + `web/templates/run.html`: дія, перевірка середовища й режиму, лічильники, пояснення порожньої вибірки й діагностика.
+- `docs/OPERATIONS.md`, `docs/ARCHITECTURE.md`, `docs/CHECKLIST.md`, `docs/TROUBLESHOOTING.md`, `docs/WEB.md`, `docs/DECISIONS.md`, `docs/SECURITY.md`, `plans/BACKLOG.md`: опис контракту, приймання, браузерного протоколу, приватності знімків і вилучення закритого пункту.
 
 ## Non-goals
 
 - Воскресіння проваленої сесії з того самого місця. Не робити.
 - Порятунок часткових items із обрізаної відповіді (окремий пункт `BACKLOG.md`, D-17 без змін). Не чіпати.
-- Зміна складу тимчасових причин (`_TRANSIENT_DEFER_REASONS`). Не чіпати.
+- Автоматичний повтор у режимі пропозицій (`_TRANSIENT_DEFER_REASONS`) не змінювати. Для ручної кнопки дозволено додати `missing_item` у `_RETRY_DEFER_REASONS` за рішенням власника 2026-10-25; інші причини не додавати.
 - Запис на PROD агентом. Заборонено правилами.
 
 ## Constraints
 
 - Сервер власника не зупиняти: `uv run bdo web stop` лише для сервера, який підняв виконавець.
-- Середовище `.env` не перемикати й не редагувати вручну; тестовий прогін лише `dry_run` на DEV.
+- Середовище `.env` не перемикати й не редагувати вручну. Браузерний тестовий прогін — лише `dry_run` на DEV. Окрема перевірка очищення після запису можлива лише в Step 4.2 після явного дозволу власника й за умови не більше п'яти придатних рядків загалом.
 - `git add` лише поіменно; коміт за `docs/COMMITS.md`; push робить лише власник.
 - Безкоштовні віддалені моделі лише `go/*-free`.
 - Автотестів немає (D-08): доказ поведінки лише браузерна звірка.
@@ -69,7 +74,7 @@
   - `src/bdo_translate/store/repo.py` — сховище; `deferred_hashes`, `deferred`, `add_deferred` (рядки 392–420); імпорт `delete` вже є (рядок 6).
   - `src/bdo_translate/store/models.py` — `Deferred.identity_hash` є первинним ключем (рядок 215).
   - `src/bdo_translate/pipeline/commit.py` — запис; успіх рядка вирішується в гілці `else` циклу `for (row, item), result in zip(accepted, written` (рядок 505).
-  - `src/bdo_translate/pipeline/steps.py` — вибірка; `_TRANSIENT_DEFER_REASONS` (рядок 167), `step_fetch` (рядок 233), фільтр `row.identity_hash in deferred` (рядок 260).
+  - `src/bdo_translate/pipeline/steps.py` — вибірка; `_TRANSIENT_DEFER_REASONS` для автоматичного повтору пропозицій, `_RETRY_DEFER_REASONS` для ручного повтору, `step_fetch` (рядок 233).
   - `src/bdo_translate/pipeline/runner.py` — `RunGoal` (рядок 196), `goal_json` зберігається в `RunSession`; відновлення з паузи читає ціль через `RunGoal(**goal_data)` (рядок 477).
   - `src/bdo_translate/web/screens/run.py` — екран; `resume_enabled` (рядок 167), дії `run_pause`, `run_stop`, `run_resume` (рядки 718–720).
   - `src/bdo_translate/web/templates/run.html` — кнопки; блок `resume_enabled` (рядки 24–31).
@@ -79,22 +84,23 @@
   - Профілі: `uv run bdo gate secrets|docs|lint|types` → код 0.
   - Статус: `git status --short`; чисте дерево перед стартом.
   - Browser check: штатний браузер Codex (вкладка чату `iab` або вкладки Chrome власника через Computer Use, довідка в skill `codex-in-app-browser`); Playwright MCP лише коли штатний не вміє, з названою причиною.
-- **Terms:** `deferred` — рядок у таблиці відкладених; тимчасова причина — член `_TRANSIENT_DEFER_REASONS`; повторна сесія — новий прогін із прапорцем `retry_deferred`.
+- **Terms:** `deferred` — рядок у таблиці відкладених; тимчасова причина — член `_TRANSIENT_DEFER_REASONS`; ручний повтор бере ці причини та `missing_item` через `_RETRY_DEFER_REASONS` у новій сесії з прапорцем `retry_deferred`; `include_deferred` — звичайний прогін, який після нових рядків добирає ту саму придатну чергу.
 
 ## Assumptions and open questions
 
 - Single package: кроки правлять спільні файли екрана, вибірки й запису; поділ дав би два пакети з тим самим ресурсом (DEV-сервер і база `.bdo`).
 - Прапорець повтору живе в `RunGoal.retry_deferred` і `goal_json`; окремої таблиці не потрібно — якщо ні, крок 2.2 стає `blocked` із причинами.
+- Прапорець «перекласти все» живе окремо в `RunGoal.include_deferred`, бо ручний повтор не має читати звичайні сторінки, а «перекласти все» має брати обидві черги; відкладені йдуть першими, щоб забита ними черга не змушувала щоразу перечитувати сторінки API.
 - Розмір пачки повтору за замовчуванням дорівнює `min_rows_per_batch` (5), власник може підняти до `MAX_ITEMS` (50).
-- Assumption: повторна сесія бере всі відкладені рядки тимчасових причин цілого середовища, а не лише однієї сесії — мітки `deferred` глобальні.
+- Assumption: повторна сесія бере всі рядки ручного повтору (`_RETRY_DEFER_REASONS`) цілого середовища, а не лише однієї сесії — мітки `deferred` глобальні.
 - Question: чи діє постійний дозвіл власника 2026-10-02 на запис не більше 5 рядків на DEV для кроку 4.2 — blocks Step 4.2 — recommended answer: так, власник підтверджує при затвердженні плану; інакше 4.2 `skipped` із причиною.
 
 ## Instructions for the executor
 
 Read this section and the sections above before the first step. Re-read it after any interruption.
 
-1. **Where to start.** Open `tasks.md` next to this file. Find the first step whose `Status` is not `done` or `skipped`. Read the `Progress log` at the end of `tasks.md` and that step's `Notes`. Start there. Do not redo `done` steps. Start only when the `Status` row of this file is `approved` or `in-progress`; the first executed step runs `python3 <dev-standard>/scripts/plan.py status --root . P65 in-progress` (`<dev-standard>` is the base directory of the `dev-standard` skill, shown by the client when the skill loads), which refuses while the git tree has any uncommitted change — then stop and tell the owner the listed paths; after it, commit this file with the regenerated registry `README.md`.
-2. **Work one step at a time.** Read the whole step before acting. Do only what the step says, in the order of its checkboxes. Do not start the next step before the current one is `done`. After a step is `done`, go on to the next step in the same session without reporting to the owner in between. Stop only on a stop condition (instructions 8-9), a `blocked` step, a step that waits for an answer to a Question in `Assumptions and open questions`, or a closed plan. A commit, a push or a message to the owner inside a step is not a reason to stop. In a Brygada package the subagent does not edit this plan's files and does not commit: the main session does instructions 1, 3–6, 11, 12.
+1. **Where to start.** Open `tasks.md` next to this file. Find the first step whose `Status` is not `done` or `skipped`. Read the `Progress log` and that step's `Notes`. Do not redo `done` steps. Start only when this plan is `approved` or `in-progress`. Before the first executed step, run `python3 <dev-standard>/scripts/plan.py status --root . P65 in-progress`. The command refuses while the git tree has uncommitted changes. If it refuses, stop and report the listed paths. Do not commit until the owner has reviewed the exact file list, diff, and commit message and explicitly approved that commit.
+2. **Work one step at a time.** Read the whole step before acting. Follow its checkboxes in order. Do not start the next step before the current one is `done`. After a step is `done`, go to the next step in the same session. Do not report between steps. Stop on a stop condition, a `blocked` step, a question that needs the owner's answer, or a closed plan. The package executor does not edit plan files or commit. The coordinating session maintains statuses, notes, verification, and closure.
 3. **Status of a step.** Set `Status: in-progress` when you begin, `done` when every checkbox is ticked and `Done when` holds, `blocked` when a stop condition occurs, `skipped` only when the step is proven unnecessary (write why in `Notes`).
 4. **Checkboxes.** Change `- [ ]` to `- [x]` only after the action is actually done AND you saw its evidence (command output, file content). Never tick ahead, never tick based on expectation.
 5. **Notes.** Under the step's `Notes`, add a dated line for every deviation, surprise, decision, workaround, failed attempt, or useful output summary: `- <YYYY-MM-DD>: <what happened> — <what you did>`. Keep notes short; do not paste long logs.
@@ -103,8 +109,8 @@ Read this section and the sections above before the first step. Re-read it after
 8. **When something does not match.** Follow the step's `If it fails`. You may make the one fix it allows and retry once. If it still fails, or if a file, symbol, or command is not as the plan describes: set `Status: blocked`, write a note with the exact error and what you checked, and stop. Do not improvise a different approach.
 9. **Stop and ask the owner** before: changing anything listed in `Non-goals` or `Constraints`; adding a dependency; changing a public API, schema, or data irreversibly; deleting files or data; any action that needs secrets or credentials.
 10. **Never:** disable or weaken tests, suppress errors, edit files the plan does not mention without a note explaining why, or mark the plan `done` (dev-standard: close and delete it) while any Definition of Done item is unchecked.
-11. **Git.** `git add` лише поіменно (`git add <шлях>`; заборонені `git add .`, `-A`, `commit -a`, `--no-verify`). Коміт: `git commit -F <файл> -- <шляхи>`; повідомлення за `docs/COMMITS.md` (`Версія: X.Y.Z`, мітка `Задача:`, перелік `Файли:`); версію підняти в `pyproject.toml`, `src/bdo_translate/__init__.py`, `uv.lock` (`uv lock`, перевірка `uv lock --check`). Push, теги й переписування історії робить лише власник. Коміти й пуш виконує головна сесія, не пакетний виконавець.
-12. **Finishing.** In this order: run `Final verification`, tick the `Definition of Done`, move knowledge that must outlive the plan into the project's permanent documents and anything unfinished to `BACKLOG.md` of the plans directory, commit the final plan files with those documents, then run `python3 <dev-standard>/scripts/plan.py close --root . P65`, fix every `REF` line, and commit the deletion with the `NEXT` command it prints, the message naming the plan ID. The script never commits. Run `close` and `git commit` as separate calls: the commit hook judges the state before the command.
+11. **Git.** Використовуй `git add` лише з поіменованими шляхами. Заборонені `git add .`, `git add -A`, `git commit -a` і `--no-verify`. Повідомлення коміту відповідає `docs/COMMITS.md`. Push, теги й переписування історії виконує лише власник. Перед комітом покажи власнику точний список файлів, diff і повідомлення. Чекай на його явний дозвіл саме цього коміту.
+12. **Finishing.** Спочатку виконай `Final verification`. Потім познач `Definition of Done` лише за наявності доказів. Перенеси довготривалі знання в документи, а незавершені пункти — у `BACKLOG.md`. Покажи власнику файл-ліст, diff і повідомлення коміту. Після явного дозволу на коміт виконай його. Далі запусти `python3 <dev-standard>/scripts/plan.py close --root . P65` окремо від коміту. Виправ кожен `REF` рядок і дочекайся окремого перегляду перед комітом видалення плану.
 
 ## Status legend
 
@@ -120,9 +126,9 @@ Read this section and the sections above before the first step. Re-read it after
 
 ## Final verification
 
-- [ ] Run `uv run bdo gate` → exit code 0.
-- [ ] Run `git status --short` → only this plan's own files (`plan.md`, `tasks.md`) and its documents are uncommitted — instruction 12 commits them next; other sessions' changes that appeared during the plan are listed in `Notes` of the review step and are not touched.
-- [ ] Звірка повтору на DEV за `docs/WEB.md` пройдена: кнопка видима на проваленій сесії, повторна сесія виконується, знімки (3–5 файлів `.bdo/playwright/P65-*` або знімки в чаті) показують очікуваний текст, консоль без `error`, мережа без неочікуваних статусів ≥ 400.
+- [x] Run `uv run bdo gate` → exit code 0.
+- [x] Run `git status --short` → every modified path belongs to this plan's code, documentation, BACKLOG, plan, or generated plan registry; no unrelated changes are included. Other sessions' changes are listed in `Notes` of the review step and are not touched.
+- [x] Візуальна звірка за `docs/WEB.md` пройдена: на DEV перевірено діагностику й відсутність кнопки на звичайній сесії; через відсутність DEV-черги власник 2026-10-25 явно дозволив read-only PROD `dry_run`, де кнопка видима на завершеній порожній вибірці, повтор із 25 пачок завершився, 3–5 знімків залишено в чаті, консоль не має нових `error`, мережа без статусів ≥ 400.
 
 ## Rollback
 
