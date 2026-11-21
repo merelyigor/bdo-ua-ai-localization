@@ -78,7 +78,9 @@
 4. Режим `autonomous` skill dev-standard: розбіжність плану з кодом у межах Scope вирішуй сам і записуй у `Notes` кроку; стоп — перед необоротною дією, дією поза Scope або з секретами.
 ## Final verification
 
-gate 0; прогін із записом на DEV: назви-закони в перекладах присутні або рядок у черзі з поясненням; порада нікого не блокує; сигнали видно.
+Run `uv run bdo gate` from the repository root → exit code 0. Then verify in the
+DEV browser: names marked as law are present in translations or the row is in the
+queue with an explanation; advice does not block any row; signals are visible.
 
 ## Rollback
 

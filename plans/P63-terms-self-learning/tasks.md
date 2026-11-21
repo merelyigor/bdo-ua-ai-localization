@@ -44,7 +44,7 @@ Plan: [plan.md](plan.md).
 **Verify:**
 - [ ] DEV: після 2+ тестових прогонів таблиця непорожня або чесне «сигналів немає».
 - [ ] Знімки.
-- [ ] gate 0.
+- [ ] Run `uv run bdo gate` from the repository root → exit code 0.
 
 **Done when:** екран конфліктів показує таблицю з усіма колонками, gate 0.
 
@@ -67,7 +67,7 @@ Plan: [plan.md](plan.md).
 **Verify:**
 - [ ] DEV: пропозиція видна на сайті DEV і на екрані; повтор не дублює.
 - [ ] Знімки.
-- [ ] gate 0.
+- [ ] Run `uv run bdo gate` from the repository root → exit code 0.
 
 **Done when:** автопропозиція йде за порогом без дублів, відповідь сайту видно на екрані, gate 0.
 
@@ -89,7 +89,7 @@ Plan: [plan.md](plan.md).
 
 **Verify:**
 - [ ] Навмисно зламаний вхід (інший переклад назви) показує пораду.
-- [ ] gate 0.
+- [ ] Run `uv run bdo gate` from the repository root → exit code 0.
 
 **Done when:** розбіжний переклад назви дає пораду ремонту й видно на екрані перевірок, gate 0.
 

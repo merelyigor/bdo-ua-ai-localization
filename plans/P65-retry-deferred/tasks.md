@@ -157,7 +157,7 @@ Plan: [plan.md](plan.md).
 - [x] Run `uv run bdo gate` from the repository root.
 
 **Verify:**
-- [x] The command exits with code 0.
+- [x] Run `uv run bdo gate` from the repository root → exit code 0.
 - [x] Every acceptance criterion of phase 2 holds.
 
 **Done when:** phase 2 acceptance criteria hold with evidence.
@@ -261,7 +261,7 @@ Plan: [plan.md](plan.md).
 - [x] Run `uv run bdo gate` from the repository root.
 
 **Verify:**
-- [x] The command exits with code 0.
+- [x] Run `uv run bdo gate` from the repository root → exit code 0.
 - [x] Static implementation and documentation acceptance criteria of phase 3 hold.
 
 **Done when:** phase 3 acceptance criteria hold with evidence.
@@ -286,6 +286,10 @@ Plan: [plan.md](plan.md).
 - [x] Update architecture, operations, troubleshooting and checklist docs.
 - [x] Run `uv run bdo gate` → exit 0.
 - [x] Verify in the native Codex browser that the switch summary names the retry queue and the started run reaches a model call instead of stopping on an empty first batch.
+
+**Verify:**
+- [x] Run `uv run bdo gate` from the repository root → exit code 0.
+- [x] The native Codex browser shows the retry-queue summary and a started run that reaches a model call instead of stopping on an empty first batch.
 
 **Done when:** the all switch can recover the current PROD deferred queue in a read-only dry-run, the UI explains the path, and gate/browser evidence is recorded.
 

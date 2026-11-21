@@ -67,7 +67,9 @@
 3. Режим `autonomous` skill dev-standard: розбіжність плану з кодом у межах Scope вирішуй сам і записуй у `Notes` кроку; стоп — перед необоротною дією, дією поза Scope або з секретами.
 ## Final verification
 
-gate 0; DEV: конфлікти видно, автопропозиції за порогом пішли й не дублюються, закон автоматично не змінювався.
+Run `uv run bdo gate` from the repository root → exit code 0. Then verify in the
+DEV browser: conflicts are visible, threshold proposals are sent without
+duplicates, and a law term was never changed automatically.
 
 ## Rollback
 

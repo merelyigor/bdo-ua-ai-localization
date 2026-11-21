@@ -117,7 +117,7 @@ Plan: [plan.md](plan.md).
 **Verify:**
 - [ ] Після тестового прогону DEV сигнали видно на екрані.
 - [ ] Знімки.
-- [ ] gate 0.
+- [ ] Run `uv run bdo gate` from the repository root → exit code 0.
 
 **Done when:** відхилення від поради пишуться в `term_signal` і видно на `/quality`, gate 0.
 
@@ -139,7 +139,7 @@ Plan: [plan.md](plan.md).
 
 **Verify:**
 - [ ] Тестовий прогін DEV: суддя не шле в чергу рядки лише через пораду.
-- [ ] gate 0.
+- [ ] Run `uv run bdo gate` from the repository root → exit code 0.
 
 **Done when:** три промпти розрізняють «закон» і «пораду», суддя не блокує через пораду, gate 0.
 
