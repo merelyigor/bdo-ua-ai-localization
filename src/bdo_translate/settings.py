@@ -76,7 +76,7 @@ class Settings(BaseSettings):
     @property
     def shots_dir(self) -> Path:
         """Повертає теку знімків браузерної звірки."""
-        return self.data_dir / "playwright"
+        return self.data_dir / "browser"
 
     def api_target(self) -> ApiTarget:
         """Повертає налаштовану API-ціль активного середовища."""

@@ -83,7 +83,7 @@
   - Gate: `uv run bdo gate` → код 0.
   - Профілі: `uv run bdo gate secrets|docs|lint|types` → код 0.
   - Статус: `git status --short`; чисте дерево перед стартом.
-  - Browser check: штатний браузер Codex (вкладка чату `iab` або вкладки Chrome власника через Computer Use, довідка в skill `codex-in-app-browser`); Playwright MCP лише коли штатний не вміє, з названою причиною.
+  - Browser check: лише штатний браузер Codex (вкладка чату `iab` або відкрита вкладка Chrome власника через `cua.listBrowsers`/`cua.listTabs` → `cua.getTab`, довідка в skill `codex-in-app-browser`); Playwright MCP заборонений, а якщо штатного каналу немає — крок не закривається.
 - **Terms:** `deferred` — рядок у таблиці відкладених; тимчасова причина — член `_TRANSIENT_DEFER_REASONS`; ручний повтор бере ці причини та `missing_item` через `_RETRY_DEFER_REASONS` у новій сесії з прапорцем `retry_deferred`; `include_deferred` — звичайний прогін, який після нових рядків добирає ту саму придатну чергу.
 
 ## Assumptions and open questions
