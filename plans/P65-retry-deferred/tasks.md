@@ -237,7 +237,7 @@ Plan: [plan.md](plan.md).
 - [x] Run `rg -n "повторити відкладені" docs/OPERATIONS.md docs/TROUBLESHOOTING.md` → hits in both files.
 - [x] Run `rg -n "Почніть із малої пачки" docs/TROUBLESHOOTING.md` → one hit in step 5.
 - [x] Run `rg -n "перезапустити прогін" docs/TROUBLESHOOTING.md` → no hit in the deferred-row action.
-- [x] Run `rg -n "tab\.dev\.logs|tab\.playwright" docs/WEB.md docs/DECISIONS.md` → no hits.
+- [x] Run `rg -n "tab\.dev\.logs|tab\.playwright" docs/WEB.md docs/DECISIONS.md` → hits explain the native Codex tab API; Playwright MCP is explicitly forbidden.
 - [x] Run `rg -n "\.bdo/browser/" docs/WEB.md docs/OPERATIONS.md` → hits in both files.
 - [x] Run `rg -n "browser/\*\.png" docs/SECURITY.md docs/DECISIONS.md` → hits in both files.
 - [x] Run `rg -n "лишається у відкладених" plans/BACKLOG.md` → no hits.
