@@ -333,38 +333,22 @@ async def build(state: WebState, query: Query) -> dict[str, Any]:
         else {}
     )
     if not last_check and active_capability is not None and active_capability.source == "probe":
-        last_call = repo.last_call_for(
-            "translation-smoke",
-            selected_provider,
-            selected_model,
-            active_capability.checked_at,
-        )
-        if last_call is not None:
-            check_ok = last_call.state == "ok"
-            check_message = (
-                f"працює · {last_call.ms / 1000:.1f} с"
-                if check_ok
-                else f"не пройшла · {label(last_call.error or 'model_error')}"
-            )
-            last_check = {
-                "provider": selected_provider,
-                "model": selected_model,
-                "checked_at": active_capability.checked_at,
-                "ok": check_ok,
-                "message": check_message,
-                "efforts": supported_efforts,
-                "calls": None,
-            }
-        else:
-            last_check = {
-                "provider": selected_provider,
-                "model": selected_model,
-                "checked_at": active_capability.checked_at,
-                "ok": True,
-                "message": "рівні визначено перевіркою",
-                "efforts": supported_efforts,
-                "calls": None,
-            }
+        # Capability probing deliberately tries unsupported effort values and
+        # ignores their parameter refusals. Such a probe call must not become
+        # the visible status of an otherwise working model.
+        last_check = {
+            "provider": selected_provider,
+            "model": selected_model,
+            "checked_at": active_capability.checked_at,
+            "ok": True,
+            "message": (
+                "рівні визначено перевіркою"
+                if supported_efforts is not None
+                else "модель відповідає · рівні не вдалося визначити"
+            ),
+            "efforts": supported_efforts,
+            "calls": None,
+        }
     last_check_time = (
         _time(last_check.get("checked_at"))
         if isinstance(last_check, dict) and isinstance(last_check.get("checked_at"), str)
@@ -600,16 +584,17 @@ async def _check_model(
     if stored_efforts is not None:
         accepted_efforts = stored_efforts
     efforts_json = json.dumps(accepted_efforts, ensure_ascii=False) if efforts_complete else None
-    repo.set_model_capability(
-        ModelCapability(
-            provider=provider,
-            model=model,
-            think_mode=think_mode,
-            efforts=efforts_json,
-            source="probe",
-            checked_at=checked_at,
+    if smoke.ok:
+        repo.set_model_capability(
+            ModelCapability(
+                provider=provider,
+                model=model,
+                think_mode=think_mode,
+                efforts=efforts_json,
+                source="probe",
+                checked_at=checked_at,
+            )
         )
-    )
 
     first_call = repo.get_call(smoke.call_id)
     unresolved_efforts = not efforts_complete
