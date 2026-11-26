@@ -1,6 +1,8 @@
 """Асинхронний HTTP-клієнт Agent API з контрольованими повторами."""
 
+import logging
 import ssl
+from collections.abc import Callable
 from datetime import UTC
 from email.utils import parsedate_to_datetime
 from math import isfinite
@@ -19,6 +21,7 @@ RETRY_STATUSES = {408, 429, 500, 502, 503, 504}
 RETRY_WINDOW_SECONDS = 570.0
 MAX_WAIT_SECONDS = 30.0
 ATTEMPT_TIMEOUT = httpx.Timeout(30.0, connect=10.0)
+logger = logging.getLogger(__name__)
 
 
 def retry_after_seconds(value: str | None) -> float | None:
@@ -53,6 +56,48 @@ def retry_wait(state: RetryCallState) -> float:
     if delay is None:
         delay = float(2 ** (state.attempt_number - 1))
     return min(MAX_WAIT_SECONDS, delay)
+
+
+def _has_certificate_verification_error(exception: BaseException) -> bool:
+    """Відрізняє постійну TLS-помилку від тимчасового обриву зʼєднання."""
+    seen: set[int] = set()
+    current: BaseException | None = exception
+    while current is not None and id(current) not in seen:
+        seen.add(id(current))
+        if isinstance(current, ssl.SSLCertVerificationError):
+            return True
+        message = str(current).upper()
+        if "CERTIFICATE_VERIFY_FAILED" in message or "CERTIFICATE VERIFY FAILED" in message:
+            return True
+        current = current.__cause__ or current.__context__
+    return False
+
+
+def _transport_is_retryable(exception: httpx.TransportError) -> bool:
+    """Повертає True для тимчасового мережевого збою."""
+    if isinstance(exception, httpx.ConnectError) and _has_certificate_verification_error(exception):
+        return False
+    return True
+
+
+def _retry_logger(method: str, path: str) -> Callable[[RetryCallState], None]:
+    """Створює callback, який пише причину кожного повтору в JSON-журнал."""
+
+    def log_retry(state: RetryCallState) -> None:
+        outcome = state.outcome
+        exception = outcome.exception() if outcome is not None and outcome.failed else None
+        delay = state.next_action.sleep if state.next_action is not None else 0.0
+        logger.warning(
+            "API request retry method=%s path=%s attempt=%s error_type=%s error=%s wait=%.1fs",
+            method,
+            path,
+            state.attempt_number,
+            type(exception).__name__ if exception is not None else "unknown",
+            str(exception) if exception is not None else "",
+            delay,
+        )
+
+    return log_retry
 
 
 class _ApiResponseError(ApiError):
@@ -128,8 +173,8 @@ def parse_envelope(response: httpx.Response) -> dict[str, Any]:
 
 
 def _should_retry(exception: BaseException) -> bool:
-    if isinstance(exception, httpx.TimeoutException):
-        return True
+    if isinstance(exception, httpx.TransportError):
+        return _transport_is_retryable(exception)
     if not isinstance(exception, ApiError):
         return False
     if exception.status not in RETRY_STATUSES:
@@ -180,6 +225,7 @@ class ApiClient:
         retrying = AsyncRetrying(
             retry=retry_if_exception(_should_retry),
             wait=retry_wait,
+            before_sleep=_retry_logger(method, path),
             stop=stop_before_delay(RETRY_WINDOW_SECONDS),
             reraise=True,
         )
@@ -202,18 +248,54 @@ class ApiClient:
                 ) from exc
             raise
         except httpx.TimeoutException as exc:
+            logger.error(
+                "API request failed method=%s path=%s error_type=%s error=%s",
+                method,
+                path,
+                type(exc).__name__,
+                str(exc),
+            )
             raise ApiError(
                 "API не відповів вчасно",
                 code="timeout",
                 hint=hint_for("timeout"),
+                details={"error_type": type(exc).__name__, "cause": str(exc)},
                 retryable=True,
             ) from exc
-        except httpx.HTTPError as exc:
+        except httpx.TransportError as exc:
+            retryable = _transport_is_retryable(exc)
+            logger.error(
+                "API request failed method=%s path=%s error_type=%s retryable=%s error=%s",
+                method,
+                path,
+                type(exc).__name__,
+                retryable,
+                str(exc),
+            )
             raise ApiError(
                 "Не вдалося зʼєднатися з API",
                 code="network_error",
                 hint=hint_for("network_error"),
-                retryable=False,
+                details={
+                    "error_type": type(exc).__name__,
+                    "cause": str(exc),
+                    "retryable": retryable,
+                },
+                retryable=retryable,
+            ) from exc
+        except httpx.HTTPError as exc:
+            logger.error(
+                "API request failed method=%s path=%s error_type=%s error=%s",
+                method,
+                path,
+                type(exc).__name__,
+                str(exc),
+            )
+            raise ApiError(
+                "Не вдалося виконати HTTP-запит до API",
+                code="network_error",
+                hint=hint_for("network_error"),
+                details={"error_type": type(exc).__name__, "cause": str(exc)},
             ) from exc
         raise ApiError(
             "Повтори завершилися без відповіді API",

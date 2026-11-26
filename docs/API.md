@@ -30,7 +30,7 @@
 | Формат | JSON. Успіх: `success: true` + `data`, у частини ендпоінтів ще `meta`. Помилка: `success: false` + `error` (код), `message`, `hint`, `details` |
 | Ліміти | `GET /me` → `limits`: `requests_per_minute`, `rows_per_day`, `rows_written_today`, `rows_remaining_today`, `quota_resets_at`. Цифри не зашивати в документацію · вони залежать від ключа |
 | Середовище | одна константа `BDO_ENV=PROD\|DEV`, див. [DECISIONS.md](DECISIONS.md) і `.env.example` |
-| Мережеві збої | усі виклики API йдуть через `api/client.py`: `tenacity`, `Retry-After`, вікно повторів `RETRY_WINDOW_SECONDS` (570 с) на операцію; далі відмова з кодом |
+| Мережеві збої | усі виклики API йдуть через `api/client.py`: `tenacity`, `Retry-After`, вікно повторів `RETRY_WINDOW_SECONDS` (570 с) на операцію. Повторюються таймаути й тимчасові обриви транспорту (`ConnectError`, `ReadError`, `WriteError`, `RemoteProtocolError`); помилка перевірки TLS-сертифіката не повторюється. Кожен повтор і фінальний збій пишуться в `.bdo/web.log`; після вікна повертається `retry_exhausted`, `timeout` або `network_error` |
 
 Розбір конверта · `api/client.py:parse_envelope`, підказки за кодами помилок ·
 `api/errors.py:ERROR_HINTS`. Свій `curl` в обхід штатних команд заборонений:

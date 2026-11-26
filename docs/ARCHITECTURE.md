@@ -250,11 +250,13 @@ payload, а `RowAlias.restore(items)` повертає відповіді до �
 
 ## Відмови й повтори
 
-- API (`tenacity`): повтор на HTTP 408, 429, 500, 502, 503, 504 і таймауті
-  (спроба 30 с, зʼєднання 10 с); очікування `Retry-After` (≤ 30 с), інакше
-  `2^(n-1)` ≤ 30 с; вікно повторів 570 с; `daily_row_quota_exceeded` не
-  повторюється; далі `ApiError` з кодом `retry_exhausted`, `timeout` або
-  `network_error` і прогін зупиняється.
+- API (`tenacity`): повтор на HTTP 408, 429, 500, 502, 503, 504, таймауті й
+  тимчасовому обриві транспорту (`ConnectError`, `ReadError`, `WriteError`,
+  `RemoteProtocolError`). Помилка TLS-сертифіката не повторюється. Спроба 30 с,
+  зʼєднання 10 с; очікування `Retry-After` (≤ 30 с), інакше `2^(n-1)` ≤ 30 с;
+  вікно повторів 570 с; `daily_row_quota_exceeded` не повторюється. Кожен
+  повтор і фінальний збій пачки пишуться в `.bdo/web.log`; далі `ApiError` з
+  кодом `retry_exhausted`, `timeout` або `network_error`, і прогін зупиняється.
 - Модель: `rate_limited` і `upstream_unavailable` чекають `Retry-After` або
   `min(900, 60·2^min(n-1, 4))` с без ліміту спроб; зациклення дає ще рівно
   одну спробу; кожна спроба · рядок `calls`; зрив поведінки (`truncated`, `not_json`, `schema_mismatch`,

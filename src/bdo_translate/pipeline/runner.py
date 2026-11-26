@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import re
 import time
 from collections.abc import Awaitable, Callable
@@ -52,6 +53,7 @@ from bdo_translate.services import Services
 from bdo_translate.store.models import Batch, Deferred, RunCheckpoint, RunSession
 
 _VERSION_RE = re.compile(r"^\d+\.\d+\.\d+$")
+logger = logging.getLogger(__name__)
 
 
 def is_valid_version(value: str) -> bool:
@@ -833,10 +835,30 @@ class Runner:
                 except ApiError as error:
                     location = current_role or current_step
                     reason = f"{error.code} · {location} · {error.message}"
+                    logger.error(
+                        "batch failed session=%s batch=%s step=%s role=%s code=%s status=%s "
+                        "retryable=%s details=%s message=%s",
+                        session.id,
+                        batch_id,
+                        current_step,
+                        current_role or "",
+                        error.code,
+                        error.status,
+                        error.retryable,
+                        json.dumps(error.details, ensure_ascii=False, default=str),
+                        error.message,
+                    )
                     self._fail_session(session, reason, batch_id)
                     self._append_resolve_rejections(ctx)
                     return
                 except Exception as error:
+                    logger.exception(
+                        "batch crashed session=%s batch=%s step=%s role=%s",
+                        session.id,
+                        batch_id,
+                        current_step,
+                        current_role or "",
+                    )
                     self._fail_session(session, str(error), batch_id)
                     self._append_resolve_rejections(ctx)
                     return
