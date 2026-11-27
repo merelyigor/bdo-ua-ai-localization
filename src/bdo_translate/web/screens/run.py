@@ -192,7 +192,9 @@ async def build(state: WebState, query: Query) -> dict[str, Any]:
         "resolve_rejections": _resolve_rejections(batch.reason if batch is not None else None),
         "viewing_other": viewing_other,
         "controls_enabled": controls_enabled,
-        "resume_enabled": (session.status == "paused" and state.runner.can_resume(session.id)),
+        "resume_enabled": (
+            session.status in {"paused", "interrupted"} and state.runner.can_resume(session.id)
+        ),
         "retry_deferred_enabled": retry_deferred_enabled,
         "retry_deferred_count": retry_deferred_count,
         "deferred_total_count": len(deferred_rows),
@@ -799,7 +801,7 @@ async def run_stop(state: WebState, form: FormData) -> ActionResult:
 
 
 async def run_resume(state: WebState, form: FormData) -> ActionResult:
-    """Продовжує задану призупинену сесію, якщо її контекст ще доступний."""
+    """Продовжує призупинену або безпечно перервану сесію."""
     session_id = form.get("session_id", "").strip()
     if not session_id:
         raise StateError("Не вказано id сесії", reason="session_id_missing")

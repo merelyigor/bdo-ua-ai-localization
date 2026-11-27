@@ -392,7 +392,7 @@ class Runner:
         return session_id
 
     def can_resume(self, session_id: str) -> bool:
-        """Перевіряє стан у памʼяті або збережену в SQLite точку паузи."""
+        """Перевіряє, чи можна продовжити паузу або безпечно перервану сесію."""
         if (
             self._resume_state is not None
             and self._resume_state[1].id == session_id
@@ -401,7 +401,7 @@ class Runner:
             return True
         repo = self.services.repo()
         session = repo.get_session(session_id)
-        if session is None or session.status != "paused":
+        if session is None or session.status not in {"paused", "interrupted"}:
             return False
         batches = repo.batches_of(session_id)
         if not batches:
@@ -409,10 +409,21 @@ class Runner:
         batch = batches[-1]
         checkpoint = repo.get_run_checkpoint(session_id)
         if checkpoint is not None and checkpoint.batch_id == batch.id:
+            if session.status == "interrupted":
+                return batch.state in {
+                    BatchState.names_done.value,
+                    BatchState.validated.value,
+                    BatchState.paused.value,
+                }
             return batch.state in {
                 BatchState.paused.value,
                 BatchState.dry_run_done.value,
                 BatchState.committed.value,
+            }
+        if session.status == "interrupted":
+            return batch.state in {
+                BatchState.names_done.value,
+                BatchState.validated.value,
             }
         return (
             batch.state == BatchState.paused.value
@@ -439,7 +450,7 @@ class Runner:
             self._resume_in_progress = False
 
     async def _resume(self, session_id: str) -> None:
-        """Перевіряє й запускає відновлення після резервування виклику."""
+        """Перевіряє й запускає відновлення після паузи або переривання."""
         if self._task is not None and not self._task.done():
             raise StateError("Сесія вже виконується", reason="session_running")
         state = self._resume_state
@@ -447,7 +458,7 @@ class Runner:
         stored_session = repo.get_session(session_id)
         if stored_session is None:
             raise StateError("Сесію не знайдено", reason="session_not_found")
-        if stored_session.status != "paused":
+        if stored_session.status not in {"paused", "interrupted"}:
             raise StateError("Сесія не на паузі", reason="session_not_paused")
         if self._session_id not in {None, session_id}:
             raise StateError("Ця сесія не є поточною", reason="session_not_current")
@@ -466,12 +477,22 @@ class Runner:
                     "Точка відновлення не збігається з пачкою",
                     reason="resume_checkpoint_mismatch",
                 )
-            resumable_batch = batch.state == BatchState.paused.value or (
-                checkpoint is not None
-                and batch.state in {BatchState.dry_run_done.value, BatchState.committed.value}
-            )
+            if stored_session.status == "interrupted":
+                resumable_batch = batch.state in {
+                    BatchState.names_done.value,
+                    BatchState.validated.value,
+                    BatchState.paused.value,
+                }
+            else:
+                resumable_batch = batch.state == BatchState.paused.value or (
+                    checkpoint is not None
+                    and batch.state in {BatchState.dry_run_done.value, BatchState.committed.value}
+                )
             if not resumable_batch:
-                raise StateError("Остання пачка не на паузі", reason="resume_batch_not_paused")
+                raise StateError(
+                    "Останню пачку не можна безпечно продовжити",
+                    reason="resume_batch_not_paused",
+                )
             try:
                 goal_data = json.loads(stored_session.goal_json)
                 if not isinstance(goal_data, dict):
@@ -483,7 +504,10 @@ class Runner:
             next_step = (
                 checkpoint.next_step
                 if checkpoint is not None
-                else _PREVIOUS_STATE_NEXT_STEP.get(self._previous_batch_state(batch.id) or "", -1)
+                else _PREVIOUS_STATE_NEXT_STEP.get(
+                    batch.state,
+                    _PREVIOUS_STATE_NEXT_STEP.get(self._previous_batch_state(batch.id) or "", -1),
+                )
             )
             if next_step < 0 or next_step > len(steps):
                 raise StateError(

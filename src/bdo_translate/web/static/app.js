@@ -17,8 +17,17 @@ let verdictSearch = "";
 function setLiveStatus(open) {
   const liveLabel = document.getElementById("nav-live");
   const liveDot = document.getElementById("nav-live-dot");
+  const workLabel = document.getElementById("nav-work");
+  if (workLabel && !workLabel.dataset.serverLabel) {
+    workLabel.dataset.serverLabel = workLabel.textContent;
+  }
   if (liveLabel) liveLabel.textContent = open ? "оновлюється наживо" : "оновлюється при відкритті";
   if (liveDot) liveDot.className = open ? "dot live" : "dot poll";
+  if (workLabel) {
+    workLabel.textContent = open
+      ? workLabel.dataset.serverLabel || workLabel.textContent
+      : "немає звʼязку";
+  }
 }
 
 function updateClocks() {
